@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "nom": { "type": "string" },
+    "description": { "type": "string" },
+    "categorie": { "type": "string", "enum": ["creation_web", "automatisation", "contenu", "application", "conseil", "maintenance", "assurance", "autre"] },
+    "prix_base": { "type": "number" },
+    "duree_estimee_jours": { "type": "number" },
+    "livrables": { "type": "string" },
+    "actif": { "type": "boolean", "default": true }
+  }
+}
