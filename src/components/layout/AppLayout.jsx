@@ -1,26 +1,15 @@
 import React from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
-
-const pageTitles = {
-  "/": "Tableau de bord",
-  "/clients": "Clients",
-  "/leads": "Leads",
-  "/projets": "Projets",
-  "/devis": "Devis",
-  "/factures": "Factures",
-  "/commissions": "Commissions assurance",
-};
+import TopBar from "./TopBar";
 
 export default function AppLayout() {
-  const location = useLocation();
-  const title = pageTitles[location.pathname] || "JS-Innov.IA";
-
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar />
-      <div className="ml-[72px] md:ml-[260px] transition-all duration-300">
-        <main className="p-6">
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <TopBar />
+        <main className="flex-1 overflow-y-auto p-6">
           <Outlet />
         </main>
       </div>
