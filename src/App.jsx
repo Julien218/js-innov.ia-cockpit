@@ -17,6 +17,8 @@ import Services from "@/pages/Services";
 import Devis from "@/pages/Devis";
 import Factures from "@/pages/Factures";
 import Commissions from "@/pages/Commissions";
+import Validations from "@/pages/Validations";
+import Logs from "@/pages/Logs";
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -47,6 +49,8 @@ const AuthenticatedApp = () => {
         <Route path="/devis" element={<Devis />} />
         <Route path="/factures" element={<Factures />} />
         <Route path="/commissions" element={<Commissions />} />
+        <Route path="/validations" element={<Validations />} />
+        <Route path="/logs" element={<Logs />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
