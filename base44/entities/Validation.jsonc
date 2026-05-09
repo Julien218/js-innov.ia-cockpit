@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "properties": {
+    "titre": { "type": "string" },
+    "description": { "type": "string" },
+    "type_action": { "type": "string", "enum": ["devis", "message_client", "contenu", "email", "facture", "autre"] },
+    "propose_par": { "type": "string", "default": "NOVA (IA)" },
+    "contenu_propose": { "type": "string" },
+    "client_nom": { "type": "string" },
+    "client_id": { "type": "string" },
+    "projet_id": { "type": "string" },
+    "statut": { "type": "string", "enum": ["en_attente", "approuve", "rejete", "modifie"], "default": "en_attente" },
+    "commentaire_julien": { "type": "string" },
+    "action_executee_at": { "type": "string", "format": "date-time" },
+    "priorite": { "type": "string", "enum": ["basse", "normale", "haute", "urgente"], "default": "normale" }
+  }
+}
