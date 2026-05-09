@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "titre": { "type": "string" },
+    "contenu": { "type": "string" },
+    "client_id": { "type": "string" },
+    "client_nom": { "type": "string" },
+    "client_email": { "type": "string" },
+    "projet_id": { "type": "string" },
+    "source": { "type": "string", "enum": ["email", "telephone", "formulaire", "direct", "autre"] },
+    "priorite": { "type": "string", "enum": ["basse", "moyenne", "haute", "urgente"], "default": "moyenne" },
+    "statut": { "type": "string", "enum": ["ouverte", "en_traitement", "resolue", "annulee"], "default": "ouverte" },
+    "notes_internes": { "type": "string" },
+    "resume_ia": { "type": "string" }
+  }
+}
