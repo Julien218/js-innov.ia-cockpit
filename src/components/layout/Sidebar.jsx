@@ -3,64 +3,88 @@ import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, Target, FolderKanban,
   FileText, Receipt, Shield, ChevronLeft, ChevronRight,
-  CheckSquare, MessageSquare, Package, Zap
+  CheckSquare, MessageSquare, Package, Zap, ShieldCheck, Activity
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { base44 } from "@/api/base44Client";
 
-const navGroups = [
-  {
-    label: "Vue générale",
-    items: [
-      { label: "Tableau de bord", icon: LayoutDashboard, path: "/" },
-    ]
-  },
-  {
-    label: "CRM",
-    items: [
-      { label: "Clients", icon: Users, path: "/clients" },
-      { label: "Leads", icon: Target, path: "/leads" },
-    ]
-  },
-  {
-    label: "Opérations",
-    items: [
-      { label: "Projets", icon: FolderKanban, path: "/projets" },
-      { label: "Tâches", icon: CheckSquare, path: "/taches" },
-      { label: "Demandes", icon: MessageSquare, path: "/demandes" },
-    ]
-  },
-  {
-    label: "Finance",
-    items: [
-      { label: "Devis", icon: FileText, path: "/devis" },
-      { label: "Factures", icon: Receipt, path: "/factures" },
-      { label: "Commissions", icon: Shield, path: "/commissions" },
-    ]
-  },
-  {
-    label: "Catalogue",
-    items: [
-      { label: "Services", icon: Package, path: "/services" },
-    ]
-  }
-];
+const useValidationsBadge = () => {
+  const { data = [] } = useQuery({
+    queryKey: ["validations"],
+    queryFn: () => base44.entities.Validation.list(),
+    staleTime: 30000,
+  });
+  return data.filter(v => v.statut === "en_attente").length;
+};
+
+const useDemandeBadge = () => {
+  const { data = [] } = useQuery({
+    queryKey: ["demandes"],
+    queryFn: () => base44.entities.Demande.list(),
+    staleTime: 30000,
+  });
+  return data.filter(d => d.statut === "ouverte").length;
+};
 
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const validationCount = useValidationsBadge();
+  const demandeCount = useDemandeBadge();
+
+  const navGroups = [
+    {
+      label: "Vue générale",
+      items: [
+        { label: "Tableau de bord", icon: LayoutDashboard, path: "/" },
+      ]
+    },
+    {
+      label: "CRM",
+      items: [
+        { label: "Clients", icon: Users, path: "/clients" },
+        { label: "Leads", icon: Target, path: "/leads" },
+      ]
+    },
+    {
+      label: "Opérations",
+      items: [
+        { label: "Projets", icon: FolderKanban, path: "/projets" },
+        { label: "Tâches", icon: CheckSquare, path: "/taches" },
+        { label: "Demandes", icon: MessageSquare, path: "/demandes", badge: demandeCount },
+      ]
+    },
+    {
+      label: "Finance",
+      items: [
+        { label: "Devis", icon: FileText, path: "/devis" },
+        { label: "Factures", icon: Receipt, path: "/factures" },
+        { label: "Commissions", icon: Shield, path: "/commissions" },
+      ]
+    },
+    {
+      label: "IA & Contrôle",
+      items: [
+        { label: "Validations", icon: ShieldCheck, path: "/validations", badge: validationCount },
+        { label: "Journal", icon: Activity, path: "/logs" },
+      ]
+    },
+    {
+      label: "Catalogue",
+      items: [
+        { label: "Services", icon: Package, path: "/services" },
+      ]
+    }
+  ];
 
   return (
-    <aside
-      className={cn(
-        "relative flex flex-col h-screen bg-white border-r border-border transition-all duration-300 ease-in-out z-30",
-        collapsed ? "w-[68px]" : "w-[240px]"
-      )}
-    >
+    <aside className={cn(
+      "relative flex flex-col h-screen bg-white border-r border-border transition-all duration-300 ease-in-out z-30",
+      collapsed ? "w-[68px]" : "w-[240px]"
+    )}>
       {/* Logo */}
-      <div className={cn(
-        "flex items-center gap-3 px-4 py-5 border-b border-border",
-        collapsed && "justify-center px-0"
-      )}>
+      <div className={cn("flex items-center gap-3 px-4 py-5 border-b border-border", collapsed && "justify-center px-0")}>
         <div className="flex-shrink-0 w-9 h-9 rounded-xl gradient-primary flex items-center justify-center shadow-lg shadow-primary/30">
           <Zap className="w-5 h-5 text-white" />
         </div>
@@ -89,7 +113,7 @@ export default function Sidebar() {
                   to={item.path}
                   title={collapsed ? item.label : undefined}
                   className={cn(
-                    "sidebar-item mb-0.5",
+                    "sidebar-item mb-0.5 relative",
                     collapsed ? "justify-center px-0 py-2.5" : "",
                     active
                       ? "bg-primary text-white shadow-lg shadow-primary/25"
@@ -97,7 +121,16 @@ export default function Sidebar() {
                   )}
                 >
                   <item.icon className={cn("flex-shrink-0", collapsed ? "w-5 h-5" : "w-4 h-4")} />
-                  {!collapsed && <span>{item.label}</span>}
+                  {!collapsed && <span className="flex-1">{item.label}</span>}
+                  {item.badge > 0 && (
+                    <span className={cn(
+                      "flex-shrink-0 text-[10px] font-bold rounded-full flex items-center justify-center",
+                      collapsed ? "absolute top-1 right-1 w-4 h-4" : "w-5 h-5",
+                      active ? "bg-white/20 text-white" : "bg-primary text-white"
+                    )}>
+                      {item.badge}
+                    </span>
+                  )}
                 </Link>
               );
             })}
