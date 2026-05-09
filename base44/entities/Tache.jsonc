@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "properties": {
+    "titre": { "type": "string" },
+    "description": { "type": "string" },
+    "projet_id": { "type": "string" },
+    "projet_nom": { "type": "string" },
+    "client_id": { "type": "string" },
+    "client_nom": { "type": "string" },
+    "statut": { "type": "string", "enum": ["a_faire", "en_cours", "terminee", "bloquee"], "default": "a_faire" },
+    "priorite": { "type": "string", "enum": ["basse", "moyenne", "haute", "urgente"], "default": "moyenne" },
+    "date_echeance": { "type": "string", "format": "date" },
+    "notes": { "type": "string" }
+  }
+}
