@@ -11,6 +11,9 @@ import Dashboard from "@/pages/Dashboard";
 import Clients from "@/pages/Clients";
 import Leads from "@/pages/Leads";
 import Projets from "@/pages/Projets";
+import Taches from "@/pages/Taches";
+import Demandes from "@/pages/Demandes";
+import Services from "@/pages/Services";
 import Devis from "@/pages/Devis";
 import Factures from "@/pages/Factures";
 import Commissions from "@/pages/Commissions";
@@ -27,12 +30,8 @@ const AuthenticatedApp = () => {
   }
 
   if (authError) {
-    if (authError.type === 'user_not_registered') {
-      return <UserNotRegisteredError />;
-    } else if (authError.type === 'auth_required') {
-      navigateToLogin();
-      return null;
-    }
+    if (authError.type === 'user_not_registered') return <UserNotRegisteredError />;
+    else if (authError.type === 'auth_required') { navigateToLogin(); return null; }
   }
 
   return (
@@ -42,6 +41,9 @@ const AuthenticatedApp = () => {
         <Route path="/clients" element={<Clients />} />
         <Route path="/leads" element={<Leads />} />
         <Route path="/projets" element={<Projets />} />
+        <Route path="/taches" element={<Taches />} />
+        <Route path="/demandes" element={<Demandes />} />
+        <Route path="/services" element={<Services />} />
         <Route path="/devis" element={<Devis />} />
         <Route path="/factures" element={<Factures />} />
         <Route path="/commissions" element={<Commissions />} />
