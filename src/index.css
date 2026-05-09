@@ -68,13 +68,13 @@
     @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200;
   }
   .sidebar-item:hover {
-    @apply bg-primary/8 text-primary;
+    @apply bg-primary/10 text-primary;
   }
   .sidebar-item.active {
     @apply bg-primary text-white shadow-lg shadow-primary/25;
   }
   .card-hover {
-    @apply hover:shadow-xl hover:shadow-primary/8 hover:-translate-y-0.5 transition-all duration-300;
+    @apply hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300;
   }
 }
 
