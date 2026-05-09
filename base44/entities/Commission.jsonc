@@ -1,0 +1,73 @@
+{
+  "name": "Commission",
+  "type": "object",
+  "properties": {
+    "reference": {
+      "type": "string",
+      "description": "R\u00e9f\u00e9rence de la commission"
+    },
+    "client_id": {
+      "type": "string"
+    },
+    "client_nom": {
+      "type": "string"
+    },
+    "assureur": {
+      "type": "string",
+      "description": "Nom de la compagnie d'assurance"
+    },
+    "type_contrat": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "habitation",
+        "sante",
+        "vie",
+        "prevoyance",
+        "responsabilite_civile_pro",
+        "multirisque_pro",
+        "autre"
+      ],
+      "default": "auto"
+    },
+    "numero_contrat": {
+      "type": "string"
+    },
+    "prime_annuelle": {
+      "type": "number",
+      "description": "Prime annuelle en euros"
+    },
+    "taux_commission": {
+      "type": "number",
+      "description": "Taux de commission en %"
+    },
+    "montant_commission": {
+      "type": "number",
+      "description": "Montant de la commission en euros"
+    },
+    "date_effet": {
+      "type": "string",
+      "format": "date"
+    },
+    "date_echeance": {
+      "type": "string",
+      "format": "date"
+    },
+    "statut": {
+      "type": "string",
+      "enum": [
+        "en_attente",
+        "percue",
+        "annulee"
+      ],
+      "default": "en_attente"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "reference",
+    "assureur"
+  ]
+}

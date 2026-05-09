@@ -1,0 +1,75 @@
+{
+  "name": "Devis",
+  "type": "object",
+  "properties": {
+    "numero": {
+      "type": "string",
+      "description": "Num\u00e9ro du devis"
+    },
+    "client_id": {
+      "type": "string"
+    },
+    "client_nom": {
+      "type": "string"
+    },
+    "projet_id": {
+      "type": "string"
+    },
+    "objet": {
+      "type": "string",
+      "description": "Objet du devis"
+    },
+    "lignes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "quantite": {
+            "type": "number"
+          },
+          "prix_unitaire": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "montant_ht": {
+      "type": "number"
+    },
+    "tva": {
+      "type": "number",
+      "default": 20
+    },
+    "montant_ttc": {
+      "type": "number"
+    },
+    "statut": {
+      "type": "string",
+      "enum": [
+        "brouillon",
+        "envoye",
+        "accepte",
+        "refuse",
+        "expire"
+      ],
+      "default": "brouillon"
+    },
+    "date_validite": {
+      "type": "string",
+      "format": "date"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "numero",
+    "objet"
+  ]
+}

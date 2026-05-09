@@ -1,0 +1,65 @@
+{
+  "name": "Client",
+  "type": "object",
+  "properties": {
+    "nom": {
+      "type": "string",
+      "description": "Nom du client"
+    },
+    "prenom": {
+      "type": "string",
+      "description": "Pr\u00e9nom du client"
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email du client"
+    },
+    "telephone": {
+      "type": "string",
+      "description": "Num\u00e9ro de t\u00e9l\u00e9phone"
+    },
+    "entreprise": {
+      "type": "string",
+      "description": "Nom de l'entreprise"
+    },
+    "adresse": {
+      "type": "string",
+      "description": "Adresse postale"
+    },
+    "ville": {
+      "type": "string",
+      "description": "Ville"
+    },
+    "code_postal": {
+      "type": "string",
+      "description": "Code postal"
+    },
+    "type_client": {
+      "type": "string",
+      "enum": [
+        "particulier",
+        "professionnel",
+        "entreprise"
+      ],
+      "default": "particulier"
+    },
+    "statut": {
+      "type": "string",
+      "enum": [
+        "actif",
+        "inactif",
+        "prospect"
+      ],
+      "default": "actif"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Notes internes"
+    }
+  },
+  "required": [
+    "nom",
+    "email"
+  ]
+}

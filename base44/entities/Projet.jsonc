@@ -1,0 +1,61 @@
+{
+  "name": "Projet",
+  "type": "object",
+  "properties": {
+    "nom": {
+      "type": "string",
+      "description": "Nom du projet"
+    },
+    "client_id": {
+      "type": "string",
+      "description": "ID du client associ\u00e9"
+    },
+    "client_nom": {
+      "type": "string",
+      "description": "Nom du client (d\u00e9normalis\u00e9)"
+    },
+    "description": {
+      "type": "string"
+    },
+    "statut": {
+      "type": "string",
+      "enum": [
+        "en_attente",
+        "en_cours",
+        "termine",
+        "annule"
+      ],
+      "default": "en_attente"
+    },
+    "date_debut": {
+      "type": "string",
+      "format": "date"
+    },
+    "date_fin_prevue": {
+      "type": "string",
+      "format": "date"
+    },
+    "budget": {
+      "type": "number",
+      "description": "Budget en euros"
+    },
+    "progression": {
+      "type": "number",
+      "description": "Pourcentage de progression (0-100)",
+      "default": 0
+    },
+    "priorite": {
+      "type": "string",
+      "enum": [
+        "basse",
+        "moyenne",
+        "haute",
+        "urgente"
+      ],
+      "default": "moyenne"
+    }
+  },
+  "required": [
+    "nom"
+  ]
+}

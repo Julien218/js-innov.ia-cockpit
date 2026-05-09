@@ -1,0 +1,63 @@
+{
+  "name": "Lead",
+  "type": "object",
+  "properties": {
+    "nom": {
+      "type": "string",
+      "description": "Nom du lead"
+    },
+    "prenom": {
+      "type": "string",
+      "description": "Pr\u00e9nom du lead"
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
+    "telephone": {
+      "type": "string"
+    },
+    "entreprise": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "site_web",
+        "recommandation",
+        "linkedin",
+        "salon",
+        "appel_entrant",
+        "autre"
+      ],
+      "default": "site_web"
+    },
+    "statut": {
+      "type": "string",
+      "enum": [
+        "nouveau",
+        "contacte",
+        "qualifie",
+        "proposition",
+        "gagne",
+        "perdu"
+      ],
+      "default": "nouveau"
+    },
+    "valeur_estimee": {
+      "type": "number",
+      "description": "Valeur estim\u00e9e en euros"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "date_relance": {
+      "type": "string",
+      "format": "date"
+    }
+  },
+  "required": [
+    "nom",
+    "email"
+  ]
+}
