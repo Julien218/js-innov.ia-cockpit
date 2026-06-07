@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, Target, FolderKanban,
   FileText, Receipt, Shield, ChevronLeft, ChevronRight,
-  CheckSquare, MessageSquare, Package, Zap, ShieldCheck, Activity
+  CheckSquare, MessageSquare, Package, Zap, ShieldCheck, Activity, Bot
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -66,6 +66,7 @@ export default function Sidebar() {
     {
       label: "IA & Contrôle",
       items: [
+        { label: "Julien AI", icon: Bot, path: "/agent" },
         { label: "Validations", icon: ShieldCheck, path: "/validations", badge: validationCount },
         { label: "Journal", icon: Activity, path: "/logs" },
       ]
