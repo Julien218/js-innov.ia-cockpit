@@ -7,6 +7,9 @@ on:
       - 'electron/**'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     name: 🪟 Build Windows (.exe)
@@ -27,8 +30,6 @@ jobs:
       - name: Build Windows installer
         working-directory: electron
         run: npm run build:win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
@@ -56,8 +57,6 @@ jobs:
       - name: Build Mac DMG
         working-directory: electron
         run: npm run build:mac
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Mac artifact
         uses: actions/upload-artifact@v4
@@ -70,7 +69,8 @@ jobs:
     name: 📦 Créer Release GitHub
     needs: [build-windows, build-mac]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
     steps:
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
@@ -83,6 +83,9 @@ jobs:
         with:
           name: JSInnovIA-Cockpit-Mac
           path: dist/
+
+      - name: List files
+        run: ls -la dist/
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -100,8 +103,8 @@ jobs:
             - Tableau de bord complet avec KPIs
             - CRM (Clients, Leads, Pipeline)
             - Gestion projets, tâches, devis, factures, commissions
-            - **Julien AI** — agent IA intégré avec GPT-4o
-            - Logo et identité visuelle JS-Innov.IA® officielle
+            - **Julien AI** — agent IA intégré
+            - Logo JS-Innov.IA® officiel
 
             ---
             *🚀 JS-Innov.IA — Intelligence artificielle amplifiée par l'humain*
