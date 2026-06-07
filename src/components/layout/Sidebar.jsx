@@ -85,9 +85,9 @@ export default function Sidebar() {
       collapsed ? "w-[68px]" : "w-[240px]"
     )}>
       {/* Logo */}
-      <div className={cn("flex items-center gap-3 px-4 py-5 border-b border-border", collapsed && "justify-center px-0")}>
-        <div className="flex-shrink-0 w-9 h-9 rounded-xl gradient-primary flex items-center justify-center shadow-lg shadow-primary/30">
-          <Zap className="w-5 h-5 text-white" />
+      <div className={cn("flex items-center gap-3 px-4 py-4 border-b border-border", collapsed && "justify-center px-2")}>
+        <div className="flex-shrink-0 w-9 h-9 rounded-xl overflow-hidden shadow-lg">
+          <img src="/logo.png" alt="JS-Innov.IA" className="w-full h-full object-cover" />
         </div>
         {!collapsed && (
           <div className="overflow-hidden">
@@ -143,7 +143,9 @@ export default function Sidebar() {
       {!collapsed && (
         <div className="px-3 py-3 border-t border-border">
           <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg bg-muted/50">
-            <div className="w-7 h-7 rounded-full gradient-primary flex items-center justify-center text-white text-xs font-bold flex-shrink-0">J</div>
+            <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 shadow">
+              <img src="/logo.png" alt="JP" className="w-full h-full object-cover" />
+            </div>
             <div className="overflow-hidden">
               <p className="text-xs font-semibold text-foreground truncate">Julien Pagin</p>
               <p className="text-[10px] text-muted-foreground truncate">JS-Innov.IA</p>
