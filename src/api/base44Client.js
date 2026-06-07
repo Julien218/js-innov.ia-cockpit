@@ -1,12 +1,11 @@
 // ============================================================
-// base44Client.js — REMPLACÉ PAR SUPABASE
+// base44Client.js — PROXY via jsinnovia-agent backend
 // Interface identique : base44.entities.X.list/create/update/delete
-// Backend : Supabase REST API (fngyikpxvggrokqtezia)
-// Aucun autre fichier à modifier.
+// Backend : jsinnovia-agent (Railway) → Supabase service_role (bypass RLS)
 // ============================================================
 
-const SUPABASE_URL = 'https://fngyikpxvggrokqtezia.supabase.co';
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_SERVICE_KEY || '';
+const AGENT_URL = import.meta.env.VITE_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
+const AGENT_AUTH = import.meta.env.VITE_AGENT_AUTH || 'julien-ai-2026';
 
 const TABLE_MAP = {
   Lead:       'leads_fr',
@@ -22,22 +21,22 @@ const TABLE_MAP = {
   LogAction:  'logs_actions',
 };
 
-async function sbReq(table, params = '', options = {}) {
-  const url = `${SUPABASE_URL}/rest/v1/${table}${params ? '?' + params : ''}`;
-  const isWrite = ['POST', 'PATCH', 'PUT'].includes(options.method);
-  const headers = {
-    'Content-Type': 'application/json',
-    apikey: SUPABASE_KEY,
-    Authorization: `Bearer ${SUPABASE_KEY}`,
-    ...(isWrite ? { Prefer: 'return=representation' } : {}),
-    ...(options.headers || {}),
-  };
-  const res = await fetch(url, { ...options, headers });
+async function agentReq(table, path = '', options = {}) {
+  const url = `${AGENT_URL}/data/${table}${path}`;
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-agent-key': AGENT_AUTH,
+      ...(options.headers || {}),
+    },
+  });
+
   if (res.status === 204) return null;
   const data = await res.json();
   if (!res.ok) {
-    console.error('[Supabase Error]', data);
-    throw new Error(data?.message || `HTTP ${res.status}`);
+    console.error('[Agent CRUD Error]', data);
+    throw new Error(data?.error || `HTTP ${res.status}`);
   }
   return data;
 }
@@ -45,44 +44,39 @@ async function sbReq(table, params = '', options = {}) {
 function makeEntity(tableName) {
   return {
     list: async (sort) => {
-      const sortParam = sort
-        ? (sort.startsWith('-')
-            ? `order=${sort.slice(1)}.desc`
-            : `order=${sort}.asc`)
-        : 'order=created_at.desc';
-      return await sbReq(tableName, sortParam);
+      const params = sort
+        ? `?sort=${sort.startsWith('-') ? sort.slice(1) : sort}&order=${sort.startsWith('-') ? 'desc' : 'asc'}`
+        : '';
+      return await agentReq(tableName, params);
     },
     get: async (id) => {
-      const rows = await sbReq(tableName, `id=eq.${id}`);
-      return rows?.[0] ?? null;
+      return await agentReq(tableName, `/${id}`);
     },
     create: async (data) => {
-      const rows = await sbReq(tableName, '', {
+      return await agentReq(tableName, '', {
         method: 'POST',
         body: JSON.stringify(data),
       });
-      return rows?.[0] ?? rows;
     },
     update: async (id, data) => {
-      const rows = await sbReq(tableName, `id=eq.${id}`, {
+      return await agentReq(tableName, `/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(data),
       });
-      return rows?.[0] ?? rows;
     },
     delete: async (id) => {
-      await sbReq(tableName, `id=eq.${id}`, { method: 'DELETE' });
+      await agentReq(tableName, `/${id}`, { method: 'DELETE' });
       return { id };
     },
     filter: async (query = {}, sort) => {
       const parts = Object.entries(query).map(
-        ([k, v]) => `${k}=eq.${encodeURIComponent(v)}`
+        ([k, v]) => `${k}=${encodeURIComponent(v)}`
       );
       if (sort) {
         const desc = sort.startsWith('-');
-        parts.push(`order=${desc ? sort.slice(1) : sort}.${desc ? 'desc' : 'asc'}`);
+        parts.push(`sort=${desc ? sort.slice(1) : sort}&order=${desc ? 'desc' : 'asc'}`);
       }
-      return await sbReq(tableName, parts.join('&'));
+      return await agentReq(tableName, `?${parts.join('&')}`);
     },
   };
 }
