@@ -43,3 +43,7 @@ L'installeur sera généré dans le dossier `dist/`.
 
 ---
 *🚀 JS-Innov.IA — Intelligence artificielle amplifiée par l'humain*
+
+## 🏗️ Build automatique
+
+Chaque push dans `electron/` déclenche automatiquement la compilation `.exe` (Windows) et `.dmg` (Mac) via GitHub Actions.
