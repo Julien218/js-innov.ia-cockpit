@@ -19,8 +19,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: electron/package-lock.json
 
       - name: Install dependencies
         working-directory: electron
@@ -50,8 +48,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: electron/package-lock.json
 
       - name: Install dependencies
         working-directory: electron
@@ -101,11 +97,11 @@ jobs:
             - **Mac** : `.dmg` (glisser dans Applications)
 
             ### ✅ Ce qui est inclus
-            - Tableau de bord complet
-            - CRM (Clients, Leads)
-            - Gestion projets, tâches, devis, factures
-            - **Julien AI** — agent IA intégré
-            - Identité visuelle JS-Innov.IA®
+            - Tableau de bord complet avec KPIs
+            - CRM (Clients, Leads, Pipeline)
+            - Gestion projets, tâches, devis, factures, commissions
+            - **Julien AI** — agent IA intégré avec GPT-4o
+            - Logo et identité visuelle JS-Innov.IA® officielle
 
             ---
             *🚀 JS-Innov.IA — Intelligence artificielle amplifiée par l'humain*
