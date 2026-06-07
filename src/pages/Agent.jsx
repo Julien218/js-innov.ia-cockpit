@@ -5,7 +5,7 @@ import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 
 const AGENT_URL = "https://jsinnovia-agent-production.up.railway.app";
-const AGENT_KEY = import.meta.env.VITE_AGENT_KEY || "";
+const AGENT_KEY = import.meta.env.VITE_AGENT_KEY || "julien-ai-secret-key-change-me";
 
 const SESSION_ID = `julien-${Date.now()}`;
 
