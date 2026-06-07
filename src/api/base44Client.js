@@ -6,8 +6,7 @@
 // ============================================================
 
 const SUPABASE_URL = 'https://fngyikpxvggrokqtezia.supabase.co';
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZuZ3lpa3B4dmdncm9rcXRlemlhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NjkwNjQzNywiZXhwIjoyMDYyNDgyNDM3fQ.Sbzf9Y-J1K2y2dXUE4j_Xn6OfFLmKUFmLEyGBkF2RqM';
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_KEY || '';
 
 const TABLE_MAP = {
   Lead:       'leads_fr',
