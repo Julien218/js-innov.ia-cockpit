@@ -1,0 +1,5 @@
+[phases.build]
+cmds = ["npm ci --legacy-peer-deps", "npm run build"]
+
+[start]
+cmd = "npx serve dist -l $PORT"
