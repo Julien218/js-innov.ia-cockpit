@@ -11,10 +11,8 @@
     "build:mac": "electron-builder --mac",
     "build:linux": "electron-builder --linux"
   },
-  "dependencies": {
-    "electron": "^30.0.0"
-  },
   "devDependencies": {
+    "electron": "^30.0.0",
     "electron-builder": "^24.13.3"
   },
   "build": {
@@ -25,11 +23,11 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "icon.ico"
+      "icon": "icon.png"
     },
     "mac": {
       "target": "dmg",
-      "icon": "icon.icns",
+      "icon": "icon.png",
       "category": "public.app-category.business"
     },
     "linux": {
@@ -38,7 +36,9 @@
     },
     "nsis": {
       "oneClick": true,
-      "installerLanguages": ["fr_FR"],
+      "installerLanguages": [
+        "fr_FR"
+      ],
       "language": "1036"
     }
   }
