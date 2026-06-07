@@ -6,7 +6,7 @@
 // ============================================================
 
 const SUPABASE_URL = 'https://fngyikpxvggrokqtezia.supabase.co';
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_KEY || '';
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_SERVICE_KEY || '';
 
 const TABLE_MAP = {
   Lead:       'leads_fr',
