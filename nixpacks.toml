@@ -1,5 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs_20", "npm-9_x"]
+
+[phases.install]
+cmds = ["npm ci --legacy-peer-deps --prefer-offline || npm install --legacy-peer-deps"]
+
 [phases.build]
-cmds = ["npm ci --legacy-peer-deps", "npm run build"]
+cmds = ["npm run build"]
 
 [start]
-cmd = "npx serve dist -l $PORT"
+cmd = "npx serve dist --listen tcp://0.0.0.0:$PORT"
