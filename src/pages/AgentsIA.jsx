@@ -84,14 +84,14 @@ const AGENTS_CONFIG = [
     tagColor: "#f43f5e",
   },
   {
-    id: "",
-    name: "Créateur Innovant",
-    description: "Agent créateur de contenu innovant pour Js-Innov.IA.",
-    color: "#8b5cf6",
-    bgColor: "#0d001a",
-    emoji: "💡",
-    tag: "Créatif",
-    tagColor: "#8b5cf6",
+    id: "69e732e1d54abfd1783f5d06",
+    name: "Agent Miss & Mister Dour",
+    description: "Agent IA officiel Miss & Mister Dour — événements, candidatures, communication.",
+    color: "#ec4899",
+    bgColor: "#1a0015",
+    emoji: "👑",
+    tag: "Événement",
+    tagColor: "#ec4899",
   },
 ];
 
