@@ -67,7 +67,7 @@ const AGENTS_CONFIG = [
     apiKey: import.meta.env.VITE_BASE44_FASHIONIST_API_KEY || "",
   },
   {
-    id: "", // À renseigner
+    id: "6a0371a87c9257126b051d5a",
     name: "Site Olivier Landing Page",
     description: "Agent assistant pour le site d'Olivier Trevis — gestion contenu et communication.",
     color: "#f97316",
