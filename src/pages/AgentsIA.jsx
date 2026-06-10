@@ -74,8 +74,8 @@ const AGENTS_CONFIG = [
     tagColor: "#06b6d4",
   },
   {
-    id: "",
-    name: "NOVA JS-Innov.IA",
+    id: "69ff4dc771a2cdab275f8a00",
+    name: "NOVA  JS-Innov.IA",
     description: "Agent NOVA — assistant créatif et stratégique Js-Innov.IA.",
     color: "#a855f7",
     bgColor: "#1a0a2e",
