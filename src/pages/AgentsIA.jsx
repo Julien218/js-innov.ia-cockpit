@@ -45,7 +45,7 @@ const AGENTS_CONFIG = [
   },
   {
     id: "6a0371a87c9257126b051d5a",
-    name: "Site Olivier Landing Page",
+    name: "Site Olivier landing Page",
     description: "Agent pour le site d'Olivier Trevis — gestion contenu et communication.",
     color: "#f97316",
     bgColor: "#1a0d00",
