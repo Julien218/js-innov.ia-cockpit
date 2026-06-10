@@ -74,7 +74,7 @@ const AGENTS_CONFIG = [
     tagColor: "#a855f7",
   },
   {
-    id: "",
+    id: "6a035427dca907aa03b71398",
     name: "Agent Fashionistart",
     description: "Agent dédié à Fashionist'ART Dour — événements, mode, communication.",
     color: "#f43f5e",
