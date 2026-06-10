@@ -78,7 +78,7 @@ const AGENTS_CONFIG = [
     apiKey: import.meta.env.VITE_BASE44_OLIVIER_API_KEY || "",
   },
   {
-    id: "", // À renseigner
+    id: "69fcda52258a254f4220b0bd",
     name: "A Yanis",
     description: "Agent IA personnel A Yanis — assistant dédié.",
     color: "#10b981",
