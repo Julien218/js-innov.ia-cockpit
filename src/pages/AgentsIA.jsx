@@ -1,59 +1,128 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
-  Bot, Send, Plus, Trash2, ChevronLeft, Loader2,
-  Sparkles, User, MessageSquare, Settings, Zap, RefreshCw
+  Bot, Send, ChevronLeft, Loader2, Sparkles, User,
+  MessageSquare, Zap, RefreshCw, Lock, ExternalLink, AlertCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 
-// ─── Configuration des agents Base44 disponibles ───────────────────────────
+// ─── TOUS LES AGENTS JS-INNOV.IA ────────────────────────────────────────────
+// Pour activer un agent : ajouter sa clé API dans Railway (VITE_BASE44_XXXXX_API_KEY)
+// et renseigner apiKey + id ci-dessous
 const AGENTS_CONFIG = [
+  {
+    id: "6a1845e17cc526d1e44965bc",
+    name: "JsInnov-Agent",
+    description: "Agent IA principal de Js-Innov.IA — développement, architecture, DevOps, documentation.",
+    color: "#D4AF37",
+    bgColor: "#0a0a1a",
+    emoji: "🚀",
+    tag: "Principal",
+    tagColor: "#D4AF37",
+    apiKey: import.meta.env.VITE_BASE44_JSINNOV_API_KEY || "",
+  },
   {
     id: "6a0208edd1e235b62b4bda38",
     name: "Synergie Dour Assistant",
-    description: "Agent IA officiel de Synergie Dour — gestion membres, événements, annuaire.",
+    description: "Agent officiel de Synergie Dour — gestion membres, événements, annuaire commerçants.",
     color: "#D4AF37",
     bgColor: "#001a3d",
     emoji: "🏢",
+    tag: "Actif",
+    tagColor: "#16a34a",
     apiKey: import.meta.env.VITE_BASE44_SYNERGIE_API_KEY || "",
   },
-  // Ajoute ici d'autres agents Base44 avec leur id + apiKey
-  // {
-  //   id: "AUTRE_AGENT_ID",
-  //   name: "Nom de l'agent",
-  //   description: "Description courte",
-  //   color: "#4CAF50",
-  //   bgColor: "#1a3d1a",
-  //   emoji: "🤖",
-  //   apiKey: import.meta.env.VITE_BASE44_AUTRE_API_KEY || "",
-  // },
+  {
+    id: "", // À renseigner
+    name: "Agent VilleConnect",
+    description: "Agent IA de la plateforme VilleConnect OS — gestion territoriale, citoyens, commerces.",
+    color: "#06b6d4",
+    bgColor: "#001a3d",
+    emoji: "🌆",
+    tag: "VilleConnect",
+    tagColor: "#06b6d4",
+    apiKey: import.meta.env.VITE_BASE44_VILLECONNECT_API_KEY || "",
+  },
+  {
+    id: "", // À renseigner
+    name: "NOVA JS-Innov.IA",
+    description: "Agent NOVA — assistant créatif et stratégique pour les projets Js-Innov.IA.",
+    color: "#a855f7",
+    bgColor: "#1a0a2e",
+    emoji: "✨",
+    tag: "Créatif",
+    tagColor: "#a855f7",
+    apiKey: import.meta.env.VITE_BASE44_NOVA_API_KEY || "",
+  },
+  {
+    id: "", // À renseigner
+    name: "Agent Fashionistart",
+    description: "Agent IA dédié à Fashionist'ART Dour — événements, mode, communication.",
+    color: "#f43f5e",
+    bgColor: "#1a0010",
+    emoji: "👗",
+    tag: "Fashionist",
+    tagColor: "#f43f5e",
+    apiKey: import.meta.env.VITE_BASE44_FASHIONIST_API_KEY || "",
+  },
+  {
+    id: "", // À renseigner
+    name: "Site Olivier Landing Page",
+    description: "Agent assistant pour le site d'Olivier Trevis — gestion contenu et communication.",
+    color: "#f97316",
+    bgColor: "#1a0d00",
+    emoji: "🎯",
+    tag: "Client",
+    tagColor: "#f97316",
+    apiKey: import.meta.env.VITE_BASE44_OLIVIER_API_KEY || "",
+  },
+  {
+    id: "", // À renseigner
+    name: "A Yanis",
+    description: "Agent IA personnel A Yanis — assistant dédié.",
+    color: "#10b981",
+    bgColor: "#001a0d",
+    emoji: "👤",
+    tag: "Personnel",
+    tagColor: "#10b981",
+    apiKey: import.meta.env.VITE_BASE44_YANIS_API_KEY || "",
+  },
+  {
+    id: "", // À renseigner
+    name: "Créateur Innovant",
+    description: "Agent créateur de contenu innovant pour Js-Innov.IA.",
+    color: "#8b5cf6",
+    bgColor: "#0d001a",
+    emoji: "💡",
+    tag: "Créatif",
+    tagColor: "#8b5cf6",
+    apiKey: import.meta.env.VITE_BASE44_CREATEUR_API_KEY || "",
+  },
 ];
 
 const BASE44_BASE = "https://app.base44.com/api/agents";
 
-// ─── Composant Message ────────────────────────────────────────────────────────
+// ─── Message bubble ───────────────────────────────────────────────────────────
 function Message({ msg, agentColor }) {
   const isUser = msg.role === "user";
   return (
-    <div className={cn("flex gap-3 mb-4", isUser ? "flex-row-reverse" : "flex-row")}>
+    <div className={cn("flex gap-2.5 mb-3", isUser ? "flex-row-reverse" : "flex-row")}>
       <div className={cn(
-        "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm",
+        "w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs",
         isUser ? "bg-gray-200 text-gray-600" : "text-white"
-      )}
-        style={!isUser ? { backgroundColor: agentColor } : {}}
-      >
-        {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+      )} style={!isUser ? { backgroundColor: agentColor } : {}}>
+        {isUser ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
       </div>
       <div className={cn(
-        "max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
+        "max-w-[78%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed",
         isUser
           ? "bg-[#001a3d] text-white rounded-tr-sm"
           : "bg-white border border-gray-100 text-gray-800 rounded-tl-sm shadow-sm"
       )}>
         <p className="whitespace-pre-wrap">{msg.content}</p>
         {msg.ts && (
-          <p className={cn("text-[10px] mt-1.5", isUser ? "text-white/50 text-right" : "text-gray-400")}>
+          <p className={cn("text-[10px] mt-1", isUser ? "text-white/50 text-right" : "text-gray-400")}>
             {format(msg.ts, "HH:mm", { locale: fr })}
           </p>
         )}
@@ -62,147 +131,108 @@ function Message({ msg, agentColor }) {
   );
 }
 
-// ─── Vue Chat d'un agent ─────────────────────────────────────────────────────
+// ─── Vue Chat ─────────────────────────────────────────────────────────────────
 function AgentChat({ agent, onBack }) {
-  const [messages, setMessages] = useState([
-    {
-      role: "assistant",
-      content: `Bonjour ! Je suis **${agent.name}** ${agent.emoji}\n\nComment puis-je vous aider aujourd'hui ?`,
-      ts: new Date(),
-    },
-  ]);
-  const [conversationId, setConversationId] = useState(null);
+  const [messages, setMessages] = useState([{
+    role: "assistant",
+    content: `Bonjour ! Je suis **${agent.name}** ${agent.emoji}\nComment puis-je vous aider ?`,
+    ts: new Date(),
+  }]);
+  const [convId, setConvId] = useState(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
 
-  // Obtenir ou créer une conversation
-  const getOrCreateConversation = async () => {
-    if (conversationId) return conversationId;
-    try {
-      const res = await fetch(`${BASE44_BASE}/${agent.id}/conversations`, {
-        method: "POST",
-        headers: {
-          "api_key": agent.apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({}),
-      });
-      const data = await res.json();
-      const cid = data.id;
-      setConversationId(cid);
-      return cid;
-    } catch (err) {
-      console.error("Erreur création conversation:", err);
-      return null;
-    }
+  const getOrCreateConv = async () => {
+    if (convId) return convId;
+    const res = await fetch(`${BASE44_BASE}/${agent.id}/conversations`, {
+      method: "POST",
+      headers: { "api_key": agent.apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    setConvId(data.id);
+    return data.id;
   };
 
   const send = async (text) => {
     const msg = (text || input).trim();
     if (!msg || loading) return;
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: msg, ts: new Date() }]);
+    setMessages(p => [...p, { role: "user", content: msg, ts: new Date() }]);
     setLoading(true);
-
     try {
-      const cid = await getOrCreateConversation();
-      if (!cid) throw new Error("Impossible de créer la conversation");
-
+      const cid = await getOrCreateConv();
       const res = await fetch(`${BASE44_BASE}/${agent.id}/conversations/${cid}/messages`, {
         method: "POST",
-        headers: {
-          "api_key": agent.apiKey,
-          "Content-Type": "application/json",
-        },
+        headers: { "api_key": agent.apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({ role: "user", content: msg }),
       });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || `Erreur ${res.status}`);
-      }
-
+      if (!res.ok) throw new Error(`Erreur ${res.status}`);
       const data = await res.json();
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: data.content || data.message || "…",
-          ts: new Date(),
-        },
-      ]);
+      setMessages(p => [...p, { role: "assistant", content: data.content || "…", ts: new Date() }]);
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `❌ Erreur : ${err.message}`,
-          ts: new Date(),
-        },
-      ]);
+      setMessages(p => [...p, { role: "assistant", content: `❌ ${err.message}`, ts: new Date() }]);
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   };
 
-  const clearChat = () => {
-    setConversationId(null);
-    setMessages([{
-      role: "assistant",
-      content: `Conversation réinitialisée. ${agent.emoji} Comment puis-je vous aider ?`,
-      ts: new Date(),
-    }]);
+  const reset = () => {
+    setConvId(null);
+    setMessages([{ role: "assistant", content: `Conversation réinitialisée ${agent.emoji}`, ts: new Date() }]);
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-2rem)] max-h-[800px]">
-      {/* Header agent */}
-      <div className="flex items-center gap-3 px-4 py-3 rounded-t-xl text-white"
-        style={{ backgroundColor: agent.bgColor }}>
-        <button onClick={onBack}
-          className="p-1.5 rounded-lg hover:bg-white/10 transition-colors">
+    <div className="flex flex-col h-[calc(100vh-4rem)] max-h-[820px]">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 rounded-t-xl text-white flex-shrink-0"
+        style={{ backgroundColor: agent.bgColor, borderBottom: `2px solid ${agent.color}33` }}>
+        <button onClick={onBack} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors">
           <ChevronLeft className="w-4 h-4" />
         </button>
         <div className="w-9 h-9 rounded-full flex items-center justify-center text-lg flex-shrink-0"
-          style={{ backgroundColor: agent.color + "33", border: `2px solid ${agent.color}` }}>
+          style={{ backgroundColor: agent.color + "22", border: `2px solid ${agent.color}` }}>
           {agent.emoji}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm truncate" style={{ color: agent.color }}>{agent.name}</p>
-          <p className="text-xs text-white/60 flex items-center gap-1">
+          <div className="flex items-center gap-2">
+            <p className="font-semibold text-sm truncate" style={{ color: agent.color }}>{agent.name}</p>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+              style={{ backgroundColor: agent.tagColor + "22", color: agent.tagColor }}>
+              {agent.tag}
+            </span>
+          </div>
+          <p className="text-xs text-white/50 flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span>
-            En ligne · Base44 API
+            Base44 API · En ligne
           </p>
         </div>
-        <button onClick={clearChat} title="Nouvelle conversation"
-          className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-white/60 hover:text-white">
+        <button onClick={reset} title="Nouvelle conversation"
+          className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-white/50 hover:text-white">
           <RefreshCw className="w-4 h-4" />
         </button>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 bg-gray-50/80 space-y-1">
-        {messages.map((msg, i) => (
-          <Message key={i} msg={msg} agentColor={agent.color} />
-        ))}
+      <div className="flex-1 overflow-y-auto p-4 bg-gray-50 min-h-0">
+        {messages.map((m, i) => <Message key={i} msg={m} agentColor={agent.color} />)}
         {loading && (
-          <div className="flex gap-3 mb-4">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white flex-shrink-0"
+          <div className="flex gap-2.5 mb-3">
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-white flex-shrink-0"
               style={{ backgroundColor: agent.color }}>
-              <Bot className="w-4 h-4" />
+              <Bot className="w-3.5 h-3.5" />
             </div>
             <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "0ms" }}></span>
-                <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "150ms" }}></span>
-                <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "300ms" }}></span>
+              <div className="flex gap-1">
+                {[0, 150, 300].map(d => (
+                  <span key={d} className="w-2 h-2 rounded-full bg-gray-400 animate-bounce"
+                    style={{ animationDelay: `${d}ms` }}></span>
+                ))}
               </div>
             </div>
           </div>
@@ -211,28 +241,17 @@ function AgentChat({ agent, onBack }) {
       </div>
 
       {/* Input */}
-      <div className="p-3 bg-white border-t border-gray-100 rounded-b-xl">
-        <form onSubmit={(e) => { e.preventDefault(); send(); }}
-          className="flex gap-2 items-end">
-          <textarea
-            ref={inputRef}
-            rows={1}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-            }}
+      <div className="p-3 bg-white border-t border-gray-100 rounded-b-xl flex-shrink-0">
+        <form onSubmit={e => { e.preventDefault(); send(); }} className="flex gap-2 items-end">
+          <textarea ref={inputRef} rows={1} value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
             placeholder={`Message à ${agent.name}…`}
-            className="flex-1 resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:border-transparent max-h-32"
-            style={{ "--tw-ring-color": agent.color }}
-            disabled={loading}
-          />
-          <button
-            type="submit"
-            disabled={loading || !input.trim()}
-            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all disabled:opacity-40 text-white flex-shrink-0"
-            style={{ backgroundColor: agent.color }}
-          >
+            className="flex-1 resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 max-h-28"
+            style={{ "--tw-ring-color": agent.color }} disabled={loading} />
+          <button type="submit" disabled={loading || !input.trim()}
+            className="w-9 h-9 rounded-xl flex items-center justify-center transition-all disabled:opacity-40 text-white flex-shrink-0"
+            style={{ backgroundColor: agent.color }}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </button>
         </form>
@@ -241,76 +260,154 @@ function AgentChat({ agent, onBack }) {
   );
 }
 
-// ─── Liste des agents ─────────────────────────────────────────────────────────
+// ─── Card agent ────────────────────────────────────────────────────────────────
 function AgentCard({ agent, onClick }) {
+  const isActive = !!agent.apiKey && !!agent.id;
+  const needsConfig = !agent.id || !agent.apiKey;
+
   return (
-    <button onClick={() => onClick(agent)}
-      className="w-full text-left p-5 rounded-xl border-2 border-gray-100 bg-white hover:border-gray-200 hover:shadow-md transition-all group">
-      <div className="flex items-start gap-4">
-        <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
-          style={{ backgroundColor: agent.bgColor }}>
+    <div
+      onClick={() => isActive && onClick(agent)}
+      className={cn(
+        "w-full text-left p-4 rounded-xl border-2 transition-all",
+        isActive
+          ? "border-gray-100 bg-white hover:border-gray-200 hover:shadow-md cursor-pointer group"
+          : "border-gray-100 bg-gray-50/50 cursor-default opacity-75"
+      )}>
+      <div className="flex items-start gap-3">
+        {/* Emoji avatar */}
+        <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+          style={{ backgroundColor: agent.bgColor || "#001a3d" }}>
           {agent.emoji}
         </div>
+
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="font-semibold text-gray-900 text-sm truncate">{agent.name}</h3>
-            <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" title="En ligne"></span>
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+            <h3 className="font-semibold text-gray-900 text-sm">{agent.name}</h3>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0"
+              style={{ backgroundColor: agent.tagColor + "22", color: agent.tagColor }}>
+              {agent.tag}
+            </span>
+            {isActive && (
+              <span className="flex items-center gap-1 text-[10px] text-green-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span>
+                Actif
+              </span>
+            )}
           </div>
           <p className="text-xs text-gray-500 line-clamp-2">{agent.description}</p>
-          <div className="flex items-center gap-1.5 mt-2">
-            <Zap className="w-3 h-3" style={{ color: agent.color }} />
-            <span className="text-xs font-medium" style={{ color: agent.color }}>Base44 API</span>
-          </div>
+
+          {needsConfig && (
+            <div className="flex items-center gap-1.5 mt-2">
+              <Lock className="w-3 h-3 text-amber-500" />
+              <span className="text-[10px] text-amber-600 font-medium">
+                {!agent.id ? "ID manquant" : "Clé API manquante"} — à configurer dans Railway
+              </span>
+            </div>
+          )}
         </div>
-        <MessageSquare className="w-5 h-5 text-gray-300 group-hover:text-gray-500 transition-colors flex-shrink-0 mt-1" />
+
+        {isActive
+          ? <MessageSquare className="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition-colors flex-shrink-0 mt-1" />
+          : <Lock className="w-4 h-4 text-gray-300 flex-shrink-0 mt-1" />
+        }
       </div>
-    </button>
+    </div>
   );
 }
 
 // ─── Page principale ──────────────────────────────────────────────────────────
 export default function AgentsIA() {
-  const [selectedAgent, setSelectedAgent] = useState(null);
+  const [selected, setSelected] = useState(null);
 
-  if (selectedAgent) {
+  const activeCount = AGENTS_CONFIG.filter(a => a.apiKey && a.id).length;
+  const pendingCount = AGENTS_CONFIG.filter(a => !a.apiKey || !a.id).length;
+
+  if (selected) {
     return (
       <div className="p-4 max-w-2xl mx-auto">
-        <AgentChat agent={selectedAgent} onBack={() => setSelectedAgent(null)} />
+        <AgentChat agent={selected} onBack={() => setSelected(null)} />
       </div>
     );
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-5 max-w-3xl mx-auto">
       {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-[#001a3d] flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-[#D4AF37]" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Agents IA</h1>
-            <p className="text-sm text-gray-500">Discutez directement avec vos agents Base44</p>
-          </div>
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-10 h-10 rounded-xl bg-[#001a3d] flex items-center justify-center flex-shrink-0">
+          <Sparkles className="w-5 h-5 text-[#D4AF37]" />
         </div>
-        <div className="mt-4 p-3 rounded-lg bg-amber-50 border border-amber-100 text-xs text-amber-800 flex items-start gap-2">
-          <Zap className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-          <span>Connexion directe via <strong>Base44 API</strong> — les réponses sont générées en temps réel par chaque agent.</span>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Agents IA</h1>
+          <p className="text-xs text-gray-500">
+            {activeCount} actif{activeCount > 1 ? "s" : ""} · {pendingCount} à configurer
+          </p>
         </div>
       </div>
 
-      {/* Liste agents */}
-      <div className="space-y-3">
-        {AGENTS_CONFIG.map((agent) => (
-          <AgentCard key={agent.id} agent={agent} onClick={setSelectedAgent} />
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        {[
+          { label: "Total agents", value: AGENTS_CONFIG.length, color: "#1a56db" },
+          { label: "Actifs", value: activeCount, color: "#16a34a" },
+          { label: "À configurer", value: pendingCount, color: "#f59e0b" },
+        ].map(({ label, value, color }) => (
+          <div key={label} className="bg-white rounded-xl border border-gray-100 p-3 text-center">
+            <p className="text-2xl font-bold" style={{ color }}>{value}</p>
+            <p className="text-[11px] text-gray-500 mt-0.5">{label}</p>
+          </div>
         ))}
       </div>
 
-      {/* Footer : ajouter un agent */}
-      <div className="mt-6 p-4 rounded-xl border-2 border-dashed border-gray-200 text-center">
-        <Bot className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-        <p className="text-sm text-gray-500 mb-1">Ajouter un autre agent Base44</p>
-        <p className="text-xs text-gray-400">Configure son ID et sa clé API dans <code className="bg-gray-100 px-1 rounded">AGENTS_CONFIG</code> dans <code className="bg-gray-100 px-1 rounded">AgentsIA.jsx</code></p>
+      {/* Info configuration */}
+      {pendingCount > 0 && (
+        <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-100 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-800">
+            <strong>{pendingCount} agents</strong> nécessitent leur clé API et/ou ID Base44.<br/>
+            Va dans <strong>Customize → Developer</strong> de chaque agent Base44 et ajoute la variable dans Railway.
+          </div>
+        </div>
+      )}
+
+      {/* Liste agents — actifs en premier */}
+      <div className="space-y-2.5">
+        {/* Actifs */}
+        {AGENTS_CONFIG.filter(a => a.apiKey && a.id).length > 0 && (
+          <>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">✅ Agents actifs</p>
+            {AGENTS_CONFIG.filter(a => a.apiKey && a.id).map(a => (
+              <AgentCard key={a.name} agent={a} onClick={setSelected} />
+            ))}
+          </>
+        )}
+
+        {/* À configurer */}
+        {AGENTS_CONFIG.filter(a => !a.apiKey || !a.id).length > 0 && (
+          <>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1 mt-4">
+              🔒 À configurer
+            </p>
+            {AGENTS_CONFIG.filter(a => !a.apiKey || !a.id).map(a => (
+              <AgentCard key={a.name} agent={a} onClick={setSelected} />
+            ))}
+          </>
+        )}
+      </div>
+
+      {/* Guide config */}
+      <div className="mt-5 p-4 rounded-xl border border-dashed border-gray-200 bg-gray-50">
+        <p className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-2">
+          <Zap className="w-3.5 h-3.5 text-[#D4AF37]" /> Comment activer un agent ?
+        </p>
+        <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
+          <li>Ouvre l'agent sur <strong>app.base44.com</strong></li>
+          <li>Va dans <strong>Customize → Developer</strong></li>
+          <li>Copie l'<strong>API Key</strong> et l'<strong>Agent ID</strong> (dans l'URL)</li>
+          <li>Ajoute dans Railway : <code className="bg-gray-200 px-1 rounded">VITE_BASE44_NOM_API_KEY</code></li>
+          <li>Renseigne l'<code className="bg-gray-200 px-1 rounded">id</code> dans <code className="bg-gray-200 px-1 rounded">AgentsIA.jsx</code></li>
+        </ol>
       </div>
     </div>
   );
