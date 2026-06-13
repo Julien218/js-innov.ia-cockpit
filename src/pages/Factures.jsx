@@ -24,7 +24,7 @@ const formFields = [
     { value: "annulee", label: "Annulée" },
   ]},
   { key: "date_echeance", label: "Date d'échéance", type: "date" },
-  { key: "date_paiement", label: "Date de paiement", type: "date" },
+  { key: "date_echeance", label: "Date d'échéance", type: "date" },
   { key: "mode_paiement", label: "Mode de paiement", type: "select", options: [
     { value: "virement", label: "Virement" },
     { value: "cheque", label: "Chèque" },
@@ -42,7 +42,7 @@ export default function Factures() {
 
   const { data: factures = [], isLoading } = useQuery({
     queryKey: ["factures"],
-    queryFn: () => base44.entities.Facture.list("-created_date"),
+    queryFn: () => base44.entities.Facture.list("-created_at"),
   });
 
   const createMutation = useMutation({

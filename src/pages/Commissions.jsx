@@ -37,12 +37,12 @@ const formFields = [
   { key: "numero_contrat", label: "N° contrat" },
   { key: "prime_annuelle", label: "Prime annuelle (€)", type: "number" },
   { key: "taux_commission", label: "Taux commission (%)", type: "number" },
-  { key: "montant_commission", label: "Montant commission (€)", type: "number" },
+  { key: "montant", label: "Montant commission (€)", type: "number" },
   { key: "date_effet", label: "Date d'effet", type: "date" },
   { key: "date_echeance", label: "Date d'échéance", type: "date" },
   { key: "statut", label: "Statut", type: "select", options: [
     { value: "en_attente", label: "En attente" },
-    { value: "percue", label: "Perçue" },
+    { value: "payee", label: "Perçue" },
     { value: "annulee", label: "Annulée" },
   ]},
   { key: "notes", label: "Notes", type: "textarea" },
@@ -56,7 +56,7 @@ export default function Commissions() {
 
   const { data: commissions = [], isLoading } = useQuery({
     queryKey: ["commissions"],
-    queryFn: () => base44.entities.Commission.list("-created_date"),
+    queryFn: () => base44.entities.Commission.list("-created_at"),
   });
 
   const createMutation = useMutation({
@@ -87,7 +87,7 @@ export default function Commissions() {
     else createMutation.mutate(formData);
   };
 
-  const totalCommissions = commissions.filter(c => c.statut === "percue").reduce((s, c) => s + (c.montant_commission || 0), 0);
+  const totalCommissions = commissions.filter(c => c.statut === "payee").reduce((s, c) => s + (c.montant || 0), 0);
 
   const columns = [
     { key: "reference", label: "Réf.", render: (r) => <span className="font-mono text-xs font-semibold">{r.reference}</span> },
@@ -96,7 +96,7 @@ export default function Commissions() {
     { key: "type_contrat", label: "Type", render: (r) => <span className="text-xs">{typeLabels[r.type_contrat] || r.type_contrat}</span> },
     { key: "prime_annuelle", label: "Prime", render: (r) => r.prime_annuelle ? `${r.prime_annuelle.toLocaleString("fr-FR")} €` : "-" },
     { key: "taux_commission", label: "Taux", render: (r) => r.taux_commission ? `${r.taux_commission}%` : "-" },
-    { key: "montant_commission", label: "Commission", render: (r) => r.montant_commission ? <span className="font-semibold text-emerald-600">{r.montant_commission.toLocaleString("fr-FR")} €</span> : "-" },
+    { key: "montant", label: "Commission", render: (r) => r.montant ? <span className="font-semibold text-emerald-600">{r.montant.toLocaleString("fr-FR")} €</span> : "-" },
     { key: "statut", label: "Statut", render: (r) => <StatusBadge status={r.statut} /> },
     { key: "actions", label: "", render: (r) => (
       <div className="flex gap-1">

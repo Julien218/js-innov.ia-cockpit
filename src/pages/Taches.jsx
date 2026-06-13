@@ -44,7 +44,7 @@ export default function Taches() {
 
   const { data: taches = [], isLoading } = useQuery({
     queryKey: ["taches"],
-    queryFn: () => base44.entities.Tache.list("-created_date"),
+    queryFn: () => base44.entities.Tache.list("-created_at"),
   });
 
   const createMutation = useMutation({

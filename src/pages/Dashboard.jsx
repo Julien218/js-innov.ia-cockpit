@@ -30,7 +30,7 @@ export default function Dashboard() {
 
   const caTotal = factures.filter(f => f.statut === "payee").reduce((s, f) => s + (f.montant_ttc || 0), 0);
   const caEnAttente = factures.filter(f => ["envoyee", "en_retard"].includes(f.statut)).reduce((s, f) => s + (f.montant_ttc || 0), 0);
-  const commTotal = commissions.filter(c => c.statut === "percue").reduce((s, c) => s + (c.montant_commission || 0), 0);
+  const commTotal = commissions.filter(c => c.statut === "payee").reduce((s, c) => s + (c.montant || c.montant_commission || 0), 0);
   const leadsActifs = leads.filter(l => !["gagne", "perdu"].includes(l.statut)).length;
   const projetsEnCours = projets.filter(p => p.statut === "en_cours").length;
   const tachesEnRetard = taches.filter(t => t.date_echeance && new Date(t.date_echeance) < new Date() && t.statut !== "terminee").length;
@@ -53,7 +53,7 @@ export default function Dashboard() {
     return acc;
   }, []);
 
-  const recentLeads = [...leads].sort((a, b) => new Date(b.created_date) - new Date(a.created_date)).slice(0, 5);
+  const recentLeads = [...leads].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5);
   const tachesUrgentes = taches.filter(t => (t.priorite === "urgente" || t.priorite === "haute") && t.statut !== "terminee").slice(0, 4);
   const heure = new Date().getHours();
   const salut = heure < 12 ? "Bonjour" : heure < 18 ? "Bon après-midi" : "Bonsoir";

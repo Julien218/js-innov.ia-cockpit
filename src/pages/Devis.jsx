@@ -35,7 +35,7 @@ export default function Devis() {
 
   const { data: devis = [], isLoading } = useQuery({
     queryKey: ["devis"],
-    queryFn: () => base44.entities.Devis.list("-created_date"),
+    queryFn: () => base44.entities.Devis.list("-created_at"),
   });
 
   const createMutation = useMutation({

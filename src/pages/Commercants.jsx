@@ -463,7 +463,7 @@ export default function Commercants() {
 
   const { data: merchants = [], isLoading } = useQuery({
     queryKey: ["merchantSubmissions"],
-    queryFn: () => base44.entities.MerchantSubmission.list("-created_date"),
+    queryFn: () => base44.entities.MerchantSubmission.list("-created_at"),
   });
 
   const updateMutation = useMutation({

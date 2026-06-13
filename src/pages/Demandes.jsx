@@ -47,7 +47,7 @@ export default function Demandes() {
 
   const { data: demandes = [], isLoading } = useQuery({
     queryKey: ["demandes"],
-    queryFn: () => base44.entities.Demande.list("-created_date"),
+    queryFn: () => base44.entities.Demande.list("-created_at"),
   });
 
   const createMutation = useMutation({
@@ -95,7 +95,7 @@ export default function Demandes() {
     )},
     { key: "source", label: "Source", render: (r) => <span className="text-xs capitalize text-muted-foreground">{r.source?.replace(/_/g, " ") || "-"}</span> },
     { key: "priorite", label: "Priorité", render: (r) => r.priorite ? <StatusBadge status={r.priorite} /> : "-" },
-    { key: "created_date", label: "Date", render: (r) => <span className="text-xs text-muted-foreground">{format(new Date(r.created_date), "dd MMM", { locale: fr })}</span> },
+    { key: "created_at", label: "Date", render: (r) => <span className="text-xs text-muted-foreground">{format(new Date(r.created_date), "dd MMM", { locale: fr })}</span> },
     { key: "statut", label: "Statut", render: (r) => <StatusBadge status={r.statut} /> },
     { key: "actions", label: "", render: (r) => (
       <div className="flex gap-1">

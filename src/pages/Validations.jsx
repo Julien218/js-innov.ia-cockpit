@@ -60,7 +60,7 @@ export default function Validations() {
 
   const { data: validations = [], isLoading } = useQuery({
     queryKey: ["validations"],
-    queryFn: () => base44.entities.Validation.list("-created_date"),
+    queryFn: () => base44.entities.Validation.list("-created_at"),
   });
 
   const updateMutation = useMutation({

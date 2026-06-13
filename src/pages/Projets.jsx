@@ -40,7 +40,7 @@ export default function Projets() {
 
   const { data: projets = [], isLoading } = useQuery({
     queryKey: ["projets"],
-    queryFn: () => base44.entities.Projet.list("-created_date"),
+    queryFn: () => base44.entities.Projet.list("-created_at"),
   });
 
   const createMutation = useMutation({

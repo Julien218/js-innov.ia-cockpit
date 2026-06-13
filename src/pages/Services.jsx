@@ -55,7 +55,7 @@ export default function Services() {
 
   const { data: services = [], isLoading } = useQuery({
     queryKey: ["services"],
-    queryFn: () => base44.entities.Service.list("-created_date"),
+    queryFn: () => base44.entities.Service.list("-created_at"),
   });
 
   const createMutation = useMutation({

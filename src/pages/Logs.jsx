@@ -33,7 +33,7 @@ export default function Logs() {
 
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ["logs"],
-    queryFn: () => base44.entities.LogAction.list("-created_date"),
+    queryFn: () => base44.entities.LogAction.list("-created_at"),
   });
 
   const modules = ["tous", ...new Set(logs.map(l => l.module).filter(Boolean))];

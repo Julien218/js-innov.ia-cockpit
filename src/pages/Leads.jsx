@@ -43,7 +43,7 @@ export default function Leads() {
 
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ["leads"],
-    queryFn: () => base44.entities.Lead.list("-created_date"),
+    queryFn: () => base44.entities.Lead.list("-created_at"),
   });
 
   const createMutation = useMutation({
