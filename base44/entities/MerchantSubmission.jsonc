@@ -1,0 +1,117 @@
+{
+  "name": "MerchantSubmission",
+  "type": "object",
+  "properties": {
+    "nom_commerce": {
+      "type": "string",
+      "description": "Nom du commerce"
+    },
+    "type_commerce": {
+      "type": "string",
+      "description": "Type de commerce"
+    },
+    "categorie_activite": {
+      "type": "string",
+      "enum": [
+        "Alimentation",
+        "Restauration",
+        "Beaut\u00e9 & Bien-\u00eatre",
+        "Mode & V\u00eatements",
+        "Services",
+        "Artisanat",
+        "Sport & Loisirs",
+        "Sant\u00e9",
+        "Autre"
+      ],
+      "description": "Cat\u00e9gorie d'activit\u00e9"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description du commerce"
+    },
+    "logo_photo_url": {
+      "type": "string",
+      "description": "URL du logo ou photo"
+    },
+    "ville": {
+      "type": "string",
+      "default": "Dour",
+      "description": "Ville"
+    },
+    "adresse": {
+      "type": "string",
+      "description": "Adresse compl\u00e8te"
+    },
+    "mini_video_url": {
+      "type": "string",
+      "description": "URL mini vid\u00e9o"
+    },
+    "site_web": {
+      "type": "string",
+      "description": "Site web"
+    },
+    "facebook": {
+      "type": "string",
+      "description": "Lien Facebook"
+    },
+    "instagram": {
+      "type": "string",
+      "description": "Lien Instagram"
+    },
+    "tiktok": {
+      "type": "string",
+      "description": "Lien TikTok"
+    },
+    "linkedin": {
+      "type": "string",
+      "description": "Lien LinkedIn"
+    },
+    "email_interne": {
+      "type": "string",
+      "description": "Email interne"
+    },
+    "client_pv_assurances": {
+      "type": "boolean",
+      "default": false,
+      "description": "Client PV Assurances"
+    },
+    "consentement_rgpd": {
+      "type": "boolean",
+      "default": false,
+      "description": "Consentement RGPD"
+    },
+    "statut": {
+      "type": "string",
+      "enum": [
+        "nouveau",
+        "contact\u00e9",
+        "publi\u00e9",
+        "refus\u00e9"
+      ],
+      "default": "nouveau",
+      "description": "Statut de la soumission"
+    },
+    "source_app": {
+      "type": "string",
+      "default": "formulaire_dour",
+      "description": "Application source"
+    },
+    "posts_generes": {
+      "type": "number",
+      "default": 0,
+      "description": "Nombre de posts g\u00e9n\u00e9r\u00e9s"
+    },
+    "synced_to_railway": {
+      "type": "boolean",
+      "default": false,
+      "description": "Synchronis\u00e9 vers Railway"
+    },
+    "notes_internes": {
+      "type": "string",
+      "description": "Notes internes"
+    }
+  },
+  "required": [
+    "nom_commerce"
+  ]
+}

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Target, FolderKanban,
   FileText, Receipt, Shield, ChevronLeft, ChevronRight,
   CheckSquare, MessageSquare, Package, Zap, ShieldCheck, Activity,
-  Bot, Network, UserPlus, LogOut, Crown, Briefcase, User
+  Bot, Network, UserPlus, LogOut, Crown, Briefcase, User, Store
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -102,6 +102,13 @@ export default function Sidebar() {
       minRole: "admin",
       items: [
         { label: "Invitations", icon: UserPlus, path: "/invitations", minRole: "admin" },
+      ]
+    },
+    {
+      label: "VilleConnect",
+      minRole: "collaborateur",
+      items: [
+        { label: "Commerçants", icon: Store, path: "/commercants", minRole: "collaborateur" },
       ]
     },
     {

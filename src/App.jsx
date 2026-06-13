@@ -21,6 +21,7 @@ import Projets from "@/pages/Projets";
 import Taches from "@/pages/Taches";
 import Demandes from "@/pages/Demandes";
 import Services from "@/pages/Services";
+import Commercants from "@/pages/Commercants";
 import Devis from "@/pages/Devis";
 import Factures from "@/pages/Factures";
 import Commissions from "@/pages/Commissions";
@@ -79,6 +80,9 @@ const AppRoutes = () => {
 
           {/* Équipe */}
           <Route path="/invitations" element={<Invitations />} />
+
+          {/* VilleConnect */}
+          <Route path="/commercants" element={<Commercants />} />
 
           {/* Catalogue */}
           <Route path="/services" element={<Services />} />
