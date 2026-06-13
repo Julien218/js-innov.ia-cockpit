@@ -5,20 +5,21 @@
 // ============================================================
 
 const AGENT_URL = import.meta.env.VITE_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
-const AGENT_AUTH = import.meta.env.VITE_AGENT_AUTH || 'julien-ai-2026';
+const AGENT_AUTH = import.meta.env.VITE_AGENT_AUTH || 'julien-ai-secret-key-change-me';
 
+// TABLE_MAP — noms PascalCase = noms réels dans Supabase gfjpryakxzdzwnazlsfz
+// Le backend data.js supporte aussi les alias legacy (clients_fr → Client)
 const TABLE_MAP = {
-  Lead:       'leads_fr',
-  Client:     'clients_fr',
-  Projet:     'projets',
-  Service:    'services_fr',
-  Tache:      'taches',
-  Devis:      'devis',
-  Facture:    'factures',
-  Commission: 'commissions_fr',
-  Demande:    'demandes',
-  Validation: 'validations',
-  LogAction:  'logs_actions',
+  Client:     'Client',
+  Lead:       'Lead',
+  Projet:     'Projet',
+  Service:    'Service',
+  Tache:      'Tache',
+  Devis:      'Devis',
+  Facture:    'Facture',
+  Commission: 'Commission',
+  Demande:    'Demande',
+  LogAction:  'LogAction',
 };
 
 async function agentReq(table, path = '', options = {}) {
