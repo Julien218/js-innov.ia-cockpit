@@ -5,7 +5,7 @@ import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 
 const AGENT_URL = "https://jsinnovia-agent-production.up.railway.app";
-const AGENT_KEY = import.meta.env.VITE_AGENT_KEY || "julien-ai-secret-key-change-me";
+const AGENT_KEY = import.meta.env.VITE_AGENT_KEY || "julien-ai-secret-key-change-me"; // Fallback si var env absente
 
 const SESSION_ID = `julien-${Date.now()}`;
 
@@ -53,7 +53,7 @@ export default function AgentPage() {
       const data = await res.json();
 
       if (res.ok) {
-        setMessages((prev) => [...prev, { role: "assistant", content: data.reply, ts: new Date() }]);
+        setMessages((prev) => [...prev, { role: "assistant", content: data.response || data.reply || data.message || "⚠️ Réponse vide", ts: new Date() }]);
       } else {
         setMessages((prev) => [
           ...prev,
