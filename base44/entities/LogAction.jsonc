@@ -1,12 +1,56 @@
 {
   "type": "object",
   "properties": {
-    "action": { "type": "string" },
-    "module": { "type": "string", "enum": ["leads", "clients", "projets", "devis", "factures", "commissions", "taches", "demandes", "validations", "agents", "autre"] },
-    "entite_id": { "type": "string" },
-    "entite_nom": { "type": "string" },
-    "effectue_par": { "type": "string" },
-    "details": { "type": "string" },
-    "statut": { "type": "string", "enum": ["succes", "erreur", "warning"], "default": "succes" }
-  }
+    "action": {
+      "type": "string"
+    },
+    "module": {
+      "type": "string",
+      "enum": [
+        "leads",
+        "clients",
+        "projets",
+        "devis",
+        "factures",
+        "commissions",
+        "taches",
+        "demandes",
+        "validations",
+        "agents",
+        "autre"
+      ]
+    },
+    "entite_id": {
+      "type": "string"
+    },
+    "entite_nom": {
+      "type": "string"
+    },
+    "effectue_par": {
+      "type": "string"
+    },
+    "details": {
+      "type": "string"
+    },
+    "statut": {
+      "type": "string",
+      "enum": [
+        "succes",
+        "erreur",
+        "warning"
+      ],
+      "default": "succes"
+    }
+  },
+  "rls": {
+    "create": {},
+    "read": {
+      "user_condition": {
+        "role": "superadmin"
+      }
+    },
+    "update": {},
+    "delete": {}
+  },
+  "required": []
 }

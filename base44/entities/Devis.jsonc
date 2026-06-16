@@ -71,5 +71,52 @@
   "required": [
     "numero",
     "objet"
-  ]
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "collaborateur"
+          ]
+        }
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": {
+              "$in": [
+                "admin",
+                "collaborateur"
+              ]
+            }
+          }
+        },
+        {
+          "data.client_id": "{{user.data.client_id}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "collaborateur"
+          ]
+        }
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }

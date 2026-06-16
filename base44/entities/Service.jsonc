@@ -1,12 +1,60 @@
 {
   "type": "object",
   "properties": {
-    "nom": { "type": "string" },
-    "description": { "type": "string" },
-    "categorie": { "type": "string", "enum": ["creation_web", "automatisation", "contenu", "application", "conseil", "maintenance", "assurance", "autre"] },
-    "prix_base": { "type": "number" },
-    "duree_estimee_jours": { "type": "number" },
-    "livrables": { "type": "string" },
-    "actif": { "type": "boolean", "default": true }
-  }
+    "nom": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "categorie": {
+      "type": "string",
+      "enum": [
+        "creation_web",
+        "automatisation",
+        "contenu",
+        "application",
+        "conseil",
+        "maintenance",
+        "assurance",
+        "autre"
+      ]
+    },
+    "prix_base": {
+      "type": "number"
+    },
+    "duree_estimee_jours": {
+      "type": "number"
+    },
+    "livrables": {
+      "type": "string"
+    },
+    "actif": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "required": []
 }
