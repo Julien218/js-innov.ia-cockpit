@@ -43,14 +43,31 @@
     }
   },
   "rls": {
-    "create": {},
+    "create": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "superadmin"
+          ]
+        }
+      }
+    },
     "read": {
       "user_condition": {
         "role": "superadmin"
       }
     },
-    "update": {},
-    "delete": {}
+    "update": {
+      "user_condition": {
+        "role": "superadmin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "superadmin"
+      }
+    }
   },
   "required": []
 }
