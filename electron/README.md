@@ -1,49 +1,59 @@
-# 🚀 JS-Innov.IA Cockpit — Application Desktop
+# JS-Innov.IA Cockpit — App Desktop Windows
 
-Application Electron qui encapsule le cockpit web `cockpit.jsinnovia.com` en application native.
+Application Electron qui charge le cockpit web `cockpit.jsinnovia.com` dans une fenêtre dédiée.
 
-## 📦 Installation rapide
+## Fonctionnalités
 
-### Prérequis
-- Node.js 18+ : https://nodejs.org
+- ✅ Splash screen JS-Innov.IA au démarrage
+- ✅ Tray icon (barre de tâches Windows)  
+- ✅ Notifications Windows natives
+- ✅ Raccourci bureau + menu Démarrer
+- ✅ Fenêtre sans menu bar (propre)
+- ✅ Liens externes → navigateur par défaut
+- ✅ Installation silencieuse NSIS
 
-### Étapes
+## Installation (développement)
 
 ```bash
-# 1. Cloner ce dossier
-cd jsinnovia-cockpit-desktop
-
-# 2. Installer les dépendances
+cd electron
 npm install
-
-# 3. Lancer l'app
 npm start
 ```
 
-## 🏗️ Compiler en installeur
+## Build .exe (Windows)
 
 ```bash
-# Windows (.exe installer)
+cd electron
+npm install
 npm run build:win
-
-# Mac (.dmg)
-npm run build:mac
-
-# Linux (.AppImage)
-npm run build:linux
 ```
 
-L'installeur sera généré dans le dossier `dist/`.
+Le fichier `.exe` sera dans `electron/dist/`.
 
-## 📝 Notes
+## Prérequis
 
-- L'app charge `https://cockpit.jsinnovia.com` — connexion internet requise
-- Les liens externes s'ouvrent dans votre navigateur par défaut
-- **Julien AI** est accessible depuis la sidebar (section IA & Contrôle)
+- Node.js 18+
+- npm ou yarn
+- Windows (pour le build .exe)
+
+## Structure
+
+```
+electron/
+  main.js        ← Fenêtre principale, tray, notifications
+  preload.js     ← Bridge sécurisé React ↔ Electron
+  splash.html    ← Écran de démarrage
+  package.json   ← Config build electron-builder
+  icon.png       ← Icône app
+```
+
+## Connexion
+
+Le cockpit charge **cockpit.jsinnovia.com** et se connecte directement à :
+- **Supabase** `gfjpryakxzdzwnazlsfz` — données métier
+- **NOVA** — IA centrale JS-Innov.IA
 
 ---
-*🚀 JS-Innov.IA — Intelligence artificielle amplifiée par l'humain*
+*JS-Innov.IA · Julien Pagin · Dour, Belgique*  
+*"When Vision meets Intelligence."*
 
-## 🏗️ Build automatique
-
-Chaque push dans `electron/` déclenche automatiquement la compilation `.exe` (Windows) et `.dmg` (Mac) via GitHub Actions.
