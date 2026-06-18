@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:#0B0B0F;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    height:100vh; font-family:system-ui,sans-serif;
+    color:#fff; overflow:hidden;
+    -webkit-app-region: drag;
+  }
+  .logo { font-size:32px; font-weight:900; letter-spacing:-1px; margin-bottom:6px; }
+  .logo span { color:#D4AF37; }
+  .sub { font-size:12px; color:#475569; letter-spacing:3px; text-transform:uppercase; margin-bottom:32px; }
+  .bar-wrap { width:200px; height:2px; background:#1e293b; border-radius:2px; overflow:hidden; }
+  .bar { height:2px; background:linear-gradient(90deg,#D4AF37,#06B6D4); border-radius:2px; animation:load 1.4s ease-in-out forwards; }
+  @keyframes load { from{width:0} to{width:100%} }
+  .sig { font-size:10px; color:#334155; margin-top:24px; font-style:italic; }
+</style>
+</head>
+<body>
+  <div class="logo">JS-Innov<span>.IA</span></div>
+  <div class="sub">Cockpit Intelligence</div>
+  <div class="bar-wrap"><div class="bar"></div></div>
+  <div class="sig">"When Vision meets Intelligence."</div>
+</body>
+</html>
+
