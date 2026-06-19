@@ -9,104 +9,69 @@ import { Button } from "@/components/ui/button";
 import { Pencil, Trash2 } from "lucide-react";
 
 const formFields = [
-  { key: "nom", label: "Nom", required: true },
-  { key: "prenom", label: "Prénom" },
-  { key: "email", label: "Email", type: "email", required: true },
-  { key: "telephone", label: "Téléphone" },
+  { name: "nom",        label: "Nom",        type: "text",   required: true },
+  { name: "prenom",     label: "Prénom",      type: "text" },
+  { name: "email",      label: "Email",       type: "email",  required: true },
+  { name: "telephone",  label: "Téléphone",   type: "text" },
+  { name: "entreprise", label: "Entreprise",  type: "text" },
+  { name: "source",     label: "Source",      type: "select",
+    options: ["site_web","chatbot","formulaire","recommandation","linkedin","autre"] },
+  { name: "statut",     label: "Statut",      type: "select",
+    options: ["nouveau","contacte","qualifie","proposition","gagne","perdu"] },
+  { name: "notes",      label: "Notes",       type: "textarea" },
+];
+
+const columns = [
+  { key: "nom",        label: "Nom",         render: (v, row) => `${v || ""} ${row.prenom || ""}`.trim() },
+  { key: "email",      label: "Email" },
   { key: "entreprise", label: "Entreprise" },
-  { key: "source", label: "Source", type: "select", options: [
-    { value: "site_web", label: "Site web" },
-    { value: "recommandation", label: "Recommandation" },
-    { value: "linkedin", label: "LinkedIn" },
-    { value: "salon", label: "Salon" },
-    { value: "appel_entrant", label: "Appel entrant" },
-    { value: "autre", label: "Autre" },
-  ]},
-  { key: "statut", label: "Statut", type: "select", options: [
-    { value: "nouveau", label: "Nouveau" },
-    { value: "contacte", label: "Contacté" },
-    { value: "qualifie", label: "Qualifié" },
-    { value: "proposition", label: "Proposition" },
-    { value: "gagne", label: "Gagné" },
-    { value: "perdu", label: "Perdu" },
-  ]},
-  { key: "valeur_estimee", label: "Valeur estimée (€)", type: "number" },
-  { key: "date_relance", label: "Date de relance", type: "date" },
-  { key: "notes", label: "Notes", type: "textarea" },
+  { key: "source",     label: "Source",      render: v => <span className="capitalize">{v}</span> },
+  { key: "statut",     label: "Statut",      render: v => <StatusBadge status={v} /> },
+  { key: "created_at", label: "Créé le",     render: v => v ? new Date(v).toLocaleDateString("fr-BE") : "—" },
 ];
 
 export default function Leads() {
-  const [modalOpen, setModalOpen] = useState(false);
-  const [formData, setFormData] = useState({});
-  const [editingId, setEditingId] = useState(null);
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
 
   const { data: leads = [], isLoading } = useQuery({
-    queryKey: ["leads"],
+    queryKey: ["Lead"],
     queryFn: () => base44.entities.Lead.list("-created_at"),
   });
 
-  const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.Lead.create(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["leads"] }); closeModal(); },
+  const save = useMutation({
+    mutationFn: (data) =>
+      editing ? base44.entities.Lead.update(editing.id, data) : base44.entities.Lead.create(data),
+    onSuccess: () => { qc.invalidateQueries(["Lead"]); setOpen(false); setEditing(null); },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Lead.update(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["leads"] }); closeModal(); },
-  });
-
-  const deleteMutation = useMutation({
+  const del = useMutation({
     mutationFn: (id) => base44.entities.Lead.delete(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["leads"] }),
+    onSuccess: () => qc.invalidateQueries(["Lead"]),
   });
 
-  const closeModal = () => { setModalOpen(false); setFormData({}); setEditingId(null); };
-
-  const handleEdit = (lead) => {
-    setFormData(lead);
-    setEditingId(lead.id);
-    setModalOpen(true);
-  };
-
-  const handleSubmit = () => {
-    if (editingId) updateMutation.mutate({ id: editingId, data: formData });
-    else createMutation.mutate(formData);
-  };
-
-  const columns = [
-    { key: "nom", label: "Nom", render: (r) => <span className="font-medium">{r.prenom} {r.nom}</span> },
-    { key: "email", label: "Email" },
-    { key: "entreprise", label: "Entreprise" },
-    { key: "source", label: "Source", render: (r) => <span className="capitalize text-xs">{r.source?.replace(/_/g, " ")}</span> },
-    { key: "valeur_estimee", label: "Valeur", render: (r) => r.valeur_estimee ? `${r.valeur_estimee.toLocaleString("fr-FR")} €` : "-" },
-    { key: "statut", label: "Statut", render: (r) => <StatusBadge status={r.statut} /> },
-    { key: "actions", label: "", render: (r) => (
-      <div className="flex gap-1">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); handleEdit(r); }}>
-          <Pencil className="w-3.5 h-3.5" />
-        </Button>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(r.id); }}>
-          <Trash2 className="w-3.5 h-3.5" />
-        </Button>
-      </div>
-    )},
-  ];
+  const actions = (row) => (
+    <div className="flex gap-2">
+      <Button size="icon" variant="ghost" onClick={() => { setEditing(row); setOpen(true); }}>
+        <Pencil className="w-4 h-4" />
+      </Button>
+      <Button size="icon" variant="ghost" className="text-red-400"
+        onClick={() => { if (confirm("Supprimer ce lead ?")) del.mutate(row.id); }}>
+        <Trash2 className="w-4 h-4" />
+      </Button>
+    </div>
+  );
 
   return (
-    <div>
-      <PageHeader title="Leads" subtitle={`${leads.length} leads`} onAdd={() => setModalOpen(true)} addLabel="Nouveau lead" />
-      <DataTable columns={columns} data={leads} isLoading={isLoading} emptyMessage="Aucun lead" />
-      <FormModal
-        open={modalOpen}
-        onClose={closeModal}
-        title={editingId ? "Modifier le lead" : "Nouveau lead"}
-        fields={formFields}
-        data={formData}
-        onChange={setFormData}
-        onSubmit={handleSubmit}
-        isSubmitting={createMutation.isPending || updateMutation.isPending}
-      />
+    <div className="p-6 space-y-6">
+      <PageHeader title="Leads" subtitle={`${leads.length} lead(s) au total`}
+        action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouveau lead</Button>} />
+      <DataTable columns={columns} data={leads} loading={isLoading} actions={actions} />
+      <FormModal open={open} onClose={() => { setOpen(false); setEditing(null); }}
+        title={editing ? "Modifier le lead" : "Nouveau lead"}
+        fields={formFields} initialData={editing}
+        onSubmit={(data) => save.mutate(data)} loading={save.isPending} />
     </div>
   );
 }
