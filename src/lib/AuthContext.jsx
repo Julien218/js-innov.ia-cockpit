@@ -2,8 +2,8 @@ import React, { createContext, useState, useContext, useEffect, useCallback } fr
 import { createClient } from '@supabase/supabase-js';
 
 // ─── SUPABASE CLIENT ──────────────────────────────────────────────────────────
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://rzvvwcwyaddzsaattwqt.supabase.co";
-const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6dnZ3Y3d5YWRkenNhYXR0d3F0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMTU4NjAsImV4cCI6MjA5NjY5MTg2MH0.VOEFK5BG_dxCnijcz2RexqMg1yDGoXdw58-2Ud_a7hM";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://gfjpryakxzdzwnazlsfz.supabase.co";
+const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmanByeWFreHpkenduYXpsc2Z6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDc1MzA2OCwiZXhwIjoyMDk2MzI5MDY4fQ.GAL-v22vtLgAmhq91wU8Z8rE-tD7YywAISQKUYyAhq4";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
