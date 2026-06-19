@@ -9,99 +9,70 @@ import { Button } from "@/components/ui/button";
 import { Pencil, Trash2 } from "lucide-react";
 
 const formFields = [
-  { key: "nom", label: "Nom", required: true },
-  { key: "prenom", label: "Prénom" },
-  { key: "email", label: "Email", type: "email", required: true },
-  { key: "telephone", label: "Téléphone" },
+  { name: "nom",          label: "Nom",         type: "text",  required: true },
+  { name: "prenom",       label: "Prénom",       type: "text" },
+  { name: "email",        label: "Email",        type: "email", required: true },
+  { name: "telephone",    label: "Téléphone",    type: "text" },
+  { name: "entreprise",   label: "Entreprise",   type: "text" },
+  { name: "adresse",      label: "Adresse",      type: "text" },
+  { name: "ville",        label: "Ville",        type: "text" },
+  { name: "code_postal",  label: "Code postal",  type: "text" },
+  { name: "statut",       label: "Statut",       type: "select",
+    options: ["actif","inactif","prospect","archive"] },
+  { name: "notes",        label: "Notes",        type: "textarea" },
+];
+
+const columns = [
+  { key: "nom",        label: "Nom",         render: (v, row) => `${v || ""} ${row.prenom || ""}`.trim() },
+  { key: "email",      label: "Email" },
   { key: "entreprise", label: "Entreprise" },
-  { key: "adresse", label: "Adresse" },
-  { key: "ville", label: "Ville" },
-  { key: "code_postal", label: "Code postal" },
-  { key: "type_client", label: "Type", type: "select", options: [
-    { value: "particulier", label: "Particulier" },
-    { value: "professionnel", label: "Professionnel" },
-    { value: "entreprise", label: "Entreprise" },
-  ]},
-  { key: "statut", label: "Statut", type: "select", options: [
-    { value: "actif", label: "Actif" },
-    { value: "inactif", label: "Inactif" },
-    { value: "prospect", label: "Prospect" },
-  ]},
-  { key: "notes", label: "Notes", type: "textarea" },
+  { key: "ville",      label: "Ville" },
+  { key: "statut",     label: "Statut",  render: v => <StatusBadge status={v} /> },
+  { key: "created_at", label: "Créé le", render: v => v ? new Date(v).toLocaleDateString("fr-BE") : "—" },
 ];
 
 export default function Clients() {
-  const [modalOpen, setModalOpen] = useState(false);
-  const [formData, setFormData] = useState({});
-  const [editingId, setEditingId] = useState(null);
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
 
   const { data: clients = [], isLoading } = useQuery({
-    queryKey: ["clients"],
+    queryKey: ["Client"],
     queryFn: () => base44.entities.Client.list("-created_at"),
   });
 
-  const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.Client.create(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["clients"] }); closeModal(); },
+  const save = useMutation({
+    mutationFn: (data) =>
+      editing ? base44.entities.Client.update(editing.id, data) : base44.entities.Client.create(data),
+    onSuccess: () => { qc.invalidateQueries(["Client"]); setOpen(false); setEditing(null); },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Client.update(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["clients"] }); closeModal(); },
-  });
-
-  const deleteMutation = useMutation({
+  const del = useMutation({
     mutationFn: (id) => base44.entities.Client.delete(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["clients"] }),
+    onSuccess: () => qc.invalidateQueries(["Client"]),
   });
 
-  const closeModal = () => { setModalOpen(false); setFormData({}); setEditingId(null); };
-
-  const handleEdit = (client) => {
-    setFormData(client);
-    setEditingId(client.id);
-    setModalOpen(true);
-  };
-
-  const handleSubmit = () => {
-    if (editingId) updateMutation.mutate({ id: editingId, data: formData });
-    else createMutation.mutate(formData);
-  };
-
-  const columns = [
-    { key: "nom", label: "Nom", render: (r) => <span className="font-medium">{r.prenom} {r.nom}</span> },
-    { key: "email", label: "Email" },
-    { key: "telephone", label: "Téléphone" },
-    { key: "entreprise", label: "Entreprise" },
-    { key: "type_client", label: "Type", render: (r) => <span className="capitalize text-xs">{r.type_client?.replace("_", " ")}</span> },
-    { key: "statut", label: "Statut", render: (r) => <StatusBadge status={r.statut} /> },
-    { key: "actions", label: "", render: (r) => (
-      <div className="flex gap-1">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); handleEdit(r); }}>
-          <Pencil className="w-3.5 h-3.5" />
-        </Button>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(r.id); }}>
-          <Trash2 className="w-3.5 h-3.5" />
-        </Button>
-      </div>
-    )},
-  ];
+  const actions = (row) => (
+    <div className="flex gap-2">
+      <Button size="icon" variant="ghost" onClick={() => { setEditing(row); setOpen(true); }}>
+        <Pencil className="w-4 h-4" />
+      </Button>
+      <Button size="icon" variant="ghost" className="text-red-400"
+        onClick={() => { if (confirm("Supprimer ce client ?")) del.mutate(row.id); }}>
+        <Trash2 className="w-4 h-4" />
+      </Button>
+    </div>
+  );
 
   return (
-    <div>
-      <PageHeader title="Clients" subtitle={`${clients.length} clients`} onAdd={() => setModalOpen(true)} addLabel="Nouveau client" />
-      <DataTable columns={columns} data={clients} isLoading={isLoading} emptyMessage="Aucun client" />
-      <FormModal
-        open={modalOpen}
-        onClose={closeModal}
-        title={editingId ? "Modifier le client" : "Nouveau client"}
-        fields={formFields}
-        data={formData}
-        onChange={setFormData}
-        onSubmit={handleSubmit}
-        isSubmitting={createMutation.isPending || updateMutation.isPending}
-      />
+    <div className="p-6 space-y-6">
+      <PageHeader title="Clients" subtitle={`${clients.length} client(s)`}
+        action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouveau client</Button>} />
+      <DataTable columns={columns} data={clients} loading={isLoading} actions={actions} />
+      <FormModal open={open} onClose={() => { setOpen(false); setEditing(null); }}
+        title={editing ? "Modifier le client" : "Nouveau client"}
+        fields={formFields} initialData={editing}
+        onSubmit={(data) => save.mutate(data)} loading={save.isPending} />
     </div>
   );
 }
