@@ -6,109 +6,70 @@ import DataTable from "@/components/shared/DataTable";
 import StatusBadge from "@/components/shared/StatusBadge";
 import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Pencil, Trash2 } from "lucide-react";
-import { format } from "date-fns";
 
 const formFields = [
-  { key: "nom", label: "Nom du projet", required: true },
-  { key: "client_nom", label: "Nom du client" },
-  { key: "description", label: "Description", type: "textarea" },
-  { key: "statut", label: "Statut", type: "select", options: [
-    { value: "en_attente", label: "En attente" },
-    { value: "en_cours", label: "En cours" },
-    { value: "termine", label: "Terminé" },
-    { value: "annule", label: "Annulé" },
-  ]},
-  { key: "priorite", label: "Priorité", type: "select", options: [
-    { value: "basse", label: "Basse" },
-    { value: "moyenne", label: "Moyenne" },
-    { value: "haute", label: "Haute" },
-    { value: "urgente", label: "Urgente" },
-  ]},
-  { key: "date_debut", label: "Date début", type: "date" },
-  { key: "date_fin_prevue", label: "Date fin prévue", type: "date" },
-  { key: "budget", label: "Budget (€)", type: "number" },
-  { key: "progression", label: "Progression (%)", type: "number" },
+  { name: "nom",             label: "Nom du projet",     type: "text",   required: true },
+  { name: "client_nom",      label: "Client",            type: "text",   required: true },
+  { name: "description",     label: "Description",       type: "textarea" },
+  { name: "statut",          label: "Statut",            type: "select",
+    options: ["en_attente","en_cours","pause","termine","annule"] },
+  { name: "budget",          label: "Budget (€)",        type: "number" },
+  { name: "date_debut",      label: "Date début",        type: "date" },
+  { name: "date_fin_prevue", label: "Date fin prévue",   type: "date" },
+  { name: "notes",           label: "Notes",             type: "textarea" },
+];
+
+const columns = [
+  { key: "nom",             label: "Projet" },
+  { key: "client_nom",      label: "Client" },
+  { key: "statut",          label: "Statut",   render: v => <StatusBadge status={v} /> },
+  { key: "budget",          label: "Budget",   render: v => v ? `${v.toLocaleString("fr-BE")} €` : "—" },
+  { key: "date_fin_prevue", label: "Fin prévue", render: v => v ? new Date(v).toLocaleDateString("fr-BE") : "—" },
 ];
 
 export default function Projets() {
-  const [modalOpen, setModalOpen] = useState(false);
-  const [formData, setFormData] = useState({});
-  const [editingId, setEditingId] = useState(null);
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
 
   const { data: projets = [], isLoading } = useQuery({
-    queryKey: ["projets"],
+    queryKey: ["Projet"],
     queryFn: () => base44.entities.Projet.list("-created_at"),
   });
 
-  const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.Projet.create(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["projets"] }); closeModal(); },
+  const save = useMutation({
+    mutationFn: (data) =>
+      editing ? base44.entities.Projet.update(editing.id, data) : base44.entities.Projet.create(data),
+    onSuccess: () => { qc.invalidateQueries(["Projet"]); setOpen(false); setEditing(null); },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Projet.update(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["projets"] }); closeModal(); },
-  });
-
-  const deleteMutation = useMutation({
+  const del = useMutation({
     mutationFn: (id) => base44.entities.Projet.delete(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projets"] }),
+    onSuccess: () => qc.invalidateQueries(["Projet"]),
   });
 
-  const closeModal = () => { setModalOpen(false); setFormData({}); setEditingId(null); };
-
-  const handleEdit = (p) => {
-    setFormData(p);
-    setEditingId(p.id);
-    setModalOpen(true);
-  };
-
-  const handleSubmit = () => {
-    if (editingId) updateMutation.mutate({ id: editingId, data: formData });
-    else createMutation.mutate(formData);
-  };
-
-  const columns = [
-    { key: "nom", label: "Projet", render: (r) => <span className="font-medium">{r.nom}</span> },
-    { key: "client_nom", label: "Client" },
-    { key: "priorite", label: "Priorité", render: (r) => <span className="capitalize text-xs">{r.priorite}</span> },
-    { key: "progression", label: "Progression", render: (r) => (
-      <div className="flex items-center gap-2 min-w-[120px]">
-        <Progress value={r.progression || 0} className="h-2 flex-1" />
-        <span className="text-xs text-muted-foreground w-8">{r.progression || 0}%</span>
-      </div>
-    )},
-    { key: "budget", label: "Budget", render: (r) => r.budget ? `${r.budget.toLocaleString("fr-FR")} €` : "-" },
-    { key: "statut", label: "Statut", render: (r) => <StatusBadge status={r.statut} /> },
-    { key: "actions", label: "", render: (r) => (
-      <div className="flex gap-1">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); handleEdit(r); }}>
-          <Pencil className="w-3.5 h-3.5" />
-        </Button>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(r.id); }}>
-          <Trash2 className="w-3.5 h-3.5" />
-        </Button>
-      </div>
-    )},
-  ];
+  const actions = (row) => (
+    <div className="flex gap-2">
+      <Button size="icon" variant="ghost" onClick={() => { setEditing(row); setOpen(true); }}>
+        <Pencil className="w-4 h-4" />
+      </Button>
+      <Button size="icon" variant="ghost" className="text-red-400"
+        onClick={() => { if (confirm("Supprimer ce projet ?")) del.mutate(row.id); }}>
+        <Trash2 className="w-4 h-4" />
+      </Button>
+    </div>
+  );
 
   return (
-    <div>
-      <PageHeader title="Projets" subtitle={`${projets.length} projets`} onAdd={() => setModalOpen(true)} addLabel="Nouveau projet" />
-      <DataTable columns={columns} data={projets} isLoading={isLoading} emptyMessage="Aucun projet" />
-      <FormModal
-        open={modalOpen}
-        onClose={closeModal}
-        title={editingId ? "Modifier le projet" : "Nouveau projet"}
-        fields={formFields}
-        data={formData}
-        onChange={setFormData}
-        onSubmit={handleSubmit}
-        isSubmitting={createMutation.isPending || updateMutation.isPending}
-      />
+    <div className="p-6 space-y-6">
+      <PageHeader title="Projets" subtitle={`${projets.length} projet(s)`}
+        action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouveau projet</Button>} />
+      <DataTable columns={columns} data={projets} loading={isLoading} actions={actions} />
+      <FormModal open={open} onClose={() => { setOpen(false); setEditing(null); }}
+        title={editing ? "Modifier le projet" : "Nouveau projet"}
+        fields={formFields} initialData={editing}
+        onSubmit={(data) => save.mutate(data)} loading={save.isPending} />
     </div>
   );
 }
