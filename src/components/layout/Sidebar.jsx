@@ -117,6 +117,13 @@ export default function Sidebar() {
       items: [
         { label: "Services", icon: Package, path: "/services", minRole: "admin" },
       ]
+    },
+    {
+      label: "Système",
+      minRole: "admin",
+      items: [
+        { label: "Paramètres", icon: Settings, path: "/parametres", minRole: "admin" },
+      ]
     }
   ];
 
