@@ -30,6 +30,7 @@ import Logs from "@/pages/Logs";
 import Agent from "@/pages/Agent";
 import AgentsIA from "@/pages/AgentsIA";
 import Invitations from "@/pages/Invitations";
+import Parametres from "@/pages/Parametres";
 
 const AppRoutes = () => {
   const { isAuthenticated, isLoadingAuth, authChecked } = useAuth();
@@ -86,6 +87,9 @@ const AppRoutes = () => {
 
           {/* Catalogue */}
           <Route path="/services" element={<Services />} />
+
+          {/* Paramètres */}
+          <Route path="/parametres" element={<Parametres />} />
         </Route>
       </Route>
 
