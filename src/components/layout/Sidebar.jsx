@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Target, FolderKanban,
   FileText, Receipt, Shield, ChevronLeft, ChevronRight,
   CheckSquare, MessageSquare, Package, Zap, ShieldCheck, Activity,
-  Bot, Network, UserPlus, LogOut, Crown, Briefcase, User, Store
+  Bot, Network, UserPlus, LogOut, Crown, Briefcase, User, Store, Settings
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
