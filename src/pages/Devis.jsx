@@ -7,98 +7,72 @@ import StatusBadge from "@/components/shared/StatusBadge";
 import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
 import { Pencil, Trash2 } from "lucide-react";
-import { format } from "date-fns";
 
 const formFields = [
-  { key: "numero", label: "Numéro de devis", required: true, placeholder: "DEV-001" },
-  { key: "client_nom", label: "Nom du client" },
-  { key: "objet", label: "Objet", required: true },
-  { key: "montant_ht", label: "Montant HT (€)", type: "number" },
-  { key: "tva", label: "TVA (%)", type: "number", placeholder: "20" },
-  { key: "montant_ttc", label: "Montant TTC (€)", type: "number" },
-  { key: "statut", label: "Statut", type: "select", options: [
-    { value: "brouillon", label: "Brouillon" },
-    { value: "envoye", label: "Envoyé" },
-    { value: "accepte", label: "Accepté" },
-    { value: "refuse", label: "Refusé" },
-    { value: "expire", label: "Expiré" },
-  ]},
-  { key: "date_validite", label: "Date de validité", type: "date" },
-  { key: "notes", label: "Notes", type: "textarea" },
+  { name: "numero",         label: "N° Devis",       type: "text",   required: true },
+  { name: "client_nom",     label: "Client",         type: "text",   required: true },
+  { name: "objet",          label: "Objet",          type: "text" },
+  { name: "montant_ht",     label: "Montant HT (€)", type: "number" },
+  { name: "tva",            label: "TVA (%)",        type: "number" },
+  { name: "montant_ttc",    label: "Montant TTC (€)",type: "number" },
+  { name: "statut",         label: "Statut",         type: "select",
+    options: ["brouillon","envoye","accepte","refuse","expire"] },
+  { name: "date_emission",  label: "Date émission",  type: "date" },
+  { name: "date_validite",  label: "Valide jusqu'au",type: "date" },
+  { name: "notes",          label: "Notes",          type: "textarea" },
+];
+
+const columns = [
+  { key: "numero",        label: "N° Devis" },
+  { key: "client_nom",    label: "Client" },
+  { key: "objet",         label: "Objet" },
+  { key: "montant_ttc",   label: "Total TTC", render: v => v ? `${Number(v).toLocaleString("fr-BE")} €` : "—" },
+  { key: "statut",        label: "Statut",    render: v => <StatusBadge status={v} /> },
+  { key: "date_validite", label: "Validité",  render: v => v ? new Date(v).toLocaleDateString("fr-BE") : "—" },
 ];
 
 export default function Devis() {
-  const [modalOpen, setModalOpen] = useState(false);
-  const [formData, setFormData] = useState({});
-  const [editingId, setEditingId] = useState(null);
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
 
   const { data: devis = [], isLoading } = useQuery({
-    queryKey: ["devis"],
+    queryKey: ["Devis"],
     queryFn: () => base44.entities.Devis.list("-created_at"),
   });
 
-  const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.Devis.create(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["devis"] }); closeModal(); },
+  const save = useMutation({
+    mutationFn: (data) =>
+      editing ? base44.entities.Devis.update(editing.id, data) : base44.entities.Devis.create(data),
+    onSuccess: () => { qc.invalidateQueries(["Devis"]); setOpen(false); setEditing(null); },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Devis.update(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["devis"] }); closeModal(); },
-  });
-
-  const deleteMutation = useMutation({
+  const del = useMutation({
     mutationFn: (id) => base44.entities.Devis.delete(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["devis"] }),
+    onSuccess: () => qc.invalidateQueries(["Devis"]),
   });
 
-  const closeModal = () => { setModalOpen(false); setFormData({}); setEditingId(null); };
-
-  const handleEdit = (d) => {
-    setFormData(d);
-    setEditingId(d.id);
-    setModalOpen(true);
-  };
-
-  const handleSubmit = () => {
-    if (editingId) updateMutation.mutate({ id: editingId, data: formData });
-    else createMutation.mutate(formData);
-  };
-
-  const columns = [
-    { key: "numero", label: "N°", render: (r) => <span className="font-mono text-xs font-semibold">{r.numero}</span> },
-    { key: "client_nom", label: "Client" },
-    { key: "objet", label: "Objet", render: (r) => <span className="font-medium">{r.objet}</span> },
-    { key: "montant_ttc", label: "Montant TTC", render: (r) => r.montant_ttc ? `${r.montant_ttc.toLocaleString("fr-FR")} €` : "-" },
-    { key: "date_validite", label: "Validité", render: (r) => r.date_validite ? format(new Date(r.date_validite), "dd/MM/yyyy") : "-" },
-    { key: "statut", label: "Statut", render: (r) => <StatusBadge status={r.statut} /> },
-    { key: "actions", label: "", render: (r) => (
-      <div className="flex gap-1">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); handleEdit(r); }}>
-          <Pencil className="w-3.5 h-3.5" />
-        </Button>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(r.id); }}>
-          <Trash2 className="w-3.5 h-3.5" />
-        </Button>
-      </div>
-    )},
-  ];
+  const actions = (row) => (
+    <div className="flex gap-2">
+      <Button size="icon" variant="ghost" onClick={() => { setEditing(row); setOpen(true); }}>
+        <Pencil className="w-4 h-4" />
+      </Button>
+      <Button size="icon" variant="ghost" className="text-red-400"
+        onClick={() => { if (confirm("Supprimer ce devis ?")) del.mutate(row.id); }}>
+        <Trash2 className="w-4 h-4" />
+      </Button>
+    </div>
+  );
 
   return (
-    <div>
-      <PageHeader title="Devis" subtitle={`${devis.length} devis`} onAdd={() => setModalOpen(true)} addLabel="Nouveau devis" />
-      <DataTable columns={columns} data={devis} isLoading={isLoading} emptyMessage="Aucun devis" />
-      <FormModal
-        open={modalOpen}
-        onClose={closeModal}
-        title={editingId ? "Modifier le devis" : "Nouveau devis"}
-        fields={formFields}
-        data={formData}
-        onChange={setFormData}
-        onSubmit={handleSubmit}
-        isSubmitting={createMutation.isPending || updateMutation.isPending}
-      />
+    <div className="p-6 space-y-6">
+      <PageHeader title="Devis" subtitle={`${devis.length} devis`}
+        action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouveau devis</Button>} />
+      <DataTable columns={columns} data={devis} loading={isLoading} actions={actions} />
+      <FormModal open={open} onClose={() => { setOpen(false); setEditing(null); }}
+        title={editing ? "Modifier le devis" : "Nouveau devis"}
+        fields={formFields} initialData={editing}
+        onSubmit={(data) => save.mutate(data)} loading={save.isPending} />
     </div>
   );
 }
