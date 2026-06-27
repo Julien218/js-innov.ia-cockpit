@@ -1,0 +1,4 @@
+[deploy]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
