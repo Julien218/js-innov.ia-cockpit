@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Target, FolderKanban,
   FileText, Receipt, Shield, ChevronLeft, ChevronRight,
   CheckSquare, MessageSquare, Package, Zap, ShieldCheck, Activity,
-  Bot, Network, UserPlus, LogOut, Crown, Briefcase, User, Store, Settings
+  Bot, Network, UserPlus, LogOut, Crown, Briefcase, User, Store, Settings, Handshake
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -43,7 +43,7 @@ export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { role, isSuperAdmin, isAdmin, canAccess } = usePermissions();
+  const { role, canAccess } = usePermissions();
   const validationCount = useValidationsBadge();
   const demandeCount = useDemandeBadge();
 
@@ -77,6 +77,7 @@ export default function Sidebar() {
         { label: "Projets", icon: FolderKanban, path: role === "client" ? "/mes-projets" : "/projets" },
         { label: "Tâches", icon: CheckSquare, path: "/taches", minRole: "collaborateur" },
         { label: "Demandes", icon: MessageSquare, path: "/demandes", badge: demandeCount },
+        { label: "Partenariat JY-Trix", icon: Handshake, path: "/partenariat-jytrix", minRole: "collaborateur" },
       ]
     },
     {
