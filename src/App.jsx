@@ -20,6 +20,7 @@ import Leads from "@/pages/Leads";
 import Projets from "@/pages/Projets";
 import Taches from "@/pages/Taches";
 import Demandes from "@/pages/Demandes";
+import PartenariatJyTrix from "@/pages/PartenariatJyTrix";
 import Services from "@/pages/Services";
 import Commercants from "@/pages/Commercants";
 import Devis from "@/pages/Devis";
@@ -65,6 +66,7 @@ const AppRoutes = () => {
           <Route path="/mes-projets" element={<Projets />} />
           <Route path="/taches" element={<Taches />} />
           <Route path="/demandes" element={<Demandes />} />
+          <Route path="/partenariat-jytrix" element={<PartenariatJyTrix />} />
 
           {/* Finance */}
           <Route path="/devis" element={<Devis />} />
