@@ -17,8 +17,8 @@ export const ROLE_LEVEL = {
 
 // Labels affichés dans l'interface
 export const ROLE_LABELS = {
-  superadmin: "Super Admin",
-  admin: "Admin",
+  superadmin: "Super Admin JS-Innov.IA",
+  admin: "Admin JY-Trix.AI",
   collaborateur: "Collaborateur",
   client: "Client",
 };
@@ -34,16 +34,16 @@ export const ROLE_COLORS = {
 export const ROLE_ROUTES = {
   superadmin: [
     "/", "/clients", "/leads", "/projets", "/taches", "/demandes",
-    "/services", "/devis", "/factures", "/commissions",
-    "/validations", "/logs", "/agent", "/agents-ia", "/invitations"
+    "/partenariat-jytrix", "/services", "/devis", "/factures", "/commissions",
+    "/validations", "/logs", "/agent", "/agents-ia", "/invitations", "/parametres", "/commercants"
   ],
   admin: [
     "/", "/clients", "/leads", "/projets", "/taches", "/demandes",
-    "/services", "/devis", "/factures", "/commissions",
-    "/validations", "/agent", "/agents-ia", "/invitations"
+    "/partenariat-jytrix", "/services", "/devis", "/factures", "/commissions",
+    "/validations", "/agent", "/agents-ia", "/invitations", "/parametres", "/commercants"
   ],
   collaborateur: [
-    "/", "/projets", "/taches", "/demandes", "/agents-ia"
+    "/", "/projets", "/taches", "/demandes", "/partenariat-jytrix", "/agents-ia", "/commercants"
   ],
   client: [
     "/", "/mes-projets", "/mes-devis", "/mes-factures", "/demandes", "/agents-ia"
