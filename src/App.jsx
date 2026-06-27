@@ -30,6 +30,16 @@ import Logs from "@/pages/Logs";
 import Agent from "@/pages/Agent";
 import AgentsIA from "@/pages/AgentsIA";
 import Invitations from "@/pages/Invitations";
+
+// ── Studio Vidéo
+import VideoStudio from "@/pages/VideoStudio";
+import AIVideoReportGenerator from "@/pages/AIVideoReportGenerator";
+import ThumbnailGenerator from "@/pages/ThumbnailGenerator";
+import DourCampaignVideo from "@/pages/DourCampaignVideo";
+import ExportsLibrary from "@/pages/ExportsLibrary";
+import ExportedVideos from "@/pages/ExportedVideos";
+import Templates from "@/pages/Templates";
+import ProjectCalendar from "@/pages/ProjectCalendar";
 import Parametres from "@/pages/Parametres";
 
 const AppRoutes = () => {
@@ -88,7 +98,20 @@ const AppRoutes = () => {
           {/* Catalogue */}
           <Route path="/services" element={<Services />} />
 
-          {/* Paramètres */}
+
+          {/* ── Studio Vidéo */}
+          <Route path="/video-studio" element={<VideoStudio />} />
+          <Route path="/video-studio/new" element={<VideoStudio />} />
+          <Route path="/video-studio/:id" element={<VideoStudio />} />
+          <Route path="/ai-video" element={<AIVideoReportGenerator />} />
+          <Route path="/thumbnail" element={<ThumbnailGenerator />} />
+          <Route path="/dour-campaign" element={<DourCampaignVideo />} />
+          <Route path="/exports" element={<ExportsLibrary />} />
+          <Route path="/exported-videos" element={<ExportedVideos />} />
+          <Route path="/templates" element={<Templates />} />
+          <Route path="/calendar" element={<ProjectCalendar />} />
+
+          {/* Paramètres */
           <Route path="/parametres" element={<Parametres />} />
         </Route>
       </Route>
