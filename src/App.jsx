@@ -111,7 +111,7 @@ const AppRoutes = () => {
           <Route path="/templates" element={<Templates />} />
           <Route path="/calendar" element={<ProjectCalendar />} />
 
-          {/* Paramètres */
+          {/* Paramètres */}
           <Route path="/parametres" element={<Parametres />} />
         </Route>
       </Route>
