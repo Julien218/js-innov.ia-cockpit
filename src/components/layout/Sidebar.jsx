@@ -4,7 +4,8 @@ import {
   LayoutDashboard, Users, Target, FolderKanban,
   FileText, Receipt, Shield, ChevronLeft, ChevronRight,
   CheckSquare, MessageSquare, Package, Zap, ShieldCheck, Activity,
-  Bot, Network, UserPlus, LogOut, Crown, Briefcase, User, Store, Settings
+  Bot, Network, UserPlus, LogOut, Crown, Briefcase, User, Store, Settings,
+  Film, Clapperboard, Image, Calendar, Package2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -116,6 +117,18 @@ export default function Sidebar() {
       minRole: "admin",
       items: [
         { label: "Services", icon: Package, path: "/services", minRole: "admin" },
+      ]
+    },
+    {
+      label: "Studio Vidéo",
+      minRole: "admin",
+      items: [
+        { label: "Video Studio", icon: Clapperboard, path: "/video-studio", minRole: "admin" },
+        { label: "IA Vidéo Report", icon: Film, path: "/ai-video", minRole: "admin" },
+        { label: "Générateur Miniatures", icon: Image, path: "/thumbnail", minRole: "admin" },
+        { label: "Exports Vidéo", icon: Package2, path: "/exports", minRole: "admin" },
+        { label: "Calendrier", icon: Calendar, path: "/calendar", minRole: "collaborateur" },
+        { label: "Campagne Dour", icon: Film, path: "/dour-campaign", minRole: "admin" },
       ]
     },
     {
