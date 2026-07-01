@@ -29,6 +29,7 @@ import Validations from "@/pages/Validations";
 import Logs from "@/pages/Logs";
 import Agent from "@/pages/Agent";
 import AgentsIA from "@/pages/AgentsIA";
+import LocalAI from "@/pages/LocalAI";
 import Invitations from "@/pages/Invitations";
 
 // ── Studio Vidéo
@@ -86,6 +87,7 @@ const AppRoutes = () => {
           {/* IA & Contrôle */}
           <Route path="/agent" element={<Agent />} />
           <Route path="/agents-ia" element={<AgentsIA />} />
+          <Route path="/local-ai" element={<LocalAI />} />
           <Route path="/validations" element={<Validations />} />
           <Route path="/logs" element={<Logs />} />
 
@@ -122,17 +124,15 @@ const AppRoutes = () => {
   );
 };
 
-function App() {
+export default function App() {
   return (
-    <AuthProvider>
-      <QueryClientProvider client={queryClientInstance}>
+    <QueryClientProvider client={queryClientInstance}>
+      <AuthProvider>
         <Router>
           <AppRoutes />
+          <Toaster />
         </Router>
-        <Toaster />
-      </QueryClientProvider>
-    </AuthProvider>
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }
-
-export default App;
