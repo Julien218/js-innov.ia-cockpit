@@ -1,11 +1,13 @@
 import React, { useState } from "react";
-import { Settings, Bot, Globe, Key, Palette, Bell, Database, Shield, ExternalLink, Plus, Trash2, Eye, EyeOff, Check } from "lucide-react";
+import { Settings, Bot, Globe, Key, Palette, Bell, Database, Shield, ExternalLink, Plus, Trash2, Eye, EyeOff, Check, RefreshCw, Cloud, Server, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DATA_PROVIDERS, getDataProvider, setDataProvider } from "@/services/dataProviderConfig";
 
 const TABS = [
   { id: "agents",   label: "Agents IA",      icon: Bot },
   { id: "builder",  label: "Builder Web",     icon: Globe },
   { id: "api",      label: "APIs & Clés",     icon: Key },
+  { id: "donnees",  label: "Moteur données",  icon: Database },
   { id: "notifs",   label: "Notifications",   icon: Bell },
   { id: "securite", label: "Sécurité",        icon: Shield },
 ];
@@ -199,6 +201,139 @@ function ApisKeys() {
   );
 }
 
+// ── Moteur données (ON/OFF Base44 / Agent / Supabase) ─────────────────────────
+const PROVIDER_OPTIONS = [
+  {
+    id: DATA_PROVIDERS.BASE44,
+    label: "Base44",
+    badge: "ON abonnement",
+    badgeColor: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+    icon: Cloud,
+    description:
+      "Mode compatible Base44 — comportement actuel du cockpit, sans changement. " +
+      "À garder actif pendant les 6 mois d'abonnement Base44 déjà payés.",
+  },
+  {
+    id: DATA_PROVIDERS.AGENT,
+    label: "Agent JS-Innov.IA",
+    badge: "Transition",
+    badgeColor: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+    icon: Zap,
+    description:
+      "Utilise le backend Railway jsinnovia-agent avec la même interface CRUD. " +
+      "Mode de transition vers l'infrastructure propre JS-Innov.IA.",
+  },
+  {
+    id: DATA_PROVIDERS.SUPABASE,
+    label: "Supabase direct",
+    badge: "Futur",
+    badgeColor: "bg-slate-500/15 text-slate-400 border-slate-500/30",
+    icon: Server,
+    description:
+      "Connexion directe à Supabase (gfjpryakxzdzwnazlsfz), sans intermédiaire. " +
+      "À activer uniquement quand toutes les tables seront finalisées et migrées.",
+  },
+];
+
+function MoteurDonnees() {
+  const [selected, setSelected] = useState(getDataProvider());
+  const [saved, setSaved] = useState(false);
+
+  const choose = (providerId) => {
+    setSelected(providerId);
+    setSaved(false);
+  };
+
+  const applyChoice = () => {
+    setDataProvider(selected);
+    setSaved(true);
+  };
+
+  const currentActive = getDataProvider();
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold text-white">Moteur de données</h3>
+        <p className="text-sm text-slate-400">
+          Choisis quel backend alimente le cockpit. Le changement est sauvegardé
+          localement et s'applique après rechargement de la page.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        {PROVIDER_OPTIONS.map((opt) => {
+          const Icon = opt.icon;
+          const isSelected = selected === opt.id;
+          const isCurrentlyActive = currentActive === opt.id;
+          return (
+            <button
+              key={opt.id}
+              onClick={() => choose(opt.id)}
+              className={`w-full text-left flex items-start gap-4 p-4 rounded-xl border transition-colors ${
+                isSelected
+                  ? "border-yellow-400/60 bg-yellow-500/5"
+                  : "border-slate-700 bg-slate-800/50 hover:border-slate-600"
+              }`}
+            >
+              <div
+                className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                  isSelected ? "bg-yellow-500/20" : "bg-slate-700/50"
+                }`}
+              >
+                <Icon className={`w-5 h-5 ${isSelected ? "text-yellow-400" : "text-slate-400"}`} />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-white font-medium">{opt.label}</p>
+                  <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border ${opt.badgeColor}`}>
+                    {opt.badge}
+                  </span>
+                  {isCurrentlyActive && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                      Actif actuellement
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">{opt.description}</p>
+              </div>
+              {isSelected && <Check className="w-5 h-5 text-yellow-400 shrink-0 mt-2" />}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center gap-3 pt-2">
+        <Button onClick={applyChoice} className="bg-yellow-500 hover:bg-yellow-400 text-black">
+          <Check className="w-4 h-4 mr-2" /> Enregistrer le choix
+        </Button>
+        <Button
+          variant="outline"
+          className="border-slate-600 text-slate-300"
+          onClick={() => window.location.reload()}
+        >
+          <RefreshCw className="w-4 h-4 mr-2" /> Recharger
+        </Button>
+        {saved && (
+          <span className="text-xs text-emerald-400 flex items-center gap-1">
+            <Check className="w-3.5 h-3.5" /> Sauvegardé — recharge pour appliquer
+          </span>
+        )}
+      </div>
+
+      <div className="p-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5">
+        <p className="text-cyan-400 text-sm font-medium mb-1">💡 Migration progressive</p>
+        <p className="text-slate-400 text-sm">
+          Les pages du cockpit continuent à fonctionner normalement quel que soit le mode choisi.
+          La bascule complète page par page (Demandes → Tâches → Validations → Factures →
+          Clients/Devis/Commissions) se fera progressivement, une page à la fois, après tests et
+          validation.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── PAGE PRINCIPALE ──────────────────────────────────────────────────────────
 export default function Parametres() {
   const [activeTab, setActiveTab] = useState("agents");
@@ -208,6 +343,7 @@ export default function Parametres() {
       case "agents":   return <AgentsIA />;
       case "builder":  return <BuilderWeb />;
       case "api":      return <ApisKeys />;
+      case "donnees":  return <MoteurDonnees />;
       case "notifs":   return (
         <div className="text-center py-12 text-slate-400">
           <Bell className="w-10 h-10 mx-auto mb-3 opacity-30" />
