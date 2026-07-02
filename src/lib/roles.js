@@ -35,12 +35,12 @@ export const ROLE_ROUTES = {
   superadmin: [
     "/", "/clients", "/leads", "/projets", "/taches", "/demandes",
     "/services", "/devis", "/factures", "/commissions",
-    "/validations", "/logs", "/agent", "/agents-ia", "/local-ai", "/invitations"
+    "/validations", "/logs", "/agent", "/agents-ia", "/local-ai", "/parametres", "/invitations"
   ],
   admin: [
     "/", "/clients", "/leads", "/projets", "/taches", "/demandes",
     "/services", "/devis", "/factures", "/commissions",
-    "/validations", "/agent", "/agents-ia", "/local-ai", "/invitations"
+    "/validations", "/agent", "/agents-ia", "/local-ai", "/parametres", "/invitations"
   ],
   collaborateur: [
     "/", "/projets", "/taches", "/demandes", "/agents-ia"
@@ -60,4 +60,5 @@ export const hasRouteAccess = (role, path) => {
 export const hasMinRole = (userRole, requiredRole) => {
   return (ROLE_LEVEL[userRole] || 0) >= (ROLE_LEVEL[requiredRole] || 0);
 };
+
 
