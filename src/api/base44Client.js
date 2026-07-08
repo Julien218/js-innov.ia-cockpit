@@ -20,6 +20,10 @@ const TABLE_MAP = {
   Commission: 'Commission',
   Demande:    'Demande',
   LogAction:  'LogAction',
+  Asset:            'Asset',
+  AssetHistory:     'AssetHistory',
+  SystemConfig:     'SystemConfig',
+  AutomationAudit:  'AutomationAudit',
 };
 
 async function agentReq(table, path = '', options = {}) {

@@ -49,6 +49,13 @@ const statusStyles = {
   urgente: "bg-red-500/10 text-red-600 border-red-500/20",
   moyenne: "bg-amber-500/10 text-amber-600 border-amber-500/20",
   basse: "bg-slate-500/10 text-slate-500 border-slate-500/20",
+  // Assets (Portfolio)
+  analyse_ia: "bg-purple-500/10 text-purple-600 border-purple-500/20",
+  en_attente_validation: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+  valide: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+  a_retravailler: "bg-orange-500/10 text-orange-600 border-orange-500/20",
+  publie: "bg-primary/10 text-primary border-primary/20",
+  archive: "bg-slate-500/10 text-slate-500 border-slate-500/20",
 };
 
 const statusLabels = {
@@ -64,6 +71,9 @@ const statusLabels = {
   ouverte: "Ouverte", en_traitement: "En traitement", resolue: "Résolue",
   disponible: "Disponible", indisponible: "Indisponible",
   haute: "Haute", urgente: "Urgente", moyenne: "Moyenne", basse: "Basse",
+  // Assets (Portfolio)
+  analyse_ia: "Analyse IA", en_attente_validation: "À valider", valide: "Validé",
+  a_retravailler: "À retravailler", publie: "Publié", archive: "Archivé",
 };
 
 export default function StatusBadge({ status }) {

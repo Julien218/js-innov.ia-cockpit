@@ -5,7 +5,7 @@ import {
   FileText, Receipt, Shield, ChevronLeft, ChevronRight,
   CheckSquare, MessageSquare, Package, Zap, ShieldCheck, Activity,
   Bot, Network, UserPlus, LogOut, Crown, Briefcase, User, Store, Settings,
-  Film, Clapperboard, Image, Calendar, Package2
+  Film, Clapperboard, Image, Calendar, Package2, GalleryHorizontalEnd, PlayCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -129,6 +129,14 @@ export default function Sidebar() {
         { label: "Exports Vidéo", icon: Package2, path: "/exports", minRole: "admin" },
         { label: "Calendrier", icon: Calendar, path: "/calendar", minRole: "collaborateur" },
         { label: "Campagne Dour", icon: Film, path: "/dour-campaign", minRole: "admin" },
+      ]
+    },
+    {
+      label: "Portfolio & Automatisations",
+      minRole: "admin",
+      items: [
+        { label: "Portfolio", icon: GalleryHorizontalEnd, path: "/portfolio", minRole: "admin" },
+        { label: "Automations", icon: PlayCircle, path: "/automations", minRole: "admin" },
       ]
     },
     {
