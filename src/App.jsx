@@ -41,6 +41,8 @@ import ExportedVideos from "@/pages/ExportedVideos";
 import Templates from "@/pages/Templates";
 import ProjectCalendar from "@/pages/ProjectCalendar";
 import Parametres from "@/pages/Parametres";
+import Portfolio from "@/pages/Portfolio";
+import Automations from "@/pages/Automations";
 
 const AppRoutes = () => {
   const { isAuthenticated, isLoadingAuth, authChecked } = useAuth();
@@ -110,6 +112,10 @@ const AppRoutes = () => {
           <Route path="/exported-videos" element={<ExportedVideos />} />
           <Route path="/templates" element={<Templates />} />
           <Route path="/calendar" element={<ProjectCalendar />} />
+
+          {/* Portfolio & Automatisations */}
+          <Route path="/portfolio" element={<Portfolio />} />
+          <Route path="/automations" element={<Automations />} />
 
           {/* Paramètres */}
           <Route path="/parametres" element={<Parametres />} />
