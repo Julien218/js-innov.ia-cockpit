@@ -4,7 +4,7 @@
  * sans dépendre d'une consigne donnée au modèle LLM.
  */
 import { supabaseAdmin } from './supabase';
-import type { AiActionLog, ActionStatus, RiskLevel } from './types';
+import type { RiskLevel } from './types';
 
 export interface LogRunOpts {
   cityId: string;

@@ -10,7 +10,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authenticate, assertCityAccess, authErrorResponse, AuthError } from '@/lib/auth';
+import { authenticate, assertCityAccess, authErrorResponse } from '@/lib/auth';
 import { checkRateLimits } from '@/lib/rate-limit';
 import { supabaseAdmin } from '@/lib/supabase';
 import { logRunStart } from '@/lib/action-logger';
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   });
 
   // 8. Stocke le message utilisateur
-  const { data: userMsg } = await supabaseAdmin.from('vc_messages').insert({
+  await supabaseAdmin.from('vc_messages').insert({
     conversation_id: conversationId, city_id: authCtx.cityId,
     user_id: authCtx.userId, role: 'user', content: body.message,
   }).select('id').single();
