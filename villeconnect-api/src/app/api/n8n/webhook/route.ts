@@ -33,7 +33,7 @@ const BodySchema = z.object({
   city_id:          z.string().uuid(),
   status:           z.enum(['completed', 'failed', 'running']),
   workflow:         z.string().optional(),
-  result:           z.record(z.unknown()).optional(),
+  result:           z.record(z.string(), z.unknown()).optional(),
   error_message:    z.string().optional(),
   entity_id:        z.string().uuid().optional(),
   entity_type:      z.string().optional(),
