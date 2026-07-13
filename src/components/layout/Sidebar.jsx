@@ -5,7 +5,8 @@ import {
   FileText, Receipt, Shield, ChevronLeft, ChevronRight,
   CheckSquare, MessageSquare, Package, Zap, ShieldCheck, Activity,
   Bot, Network, UserPlus, LogOut, Crown, Briefcase, User, Store, Settings,
-  Film, Clapperboard, Image, Calendar, Package2, GalleryHorizontalEnd, PlayCircle
+  Film, Clapperboard, Image, Calendar, Package2, GalleryHorizontalEnd, PlayCircle,
+  Mail
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -21,6 +22,27 @@ const useValidationsBadge = () => {
     staleTime: 30000,
   });
   return data.filter(v => v.statut === "en_attente").length;
+};
+
+const useEmailBadge = () => {
+  const [unread, setUnread] = React.useState(0);
+  const apiKey = import.meta.env.VITE_AGENT_API_KEY || '';
+  const apiBase = import.meta.env.VITE_COCKPIT_API_URL || '';
+  React.useEffect(() => {
+    if (!apiKey) return;
+    fetch(`${apiBase}/api/emails?limit=1`, { headers: { 'x-api-key': apiKey } })
+      .then(r => r.json())
+      .then(d => setUnread(d.unread || 0))
+      .catch(() => {});
+    const interval = setInterval(() => {
+      fetch(`${apiBase}/api/emails?limit=1`, { headers: { 'x-api-key': apiKey } })
+        .then(r => r.json())
+        .then(d => setUnread(d.unread || 0))
+        .catch(() => {});
+    }, 120000); // rafraîchir toutes les 2 min
+    return () => clearInterval(interval);
+  }, [apiKey, apiBase]);
+  return unread;
 };
 
 const useDemandeBadge = () => {
@@ -46,6 +68,7 @@ export default function Sidebar() {
   const { user, logout } = useAuth();
   const { role, isSuperAdmin, isAdmin, canAccess } = usePermissions();
   const validationCount = useValidationsBadge();
+  const emailCount = useEmailBadge();
   const demandeCount = useDemandeBadge();
 
   const colors = ROLE_COLORS[role] || ROLE_COLORS.client;
@@ -137,6 +160,13 @@ export default function Sidebar() {
       items: [
         { label: "Portfolio", icon: GalleryHorizontalEnd, path: "/portfolio", minRole: "admin" },
         { label: "Automations", icon: PlayCircle, path: "/automations", minRole: "admin" },
+      ]
+    },
+    {
+      label: "Communication",
+      minRole: "admin",
+      items: [
+        { label: "Emails", icon: Mail, path: "/emails", badge: emailCount, minRole: "admin" },
       ]
     },
     {
