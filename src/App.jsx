@@ -43,6 +43,7 @@ import ProjectCalendar from "@/pages/ProjectCalendar";
 import Parametres from "@/pages/Parametres";
 import Portfolio from "@/pages/Portfolio";
 import Automations from "@/pages/Automations";
+import Emails from "@/pages/Emails";
 
 const AppRoutes = () => {
   const { isAuthenticated, isLoadingAuth, authChecked } = useAuth();
@@ -116,6 +117,9 @@ const AppRoutes = () => {
           {/* Portfolio & Automatisations */}
           <Route path="/portfolio" element={<Portfolio />} />
           <Route path="/automations" element={<Automations />} />
+
+          {/* Emails */}
+          <Route path="/emails" element={<Emails />} />
 
           {/* Paramètres */}
           <Route path="/parametres" element={<Parametres />} />
