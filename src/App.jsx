@@ -29,6 +29,7 @@ import Validations from "@/pages/Validations";
 import Logs from "@/pages/Logs";
 import Agent from "@/pages/Agent";
 import AgentsIA from "@/pages/AgentsIA";
+import AgentGarage from "@/pages/AgentGarage";
 import Invitations from "@/pages/Invitations";
 
 // ── Studio Vidéo
@@ -57,51 +58,37 @@ const AppRoutes = () => {
 
   return (
     <Routes>
-      {/* ─── Routes publiques ─────────────────────────── */}
-      <Route path="/login" element={
-        isAuthenticated ? <Navigate to="/" replace /> : <Login />
-      } />
+      <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/register" element={<Register />} />
 
-      {/* ─── Routes protégées ─────────────────────────── */}
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Dashboard />} />
 
-          {/* CRM */}
           <Route path="/clients" element={<Clients />} />
           <Route path="/leads" element={<Leads />} />
 
-          {/* Opérations */}
           <Route path="/projets" element={<Projets />} />
           <Route path="/mes-projets" element={<Projets />} />
           <Route path="/taches" element={<Taches />} />
           <Route path="/demandes" element={<Demandes />} />
 
-          {/* Finance */}
           <Route path="/devis" element={<Devis />} />
           <Route path="/mes-devis" element={<Devis />} />
           <Route path="/factures" element={<Factures />} />
           <Route path="/mes-factures" element={<Factures />} />
           <Route path="/commissions" element={<Commissions />} />
 
-          {/* IA & Contrôle */}
           <Route path="/agent" element={<Agent />} />
           <Route path="/agents-ia" element={<AgentsIA />} />
+          <Route path="/agent-garage" element={<AgentGarage />} />
           <Route path="/validations" element={<Validations />} />
           <Route path="/logs" element={<Logs />} />
 
-          {/* Équipe */}
           <Route path="/invitations" element={<Invitations />} />
-
-          {/* VilleConnect */}
           <Route path="/commercants" element={<Commercants />} />
-
-          {/* Catalogue */}
           <Route path="/services" element={<Services />} />
 
-
-          {/* ── Studio Vidéo */}
           <Route path="/video-studio" element={<VideoStudio />} />
           <Route path="/video-studio/new" element={<VideoStudio />} />
           <Route path="/video-studio/:id" element={<VideoStudio />} />
@@ -113,16 +100,12 @@ const AppRoutes = () => {
           <Route path="/templates" element={<Templates />} />
           <Route path="/calendar" element={<ProjectCalendar />} />
 
-          {/* Portfolio & Automatisations */}
           <Route path="/portfolio" element={<Portfolio />} />
           <Route path="/automations" element={<Automations />} />
-
-          {/* Paramètres */}
           <Route path="/parametres" element={<Parametres />} />
         </Route>
       </Route>
 
-      {/* ─── 404 ──────────────────────────────────────── */}
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
