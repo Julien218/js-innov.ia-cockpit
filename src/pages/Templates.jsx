@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { VIDEO_TEMPLATES } from "@/data/videoTemplates";
 import { base44 } from "@/api/base44Client";
-import { Play, Clock, Layers, Music, ChevronRight, Check } from "lucide-react";
+import { Clock, Layers, Music, ChevronRight } from "lucide-react";
 
 const CATEGORIES = [
   { id: "all", label: "Tous" },

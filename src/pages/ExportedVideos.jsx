@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
-import { Download, Play, Trash2, Archive, Eye } from "lucide-react";
+import { Download, Play, Trash2, Eye } from "lucide-react";
 
 const FORMAT_LABELS = {
   webm: "WebM standard",

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { X, Download, Film, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { X, Download, Film, CheckCircle, AlertCircle } from "lucide-react";
 import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
 
 const FORMAT_PRESETS = {

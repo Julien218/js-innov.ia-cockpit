@@ -5,7 +5,7 @@ import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, XCircle, Pencil, Clock, Zap, AlertTriangle } from "lucide-react";
+import { CheckCircle2, XCircle, Pencil, Zap } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -99,6 +99,8 @@ export default function Validations() {
         subtitle={`${enAttente} en attente${urgentes > 0 ? ` · ${urgentes} urgentes` : ""}`}
         onAdd={() => setModalOpen(true)}
         addLabel="Nouvelle validation"
+        search=""
+        onSearch={() => {}}
         actions={
           <div className="flex gap-1 bg-muted rounded-lg p-0.5">
             {["en_attente", "approuve", "modifie", "rejete", "tous"].map(s => (

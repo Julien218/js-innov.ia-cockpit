@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { TRACK_COLORS, TRACK_ICONS } from "@/data/videoTemplates";
-import { Plus, Trash2, Eye, EyeOff, Scissors, ZoomIn, ZoomOut, GripVertical } from "lucide-react";
+import { Plus, Trash2, Eye, EyeOff, Scissors, ZoomIn, ZoomOut } from "lucide-react";
 
 const TRACK_TYPES = ["video", "text", "image", "audio", "effects"];
 const MIN_DURATION = 0.5;

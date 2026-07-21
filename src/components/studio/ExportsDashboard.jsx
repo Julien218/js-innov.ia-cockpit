@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Download, Eye, Trash2, FileVideo, Calendar, HardDrive, Play, Pause, Volume2, VolumeX, X, Search, ChevronDown, Loader2 } from "lucide-react";
+import { Download, Eye, FileVideo, Calendar, HardDrive, Search, ChevronDown, Loader2 } from "lucide-react";
 import VideoPlayer from "@/components/ExportsLibrary/VideoPlayer";
 
 export default function ExportsDashboard({ exports = [] }) {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Mail, RefreshCw, Eye, Paperclip, Search, ChevronRight, ArrowLeft, Inbox, Clock, User, Calendar } from "lucide-react";
+import { Mail, RefreshCw, Paperclip, Search, ArrowLeft, Inbox, User, Calendar } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 
 const API_BASE = import.meta.env.VITE_COCKPIT_API_URL || '';

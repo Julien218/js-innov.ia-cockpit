@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { X, Play, Pause, Volume2, VolumeX, Download, Maximize } from "lucide-react";
+import { X, Play, Pause, Volume2, VolumeX, Download } from "lucide-react";
 
 export default function VideoPlayer({ videoExport, onClose }) {
   const [playing, setPlaying] = useState(false);

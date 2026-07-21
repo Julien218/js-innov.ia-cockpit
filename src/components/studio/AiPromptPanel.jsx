@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Sparkles, Copy, Check, RefreshCw } from "lucide-react";
+import { Sparkles, Copy, Check } from "lucide-react";
 
 export default function AiPromptPanel({ prompt, loading, onGenerate, onUpdate }) {
   const [copied, setCopied] = useState(false);

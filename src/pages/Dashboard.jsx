@@ -12,7 +12,7 @@ import StatCard from "@/components/shared/StatCard";
 import StatusBadge from "@/components/shared/StatusBadge";
 import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip,
-  PieChart, Pie, Cell, LineChart, Line, CartesianGrid
+  PieChart, Pie, Cell, CartesianGrid
 } from "recharts";
 import { cn } from "@/lib/utils";
 

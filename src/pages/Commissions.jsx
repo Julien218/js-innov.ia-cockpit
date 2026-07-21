@@ -7,7 +7,6 @@ import StatusBadge from "@/components/shared/StatusBadge";
 import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
 import { Pencil, Trash2 } from "lucide-react";
-import { format } from "date-fns";
 
 const typeLabels = {
   auto: "Auto",

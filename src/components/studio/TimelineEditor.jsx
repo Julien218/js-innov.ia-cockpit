@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Trash2, GripVertical, ChevronUp, ChevronDown, Clock } from "lucide-react";
+import { Trash2, ChevronUp, ChevronDown, Clock } from "lucide-react";
 
 export default function TimelineEditor({ clips, onChange, transition, transitions, onGlobalTransition, currentClipIdx, onSelect }) {
   const move = (idx, dir) => {

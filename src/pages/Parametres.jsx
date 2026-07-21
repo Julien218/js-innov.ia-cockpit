@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Settings, Bot, Globe, Key, Palette, Bell, Database, Shield, ExternalLink, Plus, Trash2, Eye, EyeOff, Check } from "lucide-react";
+import { Settings, Bot, Globe, Key, Bell, Shield, ExternalLink, Plus, Trash2, Eye, EyeOff, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const TABS = [

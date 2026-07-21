@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Download, Play, Film, Loader2, CheckCircle, AlertCircle, X } from "lucide-react";
+import { Download, Play, Film, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 
 // ─── Palette ────────────────────────────────────────────────────────────────
 const C = {

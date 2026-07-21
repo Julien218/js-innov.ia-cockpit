@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Users, Target, FolderKanban,
   FileText, Receipt, Shield, ChevronLeft, ChevronRight,
-  CheckSquare, MessageSquare, Package, Zap, ShieldCheck, Activity,
+  CheckSquare, MessageSquare, Package, ShieldCheck, Activity,
   Bot, Network, UserPlus, LogOut, Crown, Briefcase, User, Store, Settings,
   Film, Clapperboard, Image, Calendar, Package2, GalleryHorizontalEnd, PlayCircle,
   Mail

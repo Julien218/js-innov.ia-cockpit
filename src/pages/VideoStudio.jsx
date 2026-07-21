@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
 import TimelineEditor from "../components/studio/TimelineEditor";
@@ -291,6 +291,7 @@ export default function VideoStudio() {
                     update("template_tracks", newTracks);
                   }}
                   currentTime={0}
+                  onSeek={() => {}}
                   duration={vp?.template_duration || 30}
                 />
               </div>
