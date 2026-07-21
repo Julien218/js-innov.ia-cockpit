@@ -12,9 +12,10 @@ WORKDIR /app
 # Copier dist et les fichiers nécessaires
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/package-lock.json ./package-lock.json
 COPY server.cjs ./server.cjs
-# Installer uniquement express en prod
-RUN npm install --omit=dev --legacy-peer-deps
+COPY server-email.cjs ./server-email.cjs
+# Installer toutes les dépendances prod (imap, mailparser, express)
+RUN npm ci --omit=dev --legacy-peer-deps
 EXPOSE 3000
 CMD ["node", "server.cjs"]
-
