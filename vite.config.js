@@ -14,4 +14,10 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
   },
+  server: {
+    allowedHosts: 'all',
+  },
+  preview: {
+    allowedHosts: 'all',
+  },
 })
