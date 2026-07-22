@@ -7,7 +7,6 @@ COPY . .
 RUN npm run build
 
 # ---- Serve : nginx SPA + node API email ----
-# On utilise deux services dans le même conteneur via un script supervisor
 FROM node:20-alpine
 WORKDIR /app
 
@@ -26,12 +25,19 @@ COPY server-email.cjs ./server-email.cjs
 # Installer les dépendances prod (imap, mailparser, express)
 RUN npm ci --omit=dev --legacy-peer-deps
 
-# Config nginx — SPA fallback + proxy /api vers Express :3001
-RUN mkdir -p /etc/nginx/http.d && cat > /etc/nginx/http.d/default.conf << 'EOF'
+# Config nginx — SPA fallback + proxy /api vers Express :3001 + headers sécurité
+RUN mkdir -p /etc/nginx/http.d && cat > /etc/nginx/http.d/default.conf << 'NGINXEOF'
 server {
     listen 3000;
     root /app/dist;
     index index.html;
+
+    # Headers de sécurité
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.railway.app https://app.base44.com https://api.base44.com wss://*.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 
     # Proxy les routes API vers Express
     location /api/ {
@@ -46,16 +52,10 @@ server {
         try_files $uri $uri/ /index.html;
     }
 }
-EOF
+NGINXEOF
 
 # Script de démarrage : lance Express (API) + nginx (SPA)
-RUN cat > /app/start.sh << 'EOF'
-#!/bin/sh
-# Lance Express sur :3001 (API emails uniquement)
-node /app/server.cjs &
-# Lance nginx sur :3000 (SPA + proxy API)
-nginx -g "daemon off;"
-EOF
+RUN printf '#!/bin/sh\nnode /app/server.cjs &\nnginx -g "daemon off;"\n' > /app/start.sh
 RUN chmod +x /app/start.sh
 
 EXPOSE 3000
