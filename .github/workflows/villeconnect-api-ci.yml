@@ -1,0 +1,83 @@
+name: VilleConnect API — CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+      - 'fix/**'
+    paths:
+      - 'villeconnect-api/**'
+      - 'migrations/**'
+      - '.github/workflows/villeconnect-api-ci.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'villeconnect-api/**'
+      - 'migrations/**'
+
+defaults:
+  run:
+    working-directory: villeconnect-api
+
+jobs:
+  ci:
+    name: Typecheck · Tests · Lint · Build
+    runs-on: ubuntu-latest
+
+    env:
+      # Variables factices validees pour le build — JAMAIS de secrets reels ici.
+      # La validation des vars reelles se fait au RUNTIME, pas a l'import des modules.
+      SUPABASE_URL: https://fakeid.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role.not-a-real-jwt.ci-only
+      SUPABASE_ANON_KEY: ci-placeholder-anon.not-a-real-jwt.ci-only
+      OPENAI_API_KEY: sk-proj-fakeopenaicikeyforcionly1234567890abcdef
+      N8N_WEBHOOK_SECRET: fake-n8n-secret-for-ci-only-not-a-real-secret
+      N8N_BASE_URL: https://n8n.ci.fake.local
+      COCKPIT_URL: https://cockpit.jsinnovia.com
+      ALLOWED_MOBILE_ORIGINS: https://app.ci.fake.local
+      # Indique explicitement que ce build est en mode CI (pas de secrets reels)
+      CI: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: villeconnect-api/package-lock.json
+
+      - name: Install dependencies (reproductible)
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+        # Continue meme si le lint echoue (non bloquant jusqu a configuration complete)
+        continue-on-error: false
+
+      - name: Tests
+        run: npm run test -- --forceExit --coverage
+        env:
+          # Les tests utilisent leurs propres mocks via jest.setup.ts
+          NODE_ENV: test
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: villeconnect-api/coverage/
+          retention-days: 7
+
+      - name: Build (vars factices validees)
+        run: npm run build
+        # Le build Next.js ne doit pas exiger de secrets reels.
+        # Si supabase.ts ou openai.ts validaient les vars a l'import, ce step echouerait.
+        # La validation au runtime est separee du build.
