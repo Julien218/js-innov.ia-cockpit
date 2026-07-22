@@ -6,7 +6,7 @@
 
 import { AGENT_URL, AGENT_KEY as AGENT_AUTH } from '@/config/agent';
 
-// TABLE_MAP — noms PascalCase = noms réels dans Supabase gfjpryakxzdzwnazlsfz
+// TABLE_MAP — noms PascalCase = noms réels dans Supabase rzvvwcwyaddzsaattwqt
 // Le backend data.js supporte aussi les alias legacy (clients_fr → Client)
 const TABLE_MAP = {
   Client:     'Client',

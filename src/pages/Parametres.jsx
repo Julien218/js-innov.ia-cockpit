@@ -177,7 +177,7 @@ const DANGEROUS_FRONTEND = ["SUPABASE_SERVICE_KEY","SUPABASE_SERVICE_ROLE_KEY","
 // Données initiales non-secrètes (URLs de référence publiques uniquement)
 const INITIAL_KEYS = [
   { id: 1, name: "Backend Agent URL",  service: "Railway Agent", variableName: "VITE_AGENT_URL",  type: "frontend public", environment: "production", maskedValue: "https://jsinnovia-agent-production.up.railway.app", status: "actif", notes: "URL publique du service Railway", createdAt: "2026-06-01", updatedAt: "2026-07-22" },
-  { id: 2, name: "Supabase Project URL",service: "Supabase",    variableName: "VITE_SUPABASE_URL",type: "frontend public", environment: "production", maskedValue: "https://gfjpryakxzdzwnazlsfz.supabase.co", status: "actif", notes: "Supabase actif — projet gfjpry", createdAt: "2026-06-01", updatedAt: "2026-07-22" },
+  { id: 2, name: "Supabase Project URL",service: "Supabase",    variableName: "VITE_SUPABASE_URL",type: "frontend public", environment: "production", maskedValue: "https://rzvvwcwyaddzsaattwqt.supabase.co", status: "actif", notes: "Supabase actif — projet rzvvwcwyaddzsaattwqt", createdAt: "2026-06-01", updatedAt: "2026-07-22" },
 ];
 
 const STATUS_COLORS = { actif: "bg-green-500/20 text-green-400 border-green-500/30", inactif: "bg-slate-600/30 text-slate-400 border-slate-600/30", "à vérifier": "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" };
