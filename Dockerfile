@@ -28,7 +28,7 @@ RUN npm ci --omit=dev --legacy-peer-deps
 # Config nginx — SPA fallback + proxy /api vers Express :3001 + headers sécurité
 RUN mkdir -p /etc/nginx/http.d && cat > /etc/nginx/http.d/default.conf << 'NGINXEOF'
 server {
-    listen 3000;
+    listen __PORT__;
     root /app/dist;
     index index.html;
 
@@ -54,8 +54,8 @@ server {
 }
 NGINXEOF
 
-# Script de démarrage : lance Express (API) + nginx (SPA)
-RUN printf '#!/bin/sh\nnode /app/server.cjs &\nnginx -g "daemon off;"\n' > /app/start.sh
+# Script de démarrage : substitue le port dynamique Railway, lance Express (API) + nginx (SPA)
+RUN printf '#!/bin/sh\nsed -i "s/__PORT__/${PORT:-3000}/" /etc/nginx/http.d/default.conf\nnode /app/server.cjs &\nnginx -g "daemon off;"\n' > /app/start.sh
 RUN chmod +x /app/start.sh
 
 EXPOSE 3000
