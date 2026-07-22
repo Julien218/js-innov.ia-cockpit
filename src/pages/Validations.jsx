@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/services/dataClient";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
@@ -60,19 +60,19 @@ export default function Validations() {
 
   const { data: validations = [], isLoading } = useQuery({
     queryKey: ["validations"],
-    queryFn: () => base44.entities.Validation.list("-created_at"),
+    queryFn: () => dataClient.entities.Validation.list("-created_at"),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Validation.update(id, data),
+    mutationFn: ({ id, data }) => dataClient.entities.Validation.update(id, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["validations"] }); closeModal(); },
   });
   const createMutation = useMutation({
-    mutationFn: (d) => base44.entities.Validation.create(d),
+    mutationFn: (d) => dataClient.entities.Validation.create(d),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["validations"] }); closeModal(); },
   });
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.Validation.delete(id),
+    mutationFn: (id) => dataClient.entities.Validation.delete(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["validations"] }),
   });
 

@@ -1,5 +1,8 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Taches.jsx — Phase 2 migrée vers dataClient
+// ─────────────────────────────────────────────────────────────────────────────
 import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/services/dataClient";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
 import DataTable from "@/components/shared/DataTable";
@@ -37,17 +40,17 @@ export default function Taches() {
 
   const { data: taches = [], isLoading } = useQuery({
     queryKey: ["Tache"],
-    queryFn: () => base44.entities.Tache.list("-created_at"),
+    queryFn: () => dataClient.entities.Tache.list("-created_at"),
   });
 
   const save = useMutation({
     mutationFn: (data) =>
-      editing ? base44.entities.Tache.update(editing.id, data) : base44.entities.Tache.create(data),
+      editing ? dataClient.entities.Tache.update(editing.id, data) : dataClient.entities.Tache.create(data),
     onSuccess: () => { qc.invalidateQueries(["Tache"]); setOpen(false); setEditing(null); },
   });
 
   const del = useMutation({
-    mutationFn: (id) => base44.entities.Tache.delete(id),
+    mutationFn: (id) => dataClient.entities.Tache.delete(id),
     onSuccess: () => qc.invalidateQueries(["Tache"]),
   });
 

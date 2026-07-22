@@ -1,5 +1,8 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Demandes.jsx — Phase 1 migrée vers dataClient
+// ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { dataClient } from "@/services/dataClient";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
 import DataTable from "@/components/shared/DataTable";
@@ -47,19 +50,19 @@ export default function Demandes() {
 
   const { data: demandes = [], isLoading } = useQuery({
     queryKey: ["demandes"],
-    queryFn: () => base44.entities.Demande.list("-created_at"),
+    queryFn: () => dataClient.entities.Demande.list("-created_at"),
   });
 
   const createMutation = useMutation({
-    mutationFn: (d) => base44.entities.Demande.create(d),
+    mutationFn: (d) => dataClient.entities.Demande.create(d),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["demandes"] }); closeModal(); },
   });
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Demande.update(id, data),
+    mutationFn: ({ id, data }) => dataClient.entities.Demande.update(id, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["demandes"] }); closeModal(); },
   });
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.Demande.delete(id),
+    mutationFn: (id) => dataClient.entities.Demande.delete(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["demandes"] }),
   });
 
