@@ -2,10 +2,8 @@ import React, { useState, useRef, useEffect } from "react";
 import { Bot, Send, Trash2, Zap, User, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { AGENT_URL, agentHeaders } from "@/config/agent";
 import { fr } from "date-fns/locale";
-
-const AGENT_URL = "https://jsinnovia-agent-production.up.railway.app";
-const AGENT_KEY = import.meta.env.VITE_AGENT_KEY || "julien-ai-secret-key-change-me"; // Fallback si var env absente
 
 const SESSION_ID = `julien-${Date.now()}`;
 
@@ -43,9 +41,9 @@ export default function AgentPage() {
     try {
       const res = await fetch(`${AGENT_URL}/chat`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-agent-key": AGENT_KEY,
+        headers: agentHeaders(),
+
+// Headers via config centralisée
         },
         body: JSON.stringify({ message: msg, session_id: SESSION_ID }),
       });

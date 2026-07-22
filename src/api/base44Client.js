@@ -4,8 +4,7 @@
 // Backend : jsinnovia-agent (Railway) → Supabase service_role (bypass RLS)
 // ============================================================
 
-const AGENT_URL = import.meta.env.VITE_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
-const AGENT_AUTH = import.meta.env.VITE_AGENT_AUTH || 'julien-ai-secret-key-change-me';
+import { AGENT_URL, AGENT_KEY as AGENT_AUTH } from '@/config/agent';
 
 // TABLE_MAP — noms PascalCase = noms réels dans Supabase gfjpryakxzdzwnazlsfz
 // Le backend data.js supporte aussi les alias legacy (clients_fr → Client)

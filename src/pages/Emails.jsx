@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Mail, RefreshCw, Paperclip, Search, ArrowLeft, Inbox, User, Calendar } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
+import { AGENT_URL, AGENT_KEY } from '@/config/agent';
 
-const API_BASE = import.meta.env.VITE_COCKPIT_API_URL || '';
-const API_KEY = import.meta.env.VITE_AGENT_API_KEY || '';
+const API_BASE = AGENT_URL;
+const API_KEY = AGENT_KEY;
 
 function timeAgo(dateStr) {
   if (!dateStr) return '';

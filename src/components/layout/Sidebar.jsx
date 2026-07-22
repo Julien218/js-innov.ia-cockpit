@@ -14,6 +14,7 @@ import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { usePermissions } from "@/lib/usePermissions";
 import { ROLE_LABELS, ROLE_COLORS } from "@/lib/roles";
+import { AGENT_URL, AGENT_KEY } from '@/config/agent';
 
 const useValidationsBadge = () => {
   const { data = [] } = useQuery({
@@ -26,16 +27,16 @@ const useValidationsBadge = () => {
 
 const useEmailBadge = () => {
   const [unread, setUnread] = React.useState(0);
-  const apiKey = import.meta.env.VITE_AGENT_API_KEY || '';
-  const apiBase = import.meta.env.VITE_COCKPIT_API_URL || '';
+  const apiKey = AGENT_KEY;
+  const apiBase = AGENT_URL;
   React.useEffect(() => {
     if (!apiKey) return;
-    fetch(`${apiBase}/api/emails?limit=1`, { headers: { 'x-api-key': apiKey } })
+    fetch(`${apiBase}/api/emails?limit=1`, { headers: { 'x-agent-key': apiKey } })
       .then(r => r.json())
       .then(d => setUnread(d.unread || 0))
       .catch(() => {});
     const interval = setInterval(() => {
-      fetch(`${apiBase}/api/emails?limit=1`, { headers: { 'x-api-key': apiKey } })
+      fetch(`${apiBase}/api/emails?limit=1`, { headers: { 'x-agent-key': apiKey } })
         .then(r => r.json())
         .then(d => setUnread(d.unread || 0))
         .catch(() => {});
