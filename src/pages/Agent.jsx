@@ -42,9 +42,6 @@ export default function AgentPage() {
       const res = await fetch(`${AGENT_URL}/chat`, {
         method: "POST",
         headers: agentHeaders(),
-
-// Headers via config centralisée
-        },
         body: JSON.stringify({ message: msg, session_id: SESSION_ID }),
       });
 
