@@ -12,7 +12,8 @@ app.use(express.json({ limit: '10mb' }));
 try {
   const emailRouter = require('./server-email.cjs');
   app.use('/api/emails', emailRouter);
-  console.log('✅ Route /api/emails activée (IMAP IONOS)');
+  console.log('✅ Route /api/emails activée (IMAP IONOS — multi-mailbox)');
+  console.log('   Mailboxes: jsinnovia, assurances');
 } catch (e) {
   console.warn('⚠️ Route emails indisponible:', e.message);
 }

@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Mail, RefreshCw, Paperclip, Search, ArrowLeft, Inbox, User, Calendar } from "lucide-react";
+import { Mail, RefreshCw, Paperclip, Search, ArrowLeft, Inbox, User, Calendar, Shield } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { AGENT_URL, AGENT_KEY } from '@/config/agent';
 
 const API_BASE = AGENT_URL;
 const API_KEY = AGENT_KEY;
+
+const MAILBOXES = [
+  { id: 'jsinnovia',   label: 'JS-Innov.IA',   email: 'info@jsinnovia.com',           icon: Mail,       color: '#D4AF37' },
+  { id: 'assurances',  label: 'Assurances Dour', email: 'julien.pagin@assurancesdour.be', icon: Shield,     color: '#06B6D4' },
+];
 
 function timeAgo(dateStr) {
   if (!dateStr) return '';
@@ -68,7 +73,6 @@ function EmailDetail({ email, onBack }) {
   
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
       <div className="px-6 py-4 border-b border-white/10 flex items-center gap-3">
         <button onClick={onBack} className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors md:hidden">
           <ArrowLeft className="w-4 h-4" />
@@ -94,35 +98,28 @@ function EmailDetail({ email, onBack }) {
         </div>
       </div>
 
-      {/* Corps */}
       <div className="flex-1 overflow-y-auto p-6">
         {email.html ? (
           <div
-            className="email-html-content text-sm text-gray-300 leading-relaxed"
-            style={{ maxWidth: '100%', overflowX: 'hidden' }}
+            className="prose prose-invert max-w-none text-sm text-gray-200"
             dangerouslySetInnerHTML={{ __html: email.html }}
           />
         ) : (
-          <pre className="text-sm text-gray-300 whitespace-pre-wrap font-sans leading-relaxed">
-            {email.text || '(email vide)'}
-          </pre>
+          <pre className="text-sm text-gray-300 whitespace-pre-wrap font-sans">{email.text}</pre>
         )}
 
-        {/* Pièces jointes */}
-        {email.attachments?.length > 0 && (
+        {email.attachments && email.attachments.length > 0 && (
           <div className="mt-6 pt-4 border-t border-white/10">
-            <p className="text-xs text-gray-500 mb-2 font-medium uppercase tracking-wide">
-              Pièces jointes ({email.attachments.length})
+            <p className="text-xs font-semibold text-gray-400 mb-2 flex items-center gap-1">
+              <Paperclip className="w-3 h-3" /> Pièces jointes ({email.attachments.length})
             </p>
-            <div className="flex flex-wrap gap-2">
-              {email.attachments.map((a, i) => (
-                <div key={i} className="flex items-center gap-2 bg-white/5 rounded-lg px-3 py-2 text-xs text-gray-300">
-                  <Paperclip className="w-3 h-3 text-[#D4AF37]" />
-                  <span>{a.filename || 'fichier'}</span>
-                  {a.size && <span className="text-gray-500">({Math.round(a.size/1024)} Ko)</span>}
-                </div>
-              ))}
-            </div>
+            {email.attachments.map((a, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs text-gray-400 py-1">
+                <Paperclip className="w-3 h-3" />
+                <span>{a.filename}</span>
+                <span className="text-gray-600">({Math.round((a.size || 0) / 1024)} KB)</span>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -132,186 +129,182 @@ function EmailDetail({ email, onBack }) {
 
 export default function Emails() {
   const { user } = useAuth();
+  const [activeMailbox, setActiveMailbox] = useState('jsinnovia');
   const [emails, setEmails] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [loadingDetail, setLoadingDetail] = useState(false);
-  const [selectedEmail, setSelectedEmail] = useState(null);
-  const [selectedDetail, setSelectedDetail] = useState(null);
-  const [search, setSearch] = useState('');
   const [error, setError] = useState(null);
+  const [selectedUid, setSelectedUid] = useState(null);
+  const [detail, setDetail] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [search, setSearch] = useState('');
 
   const fetchList = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/emails?limit=50`, {
-        headers: { 'x-api-key': API_KEY }
+      const res = await fetch(`${API_BASE}/api/emails?mailbox=${activeMailbox}&limit=50`, {
+        headers: { 'x-api-key': API_KEY },
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Erreur');
       setEmails(data.emails || []);
-      setTotal(data.total || 0);
-      setUnread(data.unread || 0);
-    } catch (e) {
-      setError(e.message);
+    } catch (err) {
+      setError(err.message);
+      setEmails([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeMailbox]);
 
-  const openEmail = useCallback(async (email) => {
-    setSelectedEmail(email);
+  const fetchDetail = useCallback(async (uid) => {
     setLoadingDetail(true);
-    setSelectedDetail(null);
     try {
-      const res = await fetch(`${API_BASE}/api/emails/${email.uid}`, {
-        headers: { 'x-api-key': API_KEY }
+      const res = await fetch(`${API_BASE}/api/emails/${uid}?mailbox=${activeMailbox}`, {
+        headers: { 'x-api-key': API_KEY },
       });
       const data = await res.json();
-      if (data.success) {
-        setSelectedDetail(data.email);
-        // Marquer comme lu localement
-        setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: true } : e));
-        setUnread(prev => Math.max(0, prev - (email.seen ? 0 : 1)));
-      }
-    } catch (e) {
-      console.error(e);
+      if (!data.success) throw new Error(data.error || 'Erreur');
+      setDetail(data.email);
+      // Marquer comme lu localement
+      setEmails(prev => prev.map(e => e.uid === uid ? { ...e, seen: true } : e));
+    } catch (err) {
+      setError(err.message);
     } finally {
       setLoadingDetail(false);
     }
-  }, []);
+  }, [activeMailbox]);
 
-  useEffect(() => { fetchList(); }, [fetchList]);
+  useEffect(() => {
+    fetchList();
+    setSelectedUid(null);
+    setDetail(null);
+  }, [fetchList]);
 
-  const filtered = emails.filter(e => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return e.subject?.toLowerCase().includes(q) ||
-           e.from?.toLowerCase().includes(q) ||
-           e.body?.toLowerCase().includes(q);
-  });
+  const selectedEmail = emails.find(e => e.uid === selectedUid);
+  const filtered = search
+    ? emails.filter(e =>
+        e.subject?.toLowerCase().includes(search.toLowerCase()) ||
+        e.from?.toLowerCase().includes(search.toLowerCase())
+      )
+    : emails;
 
   return (
-    <div className="flex h-full bg-[#0B0B0F] text-white overflow-hidden" style={{ minHeight: 'calc(100vh - 64px)' }}>
-
-      {/* ─── Liste emails ─────────────────────────────────────── */}
-      <div className={`flex flex-col border-r border-white/10 bg-[#13131A] ${selectedEmail ? 'hidden md:flex md:w-80 lg:w-96 flex-shrink-0' : 'w-full md:w-80 lg:w-96 flex-shrink-0'}`}>
-        
-        {/* Header liste */}
-        <div className="px-4 py-4 border-b border-white/10">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Inbox className="w-4 h-4 text-[#D4AF37]" />
-              <span className="text-sm font-semibold text-white">info@jsinnovia.com</span>
-              {unread > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-[#D4AF37] text-black text-[10px] font-bold">
-                  {unread}
-                </span>
-              )}
-            </div>
-            <button
-              onClick={fetchList}
-              disabled={loading}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-
-          {/* Barre de recherche */}
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
-            <input
-              type="text"
-              placeholder="Rechercher…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-xs bg-white/5 border border-white/10 rounded-lg text-gray-300 placeholder-gray-600 focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
-            />
-          </div>
-
-          {!loading && (
-            <p className="text-[10px] text-gray-600 mt-2">
-              {total} email{total > 1 ? 's' : ''} · {unread} non lu{unread > 1 ? 's' : ''}
-            </p>
-          )}
+    <div className="flex flex-col h-[calc(100vh-4rem)]">
+      {/* Header avec sélecteur de mailbox */}
+      <div className="px-6 py-4 border-b border-white/10 bg-[#0B0B0F]/50">
+        <div className="flex items-center justify-between mb-3">
+          <h1 className="text-lg font-semibold text-white flex items-center gap-2">
+            <Mail className="w-5 h-5 text-[#D4AF37]" />
+            Boîtes mail
+          </h1>
+          <button
+            onClick={fetchList}
+            disabled={loading}
+            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Actualiser
+          </button>
         </div>
 
-        {/* Liste */}
-        <div className="flex-1 overflow-y-auto">
-          {error && (
-            <div className="p-4 m-3 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400">
-              <p className="font-medium mb-1">Connexion IMAP impossible</p>
-              <p className="text-red-500">{error}</p>
-              <button onClick={fetchList} className="mt-2 text-red-300 hover:text-red-100 underline">
-                Réessayer
+        {/* Sélecteur de mailbox */}
+        <div className="flex gap-2">
+          {MAILBOXES.map((mb) => {
+            const Icon = mb.icon;
+            const isActive = activeMailbox === mb.id;
+            return (
+              <button
+                key={mb.id}
+                onClick={() => setActiveMailbox(mb.id)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  isActive
+                    ? 'bg-white/10 text-white border'
+                    : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+                }`}
+                style={isActive ? { borderColor: mb.color + '40' } : {}}
+              >
+                <Icon className="w-3.5 h-3.5" style={{ color: mb.color }} />
+                {mb.label}
               </button>
-            </div>
-          )}
+            );
+          })}
+        </div>
+      </div>
 
+      {/* Contenu */}
+      {error && (
+        <div className="px-6 py-4">
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-sm text-red-400">
+            <p className="font-semibold mb-1">Erreur de connexion</p>
+            <p className="text-xs">{error}</p>
+            <p className="text-xs text-gray-500 mt-2">
+              Vérifiez que la variable EMAIL_PASSWORD{activeMailbox === 'assurances' ? '_ASSURANCES' : ''} est configurée sur Railway.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 flex overflow-hidden">
+        {/* Liste */}
+        <div className="w-full md:w-96 border-r border-white/10 flex flex-col">
           {loading ? (
-            <div className="flex flex-col gap-0">
-              {[...Array(8)].map((_, i) => (
-                <div key={i} className="px-4 py-3 border-b border-white/5 animate-pulse">
-                  <div className="flex justify-between mb-2">
-                    <div className="h-3 bg-white/10 rounded w-32" />
-                    <div className="h-3 bg-white/5 rounded w-12" />
-                  </div>
-                  <div className="h-2.5 bg-white/5 rounded w-full" />
-                </div>
-              ))}
+            <div className="flex items-center justify-center py-12 text-gray-500 text-sm">
+              <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+              Chargement...
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-40 text-gray-600">
-              <Mail className="w-8 h-8 mb-2 opacity-30" />
-              <p className="text-xs">{search ? 'Aucun résultat' : 'Aucun email'}</p>
+            <div className="flex flex-col items-center justify-center py-12 text-gray-500 text-sm">
+              <Inbox className="w-8 h-8 mb-2 opacity-30" />
+              Aucun email
             </div>
           ) : (
-            filtered.map(email => (
-              <EmailListItem
-                key={email.uid}
-                email={email}
-                isSelected={selectedEmail?.uid === email.uid}
-                onClick={() => openEmail(email)}
-              />
-            ))
+            <>
+              <div className="px-3 py-2 border-b border-white/5">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Rechercher..."
+                    className="w-full bg-white/5 text-xs text-white placeholder-gray-600 rounded-lg pl-8 pr-3 py-1.5 border border-white/5 focus:border-[#D4AF37]/30 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {filtered.map(email => (
+                  <EmailListItem
+                    key={email.uid}
+                    email={email}
+                    isSelected={selectedUid === email.uid}
+                    onClick={() => {
+                      setSelectedUid(email.uid);
+                      fetchDetail(email.uid);
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Détail */}
+        <div className="hidden md:flex flex-1 flex-col">
+          {loadingDetail ? (
+            <div className="flex items-center justify-center py-12 text-gray-500 text-sm">
+              <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+              Chargement de l'email...
+            </div>
+          ) : detail ? (
+            <EmailDetail email={detail} onBack={() => setSelectedUid(null)} />
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-gray-500 text-sm">
+              <Mail className="w-12 h-12 mb-3 opacity-20" />
+              Sélectionnez un email pour le lire
+            </div>
           )}
         </div>
       </div>
-
-      {/* ─── Détail email ─────────────────────────────────────── */}
-      <div className={`flex-1 flex flex-col bg-[#0F0F1A] overflow-hidden ${!selectedEmail ? 'hidden md:flex' : 'flex'}`}>
-        {!selectedEmail ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-700">
-            <Mail className="w-16 h-16 mb-4 opacity-20" />
-            <p className="text-sm">Sélectionne un email</p>
-          </div>
-        ) : loadingDetail ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="w-6 h-6 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin" />
-          </div>
-        ) : selectedDetail ? (
-          <EmailDetail
-            email={selectedDetail}
-            onBack={() => { setSelectedEmail(null); setSelectedDetail(null); }}
-          />
-        ) : (
-          <div className="flex items-center justify-center h-full text-gray-600 text-sm">
-            Impossible de charger cet email.
-          </div>
-        )}
-      </div>
-
-      {/* Style global pour le HTML des emails */}
-      <style>{`
-        .email-html-content img { max-width: 100%; height: auto; }
-        .email-html-content a { color: #D4AF37; }
-        .email-html-content table { width: 100%; border-collapse: collapse; }
-        .email-html-content td, .email-html-content th { padding: 4px 8px; }
-        .email-html-content p { margin-bottom: 8px; }
-      `}</style>
     </div>
   );
 }

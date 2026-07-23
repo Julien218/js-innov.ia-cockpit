@@ -1,20 +1,53 @@
 /**
  * Email IMAP Proxy — JS-Innov.IA Cockpit
- * Route Express pour lire les emails IMAP de info@jsinnovia.com
+ * Route Express multi-mailboxes IMAP IONOS
+ *
+ * Mailboxes supportées :
+ *   - jsinnovia   → info@jsinnovia.com       (EMAIL_PASSWORD)
+ *   - assurances  → julien.pagin@assurancesdour.be (EMAIL_PASSWORD_ASSURANCES)
+ *
+ * Routes :
+ *   GET /api/emails?mailbox=jsinnovia&limit=30&offset=0
+ *   GET /api/emails/:uid?mailbox=assurances
+ *   GET /api/emails/mailboxes/list  → liste des mailboxes disponibles
  */
 const Imap = require('imap');
 const { simpleParser } = require('mailparser');
 const express = require('express');
 const router = express.Router();
 
-const IMAP_CONFIG = {
-  user: 'info@jsinnovia.com',
-  password: process.env.EMAIL_PASSWORD || '',
-  host: 'imap.ionos.fr',
-  port: 993,
-  tls: true,
-  tlsOptions: { servername: 'imap.ionos.fr', rejectUnauthorized: false },
+// ── Configuration multi-mailboxes ────────────────────────────
+const MAILBOXES = {
+  jsinnovia: {
+    label: 'JS-Innov.IA',
+    email: 'info@jsinnovia.com',
+    password: process.env.EMAIL_PASSWORD || '',
+    host: 'imap.ionos.fr',
+    port: 993,
+    tls: true,
+    smtpHost: 'smtp.ionos.fr',
+    smtpPort: 465,
+    color: '#D4AF37',
+  },
+  assurances: {
+    label: 'Assurances Dour',
+    email: 'julien.pagin@assurancesdour.be',
+    password: process.env.EMAIL_PASSWORD_ASSURANCES || '',
+    host: 'imap.ionos.fr',
+    port: 993,
+    tls: true,
+    smtpHost: 'smtp.ionos.fr',
+    smtpPort: 465,
+    color: '#06B6D4',
+  },
 };
+
+function getMailboxConfig(mailbox) {
+  const cfg = MAILBOXES[mailbox || 'jsinnovia'];
+  if (!cfg) return null;
+  if (!cfg.password) return null;
+  return cfg;
+}
 
 function requireApiKey(req, res, next) {
   const key = req.headers['x-api-key'] || req.query.key;
@@ -24,9 +57,31 @@ function requireApiKey(req, res, next) {
   next();
 }
 
-function fetchEmails({ folder = 'INBOX', limit = 30, offset = 0 } = {}) {
+// ── Liste des mailboxes disponibles ──────────────────────────
+router.get('/mailboxes/list', requireApiKey, (req, res) => {
+  const list = Object.entries(MAILBOXES).map(([key, cfg]) => ({
+    id: key,
+    label: cfg.label,
+    email: cfg.email,
+    configured: !!cfg.password,
+  }));
+  res.json({ success: true, mailboxes: list });
+});
+
+// ── Fetch emails (liste) ─────────────────────────────────────
+function fetchEmails(mailboxKey, { folder = 'INBOX', limit = 30, offset = 0 } = {}) {
   return new Promise((resolve, reject) => {
-    const imap = new Imap(IMAP_CONFIG);
+    const cfg = getMailboxConfig(mailboxKey);
+    if (!cfg) return reject(new Error(`Mailbox "${mailboxKey}" non configurée ou introuvable`));
+
+    const imap = new Imap({
+      user: cfg.email,
+      password: cfg.password,
+      host: cfg.host,
+      port: cfg.port,
+      tls: true,
+      tlsOptions: { servername: cfg.host, rejectUnauthorized: false },
+    });
     const emails = [];
 
     imap.once('ready', () => {
@@ -79,28 +134,30 @@ function fetchEmails({ folder = 'INBOX', limit = 30, offset = 0 } = {}) {
                   if (d) try { date = new Date(d); } catch(_) {}
                 }
               });
-              let body = e.rawBody
-                .replace(/Content-Type:.*?(\r?\n)+/gi, '')
-                .replace(/Content-Transfer-Encoding:.*?\r?\n/gi, '')
-                .replace(/--[^\r\n]+(\r?\n)?/g, '')
-                .replace(/=\r?\n/g, '')
-                .replace(/=([0-9A-F]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
-                .replace(/<[^>]+>/g, ' ')
-                .trim();
-              if (body.length > 300) body = body.substring(0, 300) + '…';
-
+              // Détecter pièces jointes via struct
+              let hasAttachment = false;
+              if (e.struct) {
+                const checkStruct = (s) => {
+                  if (!Array.isArray(s)) return;
+                  for (const part of s) {
+                    if (part.disposition === 'attachment' ||
+                        (part.params && part.params.name)) {
+                      hasAttachment = true;
+                      break;
+                    }
+                    if (part.childNodes) checkStruct(part.childNodes);
+                  }
+                };
+                checkStruct(e.struct);
+              }
               return {
                 uid: e.uid,
-                from,
-                to,
-                subject: subject || '(sans objet)',
-                date: date ? new Date(date).toISOString() : null,
+                from, subject, to, date,
                 seen: e.seen,
-                body,
-                hasAttachment: !!(e.struct && JSON.stringify(e.struct).includes('application')),
+                hasAttachment,
+                body: e.rawBody ? e.rawBody.substring(0, 200).replace(/\s+/g, ' ').trim() : '',
               };
-            });
-            parsed.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+            }).sort((a, b) => new Date(b.date) - new Date(a.date));
             resolve({ emails: parsed, total, unread: unreadCount });
           });
         });
@@ -112,9 +169,20 @@ function fetchEmails({ folder = 'INBOX', limit = 30, offset = 0 } = {}) {
   });
 }
 
-function fetchEmailById(uid) {
+// ── Fetch email par UID ──────────────────────────────────────
+function fetchEmailById(mailboxKey, uid) {
   return new Promise((resolve, reject) => {
-    const imap = new Imap(IMAP_CONFIG);
+    const cfg = getMailboxConfig(mailboxKey);
+    if (!cfg) return reject(new Error(`Mailbox "${mailboxKey}" non configurée`));
+
+    const imap = new Imap({
+      user: cfg.email,
+      password: cfg.password,
+      host: cfg.host,
+      port: cfg.port,
+      tls: true,
+      tlsOptions: { servername: cfg.host, rejectUnauthorized: false },
+    });
     imap.once('ready', () => {
       imap.openBox('INBOX', false, (err) => {
         if (err) { imap.end(); return reject(err); }
@@ -156,12 +224,14 @@ function fetchEmailById(uid) {
   });
 }
 
+// ── Routes ──────────────────────────────────────────────────
 router.get('/', requireApiKey, async (req, res) => {
   try {
+    const mailbox = req.query.mailbox || 'jsinnovia';
     const limit = Math.min(parseInt(req.query.limit) || 30, 100);
     const offset = parseInt(req.query.offset) || 0;
-    const result = await fetchEmails({ limit, offset });
-    res.json({ success: true, ...result });
+    const result = await fetchEmails(mailbox, { limit, offset });
+    res.json({ success: true, mailbox, ...result });
   } catch (err) {
     console.error('[IMAP] Liste:', err.message);
     res.status(500).json({ success: false, error: err.message });
@@ -170,10 +240,11 @@ router.get('/', requireApiKey, async (req, res) => {
 
 router.get('/:uid', requireApiKey, async (req, res) => {
   try {
+    const mailbox = req.query.mailbox || 'jsinnovia';
     const uid = parseInt(req.params.uid);
     if (!uid) return res.status(400).json({ error: 'UID invalide' });
-    const email = await fetchEmailById(uid);
-    res.json({ success: true, email });
+    const email = await fetchEmailById(mailbox, uid);
+    res.json({ success: true, mailbox, email });
   } catch (err) {
     console.error('[IMAP] Lecture:', err.message);
     res.status(500).json({ success: false, error: err.message });
