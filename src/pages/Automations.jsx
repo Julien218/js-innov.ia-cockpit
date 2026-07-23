@@ -33,13 +33,13 @@ export default function Automations() {
   const [confirmToggle, setConfirmToggle] = useState(false);
   const [confirmReactivateRequest, setConfirmReactivateRequest] = useState(false);
 
-  const { data: configRows = [], isLoading: loadingConfig } = useQuery({
+  const { data: configRows = [], isLoading: loadingConfig, isError: errorConfig, refetch: refetchConfig } = useQuery({
     queryKey: ["system-config"],
     queryFn: () => base44.entities.SystemConfig.list(),
     staleTime: 10000,
   });
 
-  const { data: audit = [], isLoading: loadingAudit } = useQuery({
+  const { data: audit = [], isLoading: loadingAudit, isError: errorAudit, refetch: refetchAudit } = useQuery({
     queryKey: ["automation-audit"],
     queryFn: () => base44.entities.AutomationAudit.list("-created_at"),
     staleTime: 10000,
@@ -143,7 +143,13 @@ export default function Automations() {
                   {autoPublishEnabled ? "ACTIVÉ — publication automatique possible" : "DÉSACTIVÉ — aucune publication automatique, quel que soit le résultat des checks"}
                 </span>
               </div>
-              {!configRows.length && (
+              {errorConfig && (
+                <div className="flex items-center gap-2 bg-red-500/10 rounded-lg p-3 text-xs text-red-600 mb-2">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>Erreur de connexion à SystemConfig. <button onClick={refetchConfig} className="underline ml-1">Réessayer</button></span>
+                </div>
+              )}
+              {!errorConfig && !configRows.length && (
                 <p className="text-xs text-amber-600 bg-amber-500/10 rounded-lg p-2">⚠️ Table SystemConfig introuvable ou vide — le SQL de production doit être exécuté dans Supabase.</p>
               )}
               <p className="text-xs text-muted-foreground">

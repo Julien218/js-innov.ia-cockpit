@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
+import ErrorState from "@/components/shared/ErrorState";
 import DataTable from "@/components/shared/DataTable";
 import StatusBadge from "@/components/shared/StatusBadge";
 import FormModal from "@/components/shared/FormModal";
@@ -45,7 +46,7 @@ export default function Demandes() {
   const [filterStatut, setFilterStatut] = useState("tous");
   const queryClient = useQueryClient();
 
-  const { data: demandes = [], isLoading } = useQuery({
+  const { data: demandes = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["demandes"],
     queryFn: () => base44.entities.Demande.list("-created_at"),
   });
@@ -104,6 +105,18 @@ export default function Demandes() {
       </div>
     )},
   ];
+
+  if (isError) {
+    return (
+      <div className="p-6">
+        <ErrorState
+          title="Impossible de charger les demandes"
+          message={error?.message || "Erreur de connexion au serveur backend."}
+          onRetry={refetch}
+        />
+      </div>
+    );
+  }
 
   return (
     <div>

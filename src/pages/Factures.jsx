@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
+import ErrorState from "@/components/shared/ErrorState";
 import DataTable from "@/components/shared/DataTable";
 import StatusBadge from "@/components/shared/StatusBadge";
 import FormModal from "@/components/shared/FormModal";
@@ -34,7 +35,7 @@ export default function Factures() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
 
-  const { data: factures = [], isLoading } = useQuery({
+  const { data: factures = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["Facture"],
     queryFn: () => base44.entities.Facture.list("-created_at"),
   });
@@ -61,6 +62,18 @@ export default function Factures() {
       </Button>
     </div>
   );
+
+  if (isError) {
+    return (
+      <div className="p-6">
+        <ErrorState
+          title="Impossible de charger les données"
+          message={error?.message || "Erreur de connexion au serveur backend. Vérifiez que le service jsinnovia-agent est disponible."}
+          onRetry={refetch}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
