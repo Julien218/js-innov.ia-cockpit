@@ -8,7 +8,7 @@ const API_KEY = AGENT_KEY;
 
 const MAILBOXES = [
   { id: 'jsinnovia',   label: 'JS-Innov.IA',   email: 'info@jsinnovia.com',           icon: Mail,       color: '#D4AF37' },
-  { id: 'assurances',  label: 'Assurances Dour', email: 'julien.pagin@assurancesdour.be', icon: Shield,     color: '#06B6D4' },
+  { id: 'assurances',  label: 'Assurances Dour', email: 'info@assurances-dour.be', icon: Shield,     color: '#06B6D4' },
 ];
 
 function timeAgo(dateStr) {

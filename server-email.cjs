@@ -4,7 +4,7 @@
  *
  * Mailboxes supportées :
  *   - jsinnovia   → info@jsinnovia.com       (EMAIL_PASSWORD)
- *   - assurances  → julien.pagin@assurancesdour.be (EMAIL_PASSWORD_ASSURANCES)
+ *   - assurances  → info@assurances-dour.be (EMAIL_PASSWORD_ASSURANCES)
  *
  * Routes :
  *   GET /api/emails?mailbox=jsinnovia&limit=30&offset=0
@@ -31,7 +31,7 @@ const MAILBOXES = {
   },
   assurances: {
     label: 'Assurances Dour',
-    email: 'julien.pagin@assurancesdour.be',
+    email: 'info@assurances-dour.be',
     password: process.env.EMAIL_PASSWORD_ASSURANCES || '',
     host: 'imap.ionos.fr',
     port: 993,
