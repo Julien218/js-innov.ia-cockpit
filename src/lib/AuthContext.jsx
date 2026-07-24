@@ -2,12 +2,10 @@ import React, { createContext, useState, useContext, useEffect, useCallback } fr
 import { createClient } from '@supabase/supabase-js';
 
 // ─── SUPABASE CLIENT ──────────────────────────────────────────────────────────
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
-const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
-
-if (!SUPABASE_URL || !SUPABASE_ANON) {
-  console.error("[AuthContext] VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY manquant — authentification non fonctionnelle");
-}
+// Anon key = clé PUBLIQUE (pas un secret) — safe en frontend
+// Service Role Key n'est JAMAIS incluse ici
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://rzvvwcwyaddzsaattwqt.supabase.co";
+const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6dnZ3Y3d5YWRkenNhYXR0d3F0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMTU4NjAsImV4cCI6MjA5NjY5MTg2MH0.VOEFK5BG_dxCnijcz2RexqMg1yDGoXdw58-2Ud_a7hM";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
