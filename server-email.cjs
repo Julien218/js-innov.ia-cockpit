@@ -57,7 +57,7 @@ const MAILBOXES = {
 };
 
 function getMailboxConfig(mailbox) {
-  const cfg = MAILBOXES[mailbox || 'jsinnovia'];
+  const cfg = MAILBOXES[mailbox || 'assurances'];
   if (!cfg) return null;
   if (!cfg.password) return null;
   return cfg;
@@ -289,7 +289,7 @@ async function sendEmail(mailboxKey, { to, subject, text, html, cc, bcc, replyTo
 // ── Routes ──────────────────────────────────────────────────
 router.get('/', requireApiKey, async (req, res) => {
   try {
-    const mailbox = req.query.mailbox || 'jsinnovia';
+    const mailbox = req.query.mailbox || 'assurances';
     const limit = Math.min(parseInt(req.query.limit) || 30, 100);
     const offset = parseInt(req.query.offset) || 0;
     const result = await fetchEmails(mailbox, { limit, offset });
@@ -302,7 +302,7 @@ router.get('/', requireApiKey, async (req, res) => {
 
 router.get('/:uid', requireApiKey, async (req, res) => {
   try {
-    const mailbox = req.query.mailbox || 'jsinnovia';
+    const mailbox = req.query.mailbox || 'assurances';
     const uid = parseInt(req.params.uid);
     if (!uid) return res.status(400).json({ error: 'UID invalide' });
     const email = await fetchEmailById(mailbox, uid);

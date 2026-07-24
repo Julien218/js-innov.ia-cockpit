@@ -28,7 +28,7 @@ const TABLE_MAP = {
   AssetHistory:     'AssetHistory',
   SystemConfig:     'SystemConfig',
   AutomationAudit:  'AutomationAudit',
-  Validation:     'Validation',
+  Validation:     'validations', // table réelle dans Supabase (pas PascalCase)
 };
 
 async function agentReq(table, path = '', options = {}) {

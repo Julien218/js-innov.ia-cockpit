@@ -46,6 +46,9 @@ import Automations from "@/pages/Automations";
 import Emails from "@/pages/Emails";
 import AppErrorBoundary from "@/components/shared/AppErrorBoundary";
 
+// Wrapper per-route — isole les crashes par page au lieu de tout casser
+const PageBoundary = ({ children }) => <AppErrorBoundary>{children}</AppErrorBoundary>;
+
 const AppRoutes = () => {
   const { isAuthenticated, isLoadingAuth, authChecked } = useAuth();
 
@@ -68,36 +71,36 @@ const AppRoutes = () => {
       {/* ─── Routes protégées ─────────────────────────── */}
       <Route element={<ProtectedRoute />}>
         <Route element={<AppErrorBoundary><AppLayout /></AppErrorBoundary>}>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<PageBoundary><Dashboard /></PageBoundary>} />
 
           {/* CRM */}
-          <Route path="/clients" element={<Clients />} />
-          <Route path="/leads" element={<Leads />} />
+          <Route path="/clients" element={<PageBoundary><Clients /></PageBoundary>} />
+          <Route path="/leads" element={<PageBoundary><Leads /></PageBoundary>} />
 
           {/* Opérations */}
-          <Route path="/projets" element={<Projets />} />
-          <Route path="/mes-projets" element={<Projets />} />
-          <Route path="/taches" element={<Taches />} />
-          <Route path="/demandes" element={<Demandes />} />
+          <Route path="/projets" element={<PageBoundary><Projets /></PageBoundary>} />
+          <Route path="/mes-projets" element={<PageBoundary><Projets /></PageBoundary>} />
+          <Route path="/taches" element={<PageBoundary><Taches /></PageBoundary>} />
+          <Route path="/demandes" element={<PageBoundary><Demandes /></PageBoundary>} />
 
           {/* Finance */}
-          <Route path="/devis" element={<Devis />} />
-          <Route path="/mes-devis" element={<Devis />} />
-          <Route path="/factures" element={<Factures />} />
-          <Route path="/mes-factures" element={<Factures />} />
-          <Route path="/commissions" element={<Commissions />} />
+          <Route path="/devis" element={<PageBoundary><Devis /></PageBoundary>} />
+          <Route path="/mes-devis" element={<PageBoundary><Devis /></PageBoundary>} />
+          <Route path="/factures" element={<PageBoundary><Factures /></PageBoundary>} />
+          <Route path="/mes-factures" element={<PageBoundary><Factures /></PageBoundary>} />
+          <Route path="/commissions" element={<PageBoundary><Commissions /></PageBoundary>} />
 
           {/* IA & Contrôle */}
-          <Route path="/agent" element={<Agent />} />
-          <Route path="/agents-ia" element={<AgentsIA />} />
-          <Route path="/validations" element={<Validations />} />
-          <Route path="/logs" element={<Logs />} />
+          <Route path="/agent" element={<PageBoundary><Agent /></PageBoundary>} />
+          <Route path="/agents-ia" element={<PageBoundary><AgentsIA /></PageBoundary>} />
+          <Route path="/validations" element={<PageBoundary><Validations /></PageBoundary>} />
+          <Route path="/logs" element={<PageBoundary><Logs /></PageBoundary>} />
 
           {/* Équipe */}
-          <Route path="/invitations" element={<Invitations />} />
+          <Route path="/invitations" element={<PageBoundary><Invitations /></PageBoundary>} />
 
           {/* VilleConnect */}
-          <Route path="/commercants" element={<Commercants />} />
+          <Route path="/commercants" element={<PageBoundary><Commercants /></PageBoundary>} />
 
           {/* Catalogue */}
           <Route path="/services" element={<Services />} />
@@ -116,15 +119,15 @@ const AppRoutes = () => {
           <Route path="/calendar" element={<ProjectCalendar />} />
 
           {/* Portfolio & Automatisations */}
-          <Route path="/portfolio" element={<Portfolio />} />
-          <Route path="/automations" element={<Automations />} />
+          <Route path="/portfolio" element={<PageBoundary><Portfolio /></PageBoundary>} />
+          <Route path="/automations" element={<PageBoundary><Automations /></PageBoundary>} />
 
           {/* Emails */}
-          <Route path="/emails" element={<Emails />} />
+          <Route path="/emails" element={<PageBoundary><Emails /></PageBoundary>} />
           <Route path="/amails" element={<Navigate to="/emails" replace />} />
 
           {/* Paramètres */}
-          <Route path="/parametres" element={<Parametres />} />
+          <Route path="/parametres" element={<PageBoundary><Parametres /></PageBoundary>} />
         </Route>
       </Route>
 

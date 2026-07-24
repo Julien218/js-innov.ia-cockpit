@@ -56,7 +56,7 @@ export default function Dashboard() {
     return acc;
   }, []);
 
-  const recentLeads = [...leads].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5);
+  const recentLeads = [...leads].sort((a, b) => new Date(b.created_at || b.created_date || 0) - new Date(a.created_at || a.created_date || 0)).slice(0, 5);
   const tachesUrgentes = taches.filter(t => (t.priorite === "urgente" || t.priorite === "haute") && t.statut !== "terminee").slice(0, 4);
   const heure = new Date().getHours();
   const salut = heure < 12 ? "Bonjour" : heure < 18 ? "Bon après-midi" : "Bonsoir";

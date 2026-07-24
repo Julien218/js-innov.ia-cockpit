@@ -106,7 +106,7 @@ export default function Logs() {
                   )}
                   {log.effectue_par && <span className="text-xs text-muted-foreground hidden sm:block">{log.effectue_par}</span>}
                   <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    {format(new Date(log.created_date), "dd/MM HH:mm", { locale: fr })}
+                    {format(new Date(log.created_date || log.created_at || new Date()), "dd/MM HH:mm", { locale: fr })}
                   </span>
                 </div>
               </div>

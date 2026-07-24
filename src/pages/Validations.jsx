@@ -166,7 +166,7 @@ export default function Validations() {
                     {v.priorite && v.priorite !== "normale" && <StatusBadge status={v.priorite} />}
                     <StatusBadge status={v.statut} />
                     <span className="text-xs text-muted-foreground ml-auto">
-                      {format(new Date(v.created_date), "dd MMM à HH:mm", { locale: fr })}
+                      {format(new Date(v.created_date || v.created_at), "dd MMM à HH:mm", { locale: fr })}
                     </span>
                   </div>
                   <h3 className="font-semibold text-sm text-foreground mb-1" style={{fontFamily: "'Space Grotesk', sans-serif"}}>{v.titre}</h3>
