@@ -77,9 +77,9 @@ export default function Factures() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Factures" subtitle={`${factures.length} facture(s)`}
+      <PageHeader title="Factures" subtitle={`${Array.isArray(factures) ? factures.length : 0} facture(s)`}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouvelle facture</Button>} />
-      <DataTable columns={columns} data={factures} loading={isLoading} actions={actions} />
+      <DataTable columns={columns} data={Array.isArray(factures) ? factures : []} loading={isLoading} actions={actions} />
       <FormModal open={open} onClose={() => { setOpen(false); setEditing(null); }}
         title={editing ? "Modifier la facture" : "Nouvelle facture"}
         fields={formFields} initialData={editing}

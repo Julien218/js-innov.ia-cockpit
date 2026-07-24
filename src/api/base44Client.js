@@ -12,7 +12,6 @@ if (!AGENT_AUTH) {
 }
 
 // TABLE_MAP — noms PascalCase = noms réels dans Supabase (via jsinnovia-agent proxy)
-// Le backend data.js supporte aussi les alias legacy (clients_fr → Client)
 const TABLE_MAP = {
   Client:     'Client',
   Lead:       'Lead',
@@ -28,8 +27,16 @@ const TABLE_MAP = {
   AssetHistory:     'AssetHistory',
   SystemConfig:     'SystemConfig',
   AutomationAudit:  'AutomationAudit',
-  Validation:     'validations', // table réelle dans Supabase (pas PascalCase)
+  Validation:     'validations',
 };
+
+// Normalize any API response to an array — never return undefined/null/object
+function toArray(result) {
+  if (Array.isArray(result)) return result;
+  if (result && Array.isArray(result.data)) return result.data;
+  if (result && Array.isArray(result.items)) return result.items;
+  return [];
+}
 
 async function agentReq(table, path = '', options = {}) {
   const url = `${AGENT_URL}/data/${table}${path}`;
@@ -57,7 +64,8 @@ function makeEntity(tableName) {
       const params = sort
         ? `?sort=${sort.startsWith('-') ? sort.slice(1) : sort}&order=${sort.startsWith('-') ? 'desc' : 'asc'}`
         : '';
-      return await agentReq(tableName, params);
+      const result = await agentReq(tableName, params);
+      return toArray(result);
     },
     get: async (id) => {
       return await agentReq(tableName, `/${id}`);
@@ -86,7 +94,8 @@ function makeEntity(tableName) {
         const desc = sort.startsWith('-');
         parts.push(`sort=${desc ? sort.slice(1) : sort}&order=${desc ? 'desc' : 'asc'}`);
       }
-      return await agentReq(tableName, `?${parts.join('&')}`);
+      const result = await agentReq(tableName, `?${parts.join('&')}`);
+      return toArray(result);
     },
   };
 }

@@ -79,9 +79,9 @@ export default function Clients() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Clients" subtitle={`${clients.length} client(s)`}
+      <PageHeader title="Clients" subtitle={`${Array.isArray(clients) ? clients.length : 0} client(s)`}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouveau client</Button>} />
-      <DataTable columns={columns} data={clients} loading={isLoading} actions={actions} />
+      <DataTable columns={columns} data={Array.isArray(clients) ? clients : []} loading={isLoading} actions={actions} />
       <FormModal open={open} onClose={() => { setOpen(false); setEditing(null); }}
         title={editing ? "Modifier le client" : "Nouveau client"}
         fields={formFields} initialData={editing}

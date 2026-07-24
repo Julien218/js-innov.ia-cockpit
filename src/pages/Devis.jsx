@@ -79,9 +79,9 @@ export default function Devis() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Devis" subtitle={`${devis.length} devis`}
+      <PageHeader title="Devis" subtitle={`${Array.isArray(devis) ? devis.length : 0} devis`}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouveau devis</Button>} />
-      <DataTable columns={columns} data={devis} loading={isLoading} actions={actions} />
+      <DataTable columns={columns} data={Array.isArray(devis) ? devis : []} loading={isLoading} actions={actions} />
       <FormModal open={open} onClose={() => { setOpen(false); setEditing(null); }}
         title={editing ? "Modifier le devis" : "Nouveau devis"}
         fields={formFields} initialData={editing}

@@ -78,9 +78,9 @@ export default function Taches() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Tâches" subtitle={`${taches.length} tâche(s)`}
+      <PageHeader title="Tâches" subtitle={`${Array.isArray(taches) ? taches.length : 0} tâche(s)`}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouvelle tâche</Button>} />
-      <DataTable columns={columns} data={taches} loading={isLoading} actions={actions} />
+      <DataTable columns={columns} data={Array.isArray(taches) ? taches : []} loading={isLoading} actions={actions} />
       <FormModal open={open} onClose={() => { setOpen(false); setEditing(null); }}
         title={editing ? "Modifier la tâche" : "Nouvelle tâche"}
         fields={formFields} initialData={editing}

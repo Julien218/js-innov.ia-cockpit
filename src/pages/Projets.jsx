@@ -76,9 +76,9 @@ export default function Projets() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Projets" subtitle={`${projets.length} projet(s)`}
+      <PageHeader title="Projets" subtitle={`${Array.isArray(projets) ? projets.length : 0} projet(s)`}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouveau projet</Button>} />
-      <DataTable columns={columns} data={projets} loading={isLoading} actions={actions} />
+      <DataTable columns={columns} data={Array.isArray(projets) ? projets : []} loading={isLoading} actions={actions} />
       <FormModal open={open} onClose={() => { setOpen(false); setEditing(null); }}
         title={editing ? "Modifier le projet" : "Nouveau projet"}
         fields={formFields} initialData={editing}

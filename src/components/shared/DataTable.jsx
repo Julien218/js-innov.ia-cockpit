@@ -84,9 +84,16 @@ const allColumns = (Array.isArray(columns) ? columns : []).length > 0
                 >
                   {allColumns.map((col) => {
                     if (col.key === "__actions") {
+                      let actionsContent;
+                      try {
+                        actionsContent = actions(row);
+                      } catch (e) {
+                        console.error('[DataTable] actions error', e);
+                        actionsContent = "—";
+                      }
                       return (
                         <TableCell key={col.key} className="text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          {actions(row)}
+                          {actionsContent}
                         </TableCell>
                       );
                     }

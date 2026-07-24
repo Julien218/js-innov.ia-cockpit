@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -18,19 +18,61 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+// Compatible avec les pages qui passent:
+//   fields={formFields}   → chaque field a .name (ou .key)
+//   initialData={editing} → données pré-remplies
+//   onSubmit={(data) => save.mutate(data)}
+//   loading={save.isPending}
+//
+// ET l'ancien pattern:
+//   data={data} onChange={setData} onSubmit={onSubmit} isSubmitting={loading}
+
 export default function FormModal({
   open,
   onClose,
   title,
-  fields,
-  data,
-  onChange,
+  fields = [],
+  // Pattern 1: pages passent initialData + onSubmit
+  initialData,
   onSubmit,
+  loading,
+  // Pattern 2: ancien pattern data + onChange + isSubmitting
+  data: controlledData,
+  onChange,
   isSubmitting,
 }) {
+  // State local si pas de controlled data
+  const [localData, setLocalData] = useState({});
+
+  // Réinitialiser quand le modal s'ouvre ou que initialData change
+  useEffect(() => {
+    if (open) {
+      setLocalData(initialData || controlledData || {});
+    }
+  }, [open, initialData, controlledData]);
+
+  const currentData = controlledData || localData;
+  const submitting = isSubmitting ?? loading ?? false;
+
   const handleChange = (key, value) => {
-    onChange({ ...data, [key]: value });
+    const newData = { ...currentData, [key]: value };
+    if (onChange) {
+      onChange(newData);
+    } else {
+      setLocalData(newData);
+    }
   };
+
+  const handleSubmit = (e) => {
+    e?.preventDefault?.();
+    if (onSubmit) {
+      // Pattern 1: onSubmit reçoit les données directement
+      onSubmit(currentData);
+    }
+  };
+
+  // Supporter field.name ET field.key
+  const safeFields = Array.isArray(fields) ? fields : [];
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -38,61 +80,63 @@ export default function FormModal({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            onSubmit();
-          }}
-          className="space-y-4 py-2"
-        >
-          {fields.map((field) => (
-            <div key={field.key} className="space-y-1.5">
-              <Label className="text-xs font-medium">{field.label}</Label>
-              {field.type === "select" ? (
-                <Select
-                  value={data[field.key] || ""}
-                  onValueChange={(v) => handleChange(field.key, v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={`Sélectionner ${field.label.toLowerCase()}`} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {field.options.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : field.type === "textarea" ? (
-                <Textarea
-                  value={data[field.key] || ""}
-                  onChange={(e) => handleChange(field.key, e.target.value)}
-                  placeholder={field.placeholder}
-                  className="h-20"
-                />
-              ) : (
-                <Input
-                  type={field.type || "text"}
-                  value={data[field.key] || ""}
-                  onChange={(e) =>
-                    handleChange(
-                      field.key,
-                      field.type === "number" ? parseFloat(e.target.value) || "" : e.target.value
-                    )
-                  }
-                  placeholder={field.placeholder}
-                  required={field.required}
-                />
-              )}
-            </div>
-          ))}
+        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+          {safeFields.map((field, idx) => {
+            const fieldKey = field.name || field.key || `field_${idx}`;
+            return (
+              <div key={fieldKey} className="space-y-1.5">
+                <Label className="text-xs font-medium">{field.label}</Label>
+                {field.type === "select" ? (
+                  <Select
+                    value={currentData?.[fieldKey] || ""}
+                    onValueChange={(v) => handleChange(fieldKey, v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={`Sélectionner ${field.label?.toLowerCase() || ""}`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(field.options || []).map((opt) => {
+                        // Supporter ["val1","val2"] et [{value, label}]
+                        const optVal = typeof opt === "string" ? opt : opt.value;
+                        const optLabel = typeof opt === "string" ? opt : opt.label;
+                        return (
+                          <SelectItem key={optVal} value={optVal}>
+                            {optLabel}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                ) : field.type === "textarea" ? (
+                  <Textarea
+                    value={currentData?.[fieldKey] || ""}
+                    onChange={(e) => handleChange(fieldKey, e.target.value)}
+                    placeholder={field.placeholder || ""}
+                    className="h-20"
+                  />
+                ) : (
+                  <Input
+                    type={field.type || "text"}
+                    value={currentData?.[fieldKey] || ""}
+                    onChange={(e) =>
+                      handleChange(
+                        fieldKey,
+                        field.type === "number" ? parseFloat(e.target.value) || "" : e.target.value
+                      )
+                    }
+                    placeholder={field.placeholder || ""}
+                    required={field.required}
+                  />
+                )}
+              </div>
+            );
+          })}
           <DialogFooter className="pt-4">
             <Button type="button" variant="outline" onClick={onClose}>
               Annuler
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Enregistrement..." : "Enregistrer"}
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Enregistrement..." : "Enregistrer"}
             </Button>
           </DialogFooter>
         </form>
