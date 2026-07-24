@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Mail, RefreshCw, Paperclip, Search, ArrowLeft, Inbox, User, Calendar, Shield } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
-import { AGENT_URL, AGENT_KEY } from '@/config/agent';
+import { AGENT_KEY } from '@/config/agent';
 
-const API_BASE = AGENT_URL;
+// L'API email est servie par le cockpit lui-même (nginx → Express:3001)
+// Pas par jsinnovia-agent — URL relative pour rester sur le même domaine
+const API_BASE = '';
 const API_KEY = AGENT_KEY;
 
 const MAILBOXES = [
