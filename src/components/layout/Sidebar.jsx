@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Users, Target, FolderKanban,
-  FileText, Receipt, Shield, ChevronLeft, ChevronRight,
+  FileText, Receipt, Shield, ChevronLeft, ChevronRight, X,
   CheckSquare, MessageSquare, Package, ShieldCheck, Activity,
   Bot, Network, UserPlus, LogOut, Crown, Briefcase, User, Store, Settings,
   Film, Clapperboard, Image, Calendar, Package2, GalleryHorizontalEnd, PlayCircle,
@@ -40,7 +40,7 @@ const useEmailBadge = () => {
         .then(r => r.json())
         .then(d => setUnread(d.unread || 0))
         .catch(() => {});
-    }, 120000); // rafraîchir toutes les 2 min
+    }, 120000);
     return () => clearInterval(interval);
   }, [apiKey, apiBase]);
   return unread;
@@ -62,7 +62,105 @@ const ROLE_ICONS = {
   client: User,
 };
 
-export default function Sidebar() {
+const allNavGroups = [
+  {
+    label: "Vue générale",
+    items: [
+      { label: "Tableau de bord", icon: LayoutDashboard, path: "/" },
+    ]
+  },
+  {
+    label: "CRM",
+    minRole: "collaborateur",
+    items: [
+      { label: "Clients", icon: Users, path: "/clients", minRole: "collaborateur" },
+      { label: "Leads", icon: Target, path: "/leads", minRole: "collaborateur" },
+    ]
+  },
+  {
+    label: "Opérations",
+    items: [
+      { label: "Projets", icon: FolderKanban, path: "/projets" },
+      { label: "Tâches", icon: CheckSquare, path: "/taches", minRole: "collaborateur" },
+      { label: "Demandes", icon: MessageSquare, path: "/demandes", badge: useDemandeBadge },
+    ]
+  },
+  {
+    label: "Finance",
+    minRole: "admin",
+    items: [
+      { label: "Devis", icon: FileText, path: "/devis" },
+      { label: "Factures", icon: Receipt, path: "/factures" },
+      { label: "Commissions", icon: Shield, path: "/commissions", minRole: "admin" },
+    ]
+  },
+  {
+    label: "IA & Contrôle",
+    items: [
+      { label: "Julien AI", icon: Bot, path: "/agent", minRole: "collaborateur" },
+      { label: "Agents IA", icon: Network, path: "/agents-ia" },
+      { label: "Validations", icon: ShieldCheck, path: "/validations", badge: useValidationsBadge, minRole: "admin" },
+      { label: "Journal", icon: Activity, path: "/logs", minRole: "superadmin" },
+    ]
+  },
+  {
+    label: "Équipe",
+    minRole: "admin",
+    items: [
+      { label: "Invitations", icon: UserPlus, path: "/invitations", minRole: "admin" },
+    ]
+  },
+  {
+    label: "VilleConnect",
+    minRole: "collaborateur",
+    items: [
+      { label: "Commerçants", icon: Store, path: "/commercants", minRole: "collaborateur" },
+    ]
+  },
+  {
+    label: "Catalogue",
+    minRole: "admin",
+    items: [
+      { label: "Services", icon: Package, path: "/services", minRole: "admin" },
+    ]
+  },
+  {
+    label: "Studio Vidéo",
+    minRole: "admin",
+    items: [
+      { label: "Video Studio", icon: Clapperboard, path: "/video-studio", minRole: "admin" },
+      { label: "IA Vidéo Report", icon: Film, path: "/ai-video", minRole: "admin" },
+      { label: "Générateur Miniatures", icon: Image, path: "/thumbnail", minRole: "admin" },
+      { label: "Exports Vidéo", icon: Package2, path: "/exports", minRole: "admin" },
+      { label: "Calendrier", icon: Calendar, path: "/calendar", minRole: "collaborateur" },
+      { label: "Campagne Dour", icon: Film, path: "/dour-campaign", minRole: "admin" },
+    ]
+  },
+  {
+    label: "Portfolio & Automatisations",
+    minRole: "admin",
+    items: [
+      { label: "Portfolio", icon: GalleryHorizontalEnd, path: "/portfolio", minRole: "admin" },
+      { label: "Automations", icon: PlayCircle, path: "/automations", minRole: "admin" },
+    ]
+  },
+  {
+    label: "Communication",
+    minRole: "admin",
+    items: [
+      { label: "Emails", icon: Mail, path: "/emails", badge: useEmailBadge, minRole: "admin" },
+    ]
+  },
+  {
+    label: "Système",
+    minRole: "admin",
+    items: [
+      { label: "Paramètres", icon: Settings, path: "/parametres", minRole: "admin" },
+    ]
+  }
+];
+
+export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -80,214 +178,169 @@ export default function Sidebar() {
     navigate("/login");
   };
 
-  // Définition de TOUTES les routes avec leur rôle minimum requis
-  const allNavGroups = [
-    {
-      label: "Vue générale",
-      items: [
-        { label: "Tableau de bord", icon: LayoutDashboard, path: "/" },
-      ]
-    },
-    {
-      label: "CRM",
-      minRole: "collaborateur",
-      items: [
-        { label: "Clients", icon: Users, path: "/clients", minRole: "collaborateur" },
-        { label: "Leads", icon: Target, path: "/leads", minRole: "collaborateur" },
-      ]
-    },
-    {
-      label: "Opérations",
-      items: [
-        { label: "Projets", icon: FolderKanban, path: role === "client" ? "/mes-projets" : "/projets" },
-        { label: "Tâches", icon: CheckSquare, path: "/taches", minRole: "collaborateur" },
-        { label: "Demandes", icon: MessageSquare, path: "/demandes", badge: demandeCount },
-      ]
-    },
-    {
-      label: "Finance",
-      minRole: "admin",
-      items: [
-        { label: "Devis", icon: FileText, path: role === "client" ? "/mes-devis" : "/devis" },
-        { label: "Factures", icon: Receipt, path: role === "client" ? "/mes-factures" : "/factures" },
-        { label: "Commissions", icon: Shield, path: "/commissions", minRole: "admin" },
-      ]
-    },
-    {
-      label: "IA & Contrôle",
-      items: [
-        { label: "Julien AI", icon: Bot, path: "/agent", minRole: "collaborateur" },
-        { label: "Agents IA", icon: Network, path: "/agents-ia" },
-        { label: "Validations", icon: ShieldCheck, path: "/validations", badge: validationCount, minRole: "admin" },
-        { label: "Journal", icon: Activity, path: "/logs", minRole: "superadmin" },
-      ]
-    },
-    {
-      label: "Équipe",
-      minRole: "admin",
-      items: [
-        { label: "Invitations", icon: UserPlus, path: "/invitations", minRole: "admin" },
-      ]
-    },
-    {
-      label: "VilleConnect",
-      minRole: "collaborateur",
-      items: [
-        { label: "Commerçants", icon: Store, path: "/commercants", minRole: "collaborateur" },
-      ]
-    },
-    {
-      label: "Catalogue",
-      minRole: "admin",
-      items: [
-        { label: "Services", icon: Package, path: "/services", minRole: "admin" },
-      ]
-    },
-    {
-      label: "Studio Vidéo",
-      minRole: "admin",
-      items: [
-        { label: "Video Studio", icon: Clapperboard, path: "/video-studio", minRole: "admin" },
-        { label: "IA Vidéo Report", icon: Film, path: "/ai-video", minRole: "admin" },
-        { label: "Générateur Miniatures", icon: Image, path: "/thumbnail", minRole: "admin" },
-        { label: "Exports Vidéo", icon: Package2, path: "/exports", minRole: "admin" },
-        { label: "Calendrier", icon: Calendar, path: "/calendar", minRole: "collaborateur" },
-        { label: "Campagne Dour", icon: Film, path: "/dour-campaign", minRole: "admin" },
-      ]
-    },
-    {
-      label: "Portfolio & Automatisations",
-      minRole: "admin",
-      items: [
-        { label: "Portfolio", icon: GalleryHorizontalEnd, path: "/portfolio", minRole: "admin" },
-        { label: "Automations", icon: PlayCircle, path: "/automations", minRole: "admin" },
-      ]
-    },
-    {
-      label: "Communication",
-      minRole: "admin",
-      items: [
-        { label: "Emails", icon: Mail, path: "/emails", badge: emailCount, minRole: "admin" },
-      ]
-    },
-    {
-      label: "Système",
-      minRole: "admin",
-      items: [
-        { label: "Paramètres", icon: Settings, path: "/parametres", minRole: "admin" },
-      ]
+  // Helper pour gérer le path selon le rôle (client a des routes /mes-*)
+  const getPath = (item) => {
+    if (role === "client") {
+      if (item.path === "/projets") return "/mes-projets";
+      if (item.path === "/devis") return "/mes-devis";
+      if (item.path === "/factures") return "/mes-factures";
     }
-  ];
+    return item.path;
+  };
 
-  // Filtrer les groupes et items selon les permissions
+  const badgeValues = { validations: validationCount, emails: emailCount, demandes: demandeCount };
+
   const navGroups = allNavGroups
     .map(group => ({
       ...group,
-      items: group.items.filter(item => canAccess(item.path))
+      items: group.items.filter(item => canAccess(getPath(item)))
     }))
     .filter(group => group.items.length > 0);
 
-  return (
-    <aside className={cn(
-      "relative flex flex-col h-screen bg-white border-r border-border transition-all duration-300 ease-in-out z-30",
-      collapsed ? "w-[68px]" : "w-[240px]"
-    )}>
-      {/* Logo */}
-      <div className={cn("flex items-center gap-3 px-4 py-4 border-b border-border", collapsed && "justify-center px-2")}>
-        <div className="flex-shrink-0 w-9 h-9 rounded-xl overflow-hidden shadow-lg">
-          <img src="/logo.png" alt="JS-Innov.IA" className="w-full h-full object-cover" />
-        </div>
-        {!collapsed && (
-          <div className="overflow-hidden">
-            <p className="text-sm font-bold text-foreground leading-tight" style={{fontFamily: "'Space Grotesk', sans-serif"}}>JS-Innov.IA</p>
-            <p className="text-[10px] text-muted-foreground font-medium tracking-wide">COCKPIT</p>
-          </div>
-        )}
-      </div>
+  // Navigation handler — ferme le menu mobile après clic
+  const handleNavClick = () => {
+    if (mobileOpen && onCloseMobile) onCloseMobile();
+  };
 
-      {/* Badge rôle */}
-      {!collapsed && (
-        <div className="mx-3 mt-3 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5"
-          style={{ backgroundColor: colors.badge + "15" }}>
-          <RoleIcon className="w-3 h-3 flex-shrink-0" style={{ color: colors.badge }} />
-          <span className="text-[10px] font-semibold" style={{ color: colors.badge }}>
-            {ROLE_LABELS[role]}
-          </span>
-        </div>
+  return (
+    <>
+      {/* === Overlay mobile === */}
+      {mobileOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/50 z-40 animate-in fade-in duration-200"
+          onClick={onCloseMobile}
+        />
       )}
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
-        {navGroups.map((group) => (
-          <div key={group.label} className="mb-3">
-            {!collapsed && (
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-3 mb-1.5">
-                {group.label}
-              </p>
-            )}
-            {group.items.map((item) => {
-              const active = location.pathname === item.path;
-              return (
-                <Link key={item.path} to={item.path}
-                  title={collapsed ? item.label : undefined}
-                  className={cn(
-                    "sidebar-item mb-0.5 relative",
-                    collapsed ? "justify-center px-0 py-2.5" : "",
-                    active
-                      ? "bg-primary text-white shadow-lg shadow-primary/25"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  )}>
-                  <item.icon className={cn("flex-shrink-0", collapsed ? "w-5 h-5" : "w-4 h-4")} />
-                  {!collapsed && <span className="flex-1">{item.label}</span>}
-                  {item.badge > 0 && (
-                    <span className={cn(
-                      "flex-shrink-0 text-[10px] font-bold rounded-full flex items-center justify-center",
-                      collapsed ? "absolute top-1 right-1 w-4 h-4" : "w-5 h-5",
-                      active ? "bg-white/20 text-white" : "bg-primary text-white"
-                    )}>
-                      {item.badge}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
-      </nav>
-
-      {/* Footer utilisateur */}
-      <div className="border-t border-border">
-        {!collapsed ? (
-          <div className="p-3">
-            <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg bg-muted/50">
-              <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 shadow ring-2"
-                style={{ ringColor: colors.badge }}>
-                <img src="/logo.png" alt={user?.full_name} className="w-full h-full object-cover" />
-              </div>
-              <div className="overflow-hidden flex-1">
-                <p className="text-xs font-semibold text-foreground truncate">{user?.full_name || "Utilisateur"}</p>
-                <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
-              </div>
-              <button onClick={handleLogout} title="Déconnexion"
-                className="p-1 rounded hover:bg-red-50 hover:text-red-500 text-muted-foreground transition-colors">
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button onClick={handleLogout}
-            className="w-full p-3 flex justify-center hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"
-            title="Déconnexion">
-            <LogOut className="w-5 h-5" />
-          </button>
+      {/* === Sidebar === */}
+      <aside
+        className={cn(
+          "relative flex flex-col h-screen bg-white border-r border-border transition-all duration-300 ease-in-out",
+          // Desktop
+          "md:relative md:translate-x-0 md:z-30",
+          collapsed ? "md:w-[68px]" : "md:w-[240px]",
+          // Mobile
+          "fixed md:static z-50 w-[260px] shrink-0",
+          mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
-      </div>
+      >
+        {/* Logo + close (mobile) */}
+        <div className={cn(
+          "flex items-center gap-3 px-4 py-4 border-b border-border",
+          collapsed && "md:justify-center md:px-2"
+        )}>
+          <div className="flex-shrink-0 w-9 h-9 rounded-xl overflow-hidden shadow-lg">
+            <img src="/logo.png" alt="JS-Innov.IA" className="w-full h-full object-cover" />
+          </div>
+          {!collapsed && (
+            <div className="overflow-hidden flex-1">
+              <p className="text-sm font-bold text-foreground leading-tight" style={{fontFamily: "'Space Grotesk', sans-serif"}}>JS-Innov.IA</p>
+              <p className="text-[10px] text-muted-foreground font-medium tracking-wide">COCKPIT</p>
+            </div>
+          )}
+          {/* Close button — mobile only */}
+          <button
+            onClick={onCloseMobile}
+            className="md:hidden p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
+            aria-label="Fermer le menu"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
-      {/* Toggle */}
-      <button onClick={() => setCollapsed(!collapsed)}
-        className="absolute -right-3 top-20 w-6 h-6 bg-white border border-border rounded-full flex items-center justify-center shadow-md hover:bg-primary hover:text-white hover:border-primary transition-all duration-200 z-10">
-        {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
-      </button>
-    </aside>
+        {/* Badge rôle */}
+        {!collapsed && (
+          <div className="mx-3 mt-3 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5"
+            style={{ backgroundColor: colors.badge + "15" }}>
+            <RoleIcon className="w-3 h-3 flex-shrink-0" style={{ color: colors.badge }} />
+            <span className="text-[10px] font-semibold" style={{ color: colors.badge }}>
+              {ROLE_LABELS[role]}
+            </span>
+          </div>
+        )}
+
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
+          {navGroups.map((group) => (
+            <div key={group.label} className="mb-3">
+              {!collapsed && (
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-3 mb-1.5">
+                  {group.label}
+                </p>
+              )}
+              {group.items.map((item) => {
+                const itemPath = getPath(item);
+                const active = location.pathname === itemPath ||
+                  (itemPath !== "/" && location.pathname.startsWith(itemPath));
+                const badge = item.badge ? badgeValues[item.badge] || 0 : 0;
+                return (
+                  <Link
+                    key={itemPath}
+                    to={itemPath}
+                    onClick={handleNavClick}
+                    title={collapsed ? item.label : undefined}
+                    className={cn(
+                      "sidebar-item mb-0.5 relative min-h-[44px]",
+                      collapsed ? "md:justify-center md:px-0 md:py-2.5" : "",
+                      active
+                        ? "bg-primary text-white shadow-lg shadow-primary/25"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    )}
+                  >
+                    <item.icon className={cn("flex-shrink-0", collapsed ? "md:w-5 md:h-5" : "w-4 h-4")} />
+                    {!collapsed && <span className="flex-1">{item.label}</span>}
+                    {badge > 0 && (
+                      <span className={cn(
+                        "flex-shrink-0 text-[10px] font-bold rounded-full flex items-center justify-center",
+                        collapsed ? "md:absolute md:top-1 md:right-1 w-4 h-4" : "w-5 h-5",
+                        active ? "bg-white/20 text-white" : "bg-primary text-white"
+                      )}>
+                        {badge}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+
+        {/* Footer utilisateur */}
+        <div className="border-t border-border">
+          {!collapsed ? (
+            <div className="p-3">
+              <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg bg-muted/50">
+                <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 shadow ring-2"
+                  style={{ ringColor: colors.badge }}>
+                  <img src="/logo.png" alt={user?.full_name} className="w-full h-full object-cover" />
+                </div>
+                <div className="overflow-hidden flex-1">
+                  <p className="text-xs font-semibold text-foreground truncate">{user?.full_name || "Utilisateur"}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
+                </div>
+                <button onClick={handleLogout} title="Déconnexion"
+                  className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-red-50 hover:text-red-500 text-muted-foreground transition-colors">
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={handleLogout}
+              className="w-full p-3 min-h-[44px] flex justify-center hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"
+              title="Déconnexion">
+              <LogOut className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+
+        {/* Toggle collapse — desktop only */}
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="hidden md:flex absolute -right-3 top-20 w-6 h-6 bg-white border border-border rounded-full items-center justify-center shadow-md hover:bg-primary hover:text-white hover:border-primary transition-all duration-200 z-10"
+        >
+          {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
+        </button>
+      </aside>
+    </>
   );
 }

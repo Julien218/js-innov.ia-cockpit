@@ -77,45 +77,45 @@ export default function AgentPage() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)]">
+    <div className="flex flex-col h-[calc(100vh-3.5rem-env(safe-area-inset-top))] sm:h-[calc(100vh-4rem)] max-h-[calc(100vh-3.5rem)]">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center shadow-lg shadow-primary/30">
-            <Bot className="w-5 h-5 text-white" />
+      <div className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 border-b border-border bg-card shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl gradient-primary flex items-center justify-center shadow-lg shadow-primary/30 flex-shrink-0">
+            <Bot className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
           </div>
-          <div>
-            <h1 className="text-base font-bold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+          <div className="min-w-0">
+            <h1 className="text-sm sm:text-base font-bold truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               Julien AI <span className="text-primary">Agent</span>
             </h1>
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[11px] text-muted-foreground">En ligne · GPT-4o</span>
+              <span className="text-[10px] sm:text-[11px] text-muted-foreground">En ligne · GPT-4o</span>
             </div>
           </div>
         </div>
         <button
           onClick={clearChat}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors px-3 py-1.5 rounded-lg hover:bg-destructive/10"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors px-3 py-1.5 rounded-lg hover:bg-destructive/10 shrink-0 min-h-[36px]"
         >
           <Trash2 className="w-3.5 h-3.5" />
-          Effacer
+          <span className="hidden sm:inline">Effacer</span>
         </button>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 space-y-4 overscroll-contain">
         {messages.map((msg, i) => (
-          <div key={i} className={cn("flex gap-3", msg.role === "user" ? "justify-end" : "justify-start")}>
+          <div key={i} className={cn("flex gap-2 sm:gap-3", msg.role === "user" ? "justify-end" : "justify-start")}>
             {msg.role === "assistant" && (
-              <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center flex-shrink-0 shadow shadow-primary/20 mt-0.5">
-                <Zap className="w-4 h-4 text-white" />
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full gradient-primary flex items-center justify-center flex-shrink-0 shadow shadow-primary/20 mt-0.5">
+                <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
               </div>
             )}
-            <div className={cn("max-w-[75%] space-y-1")}>
+            <div className={cn("max-w-[80%] sm:max-w-[75%] space-y-1")}>
               <div
                 className={cn(
-                  "px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap",
+                  "px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words",
                   msg.role === "user"
                     ? "bg-primary text-white rounded-tr-sm"
                     : msg.error
@@ -130,19 +130,19 @@ export default function AgentPage() {
               </p>
             </div>
             {msg.role === "user" && (
-              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0 mt-0.5">
-                <User className="w-4 h-4 text-muted-foreground" />
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0 mt-0.5">
+                <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-muted-foreground" />
               </div>
             )}
           </div>
         ))}
 
         {loading && (
-          <div className="flex gap-3 justify-start">
-            <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center flex-shrink-0 shadow shadow-primary/20">
-              <Zap className="w-4 h-4 text-white" />
+          <div className="flex gap-2 sm:gap-3 justify-start">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full gradient-primary flex items-center justify-center flex-shrink-0 shadow shadow-primary/20">
+              <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
             </div>
-            <div className="bg-card border border-border rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
+            <div className="bg-card border border-border rounded-2xl rounded-tl-sm px-3 sm:px-4 py-2.5 sm:py-3 shadow-sm">
               <div className="flex gap-1.5 items-center">
                 <div className="w-2 h-2 rounded-full bg-primary/60 animate-bounce [animation-delay:0ms]" />
                 <div className="w-2 h-2 rounded-full bg-primary/60 animate-bounce [animation-delay:150ms]" />
@@ -156,7 +156,7 @@ export default function AgentPage() {
 
       {/* Suggestions */}
       {messages.length === 1 && (
-        <div className="px-6 pb-3 flex gap-2 flex-wrap shrink-0">
+        <div className="px-3 sm:px-6 pb-2 sm:pb-3 flex gap-2 flex-wrap shrink-0">
           {SUGGESTIONS.map((s, i) => (
             <button
               key={i}
@@ -170,24 +170,24 @@ export default function AgentPage() {
         </div>
       )}
 
-      {/* Input */}
-      <div className="px-6 pb-6 pt-2 shrink-0">
+      {/* Input — sticky en bas avec safe area */}
+      <div className="px-3 sm:px-6 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-2 shrink-0">
         <form
           onSubmit={(e) => { e.preventDefault(); send(); }}
-          className="flex gap-3 bg-card border border-border rounded-2xl px-4 py-3 shadow-sm focus-within:border-primary/50 focus-within:shadow-md focus-within:shadow-primary/10 transition-all duration-200"
+          className="flex gap-2 sm:gap-3 bg-card border border-border rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 shadow-sm focus-within:border-primary/50 focus-within:shadow-md focus-within:shadow-primary/10 transition-all duration-200"
         >
           <input
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Pose une question à ton agent IA..."
-            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none min-w-0"
             disabled={loading}
           />
           <button
             type="submit"
             disabled={!input.trim() || loading}
-            className="w-8 h-8 rounded-xl gradient-primary flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-all duration-200 shadow shadow-primary/30 flex-shrink-0"
+            className="w-9 h-9 sm:w-8 sm:h-8 rounded-xl gradient-primary flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-all duration-200 shadow shadow-primary/30 flex-shrink-0"
           >
             {loading ? (
               <Loader2 className="w-4 h-4 text-white animate-spin" />
@@ -196,7 +196,7 @@ export default function AgentPage() {
             )}
           </button>
         </form>
-        <p className="text-center text-[10px] text-muted-foreground mt-2">
+        <p className="text-center text-[10px] text-muted-foreground mt-2 hidden sm:block">
           Agent IA · JS-Innov.IA · Données en temps réel via Supabase
         </p>
       </div>

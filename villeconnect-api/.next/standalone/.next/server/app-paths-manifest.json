@@ -1,0 +1,8 @@
+{
+  "/api/action-logs/route": "app/api/action-logs/route.js",
+  "/api/announcements/[id]/publish/route": "app/api/announcements/[id]/publish/route.js",
+  "/api/chat/route": "app/api/chat/route.js",
+  "/api/announcements/route": "app/api/announcements/route.js",
+  "/api/validate-action/route": "app/api/validate-action/route.js",
+  "/api/n8n/webhook/route": "app/api/n8n/webhook/route.js"
+}

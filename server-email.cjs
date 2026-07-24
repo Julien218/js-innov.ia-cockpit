@@ -20,7 +20,7 @@ const router = express.Router();
 const MAILBOXES = {
   jsinnovia: {
     label: 'JS-Innov.IA',
-    email: 'info@jsinnovia.com',
+    email: process.env.EMAIL_JSINNOVIA_ADDRESS || 'info@jsinnovia.com',
     password: process.env.EMAIL_PASSWORD || '',
     host: 'imap.ionos.fr',
     port: 993,
@@ -31,7 +31,7 @@ const MAILBOXES = {
   },
   assurances: {
     label: 'Assurances Dour',
-    email: 'info@assurances-dour.be',
+    email: process.env.EMAIL_ASSURANCES_ADDRESS || 'info@assurances-dour.be',
     password: process.env.EMAIL_PASSWORD_ASSURANCES || '',
     host: 'imap.ionos.fr',
     port: 993,

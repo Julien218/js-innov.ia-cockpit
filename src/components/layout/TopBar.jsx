@@ -1,15 +1,24 @@
 import React from "react";
-import { Bell, Search, HelpCircle } from "lucide-react";
+import { Bell, Search, HelpCircle, Menu } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-export default function TopBar() {
+export default function TopBar({ onOpenMobileMenu }) {
   const { user } = useAuth();
   const today = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 
   return (
-    <header className="h-14 bg-white border-b border-border flex items-center justify-between px-5 gap-4 sticky top-0 z-20">
+    <header className="h-14 bg-white border-b border-border flex items-center justify-between px-3 sm:px-5 gap-2 sm:gap-4 sticky top-0 z-20 shrink-0">
+      {/* Burger menu — mobile only */}
+      <button
+        onClick={onOpenMobileMenu}
+        className="md:hidden p-2 -ml-1 rounded-lg hover:bg-muted text-foreground transition-colors"
+        aria-label="Ouvrir le menu"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
+
       {/* Date */}
       <div className="hidden md:block">
         <p className="text-xs text-muted-foreground capitalize">{today}</p>
@@ -25,12 +34,12 @@ export default function TopBar() {
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
         <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground relative">
           <Bell className="w-4 h-4" />
           <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-primary rounded-full"></span>
         </Button>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+        <Button variant="ghost" size="icon" className="hidden sm:flex h-8 w-8 text-muted-foreground hover:text-foreground">
           <HelpCircle className="w-4 h-4" />
         </Button>
         <div className="w-7 h-7 rounded-full gradient-primary flex items-center justify-center text-white text-xs font-bold cursor-pointer ml-1">

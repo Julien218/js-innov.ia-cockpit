@@ -21,7 +21,6 @@ export default function DataTable({
   const effectiveLoading = isLoading ?? loading ?? false;
   const rows = Array.isArray(data) ? data : [];
 
-  // Ajouter une colonne Actions si la prop est fournie
   const allColumns = actions
     ? [...columns, { key: "__actions", label: "Actions", sortable: false }]
     : columns;
@@ -29,76 +28,81 @@ export default function DataTable({
   if (effectiveLoading) {
     return (
       <div className="bg-card rounded-xl border border-border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/50">
-              {allColumns.map((col) => (
-                <TableHead key={col.key} className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {col.label}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {Array(5).fill(0).map((_, i) => (
-              <TableRow key={i}>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/50">
                 {allColumns.map((col) => (
-                  <TableCell key={col.key}><Skeleton className="h-4 w-24" /></TableCell>
+                  <TableHead key={col.key} className="text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                    {col.label}
+                  </TableHead>
                 ))}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {Array(5).fill(0).map((_, i) => (
+                <TableRow key={i}>
+                  {allColumns.map((col) => (
+                    <TableCell key={col.key}><Skeleton className="h-4 w-24" /></TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="bg-card rounded-xl border border-border overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-muted/50 hover:bg-muted/50">
-            {allColumns.map((col) => (
-              <TableHead key={col.key} className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {col.label}
-              </TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={allColumns.length} className="text-center py-12 text-muted-foreground">
-                {emptyMessage}
-              </TableCell>
+      {/* Scroll horizontal sur mobile — les tableaux ne débordent jamais */}
+      <div className="overflow-x-auto">
+        <Table className="min-w-full">
+          <TableHeader>
+            <TableRow className="bg-muted/50 hover:bg-muted/50">
+              {allColumns.map((col) => (
+                <TableHead key={col.key} className="text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                  {col.label}
+                </TableHead>
+              ))}
             </TableRow>
-          ) : (
-            rows.map((row, i) => (
-              <TableRow
-                key={row.id || i}
-                className={onRowClick ? "cursor-pointer hover:bg-muted/50 transition-colors" : ""}
-                onClick={() => onRowClick?.(row)}
-              >
-                {allColumns.map((col) => {
-                  if (col.key === "__actions") {
+          </TableHeader>
+          <TableBody>
+            {rows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={allColumns.length} className="text-center py-12 text-muted-foreground">
+                  {emptyMessage}
+                </TableCell>
+              </TableRow>
+            ) : (
+              rows.map((row, i) => (
+                <TableRow
+                  key={row.id || i}
+                  className={onRowClick ? "cursor-pointer hover:bg-muted/50 transition-colors" : ""}
+                  onClick={() => onRowClick?.(row)}
+                >
+                  {allColumns.map((col) => {
+                    if (col.key === "__actions") {
+                      return (
+                        <TableCell key={col.key} className="text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          {actions(row)}
+                        </TableCell>
+                      );
+                    }
+                    const value = row[col.key];
                     return (
-                      <TableCell key={col.key} className="text-sm" onClick={(e) => e.stopPropagation()}>
-                        {actions(row)}
+                      <TableCell key={col.key} className="text-sm whitespace-nowrap">
+                        {col.render ? col.render(value, row) : (value ?? "—")}
                       </TableCell>
                     );
-                  }
-                  const value = row[col.key];
-                  return (
-                    <TableCell key={col.key} className="text-sm">
-                      {col.render ? col.render(value, row) : (value ?? "—")}
-                    </TableCell>
-                  );
-                })}
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+                  })}
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
