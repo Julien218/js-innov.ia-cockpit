@@ -7,7 +7,7 @@ const API_BASE = '';
 const API_KEY = AGENT_KEY;
 
 const MAILBOXES = [
-  { id: 'jsinnovia',   label: 'JS-Innov.IA',      email: 'info@jsinnovia.com',           icon: Mail,       color: '#D4AF37' },
+  { id: 'jsinnovia',   label: 'JS-Innov.IA',      email: 'info@jsinnovia.com',           icon: Mail,       color: '#D4AF37', isAlias: true },
   { id: 'assurances',  label: 'Assurances Dour',  email: 'info@assurances-dour.be',      icon: Shield,     color: '#06B6D4' },
   { id: 'store',       label: 'JS Store',          email: 'info@jsinnovia.store',         icon: Store,       color: '#7C3AED' },
 ];
@@ -259,7 +259,7 @@ function ComposeModal({ open, onClose, mailbox, mailboxLabel, fromEmail, replyTo
 
 export default function Emails() {
   const { user } = useAuth();
-  const [activeMailbox, setActiveMailbox] = useState('jsinnovia');
+  const [activeMailbox, setActiveMailbox] = useState('assurances');
   const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -389,11 +389,17 @@ export default function Emails() {
       {error && (
         <div className="px-3 sm:px-6 py-4">
           <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-sm text-red-400">
-            <p className="font-semibold mb-1">Erreur de connexion</p>
+            <p className="font-semibold mb-1">Erreur de connexion — {activeMailboxCfg?.label}</p>
             <p className="text-xs">{error}</p>
-            <p className="text-xs text-gray-500 mt-2">
-              Vérifiez que la variable EMAIL_PASSWORD{activeMailbox === 'assurances' ? '_ASSURANCES' : activeMailbox === 'store' ? '_STORE' : ''} est configurée sur Railway.
-            </p>
+            {activeMailboxCfg?.isAlias ? (
+              <p className="text-xs text-amber-400/70 mt-2">
+                Cette adresse est un alias de redirection (pas une boîte IMAP). Sélectionnez « Assurances Dour » pour lire les emails.
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500 mt-2">
+                Vérifiez que la variable EMAIL_PASSWORD{activeMailbox === 'assurances' ? '_ASSURANCES' : activeMailbox === 'store' ? '_STORE' : ''} est configurée sur Railway.
+              </p>
+            )}
           </div>
         </div>
       )}
