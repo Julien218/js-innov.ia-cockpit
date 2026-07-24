@@ -1,6 +1,6 @@
 /**
- * Email IMAP Proxy — JS-Innov.IA Cockpit
- * Route Express multi-mailboxes IMAP IONOS
+ * Email IMAP+SMTP Proxy — JS-Innov.IA Cockpit
+ * Route Express multi-mailboxes IONOS (lecture + envoi)
  *
  * Mailboxes supportées :
  *   - jsinnovia   → info@jsinnovia.com       (EMAIL_PASSWORD)
@@ -8,12 +8,14 @@
  *   - store       → info@jsinnovia.store    (EMAIL_PASSWORD_STORE)
  *
  * Routes :
- *   GET /api/emails?mailbox=jsinnovia&limit=30&offset=0
- *   GET /api/emails/:uid?mailbox=assurances
- *   GET /api/emails/mailboxes/list  → liste des mailboxes disponibles
+ *   GET  /api/emails?mailbox=jsinnovia&limit=30&offset=0
+ *   GET  /api/emails/:uid?mailbox=assurances
+ *   GET  /api/emails/mailboxes/list
+ *   POST /api/emails/send         → { mailbox, to, subject, text, html, cc, replyToUid }
  */
 const Imap = require('imap');
 const { simpleParser } = require('mailparser');
+const nodemailer = require('nodemailer');
 const express = require('express');
 const router = express.Router();
 
@@ -67,6 +69,23 @@ function requireApiKey(req, res, next) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   next();
+}
+
+// ── Transport SMTP (créé à la demande, mis en cache) ─────────
+const smtpCache = {};
+function getSmtpTransport(mailboxKey) {
+  const cfg = getMailboxConfig(mailboxKey);
+  if (!cfg) return null;
+  if (smtpCache[mailboxKey]) return smtpCache[mailboxKey];
+  const transport = nodemailer.createTransport({
+    host: cfg.smtpHost,
+    port: cfg.smtpPort,
+    secure: cfg.smtpPort === 465,
+    auth: { user: cfg.email, pass: cfg.password },
+    tls: { rejectUnauthorized: false },
+  });
+  smtpCache[mailboxKey] = transport;
+  return transport;
 }
 
 // ── Liste des mailboxes disponibles ──────────────────────────
@@ -146,7 +165,6 @@ function fetchEmails(mailboxKey, { folder = 'INBOX', limit = 30, offset = 0 } = 
                   if (d) try { date = new Date(d); } catch(_) {}
                 }
               });
-              // Détecter pièces jointes via struct
               let hasAttachment = false;
               if (e.struct) {
                 const checkStruct = (s) => {
@@ -226,6 +244,8 @@ function fetchEmailById(mailboxKey, uid) {
                 contentType: a.contentType,
                 size: a.size,
               })),
+              messageId: p.messageId || '',
+              inReplyTo: p.inReplyTo || '',
             }))
             .catch(reject);
         });
@@ -234,6 +254,30 @@ function fetchEmailById(mailboxKey, uid) {
     imap.once('error', e => reject(e));
     imap.connect();
   });
+}
+
+// ── Envoyer un email (SMTP) ──────────────────────────────────
+async function sendEmail(mailboxKey, { to, subject, text, html, cc, bcc, replyToMessageId }) {
+  const cfg = getMailboxConfig(mailboxKey);
+  if (!cfg) throw new Error(`Mailbox "${mailboxKey}" non configurée`);
+  if (!to) throw new Error('Destinataire (to) requis');
+
+  const transport = getSmtpTransport(mailboxKey);
+
+  const mailOptions = {
+    from: `"${cfg.label}" <${cfg.email}>`,
+    to,
+    cc: cc || undefined,
+    bcc: bcc || undefined,
+    subject: subject || '(sans objet)',
+    text: text || '',
+    html: html || undefined,
+    inReplyTo: replyToMessageId || undefined,
+    headers: replyToMessageId ? { 'References': replyToMessageId } : undefined,
+  };
+
+  const info = await transport.sendMail(mailOptions);
+  return { messageId: info.messageId, response: info.response, envelope: info.envelope };
 }
 
 // ── Routes ──────────────────────────────────────────────────
@@ -259,6 +303,29 @@ router.get('/:uid', requireApiKey, async (req, res) => {
     res.json({ success: true, mailbox, email });
   } catch (err) {
     console.error('[IMAP] Lecture:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/emails/send
+router.post('/send', requireApiKey, async (req, res) => {
+  try {
+    const { mailbox, to, subject, text, html, cc, bcc, replyToUid } = req.body;
+    const mailboxKey = mailbox || 'jsinnovia';
+
+    // Si replyToUid est fourni, récupérer le messageId original pour le threading
+    let replyToMessageId = null;
+    if (replyToUid) {
+      try {
+        const original = await fetchEmailById(mailboxKey, parseInt(replyToUid));
+        replyToMessageId = original.messageId || null;
+      } catch (_) { /* non bloquant */ }
+    }
+
+    const info = await sendEmail(mailboxKey, { to, subject, text, html, cc, bcc, replyToMessageId });
+    res.json({ success: true, ...info });
+  } catch (err) {
+    console.error('[SMTP] Envoi:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
