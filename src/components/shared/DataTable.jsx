@@ -9,14 +9,30 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export default function DataTable({ columns, data, isLoading, onRowClick, emptyMessage = "Aucune donnée" }) {
-  if (isLoading) {
+export default function DataTable({
+  columns,
+  data = [],
+  isLoading,
+  loading,
+  actions,
+  onRowClick,
+  emptyMessage = "Aucune donnée",
+}) {
+  const effectiveLoading = isLoading ?? loading ?? false;
+  const rows = Array.isArray(data) ? data : [];
+
+  // Ajouter une colonne Actions si la prop est fournie
+  const allColumns = actions
+    ? [...columns, { key: "__actions", label: "Actions", sortable: false }]
+    : columns;
+
+  if (effectiveLoading) {
     return (
       <div className="bg-card rounded-xl border border-border overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
-              {columns.map((col) => (
+              {allColumns.map((col) => (
                 <TableHead key={col.key} className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   {col.label}
                 </TableHead>
@@ -26,7 +42,7 @@ export default function DataTable({ columns, data, isLoading, onRowClick, emptyM
           <TableBody>
             {Array(5).fill(0).map((_, i) => (
               <TableRow key={i}>
-                {columns.map((col) => (
+                {allColumns.map((col) => (
                   <TableCell key={col.key}><Skeleton className="h-4 w-24" /></TableCell>
                 ))}
               </TableRow>
@@ -42,7 +58,7 @@ export default function DataTable({ columns, data, isLoading, onRowClick, emptyM
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/50 hover:bg-muted/50">
-            {columns.map((col) => (
+            {allColumns.map((col) => (
               <TableHead key={col.key} className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {col.label}
               </TableHead>
@@ -50,24 +66,34 @@ export default function DataTable({ columns, data, isLoading, onRowClick, emptyM
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.length === 0 ? (
+          {rows.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={columns.length} className="text-center py-12 text-muted-foreground">
+              <TableCell colSpan={allColumns.length} className="text-center py-12 text-muted-foreground">
                 {emptyMessage}
               </TableCell>
             </TableRow>
           ) : (
-            data.map((row, i) => (
+            rows.map((row, i) => (
               <TableRow
                 key={row.id || i}
                 className={onRowClick ? "cursor-pointer hover:bg-muted/50 transition-colors" : ""}
                 onClick={() => onRowClick?.(row)}
               >
-                {columns.map((col) => (
-                  <TableCell key={col.key} className="text-sm">
-                    {col.render ? col.render(row) : row[col.key]}
-                  </TableCell>
-                ))}
+                {allColumns.map((col) => {
+                  if (col.key === "__actions") {
+                    return (
+                      <TableCell key={col.key} className="text-sm" onClick={(e) => e.stopPropagation()}>
+                        {actions(row)}
+                      </TableCell>
+                    );
+                  }
+                  const value = row[col.key];
+                  return (
+                    <TableCell key={col.key} className="text-sm">
+                      {col.render ? col.render(value, row) : (value ?? "—")}
+                    </TableCell>
+                  );
+                })}
               </TableRow>
             ))
           )}
