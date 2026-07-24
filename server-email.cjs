@@ -5,6 +5,7 @@
  * Mailboxes supportées :
  *   - jsinnovia   → info@jsinnovia.com       (EMAIL_PASSWORD)
  *   - assurances  → info@assurances-dour.be (EMAIL_PASSWORD_ASSURANCES)
+ *   - store       → info@jsinnovia.store    (EMAIL_PASSWORD_STORE)
  *
  * Routes :
  *   GET /api/emails?mailbox=jsinnovia&limit=30&offset=0
@@ -39,6 +40,17 @@ const MAILBOXES = {
     smtpHost: 'smtp.ionos.fr',
     smtpPort: 465,
     color: '#06B6D4',
+  },
+  store: {
+    label: 'JS-Innov.IA Store',
+    email: process.env.EMAIL_STORE_ADDRESS || 'info@jsinnovia.store',
+    password: process.env.EMAIL_PASSWORD_STORE || '',
+    host: 'imap.ionos.fr',
+    port: 993,
+    tls: true,
+    smtpHost: 'smtp.ionos.fr',
+    smtpPort: 465,
+    color: '#7C3AED',
   },
 };
 

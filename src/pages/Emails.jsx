@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Mail, RefreshCw, Paperclip, Search, ArrowLeft, Inbox, User, Calendar, Shield } from "lucide-react";
+import { Mail, RefreshCw, Paperclip, Search, ArrowLeft, Inbox, User, Calendar, Shield, Store } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { AGENT_KEY } from '@/config/agent';
 
@@ -8,8 +8,9 @@ const API_BASE = '';
 const API_KEY = AGENT_KEY;
 
 const MAILBOXES = [
-  { id: 'jsinnovia',   label: 'JS-Innov.IA',   email: 'info@jsinnovia.com',           icon: Mail,       color: '#D4AF37' },
-  { id: 'assurances',  label: 'Assurances Dour', email: 'info@assurances-dour.be', icon: Shield,     color: '#06B6D4' },
+  { id: 'jsinnovia',   label: 'JS-Innov.IA',      email: 'info@jsinnovia.com',           icon: Mail,       color: '#D4AF37' },
+  { id: 'assurances',  label: 'Assurances Dour',  email: 'info@assurances-dour.be',      icon: Shield,     color: '#06B6D4' },
+  { id: 'store',       label: 'JS Store',          email: 'info@jsinnovia.store',         icon: Store,       color: '#7C3AED' },
 ];
 
 function timeAgo(dateStr) {
@@ -238,7 +239,7 @@ export default function Emails() {
             <p className="font-semibold mb-1">Erreur de connexion</p>
             <p className="text-xs">{error}</p>
             <p className="text-xs text-gray-500 mt-2">
-              Vérifiez que la variable EMAIL_PASSWORD{activeMailbox === 'assurances' ? '_ASSURANCES' : ''} est configurée sur Railway.
+              Vérifiez que la variable EMAIL_PASSWORD{activeMailbox === 'assurances' ? '_ASSURANCES' : activeMailbox === 'store' ? '_STORE' : ''} est configurée sur Railway.
             </p>
           </div>
         </div>
