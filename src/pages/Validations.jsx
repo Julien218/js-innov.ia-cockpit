@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import FormModal from "@/components/shared/FormModal";
+import ErrorState from "@/components/shared/ErrorState";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, XCircle, Pencil, Zap } from "lucide-react";
 import { format } from "date-fns";
@@ -58,7 +59,7 @@ export default function Validations() {
   const [filter, setFilter] = useState("en_attente");
   const queryClient = useQueryClient();
 
-  const { data: validations = [], isLoading } = useQuery({
+  const { data: validations = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["validations"],
     queryFn: () => base44.entities.Validation.list("-created_at"),
   });
@@ -91,6 +92,18 @@ export default function Validations() {
 
   const enAttente = validations.filter(v => v.statut === "en_attente").length;
   const urgentes = validations.filter(v => v.statut === "en_attente" && v.priorite === "urgente").length;
+
+  if (isError) {
+    return (
+      <div className="space-y-4">
+        <ErrorState
+          title="Impossible de charger les validations"
+          message={error?.message || "Erreur de connexion au serveur."}
+          onRetry={refetch}
+        />
+      </div>
+    );
+  }
 
   return (
     <div>

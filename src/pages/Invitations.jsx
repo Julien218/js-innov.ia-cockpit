@@ -38,7 +38,19 @@ export default function Invitations() {
   useEffect(() => { fetchInvitations(); }, []);
 
   if (!canInvite) {
+    if (isError) {
     return (
+      <div className="max-w-3xl mx-auto space-y-4">
+        <ErrorState
+          title="Impossible de charger les invitations"
+          message={error?.message || "Erreur de connexion au serveur."}
+          onRetry={refetch}
+        />
+      </div>
+    );
+  }
+
+  return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <Shield className="w-10 h-10 text-gray-300 mx-auto mb-3" />

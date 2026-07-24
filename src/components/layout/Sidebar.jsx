@@ -14,7 +14,7 @@ import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { usePermissions } from "@/lib/usePermissions";
 import { ROLE_LABELS, ROLE_COLORS } from "@/lib/roles";
-import { AGENT_URL, AGENT_KEY } from '@/config/agent';
+import { AGENT_KEY } from '@/config/agent';
 
 const useValidationsBadge = () => {
   const { data = [] } = useQuery({
@@ -28,21 +28,19 @@ const useValidationsBadge = () => {
 const useEmailBadge = () => {
   const [unread, setUnread] = React.useState(0);
   const apiKey = AGENT_KEY;
-  const apiBase = AGENT_URL;
   React.useEffect(() => {
     if (!apiKey) return;
-    fetch(`${apiBase}/api/emails?limit=1`, { headers: { 'x-agent-key': apiKey } })
-      .then(r => r.json())
-      .then(d => setUnread(d.unread || 0))
-      .catch(() => {});
-    const interval = setInterval(() => {
-      fetch(`${apiBase}/api/emails?limit=1`, { headers: { 'x-agent-key': apiKey } })
-        .then(r => r.json())
+    // /api/emails is served by the cockpit's own Express server (server-email.cjs via nginx proxy)
+    const poll = () => {
+      fetch('/api/emails?limit=1', { headers: { 'x-agent-key': apiKey } })
+        .then(r => r.ok ? r.json() : { unread: 0 })
         .then(d => setUnread(d.unread || 0))
         .catch(() => {});
-    }, 120000);
+    };
+    poll();
+    const interval = setInterval(poll, 120000);
     return () => clearInterval(interval);
-  }, [apiKey, apiBase]);
+  }, [apiKey]);
   return unread;
 };
 
@@ -82,7 +80,7 @@ const allNavGroups = [
     items: [
       { label: "Projets", icon: FolderKanban, path: "/projets" },
       { label: "Tâches", icon: CheckSquare, path: "/taches", minRole: "collaborateur" },
-      { label: "Demandes", icon: MessageSquare, path: "/demandes", badge: useDemandeBadge },
+      { label: "Demandes", icon: MessageSquare, path: "/demandes", badge: "demandes" },
     ]
   },
   {
@@ -99,7 +97,7 @@ const allNavGroups = [
     items: [
       { label: "Julien AI", icon: Bot, path: "/agent", minRole: "collaborateur" },
       { label: "Agents IA", icon: Network, path: "/agents-ia" },
-      { label: "Validations", icon: ShieldCheck, path: "/validations", badge: useValidationsBadge, minRole: "admin" },
+      { label: "Validations", icon: ShieldCheck, path: "/validations", badge: "validations", minRole: "admin" },
       { label: "Journal", icon: Activity, path: "/logs", minRole: "superadmin" },
     ]
   },
@@ -148,7 +146,7 @@ const allNavGroups = [
     label: "Communication",
     minRole: "admin",
     items: [
-      { label: "Emails", icon: Mail, path: "/emails", badge: useEmailBadge, minRole: "admin" },
+      { label: "Emails", icon: Mail, path: "/emails", badge: "emails", minRole: "admin" },
     ]
   },
   {

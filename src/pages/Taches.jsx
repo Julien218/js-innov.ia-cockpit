@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
 import DataTable from "@/components/shared/DataTable";
 import StatusBadge from "@/components/shared/StatusBadge";
+import ErrorState from "@/components/shared/ErrorState";
 import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
 import { Pencil, Trash2 } from "lucide-react";
@@ -35,7 +36,7 @@ export default function Taches() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
 
-  const { data: taches = [], isLoading } = useQuery({
+  const { data: taches = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["Tache"],
     queryFn: () => base44.entities.Tache.list("-created_at"),
   });
@@ -62,6 +63,18 @@ export default function Taches() {
       </Button>
     </div>
   );
+
+  if (isError) {
+    return (
+      <div className="space-y-4">
+        <ErrorState
+          title="Impossible de charger les données"
+          message={error?.message || "Erreur de connexion au serveur."}
+          onRetry={refetch}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -64,7 +64,13 @@ function getMailboxConfig(mailbox) {
 }
 
 function requireApiKey(req, res, next) {
-  const key = req.headers['x-api-key'] || req.query.key;
+  const key = req.headers['x-agent-key'] || req.headers['x-api-key'] || req.query.key;
+  // Safe auth logging — never log actual key values
+  console.log('[EMAIL AUTH]', {
+    hasReceivedKey: Boolean(key),
+    hasServerKey: Boolean(process.env.AGENT_API_KEY),
+    headerUsed: req.headers['x-agent-key'] ? 'x-agent-key' : (req.headers['x-api-key'] ? 'x-api-key' : 'query'),
+  });
   if (!key || key !== process.env.AGENT_API_KEY) {
     return res.status(401).json({ error: 'Unauthorized' });
   }

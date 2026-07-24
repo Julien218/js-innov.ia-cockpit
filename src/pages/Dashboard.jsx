@@ -19,14 +19,17 @@ import { cn } from "@/lib/utils";
 const COLORS = ["hsl(217,91%,50%)", "hsl(258,90%,62%)", "hsl(142,71%,45%)", "hsl(38,92%,50%)", "hsl(0,84%,60%)"];
 
 export default function Dashboard() {
-  const { data: clients = [] } = useQuery({ queryKey: ["clients"], queryFn: () => base44.entities.Client.list() });
-  const { data: leads = [] } = useQuery({ queryKey: ["leads"], queryFn: () => base44.entities.Lead.list() });
-  const { data: projets = [] } = useQuery({ queryKey: ["projets"], queryFn: () => base44.entities.Projet.list() });
-  const { data: taches = [] } = useQuery({ queryKey: ["taches"], queryFn: () => base44.entities.Tache.list() });
-  const { data: demandes = [] } = useQuery({ queryKey: ["demandes"], queryFn: () => base44.entities.Demande.list() });
-  const { data: devis = [] } = useQuery({ queryKey: ["devis"], queryFn: () => base44.entities.Devis.list() });
-  const { data: factures = [] } = useQuery({ queryKey: ["factures"], queryFn: () => base44.entities.Facture.list() });
-  const { data: commissions = [] } = useQuery({ queryKey: ["commissions"], queryFn: () => base44.entities.Commission.list() });
+  const { data: clients = [], isError: clientsErr } = useQuery({ queryKey: ["clients"], queryFn: () => base44.entities.Client.list() });
+  const { data: leads = [], isError: leadsErr } = useQuery({ queryKey: ["leads"], queryFn: () => base44.entities.Lead.list() });
+  const { data: projets = [], isError: projetsErr } = useQuery({ queryKey: ["projets"], queryFn: () => base44.entities.Projet.list() });
+  const { data: taches = [], isError: tachesErr } = useQuery({ queryKey: ["taches"], queryFn: () => base44.entities.Tache.list() });
+  const { data: demandes = [], isError: demandesErr } = useQuery({ queryKey: ["demandes"], queryFn: () => base44.entities.Demande.list() });
+  const { data: devis = [], isError: devisErr } = useQuery({ queryKey: ["devis"], queryFn: () => base44.entities.Devis.list() });
+  const { data: factures = [], isError: facturesErr } = useQuery({ queryKey: ["factures"], queryFn: () => base44.entities.Facture.list() });
+  const { data: commissions = [], isError: commissionsErr } = useQuery({ queryKey: ["commissions"], queryFn: () => base44.entities.Commission.list() });
+
+
+  const hasAnyError = clientsErr || leadsErr || projetsErr || tachesErr || demandesErr || devisErr || facturesErr || commissionsErr;
 
   const caTotal = factures.filter(f => f.statut === "payee").reduce((s, f) => s + (f.montant_ttc || 0), 0);
   const caEnAttente = factures.filter(f => ["envoyee", "en_retard"].includes(f.statut)).reduce((s, f) => s + (f.montant_ttc || 0), 0);
@@ -87,6 +90,13 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {hasAnyError && (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 text-sm text-amber-600 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span>Certaines données n'ont pas pu être chargées. Les compteurs peuvent être incomplets.</span>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3">

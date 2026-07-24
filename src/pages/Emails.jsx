@@ -277,7 +277,7 @@ export default function Emails() {
     setError(null);
     try {
       const res = await fetch(`${API_BASE}/api/emails?mailbox=${activeMailbox}&limit=50`, {
-        headers: { 'x-api-key': API_KEY },
+        headers: { 'x-agent-key': API_KEY },
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Erreur');
@@ -294,7 +294,7 @@ export default function Emails() {
     setLoadingDetail(true);
     try {
       const res = await fetch(`${API_BASE}/api/emails/${uid}?mailbox=${activeMailbox}`, {
-        headers: { 'x-api-key': API_KEY },
+        headers: { 'x-agent-key': API_KEY },
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Erreur');
@@ -310,7 +310,7 @@ export default function Emails() {
   const handleSend = async ({ to, subject, text, replyToUid }) => {
     const res = await fetch(`${API_BASE}/api/emails/send`, {
       method: 'POST',
-      headers: { 'x-api-key': API_KEY, 'Content-Type': 'application/json' },
+      headers: { 'x-agent-key': API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ mailbox: activeMailbox, to, subject, text, replyToUid }),
     });
     const data = await res.json();

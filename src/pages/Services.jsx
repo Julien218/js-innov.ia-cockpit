@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
 import FormModal from "@/components/shared/FormModal";
+import ErrorState from "@/components/shared/ErrorState";
 import { Button } from "@/components/ui/button";
 import { Pencil, Trash2, Package, Clock, Euro, ToggleLeft, ToggleRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -53,7 +54,7 @@ export default function Services() {
   const [search, setSearch] = useState("");
   const queryClient = useQueryClient();
 
-  const { data: services = [], isLoading } = useQuery({
+  const { data: services = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["services"],
     queryFn: () => base44.entities.Service.list("-created_at"),
   });
@@ -89,6 +90,18 @@ export default function Services() {
   );
 
   if (isLoading) return <div className="animate-pulse space-y-4"><div className="h-8 bg-muted rounded w-1/3" /><div className="h-64 bg-muted rounded-2xl" /></div>;
+
+  if (isError) {
+    return (
+      <div className="space-y-4">
+        <ErrorState
+          title="Impossible de charger les services"
+          message={error?.message || "Erreur de connexion au serveur."}
+          onRetry={refetch}
+        />
+      </div>
+    );
+  }
 
   return (
     <div>

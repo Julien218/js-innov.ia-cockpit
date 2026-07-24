@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
+import ErrorState from "@/components/shared/ErrorState";
 import { CheckCircle2, AlertCircle, AlertTriangle, Activity } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -31,7 +32,7 @@ export default function Logs() {
   const [search, setSearch] = useState("");
   const [filterModule, setFilterModule] = useState("tous");
 
-  const { data: logs = [], isLoading } = useQuery({
+  const { data: logs = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["logs"],
     queryFn: () => base44.entities.LogAction.list("-created_at"),
   });
@@ -44,6 +45,18 @@ export default function Logs() {
       (!search || l.action?.toLowerCase().includes(search.toLowerCase()) || l.entite_nom?.toLowerCase().includes(search.toLowerCase()))
     ), [logs, search, filterModule]
   );
+
+  if (isError) {
+    return (
+      <div className="space-y-4">
+        <ErrorState
+          title="Impossible de charger les logs"
+          message={error?.message || "Erreur de connexion au serveur."}
+          onRetry={refetch}
+        />
+      </div>
+    );
+  }
 
   return (
     <div>

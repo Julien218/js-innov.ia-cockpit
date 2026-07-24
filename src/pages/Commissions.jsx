@@ -5,6 +5,7 @@ import PageHeader from "@/components/shared/PageHeader";
 import DataTable from "@/components/shared/DataTable";
 import StatusBadge from "@/components/shared/StatusBadge";
 import FormModal from "@/components/shared/FormModal";
+import ErrorState from "@/components/shared/ErrorState";
 import { Button } from "@/components/ui/button";
 import { Pencil, Trash2 } from "lucide-react";
 
@@ -53,7 +54,7 @@ export default function Commissions() {
   const [editingId, setEditingId] = useState(null);
   const queryClient = useQueryClient();
 
-  const { data: commissions = [], isLoading } = useQuery({
+  const { data: commissions = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["commissions"],
     queryFn: () => base44.entities.Commission.list("-created_at"),
   });
@@ -108,6 +109,18 @@ export default function Commissions() {
       </div>
     )},
   ];
+
+  if (isError) {
+    return (
+      <div className="space-y-4">
+        <ErrorState
+          title="Impossible de charger les commissions"
+          message={error?.message || "Erreur de connexion au serveur."}
+          onRetry={refetch}
+        />
+      </div>
+    );
+  }
 
   return (
     <div>

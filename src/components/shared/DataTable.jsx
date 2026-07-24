@@ -21,9 +21,9 @@ export default function DataTable({
   const effectiveLoading = isLoading ?? loading ?? false;
   const rows = Array.isArray(data) ? data : [];
 
-  const allColumns = actions
-    ? [...columns, { key: "__actions", label: "Actions", sortable: false }]
-    : columns;
+const allColumns = (Array.isArray(columns) ? columns : []).length > 0
+    ? (actions ? [...columns, { key: "__actions", label: "Actions", sortable: false }] : columns)
+    : (actions ? [{ key: "__actions", label: "Actions", sortable: false }] : []);
 
   if (effectiveLoading) {
     return (
@@ -90,10 +90,21 @@ export default function DataTable({
                         </TableCell>
                       );
                     }
-                    const value = row[col.key];
+                    const value = row?.[col.key];
+                    let rendered;
+                    if (col.render) {
+                      try {
+                        rendered = col.render(value, row);
+                      } catch (e) {
+                        console.error('[DataTable] render error for col', col.key, e);
+                        rendered = "—";
+                      }
+                    } else {
+                      rendered = value ?? "—";
+                    }
                     return (
                       <TableCell key={col.key} className="text-sm whitespace-nowrap">
-                        {col.render ? col.render(value, row) : (value ?? "—")}
+                        {rendered}
                       </TableCell>
                     );
                   })}

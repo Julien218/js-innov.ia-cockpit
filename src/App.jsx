@@ -44,6 +44,7 @@ import Parametres from "@/pages/Parametres";
 import Portfolio from "@/pages/Portfolio";
 import Automations from "@/pages/Automations";
 import Emails from "@/pages/Emails";
+import AppErrorBoundary from "@/components/shared/AppErrorBoundary";
 
 const AppRoutes = () => {
   const { isAuthenticated, isLoadingAuth, authChecked } = useAuth();
@@ -66,7 +67,7 @@ const AppRoutes = () => {
 
       {/* ─── Routes protégées ─────────────────────────── */}
       <Route element={<ProtectedRoute />}>
-        <Route element={<AppLayout />}>
+        <Route element={<AppErrorBoundary><AppLayout /></AppErrorBoundary>}>
           <Route path="/" element={<Dashboard />} />
 
           {/* CRM */}
@@ -120,6 +121,7 @@ const AppRoutes = () => {
 
           {/* Emails */}
           <Route path="/emails" element={<Emails />} />
+          <Route path="/amails" element={<Navigate to="/emails" replace />} />
 
           {/* Paramètres */}
           <Route path="/parametres" element={<Parametres />} />
