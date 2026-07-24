@@ -64,7 +64,7 @@ export default function Leads() {
   );
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <PageHeader title="Leads" subtitle={`${leads.length} lead(s) au total`}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouveau lead</Button>} />
       <DataTable columns={columns} data={leads} loading={isLoading} actions={actions} />

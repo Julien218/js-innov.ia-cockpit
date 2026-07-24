@@ -65,7 +65,7 @@ export default function Factures() {
 
   if (isError) {
     return (
-      <div className="p-6">
+      <div className="space-y-4">
         <ErrorState
           title="Impossible de charger les données"
           message={error?.message || "Erreur de connexion au serveur backend. Vérifiez que le service jsinnovia-agent est disponible."}
@@ -76,7 +76,7 @@ export default function Factures() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <PageHeader title="Factures" subtitle={`${factures.length} facture(s)`}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouvelle facture</Button>} />
       <DataTable columns={columns} data={factures} loading={isLoading} actions={actions} />

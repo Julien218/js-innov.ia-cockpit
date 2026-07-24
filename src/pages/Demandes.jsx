@@ -108,7 +108,7 @@ export default function Demandes() {
 
   if (isError) {
     return (
-      <div className="p-6">
+      <div className="space-y-4">
         <ErrorState
           title="Impossible de charger les demandes"
           message={error?.message || "Erreur de connexion au serveur backend."}

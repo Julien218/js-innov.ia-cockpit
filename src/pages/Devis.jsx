@@ -67,7 +67,7 @@ export default function Devis() {
 
   if (isError) {
     return (
-      <div className="p-6">
+      <div className="space-y-4">
         <ErrorState
           title="Impossible de charger les devis"
           message={error?.message || "Erreur de connexion au serveur backend."}
@@ -78,7 +78,7 @@ export default function Devis() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <PageHeader title="Devis" subtitle={`${devis.length} devis`}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouveau devis</Button>} />
       <DataTable columns={columns} data={devis} loading={isLoading} actions={actions} />

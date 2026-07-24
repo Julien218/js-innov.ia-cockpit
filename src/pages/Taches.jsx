@@ -64,7 +64,7 @@ export default function Taches() {
   );
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <PageHeader title="Tâches" subtitle={`${taches.length} tâche(s)`}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouvelle tâche</Button>} />
       <DataTable columns={columns} data={taches} loading={isLoading} actions={actions} />

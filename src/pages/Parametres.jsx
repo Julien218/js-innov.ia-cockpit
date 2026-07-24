@@ -246,7 +246,7 @@ function KeyModal({ initial = null, onSave, onClose }) {
         </div>
 
         {/* Corps */}
-        <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+        <div className="space-y-5 max-h-[70vh] overflow-y-auto">
 
           {/* Alertes sécurité */}
           {warnVite && (
@@ -602,7 +602,7 @@ export default function Parametres() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <Settings className="w-6 h-6 text-yellow-400" /> Paramètres

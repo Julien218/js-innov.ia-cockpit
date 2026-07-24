@@ -64,7 +64,7 @@ export default function Projets() {
 
   if (isError) {
     return (
-      <div className="p-6">
+      <div className="space-y-4">
         <ErrorState
           title="Impossible de charger les données"
           message={error?.message || "Erreur de connexion au serveur backend. Vérifiez que le service jsinnovia-agent est disponible."}
@@ -75,7 +75,7 @@ export default function Projets() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <PageHeader title="Projets" subtitle={`${projets.length} projet(s)`}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouveau projet</Button>} />
       <DataTable columns={columns} data={projets} loading={isLoading} actions={actions} />
