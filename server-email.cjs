@@ -23,6 +23,7 @@ const router = express.Router();
 const MAILBOXES = {
   jsinnovia: {
     label: 'JS-Innov.IA',
+    isAlias: true,
     email: process.env.EMAIL_JSINNOVIA_ADDRESS || 'info@jsinnovia.com',
     password: process.env.EMAIL_PASSWORD || '',
     host: 'imap.ionos.fr',
@@ -59,8 +60,12 @@ const MAILBOXES = {
 function getMailboxConfig(mailbox) {
   const cfg = MAILBOXES[mailbox || 'assurances'];
   if (!cfg) return null;
-  if (!cfg.password) return null;
-  return cfg;
+  return cfg;  // retourne même si alias (isAlias=true) ou sans password
+}
+
+function isAliasMailbox(mailboxKey) {
+  const cfg = MAILBOXES[mailboxKey];
+  return cfg && cfg.isAlias === true;
 }
 
 function requireApiKey(req, res, next) {
@@ -81,7 +86,7 @@ function requireApiKey(req, res, next) {
 const smtpCache = {};
 function getSmtpTransport(mailboxKey) {
   const cfg = getMailboxConfig(mailboxKey);
-  if (!cfg) return null;
+  if (!cfg || !cfg.password) return null;
   if (smtpCache[mailboxKey]) return smtpCache[mailboxKey];
   const transport = nodemailer.createTransport({
     host: cfg.smtpHost,
@@ -108,8 +113,12 @@ router.get('/mailboxes/list', requireApiKey, (req, res) => {
 // ── Fetch emails (liste) ─────────────────────────────────────
 function fetchEmails(mailboxKey, { folder = 'INBOX', limit = 30, offset = 0 } = {}) {
   return new Promise((resolve, reject) => {
+    if (isAliasMailbox(mailboxKey)) {
+      return reject(new Error('Cette adresse est un alias de redirection. Utilisez JS-Innov.IA Store ou Assurances Dour.'));
+    }
     const cfg = getMailboxConfig(mailboxKey);
     if (!cfg) return reject(new Error(`Mailbox "${mailboxKey}" non configurée ou introuvable`));
+    if (!cfg.password) return reject(new Error(`Mot de passe non configuré pour "${mailboxKey}". Vérifiez la variable EMAIL_PASSWORD sur Railway.`));
 
     const imap = new Imap({
       user: cfg.email,
@@ -208,8 +217,12 @@ function fetchEmails(mailboxKey, { folder = 'INBOX', limit = 30, offset = 0 } = 
 // ── Fetch email par UID ──────────────────────────────────────
 function fetchEmailById(mailboxKey, uid) {
   return new Promise((resolve, reject) => {
+    if (isAliasMailbox(mailboxKey)) {
+      return reject(new Error('Cette adresse est un alias de redirection, pas une boîte IMAP.'));
+    }
     const cfg = getMailboxConfig(mailboxKey);
     if (!cfg) return reject(new Error(`Mailbox "${mailboxKey}" non configurée`));
+    if (!cfg.password) return reject(new Error(`Mot de passe non configuré pour "${mailboxKey}".`));
 
     const imap = new Imap({
       user: cfg.email,
@@ -264,11 +277,16 @@ function fetchEmailById(mailboxKey, uid) {
 
 // ── Envoyer un email (SMTP) ──────────────────────────────────
 async function sendEmail(mailboxKey, { to, subject, text, html, cc, bcc, replyToMessageId }) {
+  if (isAliasMailbox(mailboxKey)) {
+    throw new Error('Cette adresse est un alias, impossible d\'envoyer directement depuis cette boîte. Utilisez JS-Innov.IA Store ou Assurances Dour.');
+  }
   const cfg = getMailboxConfig(mailboxKey);
   if (!cfg) throw new Error(`Mailbox "${mailboxKey}" non configurée`);
+  if (!cfg.password) throw new Error(`Mot de passe SMTP non configuré pour "${mailboxKey}". Vérifiez la variable EMAIL_PASSWORD sur Railway.`);
   if (!to) throw new Error('Destinataire (to) requis');
 
   const transport = getSmtpTransport(mailboxKey);
+  if (!transport) throw new Error(`Transport SMTP non disponible pour "${mailboxKey}".`);
 
   const mailOptions = {
     from: `"${cfg.label}" <${cfg.email}>`,
@@ -334,6 +352,219 @@ router.post('/send', requireApiKey, async (req, res) => {
     console.error('[SMTP] Envoi:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+
+// ── Emails envoyés (dossier Sent) ────────────────────────────
+async function fetchSentEmails(mailboxKey, limit = 30) {
+  return new Promise((resolve, reject) => {
+    if (isAliasMailbox(mailboxKey)) {
+      return reject(new Error('Cette adresse est un alias de redirection.'));
+    }
+    const cfg = getMailboxConfig(mailboxKey);
+    if (!cfg || !cfg.password) return reject(new Error(`Mailbox "${mailboxKey}" non configurée`));
+
+    const imap = new Imap({
+      user: cfg.email, password: cfg.password,
+      host: cfg.host, port: cfg.port,
+      tls: true, tlsOptions: { servername: cfg.host, rejectUnauthorized: false },
+    });
+
+    imap.once('ready', () => {
+      // Lister les dossiers pour trouver le bon dossier envoyé
+      imap.getBoxes((err, boxes) => {
+        if (err) { imap.end(); return reject(err); }
+
+        // Noms possibles pour le dossier envoyé
+        const sentCandidates = ['Sent', 'Sent Items', '\u00C9l\u00E9ments envoy\u00E9s', 'INBOX.Sent', 'INBOX.Sent Items', 'Envoy\u00E9s'];
+        const boxNames = Object.keys(boxes);
+        let sentFolder = null;
+
+        // Chercher le dossier envoyé parmi les candidats
+        for (const candidate of sentCandidates) {
+          if (boxNames.includes(candidate)) { sentFolder = candidate; break; }
+        }
+        // Fallback: chercher un dossier contenant "sent" ou "envoy"
+        if (!sentFolder) {
+          sentFolder = boxNames.find(n => /sent|envoy/i.test(n)) || null;
+        }
+
+        if (!sentFolder) {
+          imap.end();
+          return resolve({ emails: [], total: 0, sentFolder: null, message: 'Aucun dossier envoy\u00E9 trouv\u00E9.' });
+        }
+
+        imap.openBox(sentFolder, true, (err2, box) => {
+          if (err2) { imap.end(); return reject(err2); }
+          const total = box.messages.total;
+          if (total === 0) { imap.end(); return resolve({ emails: [], total: 0, sentFolder }); }
+
+          const start = Math.max(1, total - limit + 1);
+          const end = total;
+          const emails = [];
+
+          const f = imap.seq.fetch(`${start}:${end}`, {
+            bodies: ['HEADER.FIELDS (FROM TO SUBJECT DATE)', 'TEXT'],
+            struct: true,
+          });
+
+          f.on('message', (msg) => {
+            const email = { rawHeaders: '', rawBody: '' };
+            msg.on('body', (stream, info) => {
+              let buf = '';
+              stream.on('data', c => buf += c.toString('utf8'));
+              stream.once('end', () => {
+                if (info.which === 'TEXT') email.rawBody = buf;
+                else email.rawHeaders = buf;
+              });
+            });
+            msg.once('attributes', a => {
+              email.uid = a.uid;
+              email.flags = a.flags || [];
+              email.seen = true;
+              email.date = a.date;
+            });
+            msg.once('end', () => emails.push(email));
+          });
+
+          f.once('error', e => { imap.end(); reject(e); });
+          f.once('end', () => {
+            imap.end();
+            const parsed = emails.map(e => {
+              let from = '', subject = '', to = '', date = e.date;
+              e.rawHeaders.split(/\r?\n/).forEach(line => {
+                if (/^from:/i.test(line)) from = line.replace(/^from:\s*/i, '').trim();
+                if (/^subject:/i.test(line)) subject = line.replace(/^subject:\s*/i, '').trim();
+                if (/^to:/i.test(line)) to = line.replace(/^to:\s*/i, '').trim();
+                if (/^date:/i.test(line)) {
+                  const d = line.replace(/^date:\s*/i, '').trim();
+                  if (d) try { date = new Date(d); } catch(_) {}
+                }
+              });
+              const preview = e.rawBody ? e.rawBody.substring(0, 200).replace(/\r?\n/g, ' ').trim() : '';
+              return { uid: e.uid, from, to, subject: subject || '(sans objet)', date: date instanceof Date ? date.toISOString() : date, preview, seen: true };
+            });
+            resolve({ emails: parsed.reverse(), total, sentFolder });
+          });
+        });
+      });
+    });
+
+    imap.once('error', e => reject(e));
+    imap.once('end', () => {});
+    imap.connect();
+  });
+}
+
+
+// ── Supprimer un email (déplacer vers Trash) ─────────────────
+router.delete('/:uid', requireApiKey, async (req, res) => {
+  try {
+    const mailbox = req.query.mailbox || 'assurances';
+    const uid = parseInt(req.params.uid);
+    if (isAliasMailbox(mailbox)) return res.status(400).json({ success: false, error: 'Boîte alias, opération non disponible.' });
+    const cfg = getMailboxConfig(mailbox);
+    if (!cfg || !cfg.password) return res.status(400).json({ success: false, error: `Mailbox "${mailbox}" non configurée.` });
+
+    await new Promise((resolve, reject) => {
+      const imap = new Imap({ user: cfg.email, password: cfg.password, host: cfg.host, port: cfg.port, tls: true, tlsOptions: { servername: cfg.host, rejectUnauthorized: false } });
+      imap.once('ready', () => {
+        imap.openBox('INBOX', false, (err) => {
+          if (err) { imap.end(); return reject(err); }
+          // Marquer comme supprimé + expurger
+          imap.addFlags(uid, ['\Deleted'], (e2) => {
+            if (e2) { imap.end(); return reject(e2); }
+            imap.expunge((e3) => { imap.end(); e3 ? reject(e3) : resolve(); });
+          });
+        });
+      });
+      imap.once('error', reject);
+      imap.connect();
+    });
+    res.json({ success: true, message: 'Email supprimé.' });
+  } catch (err) {
+    console.error('[IMAP] Delete:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── Archiver un email (marquer comme lu + flag \Flagged) ─────
+router.post('/:uid/archive', requireApiKey, async (req, res) => {
+  try {
+    const mailbox = req.query.mailbox || 'assurances';
+    const uid = parseInt(req.params.uid);
+    if (isAliasMailbox(mailbox)) return res.status(400).json({ success: false, error: 'Boîte alias, opération non disponible.' });
+    const cfg = getMailboxConfig(mailbox);
+    if (!cfg || !cfg.password) return res.status(400).json({ success: false, error: `Mailbox "${mailbox}" non configurée.` });
+
+    await new Promise((resolve, reject) => {
+      const imap = new Imap({ user: cfg.email, password: cfg.password, host: cfg.host, port: cfg.port, tls: true, tlsOptions: { servername: cfg.host, rejectUnauthorized: false } });
+      imap.once('ready', () => {
+        imap.openBox('INBOX', false, (err) => {
+          if (err) { imap.end(); return reject(err); }
+          // Marquer comme lu + archivé (\Seen + \Flagged)
+          imap.addFlags(uid, ['\Seen', '\Flagged'], (e2) => { imap.end(); e2 ? reject(e2) : resolve(); });
+        });
+      });
+      imap.once('error', reject);
+      imap.connect();
+    });
+    res.json({ success: true, message: 'Email archivé.' });
+  } catch (err) {
+    console.error('[IMAP] Archive:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── Marquer comme lu ──────────────────────────────────────────
+router.post('/:uid/mark-read', requireApiKey, async (req, res) => {
+  try {
+    const mailbox = req.query.mailbox || 'assurances';
+    const uid = parseInt(req.params.uid);
+    if (isAliasMailbox(mailbox)) return res.status(400).json({ success: false, error: 'Boîte alias.' });
+    const cfg = getMailboxConfig(mailbox);
+    if (!cfg || !cfg.password) return res.status(400).json({ success: false, error: `Mailbox "${mailbox}" non configurée.` });
+
+    await new Promise((resolve, reject) => {
+      const imap = new Imap({ user: cfg.email, password: cfg.password, host: cfg.host, port: cfg.port, tls: true, tlsOptions: { servername: cfg.host, rejectUnauthorized: false } });
+      imap.once('ready', () => {
+        imap.openBox('INBOX', false, (err) => {
+          if (err) { imap.end(); return reject(err); }
+          imap.addFlags(uid, ['\Seen'], (e2) => { imap.end(); e2 ? reject(e2) : resolve(); });
+        });
+      });
+      imap.once('error', reject);
+      imap.connect();
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── Route emails envoyés ─────────────────────────────────────
+router.get('/sent', requireApiKey, async (req, res) => {
+  try {
+    const mailbox = req.query.mailbox || 'assurances';
+    const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+    const result = await fetchSentEmails(mailbox, limit);
+    res.json({ success: true, mailbox, ...result });
+  } catch (err) {
+    console.error('[IMAP] Sent:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── Route mailboxes list (avec infos alias) ─────────────────
+router.get('/mailboxes/list', requireApiKey, (req, res) => {
+  const list = Object.entries(MAILBOXES).map(([id, cfg]) => ({
+    id,
+    label: cfg.label,
+    email: cfg.email,
+    color: cfg.color || '#888',
+    isAlias: cfg.isAlias || false,
+  }));
+  res.json({ success: true, mailboxes: list });
 });
 
 module.exports = router;
