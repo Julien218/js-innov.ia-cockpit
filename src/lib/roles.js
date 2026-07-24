@@ -30,25 +30,26 @@ export const ROLE_COLORS = {
   client:     { bg: "#1a0d00", text: "#f97316", badge: "#f97316" },
 };
 
-// Routes accessibles par rôle — PRODUCTION
-// Les routes masquées (Commissions, Commercants, Logs, Video, etc.)
-// restent dans le code mais ne sont pas dans le menu ni dans ROLE_ROUTES.
-// Elles restent accessibles par URL directe (dev preview) mais invisibles dans le menu.
+// Routes accessibles par rôle — PRODUCTION v2
+// Menu simplifié : 16 items principaux
+// Les routes masquées restent dans le code (accessibles par URL directe)
 export const ROLE_ROUTES = {
   superadmin: [
-    "/", "/clients", "/leads", "/projets", "/taches", "/demandes",
-    "/services", "/devis", "/factures",
-    "/validations", "/agent", "/agents-ia", "/invitations",
-    "/portfolio", "/automations", "/emails", "/parametres"
+    "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
+    "/devis", "/factures", "/emails",
+    "/production", "/portfolio", "/apps-agents",
+    "/automations", "/domaines", "/rangement", "/parametres",
+    "/services", "/validations", "/agent", "/agents-ia", "/invitations"
   ],
   admin: [
-    "/", "/clients", "/leads", "/projets", "/taches", "/demandes",
-    "/services", "/devis", "/factures",
-    "/validations", "/agent", "/agents-ia", "/invitations",
-    "/portfolio", "/automations", "/emails", "/parametres"
+    "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
+    "/devis", "/factures", "/emails",
+    "/production", "/portfolio", "/apps-agents",
+    "/automations", "/domaines", "/rangement", "/parametres",
+    "/services", "/validations", "/agent", "/agents-ia", "/invitations"
   ],
   collaborateur: [
-    "/", "/projets", "/taches", "/demandes", "/agents-ia"
+    "/", "/projets", "/taches", "/demandes", "/agent", "/agents-ia"
   ],
   client: [
     "/", "/mes-projets", "/mes-devis", "/mes-factures", "/demandes", "/agents-ia"

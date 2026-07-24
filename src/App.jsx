@@ -15,6 +15,11 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 
 // Pages
 import Dashboard from "@/pages/Dashboard";
+// ── Nouvelles pages v2
+import AppsAgents from "@/pages/AppsAgents";
+import Production from "@/pages/Production";
+import Domaines from "@/pages/Domaines";
+import Rangement from "@/pages/Rangement";
 import Clients from "@/pages/Clients";
 import Leads from "@/pages/Leads";
 import Projets from "@/pages/Projets";
@@ -128,6 +133,12 @@ const AppRoutes = () => {
 
           {/* Paramètres */}
           <Route path="/parametres" element={<PageBoundary><Parametres /></PageBoundary>} />
+
+          {/* ── Nouvelles pages v2 ─────────────────────────── */}
+          <Route path="/apps-agents" element={<PageBoundary><AppsAgents /></PageBoundary>} />
+          <Route path="/production" element={<PageBoundary><Production /></PageBoundary>} />
+          <Route path="/domaines" element={<PageBoundary><Domaines /></PageBoundary>} />
+          <Route path="/rangement" element={<PageBoundary><Rangement /></PageBoundary>} />
         </Route>
       </Route>
 

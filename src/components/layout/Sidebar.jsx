@@ -2,10 +2,11 @@ import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Users, Target, FolderKanban,
-  FileText, Receipt, Shield, ChevronLeft, ChevronRight, X,
-  CheckSquare, MessageSquare, Package, ShieldCheck,   Bot, Network, UserPlus, LogOut, Crown, Briefcase, User, Settings,
-  GalleryHorizontalEnd, PlayCircle,
-  Mail
+  FileText, Receipt, ChevronLeft, ChevronRight, X,
+  CheckSquare, MessageSquare,
+  Bot, Network, LogOut, Crown, Briefcase, User,
+  Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
+  PlayCircle, GalleryHorizontalEnd,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -29,7 +30,6 @@ const useEmailBadge = () => {
   const apiKey = AGENT_KEY;
   React.useEffect(() => {
     if (!apiKey) return;
-    // /api/emails is served by the cockpit's own Express server (server-email.cjs via nginx proxy)
     const poll = () => {
       fetch('/api/emails?limit=1', { headers: { 'x-agent-key': apiKey } })
         .then(r => r.ok ? r.json() : { unread: 0 })
@@ -59,11 +59,12 @@ const ROLE_ICONS = {
   client: User,
 };
 
+// ─── MENU PRINCIPAL v2 — 16 items ───────────────────────────────────────────
 const allNavGroups = [
   {
-    label: "Vue générale",
+    label: "Pilotage",
     items: [
-      { label: "Tableau de bord", icon: LayoutDashboard, path: "/" },
+      { label: "Accueil", icon: LayoutDashboard, path: "/" },
     ]
   },
   {
@@ -72,14 +73,14 @@ const allNavGroups = [
     items: [
       { label: "Clients", icon: Users, path: "/clients", minRole: "collaborateur" },
       { label: "Leads", icon: Target, path: "/leads", minRole: "collaborateur" },
+      { label: "Demandes", icon: MessageSquare, path: "/demandes", badge: "demandes" },
     ]
   },
   {
-    label: "Opérations",
+    label: "Projets",
     items: [
       { label: "Projets", icon: FolderKanban, path: "/projets" },
       { label: "Tâches", icon: CheckSquare, path: "/taches", minRole: "collaborateur" },
-      { label: "Demandes", icon: MessageSquare, path: "/demandes", badge: "demandes" },
     ]
   },
   {
@@ -91,36 +92,6 @@ const allNavGroups = [
     ]
   },
   {
-    label: "IA & Contrôle",
-    items: [
-      { label: "Julien AI", icon: Bot, path: "/agent", minRole: "collaborateur" },
-      { label: "Agents IA", icon: Network, path: "/agents-ia" },
-      { label: "Validations", icon: ShieldCheck, path: "/validations", badge: "validations", minRole: "admin" },
-    ]
-  },
-  {
-    label: "Équipe",
-    minRole: "admin",
-    items: [
-      { label: "Invitations", icon: UserPlus, path: "/invitations", minRole: "admin" },
-    ]
-  },
-  {
-    label: "Catalogue",
-    minRole: "admin",
-    items: [
-      { label: "Services", icon: Package, path: "/services", minRole: "admin" },
-    ]
-  },
-  {
-    label: "Portfolio & Automatisations",
-    minRole: "admin",
-    items: [
-      { label: "Portfolio", icon: GalleryHorizontalEnd, path: "/portfolio", minRole: "admin" },
-      { label: "Automations", icon: PlayCircle, path: "/automations", minRole: "admin" },
-    ]
-  },
-  {
     label: "Communication",
     minRole: "admin",
     items: [
@@ -128,12 +99,31 @@ const allNavGroups = [
     ]
   },
   {
-    label: "Système",
+    label: "Studio",
     minRole: "admin",
     items: [
+      { label: "Production", icon: Clapperboard, path: "/production", minRole: "admin" },
+      { label: "Portfolio", icon: GalleryHorizontalEnd, path: "/portfolio", minRole: "admin" },
+    ]
+  },
+  {
+    label: "Écosystème",
+    minRole: "admin",
+    items: [
+      { label: "Apps & Agents", icon: Boxes, path: "/apps-agents", minRole: "admin" },
+      { label: "Automatisations", icon: PlayCircle, path: "/automations", minRole: "admin" },
+      { label: "Domaines", icon: Globe, path: "/domaines", minRole: "admin" },
+      { label: "Rangement", icon: FolderTree, path: "/rangement", minRole: "admin" },
+    ]
+  },
+  {
+    label: "IA & Système",
+    items: [
+      { label: "Julien AI", icon: Bot, path: "/agent", minRole: "collaborateur" },
+      { label: "Agents IA", icon: Network, path: "/agents-ia" },
       { label: "Paramètres", icon: Settings, path: "/parametres", minRole: "admin" },
     ]
-  }
+  },
 ];
 
 export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
@@ -154,7 +144,6 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
     navigate("/login");
   };
 
-  // Helper pour gérer le path selon le rôle (client a des routes /mes-*)
   const getPath = (item) => {
     if (role === "client") {
       if (item.path === "/projets") return "/mes-projets";
@@ -173,14 +162,12 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
     }))
     .filter(group => group.items.length > 0);
 
-  // Navigation handler — ferme le menu mobile après clic
   const handleNavClick = () => {
     if (mobileOpen && onCloseMobile) onCloseMobile();
   };
 
   return (
     <>
-      {/* === Overlay mobile === */}
       {mobileOpen && (
         <div
           className="md:hidden fixed inset-0 bg-black/50 z-40 animate-in fade-in duration-200"
@@ -188,19 +175,16 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
         />
       )}
 
-      {/* === Sidebar === */}
       <aside
         className={cn(
           "relative flex flex-col h-screen bg-white border-r border-border transition-all duration-300 ease-in-out",
-          // Desktop
           "md:relative md:translate-x-0 md:z-30",
           collapsed ? "md:w-[68px]" : "md:w-[240px]",
-          // Mobile
           "fixed md:static z-50 w-[260px] shrink-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >
-        {/* Logo + close (mobile) */}
+        {/* Logo */}
         <div className={cn(
           "flex items-center gap-3 px-4 py-4 border-b border-border",
           collapsed && "md:justify-center md:px-2"
@@ -214,7 +198,6 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
               <p className="text-[10px] text-muted-foreground font-medium tracking-wide">COCKPIT</p>
             </div>
           )}
-          {/* Close button — mobile only */}
           <button
             onClick={onCloseMobile}
             className="md:hidden p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
@@ -260,17 +243,22 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
                       collapsed ? "md:justify-center md:px-0 md:py-2.5" : "",
                       active
                         ? "bg-primary text-white shadow-lg shadow-primary/25"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     )}
                   >
-                    <item.icon className={cn("flex-shrink-0", collapsed ? "md:w-5 md:h-5" : "w-4 h-4")} />
-                    {!collapsed && <span className="flex-1">{item.label}</span>}
-                    {badge > 0 && (
-                      <span className={cn(
-                        "flex-shrink-0 text-[10px] font-bold rounded-full flex items-center justify-center",
-                        collapsed ? "md:absolute md:top-1 md:right-1 w-4 h-4" : "w-5 h-5",
-                        active ? "bg-white/20 text-white" : "bg-primary text-white"
-                      )}>
+                    <item.icon className="w-[18px] h-[18px] flex-shrink-0" />
+                    {!collapsed && (
+                      <>
+                        <span className="text-sm font-medium flex-1 truncate">{item.label}</span>
+                        {badge > 0 && (
+                          <span className="text-[10px] font-bold bg-red-500 text-white rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center">
+                            {badge}
+                          </span>
+                        )}
+                      </>
+                    )}
+                    {collapsed && badge > 0 && (
+                      <span className="absolute top-1 right-1 text-[9px] font-bold bg-red-500 text-white rounded-full min-w-[16px] h-[16px] px-1 flex items-center justify-center">
                         {badge}
                       </span>
                     )}
@@ -281,41 +269,41 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
           ))}
         </nav>
 
-        {/* Footer utilisateur */}
-        <div className="border-t border-border">
-          {!collapsed ? (
-            <div className="p-3">
-              <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg bg-muted/50">
-                <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 shadow ring-2"
-                  style={{ ringColor: colors.badge }}>
-                  <img src="/logo.png" alt={user?.full_name} className="w-full h-full object-cover" />
-                </div>
-                <div className="overflow-hidden flex-1">
-                  <p className="text-xs font-semibold text-foreground truncate">{user?.full_name || "Utilisateur"}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
-                </div>
-                <button onClick={handleLogout} title="Déconnexion"
-                  className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-red-50 hover:text-red-500 text-muted-foreground transition-colors">
-                  <LogOut className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button onClick={handleLogout}
-              className="w-full p-3 min-h-[44px] flex justify-center hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"
-              title="Déconnexion">
-              <LogOut className="w-5 h-5" />
-            </button>
-          )}
-        </div>
-
-        {/* Toggle collapse — desktop only */}
+        {/* Collapse toggle desktop */}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="hidden md:flex absolute -right-3 top-20 w-6 h-6 bg-white border border-border rounded-full items-center justify-center shadow-md hover:bg-primary hover:text-white hover:border-primary transition-all duration-200 z-10"
+          className="hidden md:flex items-center justify-center py-2 border-t border-border text-muted-foreground hover:bg-muted"
         >
-          {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
+          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
         </button>
+
+        {/* User footer */}
+        {!collapsed ? (
+          <div className="border-t border-border p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                {user?.email?.[0]?.toUpperCase() || "J"}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium truncate">{user?.email || "Julien"}</p>
+                <p className="text-[10px] text-muted-foreground">{ROLE_LABELS[role]}</p>
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Déconnexion
+            </button>
+          </div>
+        ) : (
+          <div className="border-t border-border py-2 flex flex-col items-center gap-1">
+            <button onClick={handleLogout} className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted" title="Déconnexion">
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </aside>
     </>
   );
