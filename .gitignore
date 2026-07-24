@@ -29,3 +29,11 @@ dist-ssr
 
 .env
 .vite
+
+# Build artifacts
+villeconnect-api/.next
+villeconnect-api/node_modules
+*.tsbuildinfo
+
+# OS files
+Thumbs.db
