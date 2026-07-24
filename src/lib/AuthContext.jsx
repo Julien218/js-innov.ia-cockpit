@@ -2,8 +2,12 @@ import React, { createContext, useState, useContext, useEffect, useCallback } fr
 import { createClient } from '@supabase/supabase-js';
 
 // ─── SUPABASE CLIENT ──────────────────────────────────────────────────────────
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://rzvvwcwyaddzsaattwqt.supabase.co";
-const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6dnZ3Y3d5YWRkenNhYXR0d3F0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMTU4NjAsImV4cCI6MjA5NjY5MTg2MH0.VOEFK5BG_dxCnijcz2RexqMg1yDGoXdw58-2Ud_a7hM";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+
+if (!SUPABASE_URL || !SUPABASE_ANON) {
+  console.error("[AuthContext] VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY manquant — authentification non fonctionnelle");
+}
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
@@ -90,20 +94,22 @@ export const AuthProvider = ({ children }) => {
         .single();
 
       if (error || !userData) {
+        if (error) console.warn("[Auth] query error:", error.message || "unknown");
+        else console.warn("[Auth] user not found or inactive:", email.toLowerCase().trim());
         setIsLoadingAuth(false);
         return { success: false, error: "Email ou mot de passe incorrect." };
       }
 
-      // Vérifier le mot de passe
+      // Vérifier le mot de passe (hash SHA-256 côté client)
+      if (!userData.password_hash) {
+        console.warn("[Auth] password_hash missing for user:", userData.email);
+        setIsLoadingAuth(false);
+        return { success: false, error: "Email ou mot de passe incorrect." };
+      }
+
       const validHash = userData.password_hash === pwHash;
-
-      // Fallback superadmin hardcodé pour Julien (sécurité bootstrap)
-      const isSuperAdminBootstrap =
-        email.toLowerCase() === 'julien.pagin.pv@gmail.com' &&
-        password === 'Julien2026!' &&
-        userData.role === 'superadmin';
-
-      if (!validHash && !isSuperAdminBootstrap) {
+      if (!validHash) {
+        console.warn("[Auth] invalid password for user:", userData.email);
         setIsLoadingAuth(false);
         return { success: false, error: "Email ou mot de passe incorrect." };
       }
@@ -112,17 +118,24 @@ export const AuthProvider = ({ children }) => {
       const token = generateToken();
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-      await supabase.from('cockpit_sessions').insert({
+      // Créer une session
+      const { error: sessionError } = await supabase.from('cockpit_sessions').insert({
         user_id: userData.id,
         token,
         expires_at: expiresAt,
       });
+      if (sessionError) {
+        console.error("[Auth] session insert failed:", sessionError.message);
+        setIsLoadingAuth(false);
+        return { success: false, error: "Erreur de création de session. Réessayez." };
+      }
 
-      // Mettre à jour last_login
-      await supabase
+      // Mettre à jour last_login (non bloquant si échec)
+      const { error: updateError } = await supabase
         .from('cockpit_users')
         .update({ last_login_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         .eq('id', userData.id);
+      if (updateError) console.warn("[Auth] last_login update failed:", updateError.message);
 
       const { password_hash: _, ...safeUser } = userData;
       const sessionUser = { ...safeUser, sessionToken: token };
