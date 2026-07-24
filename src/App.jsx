@@ -124,7 +124,7 @@ const AppRoutes = () => {
 
           {/* Emails */}
           <Route path="/emails" element={<PageBoundary><Emails /></PageBoundary>} />
-          <Route path="/amails" element={<Navigate to="/emails" replace />} />
+          <Route path="/amails" element={<Navigate to="/emails?folder=sent" replace />} />
 
           {/* Paramètres */}
           <Route path="/parametres" element={<PageBoundary><Parametres /></PageBoundary>} />

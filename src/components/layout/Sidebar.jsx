@@ -3,9 +3,8 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Users, Target, FolderKanban,
   FileText, Receipt, Shield, ChevronLeft, ChevronRight, X,
-  CheckSquare, MessageSquare, Package, ShieldCheck, Activity,
-  Bot, Network, UserPlus, LogOut, Crown, Briefcase, User, Store, Settings,
-  Film, Clapperboard, Image, Calendar, Package2, GalleryHorizontalEnd, PlayCircle,
+  CheckSquare, MessageSquare, Package, ShieldCheck,   Bot, Network, UserPlus, LogOut, Crown, Briefcase, User, Settings,
+  GalleryHorizontalEnd, PlayCircle,
   Mail
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -89,7 +88,6 @@ const allNavGroups = [
     items: [
       { label: "Devis", icon: FileText, path: "/devis" },
       { label: "Factures", icon: Receipt, path: "/factures" },
-      { label: "Commissions", icon: Shield, path: "/commissions", minRole: "admin" },
     ]
   },
   {
@@ -98,7 +96,6 @@ const allNavGroups = [
       { label: "Julien AI", icon: Bot, path: "/agent", minRole: "collaborateur" },
       { label: "Agents IA", icon: Network, path: "/agents-ia" },
       { label: "Validations", icon: ShieldCheck, path: "/validations", badge: "validations", minRole: "admin" },
-      { label: "Journal", icon: Activity, path: "/logs", minRole: "superadmin" },
     ]
   },
   {
@@ -109,29 +106,10 @@ const allNavGroups = [
     ]
   },
   {
-    label: "VilleConnect",
-    minRole: "collaborateur",
-    items: [
-      { label: "Commerçants", icon: Store, path: "/commercants", minRole: "collaborateur" },
-    ]
-  },
-  {
     label: "Catalogue",
     minRole: "admin",
     items: [
       { label: "Services", icon: Package, path: "/services", minRole: "admin" },
-    ]
-  },
-  {
-    label: "Studio Vidéo",
-    minRole: "admin",
-    items: [
-      { label: "Video Studio", icon: Clapperboard, path: "/video-studio", minRole: "admin" },
-      { label: "IA Vidéo Report", icon: Film, path: "/ai-video", minRole: "admin" },
-      { label: "Générateur Miniatures", icon: Image, path: "/thumbnail", minRole: "admin" },
-      { label: "Exports Vidéo", icon: Package2, path: "/exports", minRole: "admin" },
-      { label: "Calendrier", icon: Calendar, path: "/calendar", minRole: "collaborateur" },
-      { label: "Campagne Dour", icon: Film, path: "/dour-campaign", minRole: "admin" },
     ]
   },
   {

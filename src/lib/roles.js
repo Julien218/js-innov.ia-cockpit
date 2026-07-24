@@ -30,17 +30,20 @@ export const ROLE_COLORS = {
   client:     { bg: "#1a0d00", text: "#f97316", badge: "#f97316" },
 };
 
-// Routes accessibles par rôle
+// Routes accessibles par rôle — PRODUCTION
+// Les routes masquées (Commissions, Commercants, Logs, Video, etc.)
+// restent dans le code mais ne sont pas dans le menu ni dans ROLE_ROUTES.
+// Elles restent accessibles par URL directe (dev preview) mais invisibles dans le menu.
 export const ROLE_ROUTES = {
   superadmin: [
     "/", "/clients", "/leads", "/projets", "/taches", "/demandes",
-    "/services", "/devis", "/factures", "/commissions",
-    "/validations", "/logs", "/agent", "/agents-ia", "/invitations",
+    "/services", "/devis", "/factures",
+    "/validations", "/agent", "/agents-ia", "/invitations",
     "/portfolio", "/automations", "/emails", "/parametres"
   ],
   admin: [
     "/", "/clients", "/leads", "/projets", "/taches", "/demandes",
-    "/services", "/devis", "/factures", "/commissions",
+    "/services", "/devis", "/factures",
     "/validations", "/agent", "/agents-ia", "/invitations",
     "/portfolio", "/automations", "/emails", "/parametres"
   ],

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Mail, RefreshCw, Paperclip, Search, ArrowLeft, User, Calendar,
   Shield, Store, Send, Loader2, Reply, Trash2, Archive, Check, AlertCircle,
@@ -279,6 +280,9 @@ export default function Emails() {
   const [composeOpen, setComposeOpen] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
   const [actionMsg, setActionMsg] = useState(null);
+  const [searchParams] = useSearchParams();
+  const folder = searchParams.get("folder") || "inbox";
+  const isSentFolder = folder === "sent";
 
   const activeMailboxCfg = MAILBOXES.find(m => m.id === activeMailbox);
 
@@ -291,7 +295,8 @@ export default function Emails() {
     if (activeMailboxCfg?.isAlias) { setEmails([]); setLoading(false); setError(null); return; }
     setLoading(true); setError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/emails?mailbox=${activeMailbox}&limit=50`, { headers: { 'x-agent-key': API_KEY } });
+      const endpoint = isSentFolder ? `${API_BASE}/api/emails/sent?mailbox=${activeMailbox}&limit=50` : `${API_BASE}/api/emails?mailbox=${activeMailbox}&limit=50`;
+      const res = await fetch(endpoint, { headers: { 'x-agent-key': API_KEY } });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Erreur de chargement');
       setEmails(data.emails || []);
@@ -360,7 +365,7 @@ export default function Emails() {
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
             <Mail className="w-5 h-5 text-[#D4AF37]" />
-            Boites mail
+            {isSentFolder ? "Emails envoyés" : "Boîtes mail"}
             {unreadCount > 0 && (
               <span className="ml-1 bg-[#D4AF37] text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                 {unreadCount}
