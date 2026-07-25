@@ -18,6 +18,15 @@ try {
   console.warn('⚠️ Route emails indisponible:', e.message);
 }
 
+// ── API Billing (PDF + envoi devis/factures) ─────────────────
+try {
+  const billingRouter = require('./server-billing.cjs');
+  app.use('/api/billing', billingRouter);
+  console.log('✅ Route /api/billing activée (PDF + email devis/factures)');
+} catch (e) {
+  console.warn('⚠️ Route billing indisponible:', e.message);
+}
+
 // Health check API
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cockpit-api' }));
 
