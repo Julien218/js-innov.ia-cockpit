@@ -35,6 +35,7 @@ COPY --from=builder /app/package-lock.json ./package-lock.json
 COPY server.cjs ./server.cjs
 COPY server-email.cjs ./server-email.cjs
 COPY server-billing.cjs ./server-billing.cjs
+COPY assets ./assets
 
 # Installer les dépendances prod (imap, mailparser, express)
 RUN npm ci --omit=dev --legacy-peer-deps
