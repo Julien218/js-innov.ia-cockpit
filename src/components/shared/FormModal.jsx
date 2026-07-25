@@ -65,9 +65,13 @@ export default function FormModal({
 
   const handleSubmit = (e) => {
     e?.preventDefault?.();
+    // Pattern 1: onSubmit reçoit les données directement
     if (onSubmit) {
-      // Pattern 1: onSubmit reçoit les données directement
       onSubmit(currentData);
+    }
+    // Pattern 2: si pas de onSubmit, propager via onChange
+    else if (onChange) {
+      onChange(currentData);
     }
   };
 
@@ -82,7 +86,7 @@ export default function FormModal({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           {safeFields.map((field, idx) => {
-            const fieldKey = field.name || field.key || `field_${idx}`;
+            const fieldKey = field.key || field.name || `field_${idx}`;
             return (
               <div key={fieldKey} className="space-y-1.5">
                 <Label className="text-xs font-medium">{field.label}</Label>
