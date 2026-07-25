@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { AGENT_URL, AGENT_KEY } from "@/config/agent";
+import { AGENT_KEY } from "@/config/agent";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
 import ErrorState from "@/components/shared/ErrorState";
@@ -68,11 +68,11 @@ export default function Devis() {
     onSuccess: () => qc.invalidateQueries(["Devis"]),
   });
 
-  // ── Télécharger PDF ──
+  // ── Télécharger PDF (route relative cockpit) ──
   const handlePDF = async (row) => {
     setPdfLoading(row.id);
     try {
-      const res = await fetch(`${AGENT_URL}/api/billing/devis/${row.id}/pdf`, {
+      const res = await fetch(`/api/billing/devis/${row.id}/pdf`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -99,7 +99,7 @@ export default function Devis() {
     }
   };
 
-  // ── Envoyer par email ──
+  // ── Envoyer par email (route relative cockpit) ──
   const handleSend = async (row) => {
     const to = row.client_email;
     if (!to) {
@@ -111,7 +111,7 @@ export default function Devis() {
 
     setSendLoading(row.id);
     try {
-      const res = await fetch(`${AGENT_URL}/api/billing/devis/${row.id}/send`, {
+      const res = await fetch(`/api/billing/devis/${row.id}/send`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

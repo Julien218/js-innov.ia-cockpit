@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { AGENT_URL, AGENT_KEY } from "@/config/agent";
+import { AGENT_KEY } from "@/config/agent";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
 import ErrorState from "@/components/shared/ErrorState";
@@ -50,7 +50,6 @@ export default function Factures() {
   const save = useMutation({
     mutationFn: (data) => {
       const payload = normalizeBillingPayload(data);
-      // Auto-générer le numéro si vide
       if (!payload.numero) {
         payload.numero = generateDocumentNumber("FAC", safeFactures);
       }
@@ -66,11 +65,11 @@ export default function Factures() {
     onSuccess: () => qc.invalidateQueries(["Facture"]),
   });
 
-  // ── Télécharger PDF ──
+  // ── Télécharger PDF (route relative cockpit) ──
   const handlePDF = async (row) => {
     setPdfLoading(row.id);
     try {
-      const res = await fetch(`${AGENT_URL}/api/billing/factures/${row.id}/pdf`, {
+      const res = await fetch(`/api/billing/factures/${row.id}/pdf`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -97,7 +96,7 @@ export default function Factures() {
     }
   };
 
-  // ── Envoyer par email ──
+  // ── Envoyer par email (route relative cockpit) ──
   const handleSend = async (row) => {
     const to = row.client_email;
     if (!to) {
@@ -109,7 +108,7 @@ export default function Factures() {
 
     setSendLoading(row.id);
     try {
-      const res = await fetch(`${AGENT_URL}/api/billing/factures/${row.id}/send`, {
+      const res = await fetch(`/api/billing/factures/${row.id}/send`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -156,7 +155,7 @@ export default function Factures() {
       <div className="space-y-4">
         <ErrorState
           title="Impossible de charger les données"
-          message={error?.message || "Erreur de connexion au serveur backend. Vérifiez que le service jsinnovia-agent est disponible."}
+          message={error?.message || "Erreur de connexion au serveur backend."}
           onRetry={refetch}
         />
       </div>

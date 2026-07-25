@@ -1,10 +1,11 @@
 // ============================================================
-// base44Client.js — PROXY via jsinnovia-agent backend
+// base44Client.js — PROXY via cockpit Express → jsinnovia-agent
 // Interface identique : base44.entities.X.list/create/update/delete
-// Backend : jsinnovia-agent (Railway) → Supabase service_role (bypass RLS)
+// Toutes les requêtes passent par /api/data/ (same-origin, pas de CORS)
+// Le serveur Express forward vers jsinnovia-agent (server-to-server)
 // ============================================================
 
-import { AGENT_URL, AGENT_KEY as AGENT_AUTH } from '@/config/agent';
+import { AGENT_KEY as AGENT_AUTH } from '@/config/agent';
 
 // Guard: if no API key is configured, fail fast with a clear message
 if (!AGENT_AUTH) {
@@ -38,8 +39,10 @@ function toArray(result) {
   return [];
 }
 
+// Relative URL — goes through nginx → Express proxy → jsinnovia-agent
+// No CORS issues because it's same-origin
 async function agentReq(table, path = '', options = {}) {
-  const url = `${AGENT_URL}/data/${table}${path}`;
+  const url = `/api/data/${table}${path}`;
   const res = await fetch(url, {
     ...options,
     headers: {

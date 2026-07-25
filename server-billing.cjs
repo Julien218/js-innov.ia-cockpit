@@ -58,7 +58,7 @@ async function updateDocumentStatus(type, id, statut) {
   const table = type === "facture" ? "Facture" : "Devis";
   const url = `${AGENT_URL}/data/${table}/${id}`;
   const res = await fetch(url, {
-    method: "PATCH",
+    method: "PUT",
     headers: {
       "Content-Type": "application/json",
       "x-agent-key": AGENT_KEY,
