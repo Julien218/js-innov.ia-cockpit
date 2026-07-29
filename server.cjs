@@ -5,7 +5,20 @@ const path = require('path');
 const app = express();
 const PORT = process.env.API_PORT || 3001;
 
+// Trust proxy — nécessaire pour détecter HTTPS (X-Forwarded-Proto) et l'IP réelle (X-Real-IP)
+// nginx reverse proxy est le premier hop
+app.set('trust proxy', 1);
+
 app.use(express.json({ limit: '10mb' }));
+
+// ── API Auth (backend, service_role) ────────────────────────
+try {
+  const authRouter = require('./server-auth.cjs');
+  app.use('/api/auth', authRouter);
+  console.log('✅ Route /api/auth activée (login, session, logout)');
+} catch (e) {
+  console.warn('⚠️ Route auth indisponible:', e.message);
+}
 
 // ── API Emails IMAP ──────────────────────────────────────────
 try {

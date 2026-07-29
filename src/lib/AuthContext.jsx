@@ -1,75 +1,56 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
-import { createClient } from '@supabase/supabase-js';
 
-// ─── SUPABASE CLIENT ──────────────────────────────────────────────────────────
-// Anon key = clé PUBLIQUE (pas un secret) — safe en frontend
-// Service Role Key n'est JAMAIS incluse ici
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://rzvvwcwyaddzsaattwqt.supabase.co";
-const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6dnZ3Y3d5YWRkenNhYXR0d3F0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMTU4NjAsImV4cCI6MjA5NjY5MTg2MH0.VOEFK5BG_dxCnijcz2RexqMg1yDGoXdw58-2Ud_a7hM";
+// ─── AUTH CONTEXT (backend via /api/auth) ────────────────────────────────────
+// Le frontend ne parle plus directement à Supabase pour l'auth.
+// Tout passe par le backend Express (server-auth.cjs) qui utilise la service_role.
+// Le token de session est géré via cookie HttpOnly — le JS ne peut pas le lire.
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
-
-const STORAGE_KEY = 'cockpit_session';
+const STORAGE_KEY = 'cockpit_session_user'; // Stocke uniquement le profil user (pas le token)
+const OLD_STORAGE_KEY = 'cockpit_session'; // Ancienne clé — à nettoyer
 const AuthContext = createContext();
-
-// ─── HASH PASSWORD (côté client simple — SHA-256 pour MVP) ───────────────────
-async function hashPassword(password) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password + 'jsinnovia_salt_2026');
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-// ─── GENERATE SESSION TOKEN ───────────────────────────────────────────────────
-function generateToken() {
-  return crypto.randomUUID().replace(/-/g, '') + Date.now().toString(36);
-}
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [authChecked, setAuthChecked] = useState(false);
 
-  // ─── Restaurer la session depuis localStorage ─────────────────────────────
+  // ─── Restaurer la session au démarrage ─────────────────────────────────────
+  // Le cookie HttpOnly est envoyé automatiquement par le navigateur.
+  // Le frontend ne voit jamais le token.
   useEffect(() => {
     const restoreSession = async () => {
       try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          const { token, userId } = JSON.parse(stored);
-          if (token && userId) {
-            // Vérifier la session en base
-            const { data: session } = await supabase
-              .from('cockpit_sessions')
-              .select('user_id, expires_at')
-              .eq('token', token)
-              .eq('user_id', userId)
-              .gt('expires_at', new Date().toISOString())
-              .single();
+        // Nettoyer l'ancienne clé localStorage qui contenait token + userId
+        // (le token est désormais dans le cookie HttpOnly, cette clé est obsolète)
+        if (localStorage.getItem(OLD_STORAGE_KEY)) {
+          localStorage.removeItem(OLD_STORAGE_KEY);
+        }
 
-            if (session) {
-              // Récupérer le profil utilisateur
-              const { data: userData } = await supabase
-                .from('cockpit_users')
-                .select('id, email, full_name, role, avatar_url, organisation, is_active')
-                .eq('id', userId)
-                .eq('is_active', true)
-                .single();
+        // Le profil user est mis en cache dans localStorage pour éviter le flash
+        // Le token lui-même est dans le cookie HttpOnly (non lisible par JS)
+        const cachedUser = localStorage.getItem(STORAGE_KEY);
+        if (cachedUser) {
+          setUser(JSON.parse(cachedUser));
+        }
 
-              if (userData) {
-                setUser({ ...userData, sessionToken: token });
-              } else {
-                localStorage.removeItem(STORAGE_KEY);
-              }
-            } else {
-              localStorage.removeItem(STORAGE_KEY);
-            }
-          }
+        // Valider la session via le backend (cookie envoyé automatiquement)
+        const res = await fetch('/api/auth/session', {
+          credentials: 'same-origin',
+        });
+        const data = await res.json();
+
+        if (data.valid && data.user) {
+          setUser(data.user);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data.user));
+        } else {
+          // Session invalide ou expirée — nettoyer
+          setUser(null);
+          localStorage.removeItem(STORAGE_KEY);
         }
       } catch (e) {
         console.error('Session restore error:', e);
-        localStorage.removeItem(STORAGE_KEY);
+        // En cas d'erreur réseau, on garde l'utilisateur en cache si présent
+        // (le cookie peut encore être valide même si le serveur ne répond pas)
       }
       setIsLoadingAuth(false);
       setAuthChecked(true);
@@ -81,130 +62,51 @@ export const AuthProvider = ({ children }) => {
   const login = useCallback(async (email, password) => {
     setIsLoadingAuth(true);
     try {
-      const pwHash = await hashPassword(password);
-
-      // Chercher l'utilisateur
-      const { data: userData, error } = await supabase
-        .from('cockpit_users')
-        .select('id, email, full_name, role, avatar_url, organisation, is_active, password_hash')
-        .eq('email', email.toLowerCase().trim())
-        .eq('is_active', true)
-        .single();
-
-      if (error || !userData) {
-        if (error) console.warn("[Auth] query error:", error.message || "unknown");
-        else console.warn("[Auth] user not found or inactive:", email.toLowerCase().trim());
-        setIsLoadingAuth(false);
-        return { success: false, error: "Email ou mot de passe incorrect." };
-      }
-
-      // Vérifier le mot de passe (hash SHA-256 côté client)
-      if (!userData.password_hash) {
-        console.warn("[Auth] password_hash missing for user:", userData.email);
-        setIsLoadingAuth(false);
-        return { success: false, error: "Email ou mot de passe incorrect." };
-      }
-
-      const validHash = userData.password_hash === pwHash;
-      if (!validHash) {
-        console.warn("[Auth] invalid password for user:", userData.email);
-        setIsLoadingAuth(false);
-        return { success: false, error: "Email ou mot de passe incorrect." };
-      }
-
-      // Créer une session
-      const token = generateToken();
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-
-      // Créer une session
-      const { error: sessionError } = await supabase.from('cockpit_sessions').insert({
-        user_id: userData.id,
-        token,
-        expires_at: expiresAt,
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ email, password }),
       });
-      if (sessionError) {
-        console.error("[Auth] session insert failed:", sessionError.message);
+
+      const data = await res.json();
+
+      if (res.ok && data.success && data.user) {
+        // Nettoyer l'ancienne clé au passage
+        localStorage.removeItem(OLD_STORAGE_KEY);
+        setUser(data.user);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data.user));
         setIsLoadingAuth(false);
-        return { success: false, error: "Erreur de création de session. Réessayez." };
+        return { success: true };
       }
 
-      // Mettre à jour last_login (non bloquant si échec)
-      const { error: updateError } = await supabase
-        .from('cockpit_users')
-        .update({ last_login_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq('id', userData.id);
-      if (updateError) console.warn("[Auth] last_login update failed:", updateError.message);
-
-      const { password_hash: _, ...safeUser } = userData;
-      const sessionUser = { ...safeUser, sessionToken: token };
-
-      setUser(sessionUser);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ token, userId: userData.id }));
       setIsLoadingAuth(false);
-      return { success: true };
+      return { success: false, error: data.error || 'Identifiants incorrects.' };
     } catch (e) {
       console.error('Login error:', e);
       setIsLoadingAuth(false);
-      return { success: false, error: "Erreur de connexion. Réessayez." };
+      return { success: false, error: 'Erreur de connexion. Réessayez.' };
     }
   }, []);
 
   // ─── LOGOUT ───────────────────────────────────────────────────────────────
   const logout = useCallback(async () => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const { token } = JSON.parse(stored);
-        if (token) {
-          await supabase.from('cockpit_sessions').delete().eq('token', token);
-        }
-      }
-    } catch (e) {}
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+    } catch (e) {
+      // Non bloquant
+    }
     setUser(null);
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(OLD_STORAGE_KEY); // Nettoyer aussi l'ancienne clé
   }, []);
 
-  // ─── REGISTER (via invitation) ────────────────────────────────────────────
+  // ─── REGISTER (Phase 2 — suspendu) ─────────────────────────────────────────
   const register = useCallback(async ({ email, fullName, password, token }) => {
-    try {
-      // Vérifier le token d'invitation
-      const { data: invite } = await supabase
-        .from('cockpit_invitations')
-        .select('*')
-        .eq('token', token)
-        .eq('status', 'pending')
-        .gt('expires_at', new Date().toISOString())
-        .single();
-
-      if (!invite) return { success: false, error: "Lien d'invitation invalide ou expiré." };
-
-      const pwHash = await hashPassword(password);
-
-      // Créer l'utilisateur
-      const { data: newUser, error } = await supabase
-        .from('cockpit_users')
-        .insert({
-          email: email.toLowerCase().trim(),
-          full_name: fullName,
-          password_hash: pwHash,
-          role: invite.role,
-          is_active: true,
-        })
-        .select()
-        .single();
-
-      if (error) return { success: false, error: "Email déjà utilisé ou erreur de création." };
-
-      // Marquer l'invitation comme acceptée
-      await supabase
-        .from('cockpit_invitations')
-        .update({ status: 'accepted', accepted_at: new Date().toISOString() })
-        .eq('id', invite.id);
-
-      return { success: true };
-    } catch (e) {
-      return { success: false, error: "Erreur lors de la création du compte." };
-    }
+    return { success: false, error: 'Inscription temporairement indisponible.' };
   }, []);
 
   const navigateToLogin = useCallback(() => { window.location.href = "/login"; }, []);
@@ -220,7 +122,7 @@ export const AuthProvider = ({ children }) => {
       authError: null,
       appPublicSettings: null,
       authChecked,
-      supabase,
+      supabase: null, // Déprécié — le frontend ne parle plus à Supabase directement
       login,
       logout,
       register,
