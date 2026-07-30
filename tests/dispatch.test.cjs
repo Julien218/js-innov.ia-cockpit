@@ -349,6 +349,72 @@ console.log('\n\u2550\u2550\u2550 R\u00e9sum\u00e9 \u2550\u2550\u2550');
 console.log('  Pass: ' + passed);
 console.log('  Fail: ' + failed);
 
+// ─── 9b. Dual Supabase (auth + data) ────────────────────────────────────────────
+console.log('\n--- 9b. Dual Supabase (auth + data) ---');
+
+test('Dual Supabase : SUPABASE_DATA_URL défini (fallback sur SUPABASE_URL)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('SUPABASE_DATA_URL') !== -1, 'SUPABASE_DATA_URL manquant');
+  assert.ok(c.indexOf('SUPABASE_DATA_KEY') !== -1, 'SUPABASE_DATA_KEY manquant');
+  assert.ok(c.indexOf('process.env.SUPABASE_DATA_URL || SUPABASE_URL') !== -1, 'Fallback manquant');
+});
+
+test('Dual Supabase : supabaseDataSelect utilise SUPABASE_DATA_URL', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('SUPABASE_DATA_URL + \'/rest/v1/\'') !== -1, 'supabaseDataSelect n\'utilise pas SUPABASE_DATA_URL');
+});
+
+test('Dual Supabase : supabaseDataInsert utilise SUPABASE_DATA_KEY', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('SUPABASE_DATA_KEY, \'Authorization\': \'Bearer \' + SUPABASE_DATA_KEY') !== -1, 'supabaseDataInsert n\'utilise pas SUPABASE_DATA_KEY');
+});
+
+test('Dual Supabase : supabaseDataPatch utilise SUPABASE_DATA_URL', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  var patchSection = c.substring(c.indexOf('async function supabaseDataPatch'));
+  assert.ok(patchSection.indexOf('SUPABASE_DATA_URL') !== -1, 'supabaseDataPatch n\'utilise pas SUPABASE_DATA_URL');
+});
+
+test('Dual Supabase : Tache utilise supabaseDataSelect (pas supabaseSelect)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf("supabaseDataSelect('Tache'") !== -1, 'Tache devrait utiliser supabaseDataSelect');
+  assert.ok(c.indexOf("supabaseSelect('Tache'") === -1, 'Tache ne devrait pas utiliser supabaseSelect (auth)');
+});
+
+test('Dual Supabase : Tache utilise supabaseDataPatch (pas supabasePatch)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf("supabaseDataPatch('Tache'") !== -1, 'Tache devrait utiliser supabaseDataPatch');
+  assert.ok(c.indexOf("supabasePatch('Tache'") === -1, 'Tache ne devrait pas utiliser supabasePatch (auth)');
+});
+
+test('Dual Supabase : agent_runs utilise supabaseDataSelect', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf("supabaseDataSelect('agent_runs'") !== -1, 'agent_runs devrait utiliser supabaseDataSelect');
+});
+
+test('Dual Supabase : cockpit_sessions utilise supabaseSelect (auth)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf("supabaseSelect('cockpit_sessions'") !== -1, 'cockpit_sessions devrait utiliser supabaseSelect (auth)');
+});
+
+test('Dual Supabase : cockpit_users utilise supabaseSelect (auth)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf("supabaseSelect('cockpit_users'") !== -1, 'cockpit_users devrait utiliser supabaseSelect (auth)');
+});
+
+test('Dual Supabase : processDispatchAsync crée approval APRÈS dispatch (pas avant)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  var asyncSection = c.substring(c.indexOf('async function processDispatchAsync'));
+  assert.ok(asyncSection.indexOf('awaiting_approval') !== -1, 'processDispatchAsync ne passe pas en awaiting_approval');
+  assert.ok(asyncSection.indexOf('executionMode === \'approval_required\'') !== -1, 'Condition approval_required manquante');
+});
+
+test('Dual Supabase : processDispatchAsync vérifie approval existante (évite 409)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  var asyncSection = c.substring(c.indexOf('async function processDispatchAsync'));
+  assert.ok(asyncSection.indexOf('existingApprovals') !== -1, 'Pas de vérification d\'approval existante');
+});
+
 // ─── 10. Récupération après crash ──────────────────────────────────────────────
 console.log('\n--- 10. Récupération après crash ---');
 

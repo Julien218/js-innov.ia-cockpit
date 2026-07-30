@@ -32,8 +32,14 @@ var crypto = require('crypto');
 var router = express.Router();
 
 // ─── Config (runtime only, jamais exposé au frontend) ────────────────────────
+// ── Dual Supabase : auth (rzvvwcwyaddzsaattwqt) + data (gfjpryakxzdzwnazlsfz) ──
+// Auth : cockpit_sessions, cockpit_users → SUPABASE_URL / SUPABASE_KEY
+// Data : Tache, agent_runs, agent_approvals → SUPABASE_DATA_URL / SUPABASE_DATA_KEY
+// Si SUPABASE_DATA_URL n'est pas défini, on retombe sur SUPABASE_URL (mono-projet).
 var SUPABASE_URL = process.env.SUPABASE_URL || '';
 var SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+var SUPABASE_DATA_URL = process.env.SUPABASE_DATA_URL || SUPABASE_URL;
+var SUPABASE_DATA_KEY = process.env.SUPABASE_DATA_KEY || SUPABASE_KEY;
 var BASE44_API_URL = 'https://app.base44.com/api/agents';
 
 // ⚠️ BASE44_API_KEY uniquement. Pas de fallback VITE_* (convention frontend, pas serveur).
@@ -46,7 +52,10 @@ if (!BASE44_API_KEY) {
   console.warn('   Ajoutez BASE44_API_KEY dans les variables Railway (runtime, sans préfixe frontend prefix).');
 }
 if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.warn('⚠️ [dispatch] SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY non configuré.');
+  console.warn('⚠️ [dispatch] SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY non configuré (auth).');
+}
+if (!SUPABASE_DATA_URL || !SUPABASE_DATA_KEY) {
+  console.warn('⚠️ [dispatch] SUPABASE_DATA_URL ou SUPABASE_DATA_KEY non configuré (data) — fallback sur SUPABASE_URL.');
 }
 
 // ─── Mapping agents — rôle fonctionnel → provider Base44 ─────────────────────
@@ -88,6 +97,44 @@ async function supabaseSelect(table, select, filter) {
     headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY },
   });
   if (!res.ok) throw new Error('Supabase ' + table + ' select failed: ' + res.status);
+  return res.json();
+}
+
+// Variante DATA : utilise SUPABASE_DATA_URL / SUPABASE_DATA_KEY pour les tables métier
+async function supabaseDataSelect(table, select, filter) {
+  var url = SUPABASE_DATA_URL + '/rest/v1/' + table + '?select=' + (select || '*') + (filter || '');
+  var res = await fetch(url, {
+    headers: { 'apikey': SUPABASE_DATA_KEY, 'Authorization': 'Bearer ' + SUPABASE_DATA_KEY },
+  });
+  if (!res.ok) throw new Error('Supabase DATA ' + table + ' select failed: ' + res.status);
+  return res.json();
+}
+
+async function supabaseDataInsert(table, data) {
+  var res = await fetch(SUPABASE_DATA_URL + '/rest/v1/' + table, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_DATA_KEY, 'Authorization': 'Bearer ' + SUPABASE_DATA_KEY,
+      'Prefer': 'return=representation',
+    },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Supabase DATA ' + table + ' insert failed: ' + res.status);
+  return res.json();
+}
+
+async function supabaseDataPatch(table, filter, data) {
+  var res = await fetch(SUPABASE_DATA_URL + '/rest/v1/' + table + '?' + filter, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_DATA_KEY, 'Authorization': 'Bearer ' + SUPABASE_DATA_KEY,
+      'Prefer': 'return=representation',
+    },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Supabase DATA ' + table + ' patch failed: ' + res.status);
   return res.json();
 }
 
@@ -250,7 +297,7 @@ async function dispatchToBase44(agent, task, instructions, executionMode, runId)
 async function processDispatchAsync(runId, agent, task, instructions, executionMode) {
   try {
     // Statut → dispatching
-    await supabasePatch('agent_runs', 'id=eq.' + encodeURIComponent(runId), {
+    await supabaseDataPatch('agent_runs', 'id=eq.' + encodeURIComponent(runId), {
       status: 'dispatching',
       started_at: new Date().toISOString(),
       base44_agent_id: agent.base44_id,
@@ -260,7 +307,7 @@ async function processDispatchAsync(runId, agent, task, instructions, executionM
     var result = await dispatchToBase44(agent, task, instructions, executionMode, runId);
 
     // Succès → statut dispatched + résultat initial
-    await supabasePatch('agent_runs', 'id=eq.' + encodeURIComponent(runId), {
+    await supabaseDataPatch('agent_runs', 'id=eq.' + encodeURIComponent(runId), {
       status: 'dispatched',
       base44_conv_id: result.convId,
       base44_msg_id: result.msgId,
@@ -268,10 +315,27 @@ async function processDispatchAsync(runId, agent, task, instructions, executionM
     });
 
     // Mettre à jour le statut de la tâche
-    await supabasePatch('Tache', 'id=eq.' + encodeURIComponent(task.id), {
+    await supabaseDataPatch('Tache', 'id=eq.' + encodeURIComponent(task.id), {
       statut: 'en_cours',
       notes: (task.notes || '') + '\n[Dispatch] Agent ' + agent.functional_role + ' run ' + runId + ' conv ' + result.convId,
     });
+
+    // Si mode approval_required, passer en awaiting_approval et créer une demande
+    if (executionMode === 'approval_required') {
+      await supabaseDataPatch('agent_runs', 'id=eq.' + encodeURIComponent(runId), {
+        status: 'awaiting_approval',
+      });
+      // Vérifier si une approval pending existe déjà (évite 409 sur contrainte UNIQUE)
+      var existingApprovals = await supabaseDataSelect('agent_approvals', 'id',
+        '&agent_run_id=eq.' + encodeURIComponent(runId) + '&status=eq.pending&limit=1');
+      if (!existingApprovals || existingApprovals.length === 0) {
+        await supabaseDataInsert('agent_approvals', {
+          agent_run_id: runId,
+          status: 'pending',
+        });
+      }
+      console.log('[dispatch] Run ' + runId + ' → awaiting_approval (approval_required)');
+    }
 
     console.log('[dispatch] Run ' + runId + ' dispatched successfully (conv: ' + result.convId + ')');
 
@@ -279,7 +343,7 @@ async function processDispatchAsync(runId, agent, task, instructions, executionM
     // Échec → statut failed + erreur lisible
     console.error('[dispatch] Run ' + runId + ' failed:', err.message);
     try {
-      await supabasePatch('agent_runs', 'id=eq.' + encodeURIComponent(runId), {
+      await supabaseDataPatch('agent_runs', 'id=eq.' + encodeURIComponent(runId), {
         status: 'failed',
         error: err.message.substring(0, 1000),
         completed_at: new Date().toISOString(),
@@ -334,7 +398,7 @@ router.post('/tasks/:taskId/dispatch', async function (req, res) {
     if (!agent) return res.status(400).json({ error: 'agentId inconnu.' });
 
     // 4. Récupérer la tâche
-    var tasks = await supabaseSelect('Tache', '*', '&id=eq.' + encodeURIComponent(taskId) + '&limit=1');
+    var tasks = await supabaseDataSelect('Tache', '*', '&id=eq.' + encodeURIComponent(taskId) + '&limit=1');
     if (!tasks || tasks.length === 0) return res.status(404).json({ error: 'Tache introuvable.' });
     var task = tasks[0];
 
@@ -344,7 +408,7 @@ router.post('/tasks/:taskId/dispatch', async function (req, res) {
     }
 
     // 6. Idempotence — vérifier si un run existe déjà avec ce clientKey
-    var existing = await supabaseSelect('agent_runs', 'id,status,base44_conv_id,execution_mode,created_at',
+    var existing = await supabaseDataSelect('agent_runs', 'id,status,base44_conv_id,execution_mode,created_at',
       '&idempotency_key=eq.' + encodeURIComponent(clientKey) + '&limit=1');
     if (existing && existing.length > 0) {
       // Retry technique ou double clic → retourner le run existant (200, pas 202)
@@ -377,7 +441,7 @@ router.post('/tasks/:taskId/dispatch', async function (req, res) {
     // 8. Créer l'agent_run en statut pending
     var run;
     try {
-      run = await supabaseInsert('agent_runs', {
+      run = await supabaseDataInsert('agent_runs', {
         task_id: taskId,
         agent_id: agentId,
         status: 'pending',
@@ -394,7 +458,7 @@ router.post('/tasks/:taskId/dispatch', async function (req, res) {
       // Contrainte UNIQUE → race condition, récupérer le run existant
       var errMsg = String(insertErr.message || '');
       if (errMsg.indexOf('23505') !== -1 || errMsg.indexOf('duplicate') !== -1) {
-        var existing2 = await supabaseSelect('agent_runs', 'id,status',
+        var existing2 = await supabaseDataSelect('agent_runs', 'id,status',
           '&idempotency_key=eq.' + encodeURIComponent(clientKey) + '&limit=1');
         if (existing2 && existing2.length > 0) {
           return res.status(200).json({
@@ -411,7 +475,7 @@ router.post('/tasks/:taskId/dispatch', async function (req, res) {
 
     // 9. Si mode approval_required, créer une demande d'approbation
     if (executionMode === 'approval_required') {
-      await supabaseInsert('agent_approvals', { agent_run_id: runId, status: 'pending' });
+      await supabaseDataInsert('agent_approvals', { agent_run_id: runId, status: 'pending' });
     }
 
     // 10. DISPATCH ASYNCHRONE — fire and forget (sans await)
@@ -452,7 +516,7 @@ router.post('/tasks/:taskId/dispatch-retry', async function (req, res) {
     if (!newClientKey) return res.status(400).json({ error: 'clientKey requis (nouveau UUID pour la relance).' });
 
     // Vérifier qu'un run précédent existe (on ne peut pas relancer sans historique)
-    var prevRuns = await supabaseSelect('agent_runs', 'id,status,agent_id,execution_mode',
+    var prevRuns = await supabaseDataSelect('agent_runs', 'id,status,agent_id,execution_mode',
       '&task_id=eq.' + encodeURIComponent(taskId) + '&order=created_at.desc&limit=1');
 
     if (!prevRuns || prevRuns.length === 0) {
@@ -467,7 +531,7 @@ router.post('/tasks/:taskId/dispatch-retry', async function (req, res) {
     if (!agent) return res.status(400).json({ error: 'agentId inconnu.' });
 
     // Récupérer la tâche
-    var tasks = await supabaseSelect('Tache', '*', '&id=eq.' + encodeURIComponent(taskId) + '&limit=1');
+    var tasks = await supabaseDataSelect('Tache', '*', '&id=eq.' + encodeURIComponent(taskId) + '&limit=1');
     if (!tasks || tasks.length === 0) return res.status(404).json({ error: 'Tache introuvable.' });
     var task = tasks[0];
 
@@ -476,7 +540,7 @@ router.post('/tasks/:taskId/dispatch-retry', async function (req, res) {
     }
 
     // Vérifier idempotence du nouveau clientKey
-    var existing = await supabaseSelect('agent_runs', 'id',
+    var existing = await supabaseDataSelect('agent_runs', 'id',
       '&idempotency_key=eq.' + encodeURIComponent(newClientKey) + '&limit=1');
     if (existing && existing.length > 0) {
       return res.status(200).json({
@@ -502,7 +566,7 @@ router.post('/tasks/:taskId/dispatch-retry', async function (req, res) {
       retry_of: prevRun.id, // référence au run précédent
     };
 
-    var run = await supabaseInsert('agent_runs', {
+    var run = await supabaseDataInsert('agent_runs', {
       task_id: taskId,
       agent_id: agentId,
       status: 'pending',
@@ -520,7 +584,7 @@ router.post('/tasks/:taskId/dispatch-retry', async function (req, res) {
     var runId = run[0].id;
 
     if (executionMode === 'approval_required') {
-      await supabaseInsert('agent_approvals', { agent_run_id: runId, status: 'pending' });
+      await supabaseDataInsert('agent_approvals', { agent_run_id: runId, status: 'pending' });
     }
 
     // Dispatch asynchrone
@@ -554,7 +618,7 @@ router.get('/tasks/:taskId/runs', async function (req, res) {
       filter += '&requested_by=eq.' + encodeURIComponent(user.email);
     }
 
-    var runs = await supabaseSelect('agent_runs',
+    var runs = await supabaseDataSelect('agent_runs',
       'id,task_id,agent_id,functional_role,status,execution_mode,requested_by,created_at,started_at,completed_at,error,base44_conv_id',
       filter);
     res.json({ runs: runs || [] });
@@ -570,7 +634,7 @@ router.get('/runs/:runId', async function (req, res) {
     var user = await getSessionUser(req);
     if (!user) return res.status(401).json({ error: 'Session invalide.' });
 
-    var runs = await supabaseSelect('agent_runs', '*',
+    var runs = await supabaseDataSelect('agent_runs', '*',
       '&id=eq.' + encodeURIComponent(req.params.runId) + '&limit=1');
     if (!runs || runs.length === 0) return res.status(404).json({ error: 'Execution introuvable.' });
 
@@ -581,7 +645,7 @@ router.get('/runs/:runId', async function (req, res) {
       return res.status(403).json({ error: 'Accès refusé : ce run appartient à une autre organisation.' });
     }
 
-    var approvals = await supabaseSelect('agent_approvals', '*',
+    var approvals = await supabaseDataSelect('agent_approvals', '*',
       '&agent_run_id=eq.' + encodeURIComponent(req.params.runId) + '&order=created_at.desc');
 
     res.json({
@@ -603,7 +667,7 @@ router.post('/runs/:runId/cancel', async function (req, res) {
     var user = await getSessionUser(req);
     if (!user) return res.status(401).json({ error: 'Session invalide.' });
     if (!requireRole(user, 3)) return res.status(403).json({ error: 'Droits insuffisants.' });
-    var runs = await supabaseSelect('agent_runs', 'id,status,requested_by',
+    var runs = await supabaseDataSelect('agent_runs', 'id,status,requested_by',
       '&id=eq.' + encodeURIComponent(req.params.runId) + '&limit=1');
     if (!runs || runs.length === 0) return res.status(404).json({ error: 'Execution introuvable.' });
 
@@ -616,7 +680,7 @@ router.post('/runs/:runId/cancel', async function (req, res) {
     if (cancellable.indexOf(runs[0].status) === -1) {
       return res.status(409).json({ error: 'Execution non annulable (statut: ' + runs[0].status + ').' });
     }
-    await supabasePatch('agent_runs', 'id=eq.' + encodeURIComponent(req.params.runId), {
+    await supabaseDataPatch('agent_runs', 'id=eq.' + encodeURIComponent(req.params.runId), {
       status: 'cancelled', completed_at: new Date().toISOString(),
     });
     res.json({ success: true, message: 'Execution annulee.' });
@@ -632,7 +696,7 @@ router.post('/runs/:runId/approve', async function (req, res) {
     var user = await getSessionUser(req);
     if (!user) return res.status(401).json({ error: 'Session invalide.' });
     if (!requireRole(user, 3)) return res.status(403).json({ error: 'Droits insuffisants.' });
-    var runs = await supabaseSelect('agent_runs', 'id,status,requested_by',
+    var runs = await supabaseDataSelect('agent_runs', 'id,status,requested_by',
       '&id=eq.' + encodeURIComponent(req.params.runId) + '&limit=1');
     if (!runs || runs.length === 0) return res.status(404).json({ error: 'Execution introuvable.' });
 
@@ -643,10 +707,10 @@ router.post('/runs/:runId/approve', async function (req, res) {
     if (runs[0].status !== 'awaiting_approval') {
       return res.status(409).json({ error: 'Execution non en attente d approbation.' });
     }
-    await supabasePatch('agent_approvals',
+    await supabaseDataPatch('agent_approvals',
       'agent_run_id=eq.' + encodeURIComponent(req.params.runId) + '&status=eq.pending',
       { status: 'approved', approved_at: new Date().toISOString(), approved_by: user.email });
-    await supabasePatch('agent_runs', 'id=eq.' + encodeURIComponent(req.params.runId), { status: 'running' });
+    await supabaseDataPatch('agent_runs', 'id=eq.' + encodeURIComponent(req.params.runId), { status: 'running' });
     res.json({ success: true, message: 'Execution approuvee.' });
   } catch (err) {
     console.error('[dispatch] Error approving run:', err.message);
@@ -661,7 +725,7 @@ router.post('/runs/:runId/reject', async function (req, res) {
     if (!user) return res.status(401).json({ error: 'Session invalide.' });
     if (!requireRole(user, 3)) return res.status(403).json({ error: 'Droits insuffisants.' });
     var reason = (req.body || {}).reason;
-    var runs = await supabaseSelect('agent_runs', 'id,status,requested_by',
+    var runs = await supabaseDataSelect('agent_runs', 'id,status,requested_by',
       '&id=eq.' + encodeURIComponent(req.params.runId) + '&limit=1');
     if (!runs || runs.length === 0) return res.status(404).json({ error: 'Execution introuvable.' });
 
@@ -672,10 +736,10 @@ router.post('/runs/:runId/reject', async function (req, res) {
     if (runs[0].status !== 'awaiting_approval') {
       return res.status(409).json({ error: 'Execution non en attente d approbation.' });
     }
-    await supabasePatch('agent_approvals',
+    await supabaseDataPatch('agent_approvals',
       'agent_run_id=eq.' + encodeURIComponent(req.params.runId) + '&status=eq.pending',
       { status: 'rejected', rejected_at: new Date().toISOString(), rejection_reason: reason || 'Non specifie' });
-    await supabasePatch('agent_runs', 'id=eq.' + encodeURIComponent(req.params.runId), {
+    await supabaseDataPatch('agent_runs', 'id=eq.' + encodeURIComponent(req.params.runId), {
       status: 'cancelled', completed_at: new Date().toISOString(), error: reason || 'Rejete par l utilisateur',
     });
     res.json({ success: true, message: 'Execution rejetee.' });
@@ -730,7 +794,7 @@ async function recoveryStuckRuns() {
     var threshold = new Date(Date.now() - STUCK_THRESHOLD_MINUTES * 60 * 1000).toISOString();
 
     // Sélectionner les runs en 'dispatching' depuis plus de 5 minutes
-    var stuckRuns = await supabaseSelect('agent_runs',
+    var stuckRuns = await supabaseDataSelect('agent_runs',
       'id,task_id,agent_id,functional_role,started_at,requested_by',
       "&status=eq.dispatching&started_at=lt." + encodeURIComponent(threshold) + "&limit=50");
 
@@ -748,7 +812,7 @@ async function recoveryStuckRuns() {
         ', commencé: ' + run.started_at + ') → marqué failed');
 
       try {
-        await supabasePatch('agent_runs', 'id=eq.' + encodeURIComponent(run.id), {
+        await supabaseDataPatch('agent_runs', 'id=eq.' + encodeURIComponent(run.id), {
           status: 'failed',
           error: 'Récupération après crash : run resté en dispatching pendant plus de ' +
                  STUCK_THRESHOLD_MINUTES + ' minutes (serveur probablement redémarré). ' +
