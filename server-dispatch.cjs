@@ -1,24 +1,28 @@
 // ════════════════════════════════════════════════════════════════════════════
-// server-dispatch.cjs — Task Dispatch to Agent (REAL Base44 connector)
+// server-dispatch.cjs — Task Dispatch to Agent (v2 — async + idempotence par intention)
 // ════════════════════════════════════════════════════════════════════════════
-// Endpoints :
-//   POST   /tasks/:taskId/dispatch     — envoyer une tâche à un agent IA
-//   GET    /tasks/:taskId/runs         — lister les exécutions d'une tâche
-//   GET    /runs/:runId                — détail d'une exécution
-//   POST   /runs/:runId/cancel         — annuler une exécution
-//   POST   /runs/:runId/approve        — valider (mode approval_required)
-//   POST   /runs/:runId/reject         — rejeter (mode approval_required)
 //
-// Connecteur réel : API Base44 Agents
-//   POST /api/agents/{agentId}/conversations → crée conversation
-//   POST /api/agents/{agentId}/conversations/{convId}/messages → envoie message
-//   Auth: header "api_key" = BASE44_API_KEY (runtime only, jamais exposé)
+// Corrections v2 :
+//   1. Sécurité clé : BASE44_API_KEY uniquement, pas de fallback VITE_
+//   2. Idempotence : clé par intention (client-side UUID), pas de fenêtre temporelle
+//   3. Dispatch asynchrone : HTTP 202 + runId immédiat, traitement découplé
+//   4. Mapping agents : rôle fonctionnel affiché, provider réel en données techniques
+//
+// Endpoints :
+//   GET    /agents                        — liste des rôles fonctionnels
+//   POST   /tasks/:taskId/dispatch        — créer un run (202 + runId)
+//   GET    /tasks/:taskId/runs            — lister les runs d'une tâche
+//   GET    /runs/:runId                   — statut détaillé d'un run
+//   POST   /runs/:runId/cancel            — annuler un run
+//   POST   /runs/:runId/approve           — valider (approval_required)
+//   POST   /runs/:runId/reject            — rejeter (approval_required)
+//   POST   /tasks/:taskId/dispatch-retry — relance volontaire (nouveau run)
 //
 // Sécurité :
 //   - Session vérifiée via cookie HttpOnly
 //   - Rôles admin/superadmin requis pour dispatch
-//   - BASE44_API_KEY jamais exposé au frontend
-//   - Idempotence via contrainte UNIQUE sur idempotency_key
+//   - BASE44_API_KEY jamais exposé au frontend (pas de fallback frontend prefix)
+//   - Idempotence : clientKey (UUID) fourni par le frontend, contrainte UNIQUE
 //   - Aucun secret dans les logs
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -31,22 +35,44 @@ var router = express.Router();
 var SUPABASE_URL = process.env.SUPABASE_URL || '';
 var SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 var BASE44_API_URL = 'https://app.base44.com/api/agents';
-var BASE44_API_KEY = process.env.BASE44_API_KEY || process.env.VITE_BASE44_API_KEY || '';
 
-// ─── Mapping agents cockpit → Base44 agent IDs ───────────────────────────────
+// ⚠️ BASE44_API_KEY uniquement. Pas de fallback VITE_* (convention frontend, pas serveur).
+// VITE_ est une convention Vite pour le frontend — pas une variable serveur.
+var BASE44_API_KEY = process.env.BASE44_API_KEY || '';
+
+// Vérification au démarrage
+if (!BASE44_API_KEY) {
+  console.warn('⚠️ [dispatch] BASE44_API_KEY non configurée — le dispatch sera rejeté (503).');
+  console.warn('   Ajoutez BASE44_API_KEY dans les variables Railway (runtime, sans préfixe frontend prefix).');
+}
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.warn('⚠️ [dispatch] SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY non configuré.');
+}
+
+// ─── Mapping agents — rôle fonctionnel → provider Base44 ─────────────────────
+// Chaque rôle fonctionnel a un provider Base44 sous-jacent.
+// Le frontend affiche le rôle fonctionnel ; le provider réel est stocké en base.
+// Migration future : déplacer ce mapping en base ou fichier de config.
 var AGENT_MAP = {
-  'communication-agent':  { base44_id: '69ff4dc771a2cdab275f8a00', name: 'NOVA JS-Innov.IA',    description: 'Communication, emails, messagerie' },
-  'social-media-agent':  { base44_id: '69ff4dc771a2cdab275f8a00', name: 'NOVA JS-Innov.IA',    description: 'Réseaux sociaux, contenus' },
-  'developer-agent':     { base44_id: '6a1845e17cc526d1e44965bc', name: 'JsInnov-Agent',       description: 'Code, bugs, déploiement, CI/CD' },
-  'billing-agent':       { base44_id: '69ff4dc771a2cdab275f8a00', name: 'NOVA JS-Innov.IA',    description: 'Facturation, devis, relances' },
-  'sales-agent':         { base44_id: '69ff4dc771a2cdab275f8a00', name: 'NOVA JS-Innov.IA',    description: 'Commercial, leads, prospects' },
-  'seo-audit-agent':     { base44_id: '6a1845e17cc526d1e44965bc', name: 'JsInnov-Agent',       description: 'SEO, audit, référencement' },
-  'creative-agent':      { base44_id: '69ff4dc771a2cdab275f8a00', name: 'NOVA JS-Innov.IA',    description: 'Design, branding, créatif' },
-  'general-agent':       { base44_id: '69ff4dc771a2cdab275f8a00', name: 'NOVA JS-Innov.IA',    description: 'Tâches générales et polyvalentes' },
+  'communication-agent':  { base44_id: '69ff4dc771a2cdab275f8a00', provider_name: 'NOVA JS-Innov.IA',  functional_role: 'Communication',      description: 'Emails, messagerie, newsletters' },
+  'social-media-agent':  { base44_id: '69ff4dc771a2cdab275f8a00', provider_name: 'NOVA JS-Innov.IA',  functional_role: 'Réseaux sociaux',   description: 'Publications, contenus sociaux' },
+  'developer-agent':     { base44_id: '6a1845e17cc526d1e44965bc', provider_name: 'JsInnov-Agent',     functional_role: 'Développement',     description: 'Code, bugs, CI/CD, déploiement' },
+  'billing-agent':       { base44_id: '69ff4dc771a2cdab275f8a00', provider_name: 'NOVA JS-Innov.IA',  functional_role: 'Facturation',       description: 'Devis, factures, relances' },
+  'sales-agent':         { base44_id: '69ff4dc771a2cdab275f8a00', provider_name: 'NOVA JS-Innov.IA',  functional_role: 'Commercial',        description: 'Leads, prospects, ventes' },
+  'seo-audit-agent':     { base44_id: '6a1845e17cc526d1e44965bc', provider_name: 'JsInnov-Agent',     functional_role: 'SEO & Audit',      description: 'Référencement, audit technique' },
+  'creative-agent':      { base44_id: '69ff4dc771a2cdab275f8a00', provider_name: 'NOVA JS-Innov.IA',  functional_role: 'Créatif',          description: 'Design, branding, visuel' },
+  'general-agent':       { base44_id: '69ff4dc771a2cdab275f8a00', provider_name: 'NOVA JS-Innov.IA',  functional_role: 'Général',          description: 'Tâches polyvalentes' },
 };
 
+// La liste exposée au frontend affiche le RÔLE FONCTIONNEL, pas le provider
 var AVAILABLE_AGENTS = Object.keys(AGENT_MAP).map(function (id) {
-  return { id: id, name: AGENT_MAP[id].name, description: AGENT_MAP[id].description };
+  var a = AGENT_MAP[id];
+  return {
+    id: id,
+    functionalRole: a.functional_role,   // ce que l'utilisateur voit
+    description: a.description,
+    // ⚠️ Pas de provider_name ni base44_id exposés au frontend
+  };
 });
 
 // ─── Actions sensibles (validation humaine obligatoire) ──────────────────────
@@ -108,7 +134,7 @@ async function getSessionUser(req) {
       '&token=eq.' + encodeURIComponent(token) + '&limit=1');
     if (!rows || rows.length === 0) return null;
     if (new Date(rows[0].expires_at) < new Date()) return null;
-    var users = await supabaseSelect('cockpit_users', 'id,email,full_name,role,is_active',
+    var users = await supabaseSelect('cockpit_users', 'id,email,full_name,role,is_active,organisation',
       '&id=eq.' + encodeURIComponent(rows[0].user_id) + '&limit=1');
     if (!users || users.length === 0 || !users[0].is_active) return null;
     return users[0];
@@ -136,16 +162,31 @@ function suggestAgent(task) {
   return 'general-agent';
 }
 
-// ─── Idempotence — clé déterministe ───────────────────────────────────────────
-function makeIdempotencyKey(taskId, agentId, executionMode, userId) {
-  var raw = taskId + ':' + agentId + ':' + executionMode + ':' + userId;
-  return crypto.createHash('sha256').update(raw).digest('hex');
-}
+// ════════════════════════════════════════════════════════════════════════════
+// IDEMPORENCE — clé par intention (client-side UUID)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Mécanisme :
+//   1. Le frontend génère un UUID v4 à chaque ouverture de la modale de dispatch.
+//   2. Cet UUID est envoyé comme `clientKey` dans le payload POST /dispatch.
+//   3. Le backend stocke ce `clientKey` dans `agent_runs.idempotency_key`.
+//   4. Une contrainte UNIQUE en base garantit qu'un même clientKey = un seul run.
+//
+// Comportements :
+//   - Retry technique (réseau coupé) : le frontend renvoie le MÊME clientKey → même run retourné.
+//   - Double clic : même clientKey → même run, pas de doublon.
+//   - Refresh page : nouveau clientKey généré → nouveau run possible (volontaire).
+//   - Relance volontaire : POST /tasks/:taskId/dispatch-retry → nouveau run explicite.
+//   - Timeout Base44 : le run reste en statut 'pending' ou 'dispatching', polling frontend.
+//
+// Durée de validité du clientKey : illimitée tant que le run existe en base.
+// Le clientKey n'expire pas — il est lié au run de façon permanente.
 
-// ─── Connecteur Base44 (REAL) ─────────────────────────────────────────────────
-async function dispatchToBase44(agent, task, instructions, executionMode) {
+// ─── Connecteur Base44 (REAL) — exécuté de façon asynchrone ──────────────────
+async function dispatchToBase44(agent, task, instructions, executionMode, runId) {
+  // Vérification stricte : BASE44_API_KEY obligatoire, pas de fallback
   if (!BASE44_API_KEY) {
-    throw new Error('BASE44_API_KEY non configurée côté serveur');
+    throw new Error('BASE44_API_KEY non configurée côté serveur (pas de fallback VITE_ autorisé)');
   }
 
   var base44AgentId = agent.base44_id;
@@ -159,17 +200,17 @@ async function dispatchToBase44(agent, task, instructions, executionMode) {
 
   if (!convRes.ok) {
     var errBody = await convRes.text();
-    throw new Error('Base44 conv creation failed: ' + convRes.status + ' ' + errBody.substring(0, 100));
+    throw new Error('Base44 conv creation failed: ' + convRes.status + ' ' + errBody.substring(0, 200));
   }
 
   var convData = await convRes.json();
   var convId = convData.id;
 
   if (!convId) {
-    throw new Error('Base44 conversation ID missing in response');
+    throw new Error('Base44: conversation ID missing in response');
   }
 
-  // 2. Construire le message pour l'agent
+  // 2. Construire le message
   var messageContent = '[TASK DISPATCH from Cockpit]\n' +
     'Task: ' + (task.titre || 'Untitled') + '\n' +
     'Description: ' + (task.description || '') + '\n' +
@@ -181,7 +222,7 @@ async function dispatchToBase44(agent, task, instructions, executionMode) {
     'Instructions: ' + (instructions || 'N/A') + '\n' +
     'Sensitive actions require human approval: ' + SENSITIVE_ACTIONS.join(', ');
 
-  // 3. Envoyer le message avec timeout de 120s (l'agent peut prendre du temps)
+  // 3. Envoyer le message (timeout 120s)
   var msgRes = await fetch(BASE44_API_URL + '/' + base44AgentId + '/conversations/' + convId + '/messages', {
     method: 'POST',
     headers: { 'api_key': BASE44_API_KEY, 'Content-Type': 'application/json' },
@@ -191,7 +232,7 @@ async function dispatchToBase44(agent, task, instructions, executionMode) {
 
   if (!msgRes.ok) {
     var errBody2 = await msgRes.text();
-    throw new Error('Base44 message send failed: ' + msgRes.status + ' ' + errBody2.substring(0, 100));
+    throw new Error('Base44 message send failed: ' + msgRes.status + ' ' + errBody2.substring(0, 200));
   }
 
   var msgData = await msgRes.json();
@@ -203,16 +244,62 @@ async function dispatchToBase44(agent, task, instructions, executionMode) {
   };
 }
 
+// ─── Traitement asynchrone du dispatch (découplé de la requête HTTP) ─────────
+// Cette fonction est appelée SANS await — elle s'exécute en arrière-plan.
+// Le statut du run est mis à jour en base au fur et à mesure.
+async function processDispatchAsync(runId, agent, task, instructions, executionMode) {
+  try {
+    // Statut → dispatching
+    await supabasePatch('agent_runs', 'id=eq.' + encodeURIComponent(runId), {
+      status: 'dispatching',
+      started_at: new Date().toISOString(),
+      base44_agent_id: agent.base44_id,
+    });
+
+    // Appel Base44 (peut prendre 30-120s)
+    var result = await dispatchToBase44(agent, task, instructions, executionMode, runId);
+
+    // Succès → statut dispatched + résultat initial
+    await supabasePatch('agent_runs', 'id=eq.' + encodeURIComponent(runId), {
+      status: 'dispatched',
+      base44_conv_id: result.convId,
+      base44_msg_id: result.msgId,
+      result: { initial_response: result.response.substring(0, 4000) },
+    });
+
+    // Mettre à jour le statut de la tâche
+    await supabasePatch('Tache', 'id=eq.' + encodeURIComponent(task.id), {
+      statut: 'en_cours',
+      notes: (task.notes || '') + '\n[Dispatch] Agent ' + agent.functional_role + ' run ' + runId + ' conv ' + result.convId,
+    });
+
+    console.log('[dispatch] Run ' + runId + ' dispatched successfully (conv: ' + result.convId + ')');
+
+  } catch (err) {
+    // Échec → statut failed + erreur lisible
+    console.error('[dispatch] Run ' + runId + ' failed:', err.message);
+    try {
+      await supabasePatch('agent_runs', 'id=eq.' + encodeURIComponent(runId), {
+        status: 'failed',
+        error: err.message.substring(0, 1000),
+        completed_at: new Date().toISOString(),
+      });
+    } catch (patchErr) {
+      console.error('[dispatch] Run ' + runId + ' — failed to update status:', patchErr.message);
+    }
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // ROUTES
 // ════════════════════════════════════════════════════════════════════════════
 
-// GET /agents — liste des agents disponibles
+// GET /agents — liste des rôles fonctionnels (pas de provider exposé)
 router.get('/agents', function (req, res) {
   res.json({ agents: AVAILABLE_AGENTS });
 });
 
-// POST /tasks/:taskId/dispatch — envoyer une tâche à un agent
+// POST /tasks/:taskId/dispatch — créer un run (202 + runId immédiat)
 router.post('/tasks/:taskId/dispatch', async function (req, res) {
   try {
     // 1. Vérifier la session
@@ -220,49 +307,57 @@ router.post('/tasks/:taskId/dispatch', async function (req, res) {
     if (!user) return res.status(401).json({ error: 'Session invalide ou expirée.' });
     if (!requireRole(user, 3)) return res.status(403).json({ error: 'Droits insuffisants. Admin requis.' });
 
+    // 2. Vérifier BASE44_API_KEY (503 si absent)
+    if (!BASE44_API_KEY) {
+      return res.status(503).json({
+        error: 'Service non configuré',
+        detail: 'BASE44_API_KEY manquante côté serveur. Ajoutez cette variable dans Railway (runtime, sans préfixe frontend prefix).',
+      });
+    }
+
     var taskId = req.params.taskId;
     var body = req.body || {};
     var agentId = body.agentId;
     var executionMode = body.executionMode;
     var instructions = body.instructions;
     var attachments = body.attachments || [];
+    var clientKey = body.clientKey; // UUID fourni par le frontend (idempotence par intention)
 
-    // 2. Valider le payload
+    // 3. Valider le payload
     if (!agentId) return res.status(400).json({ error: 'agentId requis.' });
     var validModes = ['prepare_only', 'approval_required', 'autonomous'];
     if (!executionMode || validModes.indexOf(executionMode) === -1) {
       return res.status(400).json({ error: 'executionMode invalide.' });
     }
+    if (!clientKey) return res.status(400).json({ error: 'clientKey requis (UUID pour idempotence).' });
     var agent = AGENT_MAP[agentId];
     if (!agent) return res.status(400).json({ error: 'agentId inconnu.' });
 
-    // 3. Récupérer la tâche
+    // 4. Récupérer la tâche
     var tasks = await supabaseSelect('Tache', '*', '&id=eq.' + encodeURIComponent(taskId) + '&limit=1');
     if (!tasks || tasks.length === 0) return res.status(404).json({ error: 'Tache introuvable.' });
     var task = tasks[0];
 
-    // 4. Refuser les tâches incompatibles
+    // 5. Refuser les tâches incompatibles
     if (task.statut === 'termine' || task.statut === 'annule') {
       return res.status(409).json({ error: 'Tache non dispatchable (statut: ' + task.statut + ').' });
     }
 
-    // 5. Idempotence — clé déterministe (taskId + agentId + mode + userId)
-    var idempotencyKey = makeIdempotencyKey(taskId, agentId, executionMode, user.id);
-
-    // Vérifier si un run existe déjà avec cette clé (DB constraint UNIQUE)
-    var existing = await supabaseSelect('agent_runs', 'id,status,base44_conv_id',
-      '&idempotency_key=eq.' + encodeURIComponent(idempotencyKey) + '&limit=1');
+    // 6. Idempotence — vérifier si un run existe déjà avec ce clientKey
+    var existing = await supabaseSelect('agent_runs', 'id,status,base44_conv_id,execution_mode,created_at',
+      '&idempotency_key=eq.' + encodeURIComponent(clientKey) + '&limit=1');
     if (existing && existing.length > 0) {
+      // Retry technique ou double clic → retourner le run existant (200, pas 202)
       return res.status(200).json({
         success: true,
         runId: existing[0].id,
         status: existing[0].status,
         idempotent: true,
-        message: 'Execution deja en cours (idempotence). Run: ' + existing[0].id,
+        message: 'Run déjà existant pour cette intention.',
       });
     }
 
-    // 6. Préparer l'input
+    // 7. Préparer l'input
     var input = {
       task: {
         id: task.id, titre: task.titre, description: task.description,
@@ -279,23 +374,32 @@ router.post('/tasks/:taskId/dispatch', async function (req, res) {
       },
     };
 
-    // 7. Créer l'agent_run en statut pending
+    // 8. Créer l'agent_run en statut pending
     var run;
     try {
       run = await supabaseInsert('agent_runs', {
-        task_id: taskId, agent_id: agentId, status: 'pending',
-        execution_mode: executionMode, input: input,
-        idempotency_key: idempotencyKey, requested_by: user.email,
+        task_id: taskId,
+        agent_id: agentId,
+        status: 'pending',
+        execution_mode: executionMode,
+        input: input,
+        idempotency_key: clientKey,
+        requested_by: user.email,
+        organisation: user.organisation || null,
+        provider_agent_id: agent.base44_id,    // provider réel stocké en base
+        provider_name: agent.provider_name,    // nom du provider pour audit
+        functional_role: agent.functional_role, // rôle fonctionnel affiché
       });
     } catch (insertErr) {
-      // Si la contrainte UNIQUE se déclenche (race condition), récupérer le run existant
-      if (String(insertErr.message).indexOf('23505') !== -1 || String(insertErr.message).indexOf('duplicate') !== -1) {
+      // Contrainte UNIQUE → race condition, récupérer le run existant
+      var errMsg = String(insertErr.message || '');
+      if (errMsg.indexOf('23505') !== -1 || errMsg.indexOf('duplicate') !== -1) {
         var existing2 = await supabaseSelect('agent_runs', 'id,status',
-          '&idempotency_key=eq.' + encodeURIComponent(idempotencyKey) + '&limit=1');
+          '&idempotency_key=eq.' + encodeURIComponent(clientKey) + '&limit=1');
         if (existing2 && existing2.length > 0) {
           return res.status(200).json({
             success: true, runId: existing2[0].id, status: existing2[0].status,
-            idempotent: true, message: 'Execution deja en cours (idempotence).',
+            idempotent: true, message: 'Run déjà existant (race condition résolue).',
           });
         }
       }
@@ -305,58 +409,136 @@ router.post('/tasks/:taskId/dispatch', async function (req, res) {
     if (!run || run.length === 0) return res.status(500).json({ error: 'Echec creation agent_run.' });
     var runId = run[0].id;
 
-    // 8. Si mode approval_required, créer une demande d'approbation
+    // 9. Si mode approval_required, créer une demande d'approbation
     if (executionMode === 'approval_required') {
       await supabaseInsert('agent_approvals', { agent_run_id: runId, status: 'pending' });
     }
 
-    // 9. DISPATCH RÉEL vers Base44
-    try {
-      var dispatchResult = await dispatchToBase44(agent, task, instructions, executionMode);
+    // 10. DISPATCH ASYNCHRONE — fire and forget (sans await)
+    //     Le frontend reçoit 202 immédiatement avec le runId.
+    //     Le traitement Base44 s'exécute en arrière-plan.
+    processDispatchAsync(runId, agent, task, instructions, executionMode);
 
-      // Mettre à jour le run avec les infos Base44
-      await supabasePatch('agent_runs', 'id=eq.' + encodeURIComponent(runId), {
-        status: 'dispatched',
-        started_at: new Date().toISOString(),
-        base44_agent_id: agent.base44_id,
-        base44_conv_id: dispatchResult.convId,
-        base44_msg_id: dispatchResult.msgId,
-        result: { initial_response: dispatchResult.response.substring(0, 2000) },
-      });
-
-      // 10. Mettre à jour le statut de la tâche
-      await supabasePatch('Tache', 'id=eq.' + encodeURIComponent(taskId), {
-        statut: 'en_cours',
-        notes: (task.notes || '') + '\n[Dispatch] Agent ' + agentId + ' run ' + runId + ' conv ' + dispatchResult.convId,
-      });
-
-      res.status(201).json({
-        success: true, runId: runId, status: 'dispatched',
-        agentId: agentId, executionMode: executionMode,
-        base44_conv_id: dispatchResult.convId,
-        message: 'Tache envoyee a ' + agent.name + ' (mode: ' + executionMode + ').',
-      });
-
-    } catch (dispatchErr) {
-      // Marquer comme failed — ne JAMAIS afficher "envoyée" si l'agent n'a pas reçu
-      await supabasePatch('agent_runs', 'id=eq.' + encodeURIComponent(runId), {
-        status: 'failed',
-        error: dispatchErr.message,
-        completed_at: new Date().toISOString(),
-      });
-
-      res.status(502).json({
-        success: false,
-        runId: runId,
-        status: 'failed',
-        error: 'Dispatch echoue: ' + dispatchErr.message,
-        message: 'L agent n a pas pu recevoir la tache. Verifiez la configuration.',
-      });
-    }
+    // 11. Réponse 202 Accepted — le run est créé, le traitement est en cours
+    res.status(202).json({
+      success: true,
+      runId: runId,
+      status: 'pending',
+      agentId: agentId,
+      functionalRole: agent.functional_role,
+      executionMode: executionMode,
+      message: 'Run créé. Traitement en cours. Utilisez GET /api/runs/' + runId + ' pour suivre le statut.',
+      pollUrl: '/api/runs/' + runId,
+      pollIntervalMs: 3000,
+    });
 
   } catch (err) {
     console.error('[dispatch] Error:', err.message);
     res.status(500).json({ error: 'Erreur serveur lors du dispatch.' });
+  }
+});
+
+// POST /tasks/:taskId/dispatch-retry — relance volontaire (nouveau run)
+router.post('/tasks/:taskId/dispatch-retry', async function (req, res) {
+  try {
+    var user = await getSessionUser(req);
+    if (!user) return res.status(401).json({ error: 'Session invalide.' });
+    if (!requireRole(user, 3)) return res.status(403).json({ error: 'Droits insuffisants.' });
+
+    var taskId = req.params.taskId;
+    var body = req.body || {};
+    var newClientKey = body.clientKey; // nouveau UUID obligatoire
+
+    if (!newClientKey) return res.status(400).json({ error: 'clientKey requis (nouveau UUID pour la relance).' });
+
+    // Vérifier qu'un run précédent existe (on ne peut pas relancer sans historique)
+    var prevRuns = await supabaseSelect('agent_runs', 'id,status,agent_id,execution_mode',
+      '&task_id=eq.' + encodeURIComponent(taskId) + '&order=created_at.desc&limit=1');
+
+    if (!prevRuns || prevRuns.length === 0) {
+      return res.status(404).json({ error: 'Aucun run précédent à relancer.' });
+    }
+
+    var prevRun = prevRuns[0];
+    var agentId = body.agentId || prevRun.agent_id;
+    var executionMode = body.executionMode || prevRun.execution_mode;
+    var instructions = body.instructions || '';
+    var agent = AGENT_MAP[agentId];
+    if (!agent) return res.status(400).json({ error: 'agentId inconnu.' });
+
+    // Récupérer la tâche
+    var tasks = await supabaseSelect('Tache', '*', '&id=eq.' + encodeURIComponent(taskId) + '&limit=1');
+    if (!tasks || tasks.length === 0) return res.status(404).json({ error: 'Tache introuvable.' });
+    var task = tasks[0];
+
+    if (task.statut === 'termine' || task.statut === 'annule') {
+      return res.status(409).json({ error: 'Tache non dispatchable.' });
+    }
+
+    // Vérifier idempotence du nouveau clientKey
+    var existing = await supabaseSelect('agent_runs', 'id',
+      '&idempotency_key=eq.' + encodeURIComponent(newClientKey) + '&limit=1');
+    if (existing && existing.length > 0) {
+      return res.status(200).json({
+        success: true, runId: existing[0].id, idempotent: true,
+        message: 'Run déjà existant pour ce clientKey.',
+      });
+    }
+
+    // Créer un NOUVEAU run (relance volontaire)
+    var input = {
+      task: {
+        id: task.id, titre: task.titre, description: task.description,
+        client_nom: task.client_nom, projet_nom: task.projet_nom,
+        priorite: task.priorite, date_echeance: task.date_echeance, notes: task.notes,
+      },
+      instructions: instructions,
+      sensitive_actions: SENSITIVE_ACTIONS,
+      execution_constraints: {
+        prepare_only: executionMode === 'prepare_only',
+        approval_required: executionMode === 'approval_required',
+        autonomous: executionMode === 'autonomous',
+      },
+      retry_of: prevRun.id, // référence au run précédent
+    };
+
+    var run = await supabaseInsert('agent_runs', {
+      task_id: taskId,
+      agent_id: agentId,
+      status: 'pending',
+      execution_mode: executionMode,
+      input: input,
+      idempotency_key: newClientKey,
+      requested_by: user.email,
+      organisation: user.organisation || null,
+      provider_agent_id: agent.base44_id,
+      provider_name: agent.provider_name,
+      functional_role: agent.functional_role,
+    });
+
+    if (!run || run.length === 0) return res.status(500).json({ error: 'Echec creation run.' });
+    var runId = run[0].id;
+
+    if (executionMode === 'approval_required') {
+      await supabaseInsert('agent_approvals', { agent_run_id: runId, status: 'pending' });
+    }
+
+    // Dispatch asynchrone
+    processDispatchAsync(runId, agent, task, instructions, executionMode);
+
+    res.status(202).json({
+      success: true,
+      runId: runId,
+      status: 'pending',
+      retryOf: prevRun.id,
+      message: 'Relance créée. Suivi: GET /api/runs/' + runId,
+      pollUrl: '/api/runs/' + runId,
+      pollIntervalMs: 3000,
+    });
+
+  } catch (err) {
+    console.error('[dispatch-retry] Error:', err.message);
+    res.status(500).json({ error: 'Erreur serveur lors de la relance.' });
   }
 });
 
@@ -365,9 +547,16 @@ router.get('/tasks/:taskId/runs', async function (req, res) {
   try {
     var user = await getSessionUser(req);
     if (!user) return res.status(401).json({ error: 'Session invalide.' });
+
+    var filter = '&task_id=eq.' + encodeURIComponent(req.params.taskId) + '&order=created_at.desc';
+    // Non-superadmin ne voit que ses propres runs
+    if (user.role !== 'superadmin') {
+      filter += '&requested_by=eq.' + encodeURIComponent(user.email);
+    }
+
     var runs = await supabaseSelect('agent_runs',
-      'id,task_id,agent_id,status,execution_mode,requested_by,created_at,started_at,completed_at,error,base44_conv_id',
-      '&task_id=eq.' + encodeURIComponent(req.params.taskId) + '&order=created_at.desc');
+      'id,task_id,agent_id,functional_role,status,execution_mode,requested_by,created_at,started_at,completed_at,error,base44_conv_id',
+      filter);
     res.json({ runs: runs || [] });
   } catch (err) {
     console.error('[dispatch] Error listing runs:', err.message);
@@ -375,17 +564,33 @@ router.get('/tasks/:taskId/runs', async function (req, res) {
   }
 });
 
-// GET /runs/:runId — détail d'une exécution
+// GET /runs/:runId — statut détaillé d'un run (pour polling)
 router.get('/runs/:runId', async function (req, res) {
   try {
     var user = await getSessionUser(req);
     if (!user) return res.status(401).json({ error: 'Session invalide.' });
+
     var runs = await supabaseSelect('agent_runs', '*',
       '&id=eq.' + encodeURIComponent(req.params.runId) + '&limit=1');
     if (!runs || runs.length === 0) return res.status(404).json({ error: 'Execution introuvable.' });
+
+    var run = runs[0];
+
+    // Vérifier l'appartenance (non-superadmin ne voit que ses runs)
+    if (user.role !== 'superadmin' && run.requested_by !== user.email) {
+      return res.status(403).json({ error: 'Accès refusé : ce run appartient à une autre organisation.' });
+    }
+
     var approvals = await supabaseSelect('agent_approvals', '*',
       '&agent_run_id=eq.' + encodeURIComponent(req.params.runId) + '&order=created_at.desc');
-    res.json({ run: runs[0], approvals: approvals || [] });
+
+    res.json({
+      run: run,
+      approvals: approvals || [],
+      // Métadonnées de polling
+      pollIntervalMs: 3000,
+      terminalStatuses: ['completed', 'failed', 'cancelled'],
+    });
   } catch (err) {
     console.error('[dispatch] Error getting run:', err.message);
     res.status(500).json({ error: 'Erreur serveur.' });
@@ -398,10 +603,16 @@ router.post('/runs/:runId/cancel', async function (req, res) {
     var user = await getSessionUser(req);
     if (!user) return res.status(401).json({ error: 'Session invalide.' });
     if (!requireRole(user, 3)) return res.status(403).json({ error: 'Droits insuffisants.' });
-    var runs = await supabaseSelect('agent_runs', 'id,status',
+    var runs = await supabaseSelect('agent_runs', 'id,status,requested_by',
       '&id=eq.' + encodeURIComponent(req.params.runId) + '&limit=1');
     if (!runs || runs.length === 0) return res.status(404).json({ error: 'Execution introuvable.' });
-    var cancellable = ['pending', 'dispatched', 'running', 'awaiting_approval'];
+
+    // Vérifier l'appartenance
+    if (user.role !== 'superadmin' && runs[0].requested_by !== user.email) {
+      return res.status(403).json({ error: 'Accès refusé.' });
+    }
+
+    var cancellable = ['pending', 'dispatching', 'dispatched', 'running', 'awaiting_approval'];
     if (cancellable.indexOf(runs[0].status) === -1) {
       return res.status(409).json({ error: 'Execution non annulable (statut: ' + runs[0].status + ').' });
     }
@@ -421,9 +632,14 @@ router.post('/runs/:runId/approve', async function (req, res) {
     var user = await getSessionUser(req);
     if (!user) return res.status(401).json({ error: 'Session invalide.' });
     if (!requireRole(user, 3)) return res.status(403).json({ error: 'Droits insuffisants.' });
-    var runs = await supabaseSelect('agent_runs', 'id,status',
+    var runs = await supabaseSelect('agent_runs', 'id,status,requested_by',
       '&id=eq.' + encodeURIComponent(req.params.runId) + '&limit=1');
     if (!runs || runs.length === 0) return res.status(404).json({ error: 'Execution introuvable.' });
+
+    if (user.role !== 'superadmin' && runs[0].requested_by !== user.email) {
+      return res.status(403).json({ error: 'Accès refusé.' });
+    }
+
     if (runs[0].status !== 'awaiting_approval') {
       return res.status(409).json({ error: 'Execution non en attente d approbation.' });
     }
@@ -445,9 +661,14 @@ router.post('/runs/:runId/reject', async function (req, res) {
     if (!user) return res.status(401).json({ error: 'Session invalide.' });
     if (!requireRole(user, 3)) return res.status(403).json({ error: 'Droits insuffisants.' });
     var reason = (req.body || {}).reason;
-    var runs = await supabaseSelect('agent_runs', 'id,status',
+    var runs = await supabaseSelect('agent_runs', 'id,status,requested_by',
       '&id=eq.' + encodeURIComponent(req.params.runId) + '&limit=1');
     if (!runs || runs.length === 0) return res.status(404).json({ error: 'Execution introuvable.' });
+
+    if (user.role !== 'superadmin' && runs[0].requested_by !== user.email) {
+      return res.status(403).json({ error: 'Accès refusé.' });
+    }
+
     if (runs[0].status !== 'awaiting_approval') {
       return res.status(409).json({ error: 'Execution non en attente d approbation.' });
     }

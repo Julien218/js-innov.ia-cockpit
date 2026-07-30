@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
@@ -7,14 +7,15 @@ import StatusBadge from "@/components/shared/StatusBadge";
 import ErrorState from "@/components/shared/ErrorState";
 import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, RefreshCw } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
-// Composants de dispatch
 import TaskDispatchButton from "@/components/dispatch/TaskDispatchButton";
 import TaskDispatchModal from "@/components/dispatch/TaskDispatchModal";
 import AgentRunActions from "@/components/dispatch/AgentRunActions";
 import AgentRunDetail from "@/components/dispatch/AgentRunDetail";
+
+const TERMINAL_STATUSES = ['completed', 'failed', 'cancelled'];
 
 const formFields = [
   { name: "titre",         label: "Titre",         type: "text",   required: true },
@@ -46,6 +47,7 @@ export default function Taches() {
   const [detailRunId, setDetailRunId] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [taskRuns, setTaskRuns] = useState({});
+  const pollingRef = useRef({});
 
   const { data: taches = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["Tache"],
@@ -63,7 +65,7 @@ export default function Taches() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["Tache"] }),
   });
 
-  // ─── Dispatch mutation (appel backend réel) ──────────────────────────────────
+  // ─── Dispatch (async — 202 + runId immédiat) ──────────────────────────────────
   const dispatch = useMutation({
     mutationFn: async ({ task, payload }) => {
       const res = await fetch("/api/tasks/" + task.id + "/dispatch", {
@@ -74,21 +76,45 @@ export default function Taches() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
-      return data;
+      return { ...data, httpStatus: res.status };
     },
     onSuccess: (data, { task }) => {
       qc.invalidateQueries({ queryKey: ["Tache"] });
       toast({
-        title: data.idempotent ? "Déjà en cours" : (data.success ? "Tâche envoyée" : "Échec d'envoi"),
-        description: data.message,
-        variant: data.success ? "default" : "destructive",
+        title: data.idempotent ? "Run déjà existant" : "Run créé",
+        description: data.idempotent
+          ? `Run existant retourné (statut: ${data.status}).`
+          : `Traitement asynchrone en cours. Statut: ${data.status}.`,
+        variant: "default",
       });
       setDispatchOpen(false);
       setDispatchTask(null);
-      fetchRunsForTask(task.id);
+      // Démarrer le polling pour ce run
+      if (data.runId && !TERMINAL_STATUSES.includes(data.status)) {
+        startPolling(data.runId, task.id);
+      }
     },
     onError: (err) => {
       toast({ title: "Erreur d'envoi", description: String(err.message || err), variant: "destructive" });
+    },
+  });
+
+  // ─── Relance volontaire ────────────────────────────────────────────────────────
+  const retry = useMutation({
+    mutationFn: async ({ task, payload }) => {
+      const res = await fetch("/api/tasks/" + task.id + "/dispatch-retry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
+      return data;
+    },
+    onSuccess: (data, { task }) => {
+      toast({ title: "Relance créée", description: `Nouveau run: ${data.runId}. Suivi en cours.` });
+      if (data.runId) startPolling(data.runId, task.id);
     },
   });
 
@@ -126,6 +152,58 @@ export default function Taches() {
     onSuccess: () => { toast({ title: "Exécution rejetée" }); setDetailOpen(false); },
   });
 
+  // ─── Polling — suit le statut d'un run jusqu'à son terme ───────────────────────
+  const startPolling = useCallback((runId, taskId) => {
+    // Arrêter un polling existant pour ce run
+    if (pollingRef.current[runId]) clearInterval(pollingRef.current[runId]);
+
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/runs/" + runId, { credentials: "include" });
+        const data = await res.json();
+        if (data.run) {
+          // Mettre à jour les runs de la tâche
+          setTaskRuns(prev => {
+            const runs = prev[taskId] || [];
+            const idx = runs.findIndex(r => r.id === runId);
+            if (idx >= 0) {
+              const updated = [...runs];
+              updated[idx] = data.run;
+              return { ...prev, [taskId]: updated };
+            }
+            return { ...prev, [taskId]: [data.run, ...runs] };
+          });
+
+          // Arrêter le polling si statut terminal
+          if (TERMINAL_STATUSES.includes(data.run.status)) {
+            clearInterval(pollingRef.current[runId]);
+            delete pollingRef.current[runId];
+            qc.invalidateQueries({ queryKey: ["Tache"] });
+            toast({
+              title: data.run.status === "completed" ? "Tâche terminée" : data.run.status === "failed" ? "Échec du dispatch" : "Run annulé",
+              description: data.run.error || `Run ${data.run.id.substring(0, 8)} — ${data.run.status}`,
+              variant: data.run.status === "completed" ? "default" : "destructive",
+            });
+          }
+        }
+      } catch (e) {
+        console.error("Polling error for run", runId, ":", e.message);
+      }
+    };
+
+    // Polling toutes les 3 secondes
+    pollingRef.current[runId] = setInterval(poll, 3000);
+    // Premier poll immédiat
+    poll();
+  }, [qc, toast]);
+
+  // Nettoyer les intervalles au démontage
+  useEffect(() => {
+    return () => {
+      Object.values(pollingRef.current).forEach(clearInterval);
+    };
+  }, []);
+
   // ─── Fetch runs for task ──────────────────────────────────────────────────────
   const fetchRunsForTask = useCallback(async (taskId) => {
     try {
@@ -142,6 +220,26 @@ export default function Taches() {
     return (
       <div className="flex items-center gap-1">
         <AgentRunActions lastRun={lastRun} onViewRun={(id) => { setDetailRunId(id); setDetailOpen(true); }} />
+        {lastRun && (lastRun.status === 'failed' || lastRun.status === 'cancelled') && (
+          <Button size="icon" variant="ghost" className="text-amber-400"
+            onClick={() => {
+              // Relance volontaire — génère un nouveau clientKey
+              const newKey = crypto.randomUUID();
+              retry.mutate({
+                task: row,
+                payload: {
+                  clientKey: newKey,
+                  agentId: lastRun.agent_id,
+                  executionMode: lastRun.execution_mode,
+                  instructions: '',
+                },
+              });
+            }}
+            title="Relancer l'exécution"
+            aria-label="Relancer">
+            <RefreshCw className="w-4 h-4" />
+          </Button>
+        )}
         <TaskDispatchButton
           task={row}
           isDispatching={dispatch.isPending && dispatchTask?.id === row.id}

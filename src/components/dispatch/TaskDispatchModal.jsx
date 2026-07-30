@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -7,26 +7,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import StatusBadge from "@/components/shared/StatusBadge";
-import {
-  Send, Bot, FileText, Cpu, ShieldCheck, Shield, ShieldAlert, CheckCircle2,
-} from "lucide-react";
+import { Send, Bot, FileText, Cpu, ShieldCheck, Shield, ShieldAlert, CheckCircle2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const AGENTS = [
-  { id: "communication-agent", name: "Communication",   icon: "📧", color: "#06B6D4" },
-  { id: "social-media-agent",  name: "Réseaux Sociaux", icon: "📱", color: "#7C3AED" },
-  { id: "developer-agent",    name: "Développeur",     icon: "💻", color: "#D4AF37" },
-  { id: "billing-agent",       name: "Facturation",    icon: "🧾", color: "#10B981" },
-  { id: "sales-agent",         name: "Commercial",     icon: "📊", color: "#F59E0B" },
-  { id: "seo-audit-agent",     name: "SEO Audit",      icon: "🔍", color: "#3B82F6" },
-  { id: "creative-agent",      name: "Créatif",        icon: "🎨", color: "#EC4899" },
-  { id: "general-agent",       name: "Général",        icon: "🤖", color: "#6B7280" },
+  { id: "communication-agent", role: "Communication",     icon: "📧", color: "#06B6D4" },
+  { id: "social-media-agent",  role: "Réseaux sociaux",   icon: "📱", color: "#7C3AED" },
+  { id: "developer-agent",    role: "Développement",      icon: "💻", color: "#D4AF37" },
+  { id: "billing-agent",       role: "Facturation",       icon: "🧾", color: "#10B981" },
+  { id: "sales-agent",         role: "Commercial",        icon: "📊", color: "#F59E0B" },
+  { id: "seo-audit-agent",     role: "SEO & Audit",       icon: "🔍", color: "#3B82F6" },
+  { id: "creative-agent",      role: "Créatif",           icon: "🎨", color: "#EC4899" },
+  { id: "general-agent",       role: "Général",           icon: "🤖", color: "#6B7280" },
 ];
 
 const EXEC_MODES = [
-  { value: "prepare_only",     label: "Préparation uniquement", description: "L'agent prépare le résultat sans action externe", icon: Shield,      color: "text-blue-400" },
-  { value: "approval_required", label: "Approbation requise",  description: "L'agent prépare puis attend ta validation avant l'action", icon: ShieldCheck, color: "text-amber-400" },
-  { value: "autonomous",       label: "Autonome",              description: "L'agent termine automatiquement (tâches autorisées uniquement)", icon: ShieldAlert,  color: "text-emerald-400" },
+  { value: "prepare_only",       label: "Préparation uniquement", description: "L'agent prépare le résultat sans action externe",       icon: Shield,       color: "text-blue-400" },
+  { value: "approval_required", label: "Approbation requise",    description: "L'agent prépare puis attend ta validation avant action", icon: ShieldCheck,  color: "text-amber-400" },
+  { value: "autonomous",         label: "Autonome",               description: "L'agent termine automatiquement (tâches autorisées)",     icon: ShieldAlert,   color: "text-emerald-400" },
 ];
 
 function suggestAgent(task) {
@@ -41,18 +39,32 @@ function suggestAgent(task) {
   return "general-agent";
 }
 
+function generateClientKey() {
+  // UUID v4 — généré une fois à l'ouverture de la modale, réutilisé pour retry/double clic
+  if (crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
 export default function TaskDispatchModal({ open, onClose, task, isDispatching, onConfirm }) {
   const [agentId, setAgentId] = useState("");
   const [executionMode, setExecutionMode] = useState("approval_required");
   const [instructions, setInstructions] = useState("");
+  const [clientKey, setClientKey] = useState("");
+
+  // Générer un nouveau clientKey à chaque ouverture de modale
+  const regenerateKey = useCallback(() => setClientKey(generateClientKey()), []);
 
   useMemo(() => {
-    if (task) {
+    if (open && task) {
       setAgentId(suggestAgent(task));
       setExecutionMode("approval_required");
       setInstructions("");
+      regenerateKey();
     }
-  }, [task]);
+  }, [open, task, regenerateKey]);
 
   const selectedAgent = AGENTS.find(a => a.id === agentId);
 
@@ -64,7 +76,9 @@ export default function TaskDispatchModal({ open, onClose, task, isDispatching, 
             <Bot className="w-5 h-5 text-primary" />
             Envoyer à un agent IA
           </DialogTitle>
-          <DialogDescription>La tâche sera transmise à l'agent sélectionné pour exécution.</DialogDescription>
+          <DialogDescription>
+            La tâche sera transmise au rôle fonctionnel sélectionné pour exécution asynchrone.
+          </DialogDescription>
         </DialogHeader>
 
         {task && (
@@ -86,20 +100,24 @@ export default function TaskDispatchModal({ open, onClose, task, isDispatching, 
               </div>
             </div>
 
-            {/* Agent */}
+            {/* Rôle fonctionnel */}
             <div className="space-y-2">
-              <Label className="text-xs font-medium">Agent IA</Label>
+              <Label className="text-xs font-medium">Rôle fonctionnel</Label>
               <Select value={agentId} onValueChange={setAgentId}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="Sélectionner un agent" /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Sélectionner un rôle" /></SelectTrigger>
                 <SelectContent>
                   {AGENTS.map(a => (
                     <SelectItem key={a.id} value={a.id}>
-                      <span className="mr-2">{a.icon}</span><span className="font-medium">{a.name}</span>
+                      <span className="mr-2">{a.icon}</span><span className="font-medium">{a.role}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {selectedAgent && <p className="text-xs text-muted-foreground flex items-center gap-1"><Cpu className="w-3 h-3" /> Suggestion automatique : {selectedAgent.name}</p>}
+              {selectedAgent && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Cpu className="w-3 h-3" /> Rôle suggéré : {selectedAgent.role}
+                </p>
+              )}
             </div>
 
             {/* Autonomie */}
@@ -134,14 +152,18 @@ export default function TaskDispatchModal({ open, onClose, task, isDispatching, 
             {/* Note sécurité */}
             <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-3">
               <ShieldCheck className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-muted-foreground">Les actions sensibles (email, publication, suppression, facture) nécessitent toujours une validation humaine, quel que soit le mode choisi.</p>
+              <p className="text-xs text-muted-foreground">
+                Les actions sensibles (email, publication, suppression, facture) nécessitent toujours une validation humaine.
+                Le traitement est asynchrone : vous recevrez un identifiant de suivi immédiatement.
+              </p>
             </div>
           </div>
         )}
 
         <DialogFooter>
           <Button variant="ghost" onClick={onClose} disabled={isDispatching}>Annuler</Button>
-          <Button onClick={() => onConfirm({ agentId, executionMode, instructions, attachments: [] })} disabled={!agentId || isDispatching} className="gap-2">
+          <Button onClick={() => onConfirm({ agentId, executionMode, instructions, attachments: [], clientKey })}
+            disabled={!agentId || isDispatching} className="gap-2">
             {isDispatching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             {isDispatching ? "Envoi..." : "Envoyer à l'agent"}
           </Button>
