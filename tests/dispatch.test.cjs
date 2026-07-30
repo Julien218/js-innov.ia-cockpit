@@ -348,4 +348,64 @@ test('Multi-tenant : 403 si run appartient à une autre organisation', function 
 console.log('\n\u2550\u2550\u2550 R\u00e9sum\u00e9 \u2550\u2550\u2550');
 console.log('  Pass: ' + passed);
 console.log('  Fail: ' + failed);
+
+// ─── 10. Récupération après crash ──────────────────────────────────────────────
+console.log('\n--- 10. Récupération après crash ---');
+
+test('Recovery : fonction recoveryStuckRuns exportée', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('recoveryStuckRuns') !== -1, 'Fonction recoveryStuckRuns manquante');
+  assert.ok(c.indexOf('router.recoveryStuckRuns') !== -1, 'Export router.recoveryStuckRuns manquant');
+});
+
+test('Recovery : délai STUCK_THRESHOLD_MINUTES défini (5 minutes)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('STUCK_THRESHOLD_MINUTES = 5') !== -1, 'STUCK_THRESHOLD_MINUTES manquant ou != 5');
+});
+
+test('Recovery : recherche les runs en dispatching depuis plus de X minutes', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf("status=eq.dispatching") !== -1, 'Filtre status=eq.dispatching manquant');
+  assert.ok(c.indexOf("started_at=lt.") !== -1, 'Filtre started_at=lt. manquant');
+});
+
+test('Recovery : passe les runs bloqués en failed avec message explicite', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf("status: 'failed'") !== -1, 'Statut failed manquant');
+  assert.ok(c.indexOf('R\u00e9cup\u00e9ration apr\u00e8s crash') !== -1, 'Message explicite manquant');
+});
+
+test('Recovery : suggère la relance via dispatch-retry dans le message', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('dispatch-retry') !== -1, 'Suggestion dispatch-retry manquante dans recovery');
+});
+
+test('Recovery : appelée au démarrage du serveur (server.cjs)', function () {
+  var c = fs.readFileSync('server.cjs', 'utf8');
+  assert.ok(c.indexOf('recoveryStuckRuns') !== -1, 'Appel recoveryStuckRuns manquant dans server.cjs');
+});
+
+test('Recovery : non bloquante si Supabase non configuré', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('Supabase non configur') !== -1, 'Garde-fou Supabase non configuré manquant');
+});
+
+test('Recovery : non bloquante en cas d\'erreur (try/catch externe)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  // Le catch externe ne doit pas relancer l'erreur
+  var recoverySection = c.substring(c.indexOf('async function recoveryStuckRuns'));
+  assert.ok(recoverySection.indexOf('Non bloquant') !== -1 || recoverySection.indexOf('catch') !== -1, 'Catch externe manquant');
+});
+
+test('Recovery : limit=50 (pas de surcharge au démarrage)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('limit=50') !== -1, 'Limit manquante');
+});
+
+// ─── Résumé final ───────────────────────────────────────────────────────────────
+var total = passed + failed;
+console.log('\n\u2550\u2550\u2550 R\u00e9sum\u00e9 final \u2550\u2550\u2550');
+console.log('  Total tests : ' + total);
+console.log('  Pass : ' + passed);
+console.log('  Fail : ' + failed);
 process.exit(failed > 0 ? 1 : 0);

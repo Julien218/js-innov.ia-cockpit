@@ -686,3 +686,87 @@ router.post('/runs/:runId/reject', async function (req, res) {
 });
 
 module.exports = router;
+
+// ════════════════════════════════════════════════════════════════════════════
+// RÉCUPÉRATION APRÈS CRASH — recoveryStuckRuns()
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Au démarrage du serveur, rechercher les agent_runs en statut 'dispatching'
+// depuis plus de STUCK_THRESHOLD_MINUTES minutes.
+//
+// Stratégie retenue : passage en 'failed' avec message explicite.
+//   → Un run en 'dispatching' depuis trop longtemps signifie que le processus
+//   serveur a crashé ou a été redéployé pendant l'appel Base44.
+//   → La conversation Base44 peut ou non avoir été créée — on ne peut pas le savoir.
+//   → Mieux vaut marquer 'failed' et permettre une relance volontaire
+//   plutôt que de laisser un run fantôme en 'dispatching' indéfiniment.
+//
+// Délai retenu : 5 minutes
+//   → Un appel Base44 peut prendre jusqu'à 120s (timeout configuré).
+//   → 5 min laisse une marge confortable : si après 5 min le run est encore
+//   en 'dispatching', c'est que le serveur a crashé pendant le traitement.
+//
+// Comportements couverts :
+//   - Redémarrage Railway (redeploy) : le nouveau processus appelle recoveryStuckRuns()
+//     → les runs en 'dispatching' du processus précédent sont marqués 'failed'.
+//   - Crash Node (OOM, exception non catchée) : au redémarrage, même logique.
+//   - Timeout Base44 : si l'appel Base44 timeout (120s), processDispatchAsync
+//     catche l'erreur et marque le run 'failed' normalement — pas besoin de recovery.
+//     Mais si le serveur crash PENDANT le timeout, recovery s'en occupe au redémarrage.
+//
+// Cette fonction est idempotente : peut être appelée plusieurs fois sans effet
+// secondaire (elle ne touche que les runs en 'dispatching', pas les autres statuts).
+
+var STUCK_THRESHOLD_MINUTES = 5;
+
+async function recoveryStuckRuns() {
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    console.warn('[dispatch-recovery] Supabase non configuré — récupération ignorée.');
+    return;
+  }
+
+  try {
+    // Calculer le seuil temporel : now - 5 minutes
+    var threshold = new Date(Date.now() - STUCK_THRESHOLD_MINUTES * 60 * 1000).toISOString();
+
+    // Sélectionner les runs en 'dispatching' depuis plus de 5 minutes
+    var stuckRuns = await supabaseSelect('agent_runs',
+      'id,task_id,agent_id,functional_role,started_at,requested_by',
+      "&status=eq.dispatching&started_at=lt." + encodeURIComponent(threshold) + "&limit=50");
+
+    if (!stuckRuns || stuckRuns.length === 0) {
+      console.log('[dispatch-recovery] ✅ Aucun run bloqué en dispatching.');
+      return;
+    }
+
+    console.warn('[dispatch-recovery] ⚠️ ' + stuckRuns.length + ' run(s) bloqué(s) en dispatching détecté(s).');
+
+    for (var i = 0; i < stuckRuns.length; i++) {
+      var run = stuckRuns[i];
+      console.warn('[dispatch-recovery] → Run ' + run.id + ' (tâche: ' + run.task_id +
+        ', agent: ' + (run.functional_role || run.agent_id) +
+        ', commencé: ' + run.started_at + ') → marqué failed');
+
+      try {
+        await supabasePatch('agent_runs', 'id=eq.' + encodeURIComponent(run.id), {
+          status: 'failed',
+          error: 'Récupération après crash : run resté en dispatching pendant plus de ' +
+                 STUCK_THRESHOLD_MINUTES + ' minutes (serveur probablement redémarré). ' +
+                 'Relance possible via POST /api/tasks/' + run.task_id + '/dispatch-retry.',
+          completed_at: new Date().toISOString(),
+        });
+      } catch (patchErr) {
+        console.error('[dispatch-recovery] Erreur mise à jour run ' + run.id + ':', patchErr.message);
+      }
+    }
+
+    console.log('[dispatch-recovery] Récupération terminée : ' + stuckRuns.length + ' run(s) marqué(s) failed.');
+
+  } catch (err) {
+    console.error('[dispatch-recovery] Erreur lors de la récupération:', err.message);
+    // Non bloquant — le serveur continue de démarrer
+  }
+}
+
+// Exporter pour appel au démarrage du serveur
+router.recoveryStuckRuns = recoveryStuckRuns;

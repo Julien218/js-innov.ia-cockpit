@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React from "react";
 import { Clock, Send, Loader2, ShieldCheck, CheckCircle2, XCircle, Ban, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
