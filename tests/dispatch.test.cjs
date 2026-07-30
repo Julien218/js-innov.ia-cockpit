@@ -59,17 +59,20 @@ console.log('\n\u2550\u2550\u2550 Tests dispatch v2 \u2550\u2550\u2550\n');
 // ─── 1. Sécurité clé Base44 ────────────────────────────────────────────────────
 console.log('--- 1. Sécurité clé Base44 ---');
 
-test('server-dispatch.cjs ne contient pas VITE_BASE44_API_KEY', function () {
+test('server-dispatch.cjs n\'utilise jamais VITE_BASE44_API_KEY comme valeur', function () {
   var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
-  assert.ok(c.indexOf('VITE_BASE44_API_KEY') === -1, 'VITE_BASE44_API_KEY trouvé dans server-dispatch.cjs');
+  // Le garde-fou qui détecte VITE_BASE44_API_KEY pour la REJETER est acceptable
+  assert.ok(c.indexOf('BASE44_API_KEY = process.env.VITE_BASE44_API_KEY') === -1,
+    'BASE44_API_KEY ne doit jamais être assignée depuis VITE_BASE44_API_KEY');
+  assert.ok(c.indexOf('|| process.env.VITE_BASE44_API_KEY') === -1,
+    'VITE_BASE44_API_KEY ne doit pas être un fallback');
 });
 
-test('server-dispatch.cjs utilise uniquement BASE44_API_KEY', function () {
+test('server-dispatch.cjs utilise uniquement BASE44_API_KEY (pas de fallback VITE_ comme valeur)', function () {
   var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
-  assert.ok(c.indexOf("process.env.BASE44_API_KEY") !== -1, 'BASE44_API_KEY non utilisé');
-  // Pas de fallback VITE_
-  var line = c.split('\n').find(function(l) { return l.indexOf('BASE44_API_KEY') !== -1 && l.indexOf('process.env') !== -1; });
-  assert.ok(line && line.indexOf('VITE_') === -1, 'Fallback VITE_ trouvé: ' + line);
+  assert.ok(c.indexOf('process.env.BASE44_API_KEY') !== -1, 'BASE44_API_KEY non utilisé');
+  assert.ok(c.indexOf('BASE44_API_KEY = process.env.VITE_BASE44_API_KEY') === -1,
+    'BASE44_API_KEY ne doit pas être assignée depuis VITE_BASE44_API_KEY');
 });
 
 test('Aucun VITE_BASE44_API_KEY dans les composants frontend de dispatch', function () {
@@ -413,6 +416,130 @@ test('Dual Supabase : processDispatchAsync vérifie approval existante (évite 4
   var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
   var asyncSection = c.substring(c.indexOf('async function processDispatchAsync'));
   assert.ok(asyncSection.indexOf('existingApprovals') !== -1, 'Pas de vérification d\'approval existante');
+});
+
+// ─── 9c. Sécurité Base44 (anti-VITE) ──────────────────────────────────────────
+console.log('\n--- 9c. Sécurité Base44 (anti-VITE) ---');
+
+test('Sécurité : server-dispatch.cjs ne lit jamais VITE_BASE44_API_KEY comme valeur', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  // Le garde-fou qui détecte VITE_BASE44_API_KEY pour la REJETER est acceptable
+  // Ce qui est interdit : l'assigner à BASE44_API_KEY ou l'utiliser comme fallback
+  assert.ok(c.indexOf('BASE44_API_KEY = process.env.VITE_BASE44_API_KEY') === -1,
+    'BASE44_API_KEY ne doit jamais être assignée depuis VITE_BASE44_API_KEY');
+  assert.ok(c.indexOf('|| process.env.VITE_BASE44_API_KEY') === -1,
+    'VITE_BASE44_API_KEY ne doit pas être un fallback');
+});
+
+test('Sécurité : server.cjs ne lit jamais VITE_BASE44_API_KEY', function () {
+  var c = fs.readFileSync('server.cjs', 'utf8');
+  assert.ok(c.indexOf('VITE_BASE44_API_KEY') === -1,
+    'VITE_BASE44_API_KEY ne doit jamais apparaître dans server.cjs');
+});
+
+test('Sécurité : BASE44_API_KEY lue uniquement via process.env.BASE44_API_KEY', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('process.env.BASE44_API_KEY') !== -1, 'Doit lire process.env.BASE44_API_KEY');
+  // Le garde-fou détecte VITE_BASE44_API_KEY pour la rejeter — c'est accepté
+  // Ce qui est interdit : utiliser VITE_BASE44_API_KEY comme valeur
+  assert.ok(c.indexOf('BASE44_API_KEY = process.env.VITE_BASE44_API_KEY') === -1,
+    'Ne doit pas assigner BASE44_API_KEY depuis VITE_BASE44_API_KEY');
+});
+
+test('Sécurité : garde-fou anti-VITE dans la validation de config', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('process.env.VITE_BASE44_API_KEY') !== -1,
+    'Le garde-fou doit détecter VITE_BASE44_API_KEY et la rejeter explicitement');
+  assert.ok(c.indexOf('VITE_BASE44_API_KEY détectée') !== -1,
+    'Le message d\'erreur doit mentionner explicitement VITE_BASE44_API_KEY détectée');
+});
+
+// ─── 9d. Validation configuration production ──────────────────────────────────
+console.log('\n--- 9d. Validation configuration production ---');
+
+test('Config : IS_PROD détecte NODE_ENV=production', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf("NODE_ENV === 'production'") !== -1, 'Doit vérifier NODE_ENV=production');
+  assert.ok(c.indexOf("NODE_ENV === 'staging'") !== -1, 'Doit vérifier NODE_ENV=staging');
+});
+
+test('Config : en production, SUPABASE_DATA_URL est obligatoire (pas de fallback)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('IS_PROD ? process.env.SUPABASE_DATA_URL') !== -1,
+    'En production, ne doit pas avoir de fallback vers SUPABASE_URL');
+  assert.ok(c.indexOf('obligatoire en production/staging, pas de fallback autorisé') !== -1,
+    'Le message d\'erreur doit indiquer que le fallback est interdit en production');
+});
+
+test('Config : en dev, fallback SUPABASE_DATA_URL vers SUPABASE_URL autorisé', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  var devLine = c.indexOf('process.env.SUPABASE_DATA_URL || SUPABASE_URL');
+  assert.ok(devLine !== -1, 'En dev, le fallback vers SUPABASE_URL doit exister');
+});
+
+test('Config : erreur fatale en production si config invalide', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('throw new Error') !== -1 && c.indexOf('Configuration invalide pour la production') !== -1,
+    'Doit throw en production si config invalide');
+});
+
+test('Config : en dev, avertit seulement (pas de throw)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('Configuration incomplète (dev)') !== -1,
+    'En dev, doit avertir sans bloquer');
+});
+
+// ─── 9e. Multi-tenant ────────────────────────────────────────────────────────
+console.log('\n--- 9e. Multi-tenant ---');
+
+test('Multi-tenant : organisation provient de user.organisation (pas du frontend)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('organisation: user.organisation') !== -1,
+    'L\'organisation doit provenir de user.organisation');
+});
+
+test('Multi-tenant : organisation n\'est pas lue depuis le body de la requête', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  // Vérifier qu'il n'y a pas de body.organisation ou req.body.organisation
+  assert.ok(c.indexOf('body.organisation') === -1, 'Ne doit pas lire body.organisation');
+  assert.ok(c.indexOf('req.body.organisation') === -1, 'Ne doit pas lire req.body.organisation');
+});
+
+test('Multi-tenant : GET /runs/:runId vérifie organisation (pas seulement email)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('run.organisation !== user.organisation') !== -1,
+    'GET /runs/:runId doit vérifier l\'organisation en plus de l\'email');
+});
+
+test('Multi-tenant : GET /tasks/:taskId/runs filtre par organisation', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('organisation.eq.') !== -1,
+    'GET /tasks/:taskId/runs doit filtrer par organisation');
+});
+
+test('Multi-tenant : POST /cancel vérifie organisation', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  // Le check organisation doit apparaître dans cancel, approve et reject
+  var cancelSection = c.substring(c.indexOf("router.post('/runs/:runId/cancel'"), c.indexOf("router.post('/runs/:runId/approve'"));
+  assert.ok(cancelSection.indexOf('organisation') !== -1, 'Cancel doit vérifier l\'organisation');
+});
+
+test('Multi-tenant : POST /approve vérifie organisation', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  var approveSection = c.substring(c.indexOf("router.post('/runs/:runId/approve'"), c.indexOf("router.post('/runs/:runId/reject'"));
+  assert.ok(approveSection.indexOf('organisation') !== -1, 'Approve doit vérifier l\'organisation');
+});
+
+test('Multi-tenant : POST /reject vérifie organisation', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  var rejectSection = c.substring(c.indexOf('/runs/:runId/reject'), c.indexOf('module.exports'));
+  assert.ok(rejectSection.indexOf('organisation') !== -1, 'Reject doit vérifier l\'organisation');
+});
+
+test('Multi-tenant : superadmin bypass le check organisation', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf("user.role !== 'superadmin'") !== -1,
+    'Les checks multi-tenant doivent bypasser pour superadmin');
 });
 
 // ─── 10. Récupération après crash ──────────────────────────────────────────────

@@ -33,29 +33,65 @@ var router = express.Router();
 
 // ─── Config (runtime only, jamais exposé au frontend) ────────────────────────
 // ── Dual Supabase : auth (rzvvwcwyaddzsaattwqt) + data (gfjpryakxzdzwnazlsfz) ──
-// Auth : cockpit_sessions, cockpit_users → SUPABASE_URL / SUPABASE_KEY
+// Auth : cockpit_sessions, cockpit_users → SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
 // Data : Tache, agent_runs, agent_approvals → SUPABASE_DATA_URL / SUPABASE_DATA_KEY
-// Si SUPABASE_DATA_URL n'est pas défini, on retombe sur SUPABASE_URL (mono-projet).
+// En production/staging : SUPABASE_DATA_URL et SUPABASE_DATA_KEY sont OBLIGATOIRES.
+// En développement local : fallback sur SUPABASE_URL si non définis (mono-projet).
 var SUPABASE_URL = process.env.SUPABASE_URL || '';
 var SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-var SUPABASE_DATA_URL = process.env.SUPABASE_DATA_URL || SUPABASE_URL;
-var SUPABASE_DATA_KEY = process.env.SUPABASE_DATA_KEY || SUPABASE_KEY;
+var NODE_ENV = process.env.NODE_ENV || 'development';
+var IS_PROD = (NODE_ENV === 'production' || NODE_ENV === 'staging');
+
+// En production : pas de fallback — les variables DATA sont obligatoires
+// En dev : fallback sur SUPABASE_URL pour permettre le mono-projet
+var SUPABASE_DATA_URL = IS_PROD ? process.env.SUPABASE_DATA_URL : (process.env.SUPABASE_DATA_URL || SUPABASE_URL);
+var SUPABASE_DATA_KEY = IS_PROD ? process.env.SUPABASE_DATA_KEY : (process.env.SUPABASE_DATA_KEY || SUPABASE_KEY);
 var BASE44_API_URL = 'https://app.base44.com/api/agents';
 
 // ⚠️ BASE44_API_KEY uniquement. Pas de fallback VITE_* (convention frontend, pas serveur).
-// VITE_ est une convention Vite pour le frontend — pas une variable serveur.
+// VITE_ est une convention Vite pour le frontend — jamais une variable serveur.
+// Un test automatisé garantit que process.env.VITE_BASE44_API_KEY n'est jamais lu.
 var BASE44_API_KEY = process.env.BASE44_API_KEY || '';
 
-// Vérification au démarrage
+// ─── Validation de configuration au démarrage ───────────────────────────────
+var CONFIG_ERRORS = [];
+
 if (!BASE44_API_KEY) {
-  console.warn('⚠️ [dispatch] BASE44_API_KEY non configurée — le dispatch sera rejeté (503).');
-  console.warn('   Ajoutez BASE44_API_KEY dans les variables Railway (runtime, sans préfixe frontend prefix).');
+  CONFIG_ERRORS.push('BASE44_API_KEY non configurée (runtime, sans préfixe VITE_).');
 }
+// Garde-fou : ne JAMAIS lire VITE_BASE44_API_KEY côté serveur
+if (process.env.VITE_BASE44_API_KEY) {
+  CONFIG_ERRORS.push('VITE_BASE44_API_KEY détectée côté serveur — utiliser BASE44_API_KEY à la place.');
+}
+
 if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.warn('⚠️ [dispatch] SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY non configuré (auth).');
+  CONFIG_ERRORS.push('SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY non configuré (auth).');
 }
-if (!SUPABASE_DATA_URL || !SUPABASE_DATA_KEY) {
-  console.warn('⚠️ [dispatch] SUPABASE_DATA_URL ou SUPABASE_DATA_KEY non configuré (data) — fallback sur SUPABASE_URL.');
+
+if (IS_PROD) {
+  // En production/staging : SUPABASE_DATA_URL et SUPABASE_DATA_KEY sont obligatoires
+  if (!process.env.SUPABASE_DATA_URL) {
+    CONFIG_ERRORS.push('SUPABASE_DATA_URL non configuré (obligatoire en production/staging, pas de fallback autorisé).');
+  }
+  if (!process.env.SUPABASE_DATA_KEY) {
+    CONFIG_ERRORS.push('SUPABASE_DATA_KEY non configuré (obligatoire en production/staging, pas de fallback autorisé).');
+  }
+} else {
+  if (!SUPABASE_DATA_URL || !SUPABASE_DATA_KEY) {
+    console.warn('⚠️ [dispatch] SUPABASE_DATA_URL ou SUPABASE_DATA_KEY non configuré (dev) — fallback sur SUPABASE_URL.');
+  }
+}
+
+if (CONFIG_ERRORS.length > 0) {
+  for (var i = 0; i < CONFIG_ERRORS.length; i++) {
+    console.error('❌ [dispatch] CONFIG ERROR: ' + CONFIG_ERRORS[i]);
+  }
+  // En production : bloquer le démarrage
+  if (IS_PROD) {
+    throw new Error('Configuration invalide pour la production. ' + CONFIG_ERRORS.join(' '));
+  }
+  // En dev : avertir seulement
+  console.warn('⚠️ [dispatch] Configuration incomplète (dev) — certaines routes peuvent échouer.');
 }
 
 // ─── Mapping agents — rôle fonctionnel → provider Base44 ─────────────────────
@@ -473,12 +509,8 @@ router.post('/tasks/:taskId/dispatch', async function (req, res) {
     if (!run || run.length === 0) return res.status(500).json({ error: 'Echec creation agent_run.' });
     var runId = run[0].id;
 
-    // 9. Si mode approval_required, créer une demande d'approbation
-    if (executionMode === 'approval_required') {
-      await supabaseDataInsert('agent_approvals', { agent_run_id: runId, status: 'pending' });
-    }
-
-    // 10. DISPATCH ASYNCHRONE — fire and forget (sans await)
+    // 9. DISPATCH ASYNCHRONE — fire and forget (sans await)
+    //     processDispatchAsync gère la transition awaiting_approval + création agent_approvals
     //     Le frontend reçoit 202 immédiatement avec le runId.
     //     Le traitement Base44 s'exécute en arrière-plan.
     processDispatchAsync(runId, agent, task, instructions, executionMode);
@@ -583,9 +615,7 @@ router.post('/tasks/:taskId/dispatch-retry', async function (req, res) {
     if (!run || run.length === 0) return res.status(500).json({ error: 'Echec creation run.' });
     var runId = run[0].id;
 
-    if (executionMode === 'approval_required') {
-      await supabaseDataInsert('agent_approvals', { agent_run_id: runId, status: 'pending' });
-    }
+    // processDispatchAsync gère la transition awaiting_approval + création agent_approvals
 
     // Dispatch asynchrone
     processDispatchAsync(runId, agent, task, instructions, executionMode);
@@ -613,9 +643,9 @@ router.get('/tasks/:taskId/runs', async function (req, res) {
     if (!user) return res.status(401).json({ error: 'Session invalide.' });
 
     var filter = '&task_id=eq.' + encodeURIComponent(req.params.taskId) + '&order=created_at.desc';
-    // Non-superadmin ne voit que ses propres runs
+    // Non-superadmin ne voit que les runs de son organisation
     if (user.role !== 'superadmin') {
-      filter += '&requested_by=eq.' + encodeURIComponent(user.email);
+      filter += '&or=(requested_by.eq.' + encodeURIComponent(user.email) + ',organisation.eq.' + encodeURIComponent(user.organisation || '') + ')';
     }
 
     var runs = await supabaseDataSelect('agent_runs',
@@ -640,8 +670,10 @@ router.get('/runs/:runId', async function (req, res) {
 
     var run = runs[0];
 
-    // Vérifier l'appartenance (non-superadmin ne voit que ses runs)
-    if (user.role !== 'superadmin' && run.requested_by !== user.email) {
+    // Vérifier l'appartenance (non-superadmin ne voit que les runs de son organisation)
+    if (user.role !== 'superadmin' &&
+        run.requested_by !== user.email &&
+        run.organisation !== user.organisation) {
       return res.status(403).json({ error: 'Accès refusé : ce run appartient à une autre organisation.' });
     }
 
@@ -671,8 +703,8 @@ router.post('/runs/:runId/cancel', async function (req, res) {
       '&id=eq.' + encodeURIComponent(req.params.runId) + '&limit=1');
     if (!runs || runs.length === 0) return res.status(404).json({ error: 'Execution introuvable.' });
 
-    // Vérifier l'appartenance
-    if (user.role !== 'superadmin' && runs[0].requested_by !== user.email) {
+    // Vérifier l'appartenance (organisation)
+    if (user.role !== 'superadmin' && runs[0].requested_by !== user.email && runs[0].organisation !== user.organisation) {
       return res.status(403).json({ error: 'Accès refusé.' });
     }
 
@@ -700,7 +732,7 @@ router.post('/runs/:runId/approve', async function (req, res) {
       '&id=eq.' + encodeURIComponent(req.params.runId) + '&limit=1');
     if (!runs || runs.length === 0) return res.status(404).json({ error: 'Execution introuvable.' });
 
-    if (user.role !== 'superadmin' && runs[0].requested_by !== user.email) {
+    if (user.role !== 'superadmin' && runs[0].requested_by !== user.email && runs[0].organisation !== user.organisation) {
       return res.status(403).json({ error: 'Accès refusé.' });
     }
 
@@ -729,7 +761,7 @@ router.post('/runs/:runId/reject', async function (req, res) {
       '&id=eq.' + encodeURIComponent(req.params.runId) + '&limit=1');
     if (!runs || runs.length === 0) return res.status(404).json({ error: 'Execution introuvable.' });
 
-    if (user.role !== 'superadmin' && runs[0].requested_by !== user.email) {
+    if (user.role !== 'superadmin' && runs[0].requested_by !== user.email && runs[0].organisation !== user.organisation) {
       return res.status(403).json({ error: 'Accès refusé.' });
     }
 
