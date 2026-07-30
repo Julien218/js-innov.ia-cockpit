@@ -29,15 +29,16 @@ RUN apk add --no-cache nginx
 # Copier le dist depuis le build
 COPY --from=builder /app/dist ./dist
 
-# Copier les fichiers serveur email
+# Copier les fichiers serveur
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
 COPY server.cjs ./server.cjs
+COPY server-auth.cjs ./server-auth.cjs
 COPY server-email.cjs ./server-email.cjs
 COPY server-billing.cjs ./server-billing.cjs
 COPY assets ./assets
 
-# Installer les dépendances prod (imap, mailparser, express)
+# Installer les dépendances prod (imap, mailparser, express, cookie)
 RUN npm ci --omit=dev --legacy-peer-deps
 
 # Config nginx — SPA fallback + proxy /api vers Express :3001 + headers sécurité
@@ -60,6 +61,8 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     # SPA fallback — React Router
