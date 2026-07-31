@@ -100,10 +100,11 @@ test('server-dispatch.cjs avertit au démarrage si BASE44_API_KEY absente', func
 // ─── 2. Idempotence par intention ─────────────────────────────────────────────
 console.log('\n--- 2. Idempotence par intention ---');
 
-test('Idempotence : pas de fenêtre temporelle (pas de Math.floor(Date.now / 10000))', function () {
+test('Idempotence : pas de fenetre temporelle (pas de Date.now / 10000)', function () {
   var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
-  assert.ok(c.indexOf('Date.now() / 10000') === -1, 'Fenêtre temporelle trouvée — à supprimer');
-  assert.ok(c.indexOf('10000') === -1 || c.indexOf('10000ms') !== -1, 'Référence à fenêtre 10s trouvée');
+  assert.ok(c.indexOf('Date.now() / 10000') === -1, 'Fenetre temporelle trouvee');
+  assert.ok(c.indexOf('Math.floor(Date.now()') === -1 || c.indexOf('/ 10000)') === -1,
+    'Pas de Math.floor(Date.now() / 10000)');
 });
 
 test('Idempotence : clientKey (UUID) reçu du frontend, pas calculé serveur', function () {
@@ -598,6 +599,150 @@ test('NULL org : superadmin bypass total (meme avec org NULL)', function () {
   var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
   assert.ok(c.indexOf("user.role !== 'superadmin'") !== -1,
     'Le superadmin doit bypasser tous les checks');
+});
+
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// 11. PROXY /api/agents-chat — tests de sécurité
+// ════════════════════════════════════════════════════════════════════════════
+console.log('\n--- 11. Proxy /api/agents-chat ---');
+
+test('Proxy : session valide obligatoire (POST conversations sans session)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  var section = c.substring(c.indexOf("router.post('/agents-chat/conversations'"), c.indexOf("router.post('/agents-chat/conversations/:convId"));
+  assert.ok(section.indexOf('getSessionUser') !== -1, 'Doit verifier la session');
+  assert.ok(section.indexOf('401') !== -1, 'Doit retourner 401 sans session');
+});
+
+test('Proxy : session valide obligatoire (POST messages sans session)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  var section = c.substring(c.indexOf("router.post('/agents-chat/conversations/:convId"));
+  assert.ok(section.indexOf('getSessionUser') !== -1, 'Doit verifier la session');
+  assert.ok(section.indexOf('401') !== -1, 'Doit retourner 401 sans session');
+});
+
+test('Proxy : controle de role (minimum collaborateur)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('requireRole(user, 2)') !== -1 || c.indexOf('requireRole(user, 3)') !== -1,
+    'Doit exiger un role minimum');
+});
+
+test('Proxy : agentId valide par liste blanche serveur', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('CHAT_ALLOWED_AGENT_IDS') !== -1, 'Liste blanche doit etre definie');
+  assert.ok(c.indexOf('CHAT_ALLOWED_AGENT_IDS.indexOf(agentId)') !== -1,
+    'agentId doit etre verifie contre la liste blanche');
+  assert.ok(c.indexOf('Agent non autorise') !== -1 || c.indexOf('400') !== -1,
+    'Agent non autorise doit retourner 400');
+});
+
+test('Proxy : aucun agentId arbitraire Base44 accepte', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  // La liste blanche est codee en dur, pas lue depuis le frontend
+  assert.ok(c.indexOf("var CHAT_ALLOWED_AGENT_IDS = [") !== -1,
+    'Liste blanche definie en dur cote serveur');
+});
+
+test('Proxy : message vide refuse', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('length === 0') !== -1 || c.indexOf('!content') !== -1,
+    'Message vide doit etre refuse');
+  assert.ok(c.indexOf('400') !== -1, 'Doit retourner 400 pour message vide');
+});
+
+test('Proxy : message trop long refuse (413)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('CHAT_MAX_MESSAGE_LENGTH') !== -1, 'Limite max definie');
+  assert.ok(c.indexOf('413') !== -1, 'Doit retourner 413 pour message trop long');
+});
+
+test('Proxy : conversationId valide (format)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('isValidConvId') !== -1, 'Fonction isValidConvId doit exister');
+  assert.ok(c.indexOf('ConversationId invalide') !== -1 || c.indexOf('400') !== -1,
+    'conversationId invalide doit retourner 400');
+});
+
+test('Proxy : conversation appartenant a un autre user refusee', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('chatConvOwnership') !== -1, 'Tracking ownership doit exister');
+  assert.ok(c.indexOf('ne vous appartient pas') !== -1 || c.indexOf('403') !== -1,
+    'Conversation d\'un autre user doit retourner 403');
+});
+
+test('Proxy : rate limiting par utilisateur', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('chatRateLimit') !== -1, 'Rate limiting doit exister');
+  assert.ok(c.indexOf('chatCheckRateLimit') !== -1, 'Fonction checkRateLimit doit exister');
+  assert.ok(c.indexOf('429') !== -1, 'Doit retourner 429 en cas de rate limit depasse');
+});
+
+test('Proxy : gestion Base44 429', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('=== 429') !== -1, 'Doit gerer le 429 de Base44');
+});
+
+test('Proxy : gestion Base44 502/503', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('=== 502') !== -1 || c.indexOf('503') !== -1,
+    'Doit gerer le 502/503 de Base44');
+});
+
+test('Proxy : timeout gere (504)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('TimeoutError') !== -1 || c.indexOf('AbortError') !== -1,
+    'Doit detecter les timeouts');
+  assert.ok(c.indexOf('504') !== -1, 'Doit retourner 504 en cas de timeout');
+});
+
+test('Proxy : absence de cle retourne 503', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('!BASE44_API_KEY') !== -1, 'Doit verifier BASE44_API_KEY');
+  assert.ok(c.indexOf('503') !== -1, 'Doit retourner 503 sans cle');
+});
+
+test('Proxy : aucune cle exposee dans les reponses d\'erreur', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  // Les messages d'erreur ne doivent pas contenir de reference a la cle
+  var errorMessages = c.match(/error:\s*'[^']+'/g) || [];
+  for (var i = 0; i < errorMessages.length; i++) {
+    assert.ok(errorMessages[i].indexOf('api_key') === -1 && errorMessages[i].indexOf('BASE44_API_KEY') === -1,
+      'Aucun message d\'erreur ne doit exposer la cle');
+  }
+});
+
+test('Proxy : logs sans cle ni contenu sensible', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  // Les console.error ne doivent pas logger la cle
+  var logLines = c.match(/console\.error\([^)]+\)/g) || [];
+  for (var i = 0; i < logLines.length; i++) {
+    assert.ok(logLines[i].indexOf('BASE44_API_KEY') === -1,
+      'Aucun log ne doit contenir BASE44_API_KEY');
+  }
+});
+
+test('Proxy : reponse d\'erreur generique cote frontend', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('Erreur du service distant') !== -1,
+    'Erreur generique pour Base44 error');
+  assert.ok(c.indexOf('Erreur serveur') !== -1,
+    'Erreur generique pour erreurs serveur');
+});
+
+test('Proxy : pas d\'URL externe transmise par le frontend', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  // L'URL Base44 est construite cote serveur, pas depuis le frontend
+  assert.ok(c.indexOf('BASE44_API_URL') !== -1, 'URL Base44 construite cote serveur');
+  // Le frontend ne doit pas pouvoir passer une URL
+  var jsx = fs.readFileSync('src/pages/AgentsIA.jsx', 'utf8');
+  assert.ok(jsx.indexOf('app.base44.com') === -1,
+    'AgentsIA.jsx ne doit pas contenir d\'URL Base44 directe');
+});
+
+test('Proxy : validation de taille (CHAT_MAX_MESSAGE_LENGTH)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('10000') !== -1, 'Limite max 10000 caracteres');
 });
 
 

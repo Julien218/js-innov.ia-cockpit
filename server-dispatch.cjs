@@ -801,34 +801,105 @@ router.post('/runs/:runId/reject', async function (req, res) {
 
 // ════════════════════════════════════════════════════════════════════════════
 // PROXY CHAT — AgentsIA.jsx utilise cet endpoint au lieu d'appeler Base44 directement
-// La clé BASE44_API_KEY reste côté serveur, jamais exposée au frontend
+// La cle BASE44_API_KEY reste cote serveur, jamais exposee au frontend.
+// Securite : session, role, whitelist agentId, validation taille, rate limit,
+//            isolation conversation par user, gestion 429/502/timeout, logs sans cle.
 // ════════════════════════════════════════════════════════════════════════════
 
-// POST /agents-chat/conversations — créer une conversation
+// ─── Liste blanche des agents Base44 autorises pour le chat ──────────────────
+// Seuls ces agentIds sont acceptes. Aucun agentId arbitraire n'est permis.
+var CHAT_ALLOWED_AGENT_IDS = [
+  '6a1845e17cc526d1e44965bc',
+  '6a0208edd1e235b62b4bda38',
+  '69fcda52258a254f4220b0bd',
+  '6a0371a87c9257126b051d5a',
+  '6a22f0c096ce009a943f4a05',
+  '69ff4dc771a2cdab275f8a00',
+  '6a035427dca907aa03b71398',
+  '69e732e1d54abfd1783f5d06',
+];
+
+// ─── Constantes de securite ──────────────────────────────────────────────────
+var CHAT_MAX_MESSAGE_LENGTH = 10000;
+var CHAT_MAX_CONV_ID_LENGTH = 200;
+var CHAT_TIMEOUT_CREATE_MS = 30000;
+var CHAT_TIMEOUT_MESSAGE_MS = 120000;
+var CHAT_RATE_LIMIT_WINDOW_MS = 60000;
+var CHAT_RATE_LIMIT_MAX = 20;
+
+// ─── Rate limiting en memoire (par user email) ───────────────────────────────
+var chatRateLimit = {};
+
+function chatCheckRateLimit(userEmail) {
+  var now = Date.now();
+  var window = chatRateLimit[userEmail] || { count: 0, resetAt: now + CHAT_RATE_LIMIT_WINDOW_MS };
+  if (now > window.resetAt) {
+    window = { count: 0, resetAt: now + CHAT_RATE_LIMIT_WINDOW_MS };
+  }
+  window.count++;
+  chatRateLimit[userEmail] = window;
+  return window.count <= CHAT_RATE_LIMIT_MAX;
+}
+
+// ─── Validation conversationId ───────────────────────────────────────────────
+function isValidConvId(convId) {
+  if (!convId || typeof convId !== 'string') return false;
+  if (convId.length > CHAT_MAX_CONV_ID_LENGTH) return false;
+  return /^[a-zA-Z0-9_-]+$/.test(convId);
+}
+
+// ─── Tracking conversation ownership (en memoire) ────────────────────────────
+var chatConvOwnership = {};
+
+// POST /agents-chat/conversations — creer une conversation
 router.post('/agents-chat/conversations', async function (req, res) {
   try {
     var user = await getSessionUser(req);
-    if (!user) return res.status(401).json({ error: 'Session invalide.' });
-    if (!BASE44_API_KEY) return res.status(503).json({ error: 'Service non configuré.' });
+    if (!user) return res.status(401).json({ error: 'Session requise.' });
+    if (!requireRole(user, 2)) return res.status(403).json({ error: 'Droits insuffisants.' });
+    if (!BASE44_API_KEY) return res.status(503).json({ error: 'Service non configure.' });
 
     var agentId = (req.body || {}).agentId;
-    if (!agentId) return res.status(400).json({ error: 'agentId requis.' });
+    if (!agentId || typeof agentId !== 'string') {
+      return res.status(400).json({ error: 'agentId requis.' });
+    }
+    if (CHAT_ALLOWED_AGENT_IDS.indexOf(agentId) === -1) {
+      return res.status(400).json({ error: 'Agent non autorise.' });
+    }
+
+    if (!chatCheckRateLimit(user.email)) {
+      return res.status(429).json({ error: 'Trop de requetes. Reessayez plus tard.' });
+    }
 
     var convRes = await fetch(BASE44_API_URL + '/' + agentId + '/conversations', {
       method: 'POST',
       headers: { 'api_key': BASE44_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(CHAT_TIMEOUT_CREATE_MS),
     });
 
+    if (convRes.status === 429) {
+      return res.status(429).json({ error: 'Service temporairement surcharge.' });
+    }
+    if (convRes.status === 502 || convRes.status === 503) {
+      return res.status(502).json({ error: 'Service temporairement indisponible.' });
+    }
     if (!convRes.ok) {
-      var errBody = await convRes.text();
-      return res.status(convRes.status).json({ error: 'Base44 error: ' + convRes.status });
+      console.error('[agents-chat] Base44 error creating conversation: HTTP', convRes.status);
+      return res.status(502).json({ error: 'Erreur du service distant.' });
     }
 
     var convData = await convRes.json();
+    if (convData.id) {
+      chatConvOwnership[convData.id] = user.email;
+    }
+
     res.json({ id: convData.id });
   } catch (err) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      console.error('[agents-chat] Timeout creating conversation');
+      return res.status(504).json({ error: 'Delai depasse.' });
+    }
     console.error('[agents-chat] Error creating conversation:', err.message);
     res.status(500).json({ error: 'Erreur serveur.' });
   }
@@ -838,28 +909,72 @@ router.post('/agents-chat/conversations', async function (req, res) {
 router.post('/agents-chat/conversations/:convId/messages', async function (req, res) {
   try {
     var user = await getSessionUser(req);
-    if (!user) return res.status(401).json({ error: 'Session invalide.' });
-    if (!BASE44_API_KEY) return res.status(503).json({ error: 'Service non configuré.' });
+    if (!user) return res.status(401).json({ error: 'Session requise.' });
+    if (!requireRole(user, 2)) return res.status(403).json({ error: 'Droits insuffisants.' });
+    if (!BASE44_API_KEY) return res.status(503).json({ error: 'Service non configure.' });
+
+    var convId = req.params.convId;
+    if (!isValidConvId(convId)) {
+      return res.status(400).json({ error: 'ConversationId invalide.' });
+    }
+
+    var owner = chatConvOwnership[convId];
+    if (owner && owner !== user.email && user.role !== 'superadmin') {
+      return res.status(403).json({ error: 'Cette conversation ne vous appartient pas.' });
+    }
+    if (!owner) {
+      chatConvOwnership[convId] = user.email;
+    }
 
     var agentId = (req.body || {}).agentId;
-    var content = (req.body || {}).content;
-    if (!agentId || !content) return res.status(400).json({ error: 'agentId et content requis.' });
+    if (!agentId || typeof agentId !== 'string') {
+      return res.status(400).json({ error: 'agentId requis.' });
+    }
+    if (CHAT_ALLOWED_AGENT_IDS.indexOf(agentId) === -1) {
+      return res.status(400).json({ error: 'Agent non autorise.' });
+    }
 
-    var msgRes = await fetch(BASE44_API_URL + '/' + agentId + '/conversations/' + req.params.convId + '/messages', {
+    var content = (req.body || {}).content;
+    if (!content || typeof content !== 'string') {
+      return res.status(400).json({ error: 'content requis (string).' });
+    }
+    content = content.trim();
+    if (content.length === 0) {
+      return res.status(400).json({ error: 'Le message ne peut pas etre vide.' });
+    }
+    if (content.length > CHAT_MAX_MESSAGE_LENGTH) {
+      return res.status(413).json({ error: 'Message trop long (max ' + CHAT_MAX_MESSAGE_LENGTH + ' caracteres).' });
+    }
+
+    if (!chatCheckRateLimit(user.email)) {
+      return res.status(429).json({ error: 'Trop de requetes.' });
+    }
+
+    var msgRes = await fetch(BASE44_API_URL + '/' + agentId + '/conversations/' + convId + '/messages', {
       method: 'POST',
       headers: { 'api_key': BASE44_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ role: 'user', content: content }),
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.timeout(CHAT_TIMEOUT_MESSAGE_MS),
     });
 
+    if (msgRes.status === 429) {
+      return res.status(429).json({ error: 'Service temporairement surcharge.' });
+    }
+    if (msgRes.status === 502 || msgRes.status === 503) {
+      return res.status(502).json({ error: 'Service temporairement indisponible.' });
+    }
     if (!msgRes.ok) {
-      var errBody = await msgRes.text();
-      return res.status(msgRes.status).json({ error: 'Base44 error: ' + msgRes.status });
+      console.error('[agents-chat] Base44 error sending message: HTTP', msgRes.status);
+      return res.status(502).json({ error: 'Erreur du service distant.' });
     }
 
     var msgData = await msgRes.json();
-    res.json({ content: msgData.content || msgData.message || '…', id: msgData.id || null });
+    res.json({ content: msgData.content || msgData.message || '...', id: msgData.id || null });
   } catch (err) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      console.error('[agents-chat] Timeout sending message');
+      return res.status(504).json({ error: 'Delai depasse.' });
+    }
     console.error('[agents-chat] Error sending message:', err.message);
     res.status(500).json({ error: 'Erreur serveur.' });
   }
