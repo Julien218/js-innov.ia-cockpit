@@ -10,12 +10,10 @@ ARG VITE_AGENT_KEY
 ARG VITE_AGENT_URL
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY
-ARG VITE_BASE44_API_KEY
 ENV VITE_AGENT_KEY=$VITE_AGENT_KEY
 ENV VITE_AGENT_URL=$VITE_AGENT_URL
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
-ENV VITE_BASE44_API_KEY=$VITE_BASE44_API_KEY
 
 RUN npm run build
 
@@ -35,6 +33,8 @@ COPY --from=builder /app/package-lock.json ./package-lock.json
 COPY server.cjs ./server.cjs
 COPY server-email.cjs ./server-email.cjs
 COPY server-billing.cjs ./server-billing.cjs
+COPY server-dispatch.cjs ./server-dispatch.cjs
+COPY server-auth.cjs ./server-auth.cjs
 COPY assets ./assets
 
 # Installer les dépendances prod (imap, mailparser, express)

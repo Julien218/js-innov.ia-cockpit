@@ -82,10 +82,10 @@ test('Aucun VITE_BASE44_API_KEY dans les composants frontend de dispatch', funct
   });
 });
 
-test('VITE_BASE44_API_KEY dans src/pages/AgentsIA.jsx = usage frontend historique (acceptable)', function () {
+test('AgentsIA.jsx n\'utilise plus VITE_BASE44_API_KEY (proxy backend)', function () {
   var c = fs.readFileSync('src/pages/AgentsIA.jsx', 'utf8');
-  // C'est un usage frontend avec import.meta.env — pas un usage backend
-  assert.ok(c.indexOf('import.meta.env.VITE_BASE44_API_KEY') !== -1, 'Devrait utiliser import.meta.env');
+  assert.ok(c.indexOf('VITE_BASE44_API_KEY') === -1, 'VITE_BASE44_API_KEY ne doit plus apparaitre');
+  assert.ok(c.indexOf('API_BASE') !== -1, 'Doit utiliser API_BASE (proxy backend)');
 });
 
 test('.env.example documente VITE_BASE44_API_KEY (frontend) — acceptable', function () {
@@ -505,10 +505,10 @@ test('Multi-tenant : organisation n\'est pas lue depuis le body de la requête',
   assert.ok(c.indexOf('req.body.organisation') === -1, 'Ne doit pas lire req.body.organisation');
 });
 
-test('Multi-tenant : GET /runs/:runId vérifie organisation (pas seulement email)', function () {
+test('Multi-tenant : GET /runs/:runId utilise canAccessRun (NULL-safe)', function () {
   var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
-  assert.ok(c.indexOf('run.organisation !== user.organisation') !== -1,
-    'GET /runs/:runId doit vérifier l\'organisation en plus de l\'email');
+  assert.ok(c.indexOf('canAccessRun(user, run)') !== -1,
+    'GET /runs/:runId doit utiliser canAccessRun');
 });
 
 test('Multi-tenant : GET /tasks/:taskId/runs filtre par organisation', function () {
@@ -517,17 +517,16 @@ test('Multi-tenant : GET /tasks/:taskId/runs filtre par organisation', function 
     'GET /tasks/:taskId/runs doit filtrer par organisation');
 });
 
-test('Multi-tenant : POST /cancel vérifie organisation', function () {
+test('Multi-tenant : POST /cancel utilise canAccessRun', function () {
   var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
-  // Le check organisation doit apparaître dans cancel, approve et reject
   var cancelSection = c.substring(c.indexOf("router.post('/runs/:runId/cancel'"), c.indexOf("router.post('/runs/:runId/approve'"));
-  assert.ok(cancelSection.indexOf('organisation') !== -1, 'Cancel doit vérifier l\'organisation');
+  assert.ok(cancelSection.indexOf('canAccessRun') !== -1, 'Cancel doit utiliser canAccessRun');
 });
 
-test('Multi-tenant : POST /approve vérifie organisation', function () {
+test('Multi-tenant : POST /approve utilise canAccessRun', function () {
   var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
   var approveSection = c.substring(c.indexOf("router.post('/runs/:runId/approve'"), c.indexOf("router.post('/runs/:runId/reject'"));
-  assert.ok(approveSection.indexOf('organisation') !== -1, 'Approve doit vérifier l\'organisation');
+  assert.ok(approveSection.indexOf('canAccessRun') !== -1, 'Approve doit utiliser canAccessRun');
 });
 
 test('Multi-tenant : POST /reject vérifie organisation', function () {
@@ -541,6 +540,66 @@ test('Multi-tenant : superadmin bypass le check organisation', function () {
   assert.ok(c.indexOf("user.role !== 'superadmin'") !== -1,
     'Les checks multi-tenant doivent bypasser pour superadmin');
 });
+
+
+// ─── 9f. Organisation NULL — isolation ──────────────────────────────────────────
+console.log('\n--- 9f. Organisation NULL — isolation ---');
+
+test('NULL org : canAccessRun isole les users avec organisation NULL', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('function canAccessRun') !== -1, 'canAccessRun doit etre defini');
+  assert.ok(c.indexOf('user.organisation && run.organisation') !== -1,
+    'canAccessRun doit exiger org non-NULL des deux cotes pour autoriser le partage');
+  assert.ok(c.indexOf('return false') !== -1,
+    'canAccessRun doit retourner false pour isoler les users NULL');
+});
+
+test('NULL org : organisation NULL n\'est jamais traite comme une organisation commune', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('function canAccessRun') !== -1, 'canAccessRun doit exister');
+  // canAccessRun : si email different et org NULL → return false
+  // car la condition user.organisation && run.organisation est false pour NULL
+  assert.ok(c.indexOf('user.organisation && run.organisation && user.organisation === run.organisation') !== -1,
+    'canAccessRun doit exiger org non-NULL des deux cotes');
+});
+
+test('NULL org : canAccessRun isole les users avec organisation NULL (pas de partage)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  // canAccessRun doit exister et etre NULL-safe
+  assert.ok(c.indexOf('function canAccessRun') !== -1, 'canAccessRun doit etre defini');
+  assert.ok(c.indexOf('user.organisation && run.organisation') !== -1,
+    'canAccessRun doit verifier que les deux organisations sont non-NULL pour autoriser');
+});
+
+test('NULL org : canAccessRun autorise si meme email (meme sans organisation)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('run.requested_by === user.email') !== -1,
+    'canAccessRun doit autoriser si meme email');
+});
+
+test('NULL org : canAccessRun refuse si email different et org NULL des deux cotes', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  // La logique : si email different ET (org differente OU les deux NULL) → refuse
+  // canAccessRun retourne false si email different et pas d'org commune non-NULL
+  assert.ok(c.indexOf('return false') !== -1,
+    'canAccessRun doit retourner false pour isoler les users NULL');
+});
+
+test('NULL org : tous les checks utilisent canAccessRun (pas de check inline)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf('canAccessRun(user, run)') !== -1, 'GET /runs doit utiliser canAccessRun');
+  assert.ok(c.indexOf('canAccessRun(user, runs[0])') !== -1, 'Cancel/Approve/Reject doivent utiliser canAccessRun');
+  // Plus de checks inline avec organisation !==
+  assert.ok(c.indexOf('runs[0].organisation !== user.organisation') === -1,
+    'Les checks inline doivent etre remplaces par canAccessRun');
+});
+
+test('NULL org : superadmin bypass total (meme avec org NULL)', function () {
+  var c = fs.readFileSync('server-dispatch.cjs', 'utf8');
+  assert.ok(c.indexOf("user.role !== 'superadmin'") !== -1,
+    'Le superadmin doit bypasser tous les checks');
+});
+
 
 // ─── 10. Récupération après crash ──────────────────────────────────────────────
 console.log('\n--- 10. Récupération après crash ---');

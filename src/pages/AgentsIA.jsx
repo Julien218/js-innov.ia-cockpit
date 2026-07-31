@@ -7,9 +7,9 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 
-// ─── CLÉ API UNIQUE (workspace Base44 Js-Innov.IA) ───────────────────────────
-// Une seule clé fonctionne pour tous les agents du workspace
-const WORKSPACE_API_KEY = import.meta.env.VITE_BASE44_API_KEY || "";
+// ─── PROXY BACKEND — la clé Base44 reste côté serveur ────────────────────────
+// Aucune clé API n est exposée dans le frontend. Les appels passent par /api/agents-chat.
+const API_BASE = "/api/agents-chat";
 
 // ─── TOUS LES AGENTS JS-INNOV.IA ─────────────────────────────────────────────
 const AGENTS_CONFIG = [
@@ -105,7 +105,7 @@ const AGENTS_CONFIG = [
   },
 ];
 
-const BASE44_BASE = "https://app.base44.com/api/agents";
+// Les appels API passent par le proxy backend (API_BASE defini plus haut)
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
 function Message({ msg, agentColor }) {
@@ -152,11 +152,13 @@ function AgentChat({ agent, onBack }) {
 
   const getOrCreateConv = async () => {
     if (convId) return convId;
-    const res = await fetch(`${BASE44_BASE}/${agent.id}/conversations`, {
+    const res = await fetch(`${API_BASE}/conversations`, {
       method: "POST",
-      headers: { "api_key": WORKSPACE_API_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ agentId: agent.id }),
     });
+    if (!res.ok) throw new Error(`Erreur ${res.status}`);
     const data = await res.json();
     setConvId(data.id);
     return data.id;
@@ -170,10 +172,11 @@ function AgentChat({ agent, onBack }) {
     setLoading(true);
     try {
       const cid = await getOrCreateConv();
-      const res = await fetch(`${BASE44_BASE}/${agent.id}/conversations/${cid}/messages`, {
+      const res = await fetch(`${API_BASE}/conversations/${cid}/messages`, {
         method: "POST",
-        headers: { "api_key": WORKSPACE_API_KEY, "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "user", content: msg }),
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ agentId: agent.id, content: msg }),
       });
       if (!res.ok) throw new Error(`Erreur ${res.status}`);
       const data = await res.json();
@@ -266,7 +269,7 @@ function AgentChat({ agent, onBack }) {
 
 // ─── Card agent ────────────────────────────────────────────────────────────────
 function AgentCard({ agent, onClick }) {
-  const isActive = !!WORKSPACE_API_KEY && !!agent.id;
+  const isActive = !!agent.id;
 
   return (
     <div onClick={() => isActive && onClick(agent)}
@@ -299,9 +302,9 @@ function AgentCard({ agent, onClick }) {
               ID manquant — Développeur → URL de base → copier l'ID
             </p>
           )}
-          {!WORKSPACE_API_KEY && agent.id && (
+          {false && agent.id && (
             <p className="text-[10px] text-amber-600 mt-1 font-medium">
-              Clé manquante — ajouter VITE_BASE44_API_KEY dans Railway
+              Connexion au backend requise pour utiliser les agents IA
             </p>
           )}
         </div>
@@ -317,8 +320,8 @@ function AgentCard({ agent, onClick }) {
 export default function AgentsIA() {
   const [selected, setSelected] = useState(null);
 
-  const active  = AGENTS_CONFIG.filter(a => WORKSPACE_API_KEY && a.id);
-  const pending = AGENTS_CONFIG.filter(a => !WORKSPACE_API_KEY || !a.id);
+  const active  = AGENTS_CONFIG.filter(a => a.id);
+  const pending = AGENTS_CONFIG.filter(a => !a.id);
 
   if (selected) {
     return (
@@ -358,12 +361,12 @@ export default function AgentsIA() {
       </div>
 
       {/* Alerte clé manquante */}
-      {!WORKSPACE_API_KEY && (
+      {false && (
         <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
           <div className="text-xs text-red-800">
             <strong>Clé API manquante.</strong> Ajouter dans Railway :<br/>
-            <code className="bg-red-100 px-1 rounded">VITE_BASE44_API_KEY</code> = ta clé workspace Base44
+            Les appels API passent par le backend securise (proxy /api/agents-chat)
           </div>
         </div>
       )}
@@ -401,7 +404,7 @@ export default function AgentsIA() {
           <li>Ouvre l'agent → <strong>Personnaliser → Développeur</strong></li>
           <li>Copie l'<strong>ID</strong> depuis l'URL de base</li>
           <li>Ajoute-le dans <code className="bg-gray-200 px-1 rounded">AgentsIA.jsx</code></li>
-          <li>Une seule variable Railway suffit : <code className="bg-gray-200 px-1 rounded">VITE_BASE44_API_KEY</code></li>
+          <li>La cle Base44 est stockee cote serveur uniquement (BASE44_API_KEY dans Railway)</li>
         </ol>
       </div>
     </div>

@@ -390,6 +390,20 @@ async function processDispatchAsync(runId, agent, task, instructions, executionM
   }
 }
 
+// ─── Helper multi-tenant NULL-safe ───────────────────────────────────────────
+// Deux organisations NULL ne sont PAS considérées comme identiques.
+// L'isolation par email reste le garde-fou pour les users sans organisation.
+function canAccessRun(user, run) {
+  // Superadmin voit tout
+  if (user.role === 'superadmin') return true;
+  // Meme email -> autorise (c'est son run)
+  if (run.requested_by === user.email) return true;
+  // Meme organisation non-NULL -> autorise (meme org)
+  if (user.organisation && run.organisation && user.organisation === run.organisation) return true;
+  // Sinon -> refuse (isolation par email pour les NULL)
+  return false;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // ROUTES
 // ════════════════════════════════════════════════════════════════════════════
@@ -645,7 +659,12 @@ router.get('/tasks/:taskId/runs', async function (req, res) {
     var filter = '&task_id=eq.' + encodeURIComponent(req.params.taskId) + '&order=created_at.desc';
     // Non-superadmin ne voit que les runs de son organisation
     if (user.role !== 'superadmin') {
-      filter += '&or=(requested_by.eq.' + encodeURIComponent(user.email) + ',organisation.eq.' + encodeURIComponent(user.organisation || '') + ')';
+      if (user.organisation) {
+        filter += '&or=(requested_by.eq.' + encodeURIComponent(user.email) + ',organisation.eq.' + encodeURIComponent(user.organisation) + ')';
+      } else {
+        // Organisation NULL → isolation par email uniquement
+        filter += '&requested_by=eq.' + encodeURIComponent(user.email);
+      }
     }
 
     var runs = await supabaseDataSelect('agent_runs',
@@ -670,10 +689,8 @@ router.get('/runs/:runId', async function (req, res) {
 
     var run = runs[0];
 
-    // Vérifier l'appartenance (non-superadmin ne voit que les runs de son organisation)
-    if (user.role !== 'superadmin' &&
-        run.requested_by !== user.email &&
-        run.organisation !== user.organisation) {
+    // Vérifier l'appartenance (multi-tenant NULL-safe)
+    if (!canAccessRun(user, run)) {
       return res.status(403).json({ error: 'Accès refusé : ce run appartient à une autre organisation.' });
     }
 
@@ -703,8 +720,8 @@ router.post('/runs/:runId/cancel', async function (req, res) {
       '&id=eq.' + encodeURIComponent(req.params.runId) + '&limit=1');
     if (!runs || runs.length === 0) return res.status(404).json({ error: 'Execution introuvable.' });
 
-    // Vérifier l'appartenance (organisation)
-    if (user.role !== 'superadmin' && runs[0].requested_by !== user.email && runs[0].organisation !== user.organisation) {
+    // Vérifier l'appartenance (multi-tenant NULL-safe)
+    if (!canAccessRun(user, runs[0])) {
       return res.status(403).json({ error: 'Accès refusé.' });
     }
 
@@ -732,7 +749,7 @@ router.post('/runs/:runId/approve', async function (req, res) {
       '&id=eq.' + encodeURIComponent(req.params.runId) + '&limit=1');
     if (!runs || runs.length === 0) return res.status(404).json({ error: 'Execution introuvable.' });
 
-    if (user.role !== 'superadmin' && runs[0].requested_by !== user.email && runs[0].organisation !== user.organisation) {
+    if (!canAccessRun(user, runs[0])) {
       return res.status(403).json({ error: 'Accès refusé.' });
     }
 
@@ -761,7 +778,7 @@ router.post('/runs/:runId/reject', async function (req, res) {
       '&id=eq.' + encodeURIComponent(req.params.runId) + '&limit=1');
     if (!runs || runs.length === 0) return res.status(404).json({ error: 'Execution introuvable.' });
 
-    if (user.role !== 'superadmin' && runs[0].requested_by !== user.email && runs[0].organisation !== user.organisation) {
+    if (!canAccessRun(user, runs[0])) {
       return res.status(403).json({ error: 'Accès refusé.' });
     }
 
@@ -777,6 +794,73 @@ router.post('/runs/:runId/reject', async function (req, res) {
     res.json({ success: true, message: 'Execution rejetee.' });
   } catch (err) {
     console.error('[dispatch] Error rejecting run:', err.message);
+    res.status(500).json({ error: 'Erreur serveur.' });
+  }
+});
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PROXY CHAT — AgentsIA.jsx utilise cet endpoint au lieu d'appeler Base44 directement
+// La clé BASE44_API_KEY reste côté serveur, jamais exposée au frontend
+// ════════════════════════════════════════════════════════════════════════════
+
+// POST /agents-chat/conversations — créer une conversation
+router.post('/agents-chat/conversations', async function (req, res) {
+  try {
+    var user = await getSessionUser(req);
+    if (!user) return res.status(401).json({ error: 'Session invalide.' });
+    if (!BASE44_API_KEY) return res.status(503).json({ error: 'Service non configuré.' });
+
+    var agentId = (req.body || {}).agentId;
+    if (!agentId) return res.status(400).json({ error: 'agentId requis.' });
+
+    var convRes = await fetch(BASE44_API_URL + '/' + agentId + '/conversations', {
+      method: 'POST',
+      headers: { 'api_key': BASE44_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!convRes.ok) {
+      var errBody = await convRes.text();
+      return res.status(convRes.status).json({ error: 'Base44 error: ' + convRes.status });
+    }
+
+    var convData = await convRes.json();
+    res.json({ id: convData.id });
+  } catch (err) {
+    console.error('[agents-chat] Error creating conversation:', err.message);
+    res.status(500).json({ error: 'Erreur serveur.' });
+  }
+});
+
+// POST /agents-chat/conversations/:convId/messages — envoyer un message
+router.post('/agents-chat/conversations/:convId/messages', async function (req, res) {
+  try {
+    var user = await getSessionUser(req);
+    if (!user) return res.status(401).json({ error: 'Session invalide.' });
+    if (!BASE44_API_KEY) return res.status(503).json({ error: 'Service non configuré.' });
+
+    var agentId = (req.body || {}).agentId;
+    var content = (req.body || {}).content;
+    if (!agentId || !content) return res.status(400).json({ error: 'agentId et content requis.' });
+
+    var msgRes = await fetch(BASE44_API_URL + '/' + agentId + '/conversations/' + req.params.convId + '/messages', {
+      method: 'POST',
+      headers: { 'api_key': BASE44_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'user', content: content }),
+      signal: AbortSignal.timeout(120000),
+    });
+
+    if (!msgRes.ok) {
+      var errBody = await msgRes.text();
+      return res.status(msgRes.status).json({ error: 'Base44 error: ' + msgRes.status });
+    }
+
+    var msgData = await msgRes.json();
+    res.json({ content: msgData.content || msgData.message || '…', id: msgData.id || null });
+  } catch (err) {
+    console.error('[agents-chat] Error sending message:', err.message);
     res.status(500).json({ error: 'Erreur serveur.' });
   }
 });
