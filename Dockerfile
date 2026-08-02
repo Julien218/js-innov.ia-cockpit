@@ -34,6 +34,7 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
 COPY server.cjs ./server.cjs
 COPY server-auth.cjs ./server-auth.cjs
+COPY server-jysia.cjs ./server-jysia.cjs
 COPY server-email.cjs ./server-email.cjs
 COPY server-billing.cjs ./server-billing.cjs
 COPY assets ./assets
