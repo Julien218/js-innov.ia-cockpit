@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Target, FolderKanban,
   FileText, Receipt, ChevronLeft, ChevronRight, X,
   CheckSquare, MessageSquare, Shield,
-  Bot, Network, LogOut, Crown, Briefcase, User,
+  Bot, Network, Sparkles, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
   PlayCircle, GalleryHorizontalEnd,
 } from "lucide-react";
@@ -119,6 +119,7 @@ const allNavGroups = [
   {
     label: "IA & Système",
     items: [
+      { label: "JYSIA", icon: Sparkles, path: "/jysia", minRole: "admin" },
       { label: "Julien AI", icon: Bot, path: "/agent", minRole: "collaborateur" },
       { label: "Agents IA", icon: Network, path: "/agents-ia" },
       { label: "Paramètres", icon: Settings, path: "/parametres", minRole: "admin" },
