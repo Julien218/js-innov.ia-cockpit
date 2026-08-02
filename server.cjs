@@ -20,6 +20,15 @@ try {
   console.warn('⚠️ Route auth indisponible:', e.message);
 }
 
+// ── API JYSIA (proxy privé, clés exclusivement serveur) ──────
+try {
+  const jysiaRouter = require('./server-jysia.cjs');
+  app.use('/api/jysia', jysiaRouter);
+  console.log('✅ Route /api/jysia activée (proxy privé + validations humaines)');
+} catch (e) {
+  console.warn('⚠️ Route JYSIA indisponible:', e.message);
+}
+
 // ── API Emails IMAP ──────────────────────────────────────────
 try {
   const emailRouter = require('./server-email.cjs');
