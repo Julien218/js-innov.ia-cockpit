@@ -34,6 +34,7 @@ import Validations from "@/pages/Validations";
 import Logs from "@/pages/Logs";
 import Agent from "@/pages/Agent";
 import AgentsIA from "@/pages/AgentsIA";
+import Jysia from "@/pages/Jysia";
 import Invitations from "@/pages/Invitations";
 
 // ── Studio Vidéo
@@ -98,6 +99,7 @@ const AppRoutes = () => {
           {/* IA & Contrôle */}
           <Route path="/agent" element={<PageBoundary><Agent /></PageBoundary>} />
           <Route path="/agents-ia" element={<PageBoundary><AgentsIA /></PageBoundary>} />
+          <Route path="/jysia" element={<PageBoundary><Jysia /></PageBoundary>} />
           <Route path="/validations" element={<PageBoundary><Validations /></PageBoundary>} />
           <Route path="/logs" element={<PageBoundary><Logs /></PageBoundary>} />
 
