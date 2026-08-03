@@ -10,7 +10,8 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
     "preview": "vite preview",
-    "start": "node server.cjs"
+    "start": "node server.cjs",
+    "test:official-email": "node --test tests/official-email.test.cjs"
   },
   "dependencies": {
     "@base44/sdk": "^0.8.41",

@@ -276,7 +276,7 @@ function fetchEmailById(mailboxKey, uid) {
 }
 
 // ── Envoyer un email (SMTP) ──────────────────────────────────
-async function sendEmail(mailboxKey, { to, subject, text, html, cc, bcc, replyToMessageId }) {
+async function sendEmail(mailboxKey, { to, subject, text, html, cc, bcc, replyTo, replyToMessageId }) {
   if (isAliasMailbox(mailboxKey)) {
     throw new Error('Cette adresse est un alias, impossible d\'envoyer directement depuis cette boîte. Utilisez JS-Innov.IA Store ou Assurances Dour.');
   }
@@ -293,6 +293,7 @@ async function sendEmail(mailboxKey, { to, subject, text, html, cc, bcc, replyTo
     to,
     cc: cc || undefined,
     bcc: bcc || undefined,
+    replyTo: replyTo || undefined,
     subject: subject || '(sans objet)',
     text: text || '',
     html: html || undefined,
@@ -321,40 +322,44 @@ router.get('/', requireApiKey, async (req, res) => {
 // ── POST /api/emails/official ──────────────────────────────
 // Envoi d'emails officiels exclusivement depuis info@jsinnovia.store
 // Authentification stricte: x-agent-key header uniquement (jamais query string)
-// Idempotence via header Idempotency-Key
-// Rate limit dédié: 10 req/min par clé
+// Idempotence via header Idempotency-Key (OBLIGATOIRE pour cette route)
+// Rate limit dédié: 10 req/min par empreinte de clé d'API
+//
+// ⚠️ Idempotence locale non durable — remplacement par stockage DB/Redis
+//    obligatoire avant production multi-instance.
 const crypto = require('crypto');
 
 // In-memory idempotency store (Map with 1h TTL)
 const _idempotencyStore = new Map();
-const IDEMPOTENCY_TTL_MS = 60 * 60 * 1000; // 1 heure
+const IDEMPOTENCY_TTL_MS = 60 * 60 * 1000;
 
-// In-memory rate limit: 10 requests per minute per key
+// In-memory rate limit: 10 requests per minute per key hash
 const _officialRateLimit = new Map();
 const OFFICIAL_RATE_LIMIT_MAX = 10;
-const OFFICIAL_RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const OFFICIAL_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 // Limites du payload
-const OFFICIAL_MAX_RECIPIENTS = 20;      // to + cc + bcc combined
+const OFFICIAL_MAX_RECIPIENTS = 20;
 const OFFICIAL_MAX_SUBJECT_LEN = 200;
-const OFFICIAL_MAX_BODY_SIZE = 500_000;  // 500 KB pour text ou html
+const OFFICIAL_MAX_BODY_BYTES = 500_000;
+const OFFICIAL_MAX_METADATA_FIELDS = 5;
+const OFFICIAL_MAX_METADATA_VALUE_LEN = 500;
+const IDEMPOTENCY_KEY_REGEX = /^[A-Za-z0-9_-]{8,128}$/;
 
 /**
- * Comparaison constante (résiste aux attaques timing).
+ * Comparaison constante de hashes SHA-256 (longueur identique garantie).
  */
-function safeCompare(a, b) {
-  const bufA = Buffer.from(String(a), 'utf8');
-  const bufB = Buffer.from(String(b), 'utf8');
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
+function safeCompareHashes(a, b) {
+  const hashA = crypto.createHash('sha256').update(String(a)).digest();
+  const hashB = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(hashA, hashB);
 }
 
 /**
- * Validation basique d'adresse email.
+ * Validation d'adresse email.
  */
 function isValidEmail(addr) {
   if (typeof addr !== 'string') return false;
-  // Accepte "Name <email@domain>" ou "email@domain"
   const match = addr.match(/<([^>]+)>/) || [null, addr.trim()];
   const email = match[1];
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
@@ -362,25 +367,29 @@ function isValidEmail(addr) {
 
 /**
  * Authentification stricte pour la route official.
- * - Accepte UNIQUEMENT le header x-agent-key
- * - N'accepte jamais la clé dans la query string
- * - Utilise timingSafeEqual
+ * - Header x-agent-key uniquement (jamais query string)
+ * - Comparaison de hashes SHA-256 avec timingSafeEqual
+ * - 503 si AGENT_API_KEY serveur absente
+ * - 401 si clé cliente absente ou incorrecte
  * - Ne logge jamais la clé
  */
 function requireOfficialApiKey(req, res, next) {
-  const providedKey = req.headers['x-agent-key'];
-  const serverKey = process.env.AGENT_API_KEY;
-
-  // Ne jamais accepter la clé dans la query string
   if (req.query.key || req.query['x-agent-key']) {
     return res.status(401).json({ error: 'Unauthorized — key must not be in query string' });
   }
 
-  if (!providedKey || !serverKey) {
+  const providedKey = req.headers['x-agent-key'];
+  const serverKey = process.env.AGENT_API_KEY;
+
+  if (!serverKey) {
+    return res.status(503).json({ error: 'Server not configured — AGENT_API_KEY missing' });
+  }
+
+  if (!providedKey) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (!safeCompare(providedKey, serverKey)) {
+  if (!safeCompareHashes(providedKey, serverKey)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -388,121 +397,189 @@ function requireOfficialApiKey(req, res, next) {
 }
 
 /**
- * Vérifie et consomme une clé d'idempotence.
- * Retourne la réponse mise en cache si la clé existe déjà.
+ * Empreinte SHA-256 du payload normalisé.
  */
-function checkIdempotency(req) {
-  const key = req.headers['idempotency-key'];
-  if (!key) return { isReplay: false };
+function calculatePayloadFingerprint(body) {
+  const relevant = {
+    to: body.to,
+    subject: body.subject,
+    text: body.text,
+    html: body.html,
+    cc: body.cc,
+    bcc: body.bcc,
+    replyTo: body.replyTo,
+  };
+  return crypto.createHash('sha256').update(JSON.stringify(relevant)).digest('hex');
+}
 
-  // Nettoyer les entrées expirées
+/**
+ * Vérifier et réserver une clé d'idempotence.
+ * - replay: même clé, même fingerprint → retourner la réponse cachée
+ * - reject: conflit (fingerprint différent ou pending) → 409
+ * - proceed: nouveau → réserver comme "pending" AVANT l'envoi
+ */
+function checkAndReserveIdempotency(key, fingerprint) {
   const now = Date.now();
   for (const [k, v] of _idempotencyStore) {
     if (now - v.timestamp > IDEMPOTENCY_TTL_MS) _idempotencyStore.delete(k);
   }
 
-  if (_idempotencyStore.has(key)) {
-    return { isReplay: true, cachedResponse: _idempotencyStore.get(key).response };
+  const existing = _idempotencyStore.get(key);
+  if (existing) {
+    if (existing.status === 'pending') {
+      return { action: 'reject', status: 409, message: 'Concurrent request with same Idempotency-Key' };
+    }
+    if (existing.fingerprint !== fingerprint) {
+      return { action: 'reject', status: 409, message: 'Idempotency-Key already used with different payload' };
+    }
+    return { action: 'replay', response: existing.response };
   }
 
-  return { isReplay: false, idempotencyKey: key };
+  // Réserver AVANT l'envoi pour empêcher les doubles appels concurrents
+  _idempotencyStore.set(key, { status: 'pending', fingerprint, timestamp: now });
+  return { action: 'proceed' };
 }
 
-function storeIdempotencyResult(key, response) {
-  if (!key) return;
-  _idempotencyStore.set(key, {
-    response,
-    timestamp: Date.now(),
-  });
+function completeIdempotency(key, response) {
+  const entry = _idempotencyStore.get(key);
+  if (entry) {
+    entry.status = 'completed';
+    entry.response = response;
+    entry.timestamp = Date.now();
+  }
+}
+
+function failIdempotency(key) {
+  _idempotencyStore.delete(key);
 }
 
 /**
- * Rate limit dédié pour la route official.
- * 10 requêtes par minute par clé d'API.
+ * Rate limit: 10 req/min par empreinte SHA-256 de la clé.
  */
-function checkOfficialRateLimit(req) {
-  const key = req.headers['x-agent-key'] || 'unknown';
+function checkOfficialRateLimit(providedKey) {
+  const keyHash = crypto.createHash('sha256').update(String(providedKey)).digest('hex');
   const now = Date.now();
-
-  // Nettoyer les fenêtres expirées
   for (const [k, v] of _officialRateLimit) {
-    if (now - v.windowStart > OFFICIAL_RATE_LIMIT_WINDOW_MS) {
-      _officialRateLimit.delete(k);
-    }
+    if (now - v.windowStart > OFFICIAL_RATE_LIMIT_WINDOW_MS) _officialRateLimit.delete(k);
   }
-
-  let entry = _officialRateLimit.get(key);
+  let entry = _officialRateLimit.get(keyHash);
   if (!entry || now - entry.windowStart > OFFICIAL_RATE_LIMIT_WINDOW_MS) {
     entry = { count: 0, windowStart: now };
-    _officialRateLimit.set(key, entry);
+    _officialRateLimit.set(keyHash, entry);
   }
-
   entry.count++;
   return entry.count <= OFFICIAL_RATE_LIMIT_MAX;
 }
 
+/**
+ * Valider et limiter le champ metadata.
+ */
+function validateMetadata(metadata) {
+  if (metadata === undefined || metadata === null) return null;
+  if (typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return { error: 'metadata must be an object' };
+  }
+  const keys = Object.keys(metadata);
+  if (keys.length > OFFICIAL_MAX_METADATA_FIELDS) {
+    return { error: `metadata must not exceed ${OFFICIAL_MAX_METADATA_FIELDS} fields` };
+  }
+  for (const k of keys) {
+    if (typeof metadata[k] !== 'string' || metadata[k].length > OFFICIAL_MAX_METADATA_VALUE_LEN) {
+      return { error: `metadata.${k} must be a string of max ${OFFICIAL_MAX_METADATA_VALUE_LEN} characters` };
+    }
+  }
+  return null;
+}
+
 router.post('/official', requireOfficialApiKey, async (req, res) => {
-  // ── 1. Idempotence ──
-  const idemResult = checkIdempotency(req);
-  if (idemResult.isReplay) {
-    return res.status(200).json(idemResult.cachedResponse);
+  // ── 1. Idempotency-Key obligatoire ──
+  const idemKey = req.headers['idempotency-key'];
+  if (!idemKey) {
+    return res.status(400).json({ error: 'Idempotency-Key header is required for this route' });
+  }
+  if (!IDEMPOTENCY_KEY_REGEX.test(idemKey)) {
+    return res.status(400).json({ error: 'Idempotency-Key must be 8-128 alphanumeric characters, hyphens, or underscores' });
   }
 
-  // ── 2. Rate limit ──
-  if (!checkOfficialRateLimit(req)) {
-    return res.status(429).json({ error: 'Rate limit exceeded — maximum 10 requests per minute' });
-  }
-
-  // ── 3. Rejeter from et mailbox du client ──
+  // ── 2. Rejeter from et mailbox du client ──
   if (req.body.from || req.body.mailbox) {
     return res.status(400).json({
       error: 'Fields "from" and "mailbox" are not accepted — sender is fixed to info@jsinnovia.store'
     });
   }
 
-  // ── 4. Extraire et valider le payload ──
+  // ── 3. Valider le payload ──
   const { to, subject, text, html, cc, bcc, replyTo, metadata } = req.body;
 
-  // to et subject requis
-  if (!to || (typeof to !== 'string' && !Array.isArray(to))) {
+  // to requis, au moins une adresse
+  if (!to) {
     return res.status(400).json({ error: 'Field "to" is required (string or array of emails)' });
   }
+  const toList = Array.isArray(to) ? to : [to];
+  if (toList.length === 0) {
+    return res.status(400).json({ error: 'Field "to" must contain at least one address' });
+  }
+
+  // subject requis, string, trim non vide
   if (!subject || typeof subject !== 'string') {
-    return res.status(400).json({ error: 'Field "subject" is required' });
+    return res.status(400).json({ error: 'Field "subject" is required and must be a string' });
+  }
+  if (subject.trim().length === 0) {
+    return res.status(400).json({ error: 'Field "subject" must not be empty' });
+  }
+  if (Buffer.byteLength(subject, 'utf8') > OFFICIAL_MAX_SUBJECT_LEN) {
+    return res.status(400).json({ error: `Subject exceeds ${OFFICIAL_MAX_SUBJECT_LEN} bytes` });
   }
 
-  // Au moins text ou html requis
-  if (!text && !html) {
-    return res.status(400).json({ error: 'At least "text" or "html" is required' });
+  // text et html doivent être des strings
+  if (text !== undefined && typeof text !== 'string') {
+    return res.status(400).json({ error: 'Field "text" must be a string' });
+  }
+  if (html !== undefined && typeof html !== 'string') {
+    return res.status(400).json({ error: 'Field "html" must be a string' });
   }
 
-  // Valider subject
-  if (subject.length > OFFICIAL_MAX_SUBJECT_LEN) {
-    return res.status(400).json({ error: `Subject exceeds ${OFFICIAL_MAX_SUBJECT_LEN} characters` });
+  // Au moins text ou html requis, trim non vide
+  const textTrimmed = text ? text.trim() : '';
+  const htmlTrimmed = html ? html.trim() : '';
+  if (!textTrimmed && !htmlTrimmed) {
+    return res.status(400).json({ error: 'At least "text" or "html" is required (non-empty)' });
   }
 
-  // Valider taille du contenu
-  if (text && typeof text === 'string' && text.length > OFFICIAL_MAX_BODY_SIZE) {
+  // Taille du contenu (Buffer.byteLength)
+  if (text && Buffer.byteLength(text, 'utf8') > OFFICIAL_MAX_BODY_BYTES) {
     return res.status(400).json({ error: 'Text body exceeds size limit' });
   }
-  if (html && typeof html === 'string' && html.length > OFFICIAL_MAX_BODY_SIZE) {
+  if (html && Buffer.byteLength(html, 'utf8') > OFFICIAL_MAX_BODY_BYTES) {
     return res.status(400).json({ error: 'HTML body exceeds size limit' });
   }
 
-  // Normaliser to en tableau
-  const toList = Array.isArray(to) ? to : [to];
+  // Valider replyTo si fourni
+  if (replyTo !== undefined) {
+    if (typeof replyTo !== 'string' || !isValidEmail(replyTo)) {
+      return res.status(400).json({ error: 'Field "replyTo" must be a valid email address' });
+    }
+  }
+
+  // Valider metadata
+  const metadataError = validateMetadata(metadata);
+  if (metadataError) {
+    return res.status(400).json({ error: metadataError.error });
+  }
+
+  // Normaliser cc et bcc
   const ccList = cc ? (Array.isArray(cc) ? cc : [cc]) : [];
   const bccList = bcc ? (Array.isArray(bcc) ? bcc : [bcc]) : [];
 
   // Valider les formats d'adresses
   for (const addr of toList) {
-    if (!isValidEmail(addr)) return res.status(400).json({ error: `Invalid "to" address: ${String(addr).substring(0, 50)}` });
+    if (!isValidEmail(addr)) return res.status(400).json({ error: `Invalid "to" address` });
   }
   for (const addr of ccList) {
-    if (!isValidEmail(addr)) return res.status(400).json({ error: `Invalid "cc" address: ${String(addr).substring(0, 50)}` });
+    if (!isValidEmail(addr)) return res.status(400).json({ error: `Invalid "cc" address` });
   }
   for (const addr of bccList) {
-    if (!isValidEmail(addr)) return res.status(400).json({ error: `Invalid "bcc" address: ${String(addr).substring(0, 50)}` });
+    if (!isValidEmail(addr)) return res.status(400).json({ error: `Invalid "bcc" address` });
   }
 
   // Limiter le nombre total de destinataires
@@ -511,7 +588,24 @@ router.post('/official', requireOfficialApiKey, async (req, res) => {
     return res.status(400).json({ error: `Too many recipients: ${totalRecipients} (max ${OFFICIAL_MAX_RECIPIENTS})` });
   }
 
-  // ── 5. Envoyer via sendEmail() existant — mailbox fixée à "store" ──
+  // ── 4. Idempotence: vérifier et réserver ──
+  const fingerprint = calculatePayloadFingerprint(req.body);
+  const idemResult = checkAndReserveIdempotency(idemKey, fingerprint);
+
+  if (idemResult.action === 'replay') {
+    return res.status(200).json(idemResult.response);
+  }
+  if (idemResult.action === 'reject') {
+    return res.status(idemResult.status).json({ error: idemResult.message });
+  }
+
+  // ── 5. Rate limit (uniquement pour les nouveaux envois) ──
+  if (!checkOfficialRateLimit(req.headers['x-agent-key'])) {
+    failIdempotency(idemKey);
+    return res.status(429).json({ error: 'Rate limit exceeded — maximum 10 requests per minute' });
+  }
+
+  // ── 6. Envoyer via sendEmail() existant — mailbox fixée à "store" ──
   try {
     const info = await sendEmail('store', {
       to: toList.join(', '),
@@ -520,6 +614,7 @@ router.post('/official', requireOfficialApiKey, async (req, res) => {
       html: html || undefined,
       cc: ccList.length > 0 ? ccList.join(', ') : undefined,
       bcc: bccList.length > 0 ? bccList.join(', ') : undefined,
+      replyTo: replyTo || undefined,
     });
 
     const response = {
@@ -528,24 +623,23 @@ router.post('/official', requireOfficialApiKey, async (req, res) => {
       status: 'sent',
     };
 
-    // Stocker pour idempotence
-    if (idemResult.idempotencyKey) {
-      storeIdempotencyResult(idemResult.idempotencyKey, response);
-    }
+    completeIdempotency(idemKey, response);
 
-    // Log minimal — pas de secret, pas de corps
+    // Log minimal — pas de secret, pas de corps, metadata validée
     console.log('[OFFICIAL EMAIL]', {
-      to: totalRecipients,
-      subjectLength: subject.length,
-      hasText: !!text,
-      hasHtml: !!html,
-      metadata: metadata ? { source: metadata.source } : undefined,
+      recipients: totalRecipients,
+      subjectBytes: Buffer.byteLength(subject, 'utf8'),
+      hasText: !!textTrimmed,
+      hasHtml: !!htmlTrimmed,
+      hasReplyTo: !!replyTo,
+      metadataSource: metadata && typeof metadata.source === 'string' ? metadata.source : undefined,
       messageId: info.messageId,
     });
 
     return res.status(200).json(response);
   } catch (err) {
     // Erreur SMTP → 502, pas 500 générique
+    failIdempotency(idemKey);
     console.error('[OFFICIAL EMAIL SMTP ERROR]', {
       message: err.message,
       code: err.code,
