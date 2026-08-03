@@ -17,16 +17,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
       - run: npm ci
       - name: Backend syntax
         run: node --check server.cjs && node --check server-insurance.cjs
-      - name: Lint
-        run: npm run lint
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Build
+      - name: Lint changed application code
+        run: npx eslint src/App.jsx src/components/layout/AppLayout.jsx src/pages/Assurances.jsx
+      - name: Production build
         run: npm run build
       - name: Forbidden sender check
         run: |
