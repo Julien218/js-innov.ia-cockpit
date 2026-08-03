@@ -62,6 +62,10 @@ function EmptyState({ children }) {
   return <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{children}</div>;
 }
 
+function addresses(value) {
+  return Array.isArray(value) && value.length ? value.join(', ') : '—';
+}
+
 export default function Assurances() {
   const { user } = useAuth();
   const allowed = canViewInsurance(user);
@@ -207,9 +211,9 @@ export default function Assurances() {
       {!loading && tab === 'reports' && (
         reports.length === 0 ? <EmptyState>Aucun rapport généré.</EmptyState> : (
           <div className="overflow-x-auto rounded-xl border border-border bg-white">
-            <table className="min-w-[850px] w-full text-sm">
-              <thead className="bg-muted/60 text-left"><tr><th className="p-3">Type</th><th className="p-3">Période</th><th className="p-3">Statut</th><th className="p-3">Leads</th><th className="p-3">Contrats</th><th className="p-3">Envoyé le</th></tr></thead>
-              <tbody>{reports.map((report) => <tr key={report.id} className="border-t border-border"><td className="p-3">{report.report_type === 'monthly' ? 'Mensuel' : 'Hebdomadaire'}</td><td className="p-3">{report.period_start} → {report.period_end}</td><td className="p-3">{report.status}</td><td className="p-3">{report.counts?.total_leads ?? 0}</td><td className="p-3">{report.counts?.contracts_issued ?? 0}</td><td className="p-3">{report.sent_at ? new Date(report.sent_at).toLocaleString('fr-BE') : '—'}</td></tr>)}</tbody>
+            <table className="min-w-[1200px] w-full text-sm">
+              <thead className="bg-muted/60 text-left"><tr><th className="p-3">Type</th><th className="p-3">Période</th><th className="p-3">Expéditeur</th><th className="p-3">Destinataire</th><th className="p-3">Copie</th><th className="p-3">Statut</th><th className="p-3">Leads</th><th className="p-3">Contrats</th><th className="p-3">Envoyé le</th></tr></thead>
+              <tbody>{reports.map((report) => <tr key={report.id} className="border-t border-border"><td className="p-3">{report.report_type === 'monthly' ? 'Mensuel' : 'Hebdomadaire'}</td><td className="p-3">{report.period_start} → {report.period_end}</td><td className="p-3 text-xs font-medium">{report.from_address || '—'}</td><td className="p-3 text-xs">{addresses(report.to_recipients)}</td><td className="p-3 text-xs">{addresses(report.cc_recipients)}</td><td className="p-3">{report.status}</td><td className="p-3">{report.counts?.total_leads ?? 0}</td><td className="p-3">{report.counts?.contracts_issued ?? 0}</td><td className="p-3 whitespace-nowrap">{report.sent_at ? new Date(report.sent_at).toLocaleString('fr-BE') : '—'}</td></tr>)}</tbody>
             </table>
           </div>
         )
@@ -218,9 +222,9 @@ export default function Assurances() {
       {!loading && tab === 'deliveries' && (
         deliveries.length === 0 ? <EmptyState>Aucun envoi journalisé.</EmptyState> : (
           <div className="overflow-x-auto rounded-xl border border-border bg-white">
-            <table className="min-w-[1000px] w-full text-sm">
-              <thead className="bg-muted/60 text-left"><tr><th className="p-3">Date</th><th className="p-3">Type</th><th className="p-3">Destinataires</th><th className="p-3">Objet</th><th className="p-3">Statut</th><th className="p-3">Tentatives</th></tr></thead>
-              <tbody>{deliveries.map((delivery) => <tr key={delivery.id} className="border-t border-border"><td className="p-3 whitespace-nowrap">{new Date(delivery.created_at).toLocaleString('fr-BE')}</td><td className="p-3">{delivery.message_type}</td><td className="p-3 text-xs">{(delivery.to_recipients || []).join(', ')}</td><td className="max-w-md p-3">{delivery.subject}</td><td className="p-3">{delivery.status}</td><td className="p-3">{delivery.attempts}</td></tr>)}</tbody>
+            <table className="min-w-[1350px] w-full text-sm">
+              <thead className="bg-muted/60 text-left"><tr><th className="p-3">Date</th><th className="p-3">Type</th><th className="p-3">Expéditeur</th><th className="p-3">Destinataires</th><th className="p-3">Copies</th><th className="p-3">Objet</th><th className="p-3">Statut</th><th className="p-3">Tentatives</th></tr></thead>
+              <tbody>{deliveries.map((delivery) => <tr key={delivery.id} className="border-t border-border"><td className="p-3 whitespace-nowrap">{new Date(delivery.created_at).toLocaleString('fr-BE')}</td><td className="p-3">{delivery.message_type}</td><td className="p-3 text-xs font-medium">{delivery.from_address || '—'}</td><td className="p-3 text-xs">{addresses(delivery.to_recipients)}</td><td className="p-3 text-xs">{addresses(delivery.cc_recipients)}</td><td className="max-w-md p-3">{delivery.subject}</td><td className="p-3">{delivery.status}</td><td className="p-3">{delivery.attempts}</td></tr>)}</tbody>
             </table>
           </div>
         )
