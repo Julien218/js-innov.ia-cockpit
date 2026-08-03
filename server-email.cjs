@@ -369,7 +369,7 @@ function isValidEmail(addr) {
  * Authentification stricte pour la route official.
  * - Header x-agent-key uniquement (jamais query string)
  * - Comparaison de hashes SHA-256 avec timingSafeEqual
- * - 503 si AGENT_API_KEY serveur absente
+ * - 503 si EMAIL_PROXY_KEY serveur absente
  * - 401 si clé cliente absente ou incorrecte
  * - Ne logge jamais la clé
  */
