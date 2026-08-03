@@ -1,0 +1,64 @@
+name: Official Email CI
+
+on:
+  pull_request:
+    paths:
+      - 'server-email.cjs'
+      - 'tests/official-email.test.cjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/official-email-ci.yml'
+  push:
+    branches:
+      - main
+      - 'feature/official-email-proxy'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: official-email-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Official email tests + syntax check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax check — server-email.cjs
+        run: node --check server-email.cjs
+
+      - name: Run official email tests
+        run: npm run test:official-email
+
+      - name: Verify no network calls in tests
+        run: |
+          if grep -q "imap.ionos\|smtp.ionos\|real.smtp" tests/official-email.test.cjs; then
+            echo "ERROR: Test file references real SMTP/IMAP servers"
+            exit 1
+          fi
+          echo "PASS: No real network references found in test file"
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: 'false'
