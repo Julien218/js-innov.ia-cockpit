@@ -318,6 +318,247 @@ router.get('/', requireApiKey, async (req, res) => {
   }
 });
 
+// ── POST /api/emails/official ──────────────────────────────
+// Envoi d'emails officiels exclusivement depuis info@jsinnovia.store
+// Authentification stricte: x-agent-key header uniquement (jamais query string)
+// Idempotence via header Idempotency-Key
+// Rate limit dédié: 10 req/min par clé
+const crypto = require('crypto');
+
+// In-memory idempotency store (Map with 1h TTL)
+const _idempotencyStore = new Map();
+const IDEMPOTENCY_TTL_MS = 60 * 60 * 1000; // 1 heure
+
+// In-memory rate limit: 10 requests per minute per key
+const _officialRateLimit = new Map();
+const OFFICIAL_RATE_LIMIT_MAX = 10;
+const OFFICIAL_RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+
+// Limites du payload
+const OFFICIAL_MAX_RECIPIENTS = 20;      // to + cc + bcc combined
+const OFFICIAL_MAX_SUBJECT_LEN = 200;
+const OFFICIAL_MAX_BODY_SIZE = 500_000;  // 500 KB pour text ou html
+
+/**
+ * Comparaison constante (résiste aux attaques timing).
+ */
+function safeCompare(a, b) {
+  const bufA = Buffer.from(String(a), 'utf8');
+  const bufB = Buffer.from(String(b), 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+/**
+ * Validation basique d'adresse email.
+ */
+function isValidEmail(addr) {
+  if (typeof addr !== 'string') return false;
+  // Accepte "Name <email@domain>" ou "email@domain"
+  const match = addr.match(/<([^>]+)>/) || [null, addr.trim()];
+  const email = match[1];
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
+}
+
+/**
+ * Authentification stricte pour la route official.
+ * - Accepte UNIQUEMENT le header x-agent-key
+ * - N'accepte jamais la clé dans la query string
+ * - Utilise timingSafeEqual
+ * - Ne logge jamais la clé
+ */
+function requireOfficialApiKey(req, res, next) {
+  const providedKey = req.headers['x-agent-key'];
+  const serverKey = process.env.AGENT_API_KEY;
+
+  // Ne jamais accepter la clé dans la query string
+  if (req.query.key || req.query['x-agent-key']) {
+    return res.status(401).json({ error: 'Unauthorized — key must not be in query string' });
+  }
+
+  if (!providedKey || !serverKey) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!safeCompare(providedKey, serverKey)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  next();
+}
+
+/**
+ * Vérifie et consomme une clé d'idempotence.
+ * Retourne la réponse mise en cache si la clé existe déjà.
+ */
+function checkIdempotency(req) {
+  const key = req.headers['idempotency-key'];
+  if (!key) return { isReplay: false };
+
+  // Nettoyer les entrées expirées
+  const now = Date.now();
+  for (const [k, v] of _idempotencyStore) {
+    if (now - v.timestamp > IDEMPOTENCY_TTL_MS) _idempotencyStore.delete(k);
+  }
+
+  if (_idempotencyStore.has(key)) {
+    return { isReplay: true, cachedResponse: _idempotencyStore.get(key).response };
+  }
+
+  return { isReplay: false, idempotencyKey: key };
+}
+
+function storeIdempotencyResult(key, response) {
+  if (!key) return;
+  _idempotencyStore.set(key, {
+    response,
+    timestamp: Date.now(),
+  });
+}
+
+/**
+ * Rate limit dédié pour la route official.
+ * 10 requêtes par minute par clé d'API.
+ */
+function checkOfficialRateLimit(req) {
+  const key = req.headers['x-agent-key'] || 'unknown';
+  const now = Date.now();
+
+  // Nettoyer les fenêtres expirées
+  for (const [k, v] of _officialRateLimit) {
+    if (now - v.windowStart > OFFICIAL_RATE_LIMIT_WINDOW_MS) {
+      _officialRateLimit.delete(k);
+    }
+  }
+
+  let entry = _officialRateLimit.get(key);
+  if (!entry || now - entry.windowStart > OFFICIAL_RATE_LIMIT_WINDOW_MS) {
+    entry = { count: 0, windowStart: now };
+    _officialRateLimit.set(key, entry);
+  }
+
+  entry.count++;
+  return entry.count <= OFFICIAL_RATE_LIMIT_MAX;
+}
+
+router.post('/official', requireOfficialApiKey, async (req, res) => {
+  // ── 1. Idempotence ──
+  const idemResult = checkIdempotency(req);
+  if (idemResult.isReplay) {
+    return res.status(200).json(idemResult.cachedResponse);
+  }
+
+  // ── 2. Rate limit ──
+  if (!checkOfficialRateLimit(req)) {
+    return res.status(429).json({ error: 'Rate limit exceeded — maximum 10 requests per minute' });
+  }
+
+  // ── 3. Rejeter from et mailbox du client ──
+  if (req.body.from || req.body.mailbox) {
+    return res.status(400).json({
+      error: 'Fields "from" and "mailbox" are not accepted — sender is fixed to info@jsinnovia.store'
+    });
+  }
+
+  // ── 4. Extraire et valider le payload ──
+  const { to, subject, text, html, cc, bcc, replyTo, metadata } = req.body;
+
+  // to et subject requis
+  if (!to || (typeof to !== 'string' && !Array.isArray(to))) {
+    return res.status(400).json({ error: 'Field "to" is required (string or array of emails)' });
+  }
+  if (!subject || typeof subject !== 'string') {
+    return res.status(400).json({ error: 'Field "subject" is required' });
+  }
+
+  // Au moins text ou html requis
+  if (!text && !html) {
+    return res.status(400).json({ error: 'At least "text" or "html" is required' });
+  }
+
+  // Valider subject
+  if (subject.length > OFFICIAL_MAX_SUBJECT_LEN) {
+    return res.status(400).json({ error: `Subject exceeds ${OFFICIAL_MAX_SUBJECT_LEN} characters` });
+  }
+
+  // Valider taille du contenu
+  if (text && typeof text === 'string' && text.length > OFFICIAL_MAX_BODY_SIZE) {
+    return res.status(400).json({ error: 'Text body exceeds size limit' });
+  }
+  if (html && typeof html === 'string' && html.length > OFFICIAL_MAX_BODY_SIZE) {
+    return res.status(400).json({ error: 'HTML body exceeds size limit' });
+  }
+
+  // Normaliser to en tableau
+  const toList = Array.isArray(to) ? to : [to];
+  const ccList = cc ? (Array.isArray(cc) ? cc : [cc]) : [];
+  const bccList = bcc ? (Array.isArray(bcc) ? bcc : [bcc]) : [];
+
+  // Valider les formats d'adresses
+  for (const addr of toList) {
+    if (!isValidEmail(addr)) return res.status(400).json({ error: `Invalid "to" address: ${String(addr).substring(0, 50)}` });
+  }
+  for (const addr of ccList) {
+    if (!isValidEmail(addr)) return res.status(400).json({ error: `Invalid "cc" address: ${String(addr).substring(0, 50)}` });
+  }
+  for (const addr of bccList) {
+    if (!isValidEmail(addr)) return res.status(400).json({ error: `Invalid "bcc" address: ${String(addr).substring(0, 50)}` });
+  }
+
+  // Limiter le nombre total de destinataires
+  const totalRecipients = toList.length + ccList.length + bccList.length;
+  if (totalRecipients > OFFICIAL_MAX_RECIPIENTS) {
+    return res.status(400).json({ error: `Too many recipients: ${totalRecipients} (max ${OFFICIAL_MAX_RECIPIENTS})` });
+  }
+
+  // ── 5. Envoyer via sendEmail() existant — mailbox fixée à "store" ──
+  try {
+    const info = await sendEmail('store', {
+      to: toList.join(', '),
+      subject,
+      text: text || undefined,
+      html: html || undefined,
+      cc: ccList.length > 0 ? ccList.join(', ') : undefined,
+      bcc: bccList.length > 0 ? bccList.join(', ') : undefined,
+    });
+
+    const response = {
+      success: true,
+      messageId: info.messageId,
+      status: 'sent',
+    };
+
+    // Stocker pour idempotence
+    if (idemResult.idempotencyKey) {
+      storeIdempotencyResult(idemResult.idempotencyKey, response);
+    }
+
+    // Log minimal — pas de secret, pas de corps
+    console.log('[OFFICIAL EMAIL]', {
+      to: totalRecipients,
+      subjectLength: subject.length,
+      hasText: !!text,
+      hasHtml: !!html,
+      metadata: metadata ? { source: metadata.source } : undefined,
+      messageId: info.messageId,
+    });
+
+    return res.status(200).json(response);
+  } catch (err) {
+    // Erreur SMTP → 502, pas 500 générique
+    console.error('[OFFICIAL EMAIL SMTP ERROR]', {
+      message: err.message,
+      code: err.code,
+    });
+    return res.status(502).json({
+      success: false,
+      error: 'SMTP delivery failed',
+      messageId: null,
+      status: 'failed',
+    });
+  }
+});
+
 router.get('/:uid', requireApiKey, async (req, res) => {
   try {
     const mailbox = req.query.mailbox || 'assurances';
