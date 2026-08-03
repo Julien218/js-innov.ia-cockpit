@@ -1,0 +1,35 @@
+name: Assurances dashboard CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/assurances-dashboard-0969
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Backend syntax
+        run: node --check server.cjs && node --check server-insurance.cjs
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Forbidden sender check
+        run: |
+          if grep -Rni --exclude-dir=node_modules --exclude-dir=.git 'julien\.pagin@assurancesdour\.be' .; then
+            exit 1
+          fi
