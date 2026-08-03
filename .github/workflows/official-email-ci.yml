@@ -5,9 +5,12 @@ on:
     paths:
       - 'server-email.cjs'
       - 'tests/official-email.test.cjs'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/official-email-ci.yml'
   push:
     branches:
+      - main
       - 'feature/official-email-proxy'
 
 permissions:
@@ -41,12 +44,11 @@ jobs:
 
       - name: Verify no network calls in tests
         run: |
-          # Verify test file does not make real network calls
           if grep -q "imap.ionos\|smtp.ionos\|real.smtp" tests/official-email.test.cjs; then
             echo "ERROR: Test file references real SMTP/IMAP servers"
             exit 1
           fi
-          echo "✅ No real network references found in test file"
+          echo "PASS: No real network references found in test file"
 
   secret-scan:
     name: Secret scan

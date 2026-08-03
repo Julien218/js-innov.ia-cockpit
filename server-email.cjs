@@ -379,10 +379,10 @@ function requireOfficialApiKey(req, res, next) {
   }
 
   const providedKey = req.headers['x-agent-key'];
-  const serverKey = process.env.AGENT_API_KEY;
+  const serverKey = process.env.EMAIL_PROXY_KEY;
 
   if (!serverKey) {
-    return res.status(503).json({ error: 'Server not configured — AGENT_API_KEY missing' });
+    return res.status(503).json({ error: 'Server not configured — EMAIL_PROXY_KEY missing' });
   }
 
   if (!providedKey) {
@@ -492,6 +492,11 @@ function validateMetadata(metadata) {
 }
 
 router.post('/official', requireOfficialApiKey, async (req, res) => {
+  // ── 0. Valider req.body avant tout accès ──
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    return res.status(400).json({ error: 'Request body must be a non-null JSON object' });
+  }
+
   // ── 1. Idempotency-Key obligatoire ──
   const idemKey = req.headers['idempotency-key'];
   if (!idemKey) {
@@ -501,8 +506,9 @@ router.post('/official', requireOfficialApiKey, async (req, res) => {
     return res.status(400).json({ error: 'Idempotency-Key must be 8-128 alphanumeric characters, hyphens, or underscores' });
   }
 
-  // ── 2. Rejeter from et mailbox du client ──
-  if (req.body.from || req.body.mailbox) {
+  // ── 2. Rejeter from et mailbox du client (par présence, pas par valeur) ──
+  if (Object.prototype.hasOwnProperty.call(req.body, 'from') ||
+      Object.prototype.hasOwnProperty.call(req.body, 'mailbox')) {
     return res.status(400).json({
       error: 'Fields "from" and "mailbox" are not accepted — sender is fixed to info@jsinnovia.store'
     });
