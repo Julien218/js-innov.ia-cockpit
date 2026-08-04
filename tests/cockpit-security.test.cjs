@@ -30,6 +30,22 @@ test('personal assistant actions are allowlisted, confirmed and audited', () => 
   assert.match(source, /router\.post\('\/confirm'/);
   assert.match(source, /LogAction/);
   assert.match(source, /idempotency-key/);
+  for (const action of ['create_project', 'create_client', 'create_quote', 'send_quote', 'create_invoice', 'send_invoice', 'send_email', 'set_auto_publish']) {
+    assert.match(source, new RegExp(`${action}:`));
+  }
+  assert.match(source, /pendingCompletions/);
+  assert.match(source, /router\.post\('\/complete'/);
+  assert.match(source, /clientAction: '\/api\/emails\/send'/);
+});
+
+test('assistant business actions retain role, input and automation safeguards', () => {
+  const source = read('server-assistant.cjs');
+  assert.match(source, /validEmail/);
+  assert.match(source, /sanitizeLines/);
+  assert.match(source, /ADMIN_ROLES/);
+  assert.match(source, /request_automation_reactivation/);
+  assert.match(source, /roles: \['superadmin'\]/);
+  assert.doesNotMatch(source, /service_role|SUPABASE_SERVICE_ROLE/);
 });
 
 test('public and personal assistant boundaries remain distinct', () => {

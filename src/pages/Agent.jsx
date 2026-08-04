@@ -6,9 +6,9 @@ import { fr } from "date-fns/locale";
 
 const SUGGESTIONS = [
   "Résume mes projets en cours",
-  "Quels leads sont en attente ?",
-  "Montre-moi les tâches urgentes",
-  "Quel est mon chiffre d'affaires ce mois ?",
+  "Prépare un devis pour mon prochain client",
+  "Montre-moi les factures en retard",
+  "Crée une tâche urgente pour un projet",
 ];
 
 export default function AgentPage() {
@@ -77,6 +77,26 @@ export default function AgentPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Action refusée');
+      if (data.client_action) {
+        const actionRes = await fetch(data.client_action.url, {
+          method: data.client_action.method,
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(data.client_action.body || {})
+        });
+        const actionData = await actionRes.json().catch(() => ({}));
+        await fetch('/api/assistant/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            token: data.completion_token,
+            success: actionRes.ok,
+            details: actionRes.ok ? 'Action exécutée par la route métier sécurisée' : (actionData.error || `HTTP ${actionRes.status}`)
+          })
+        });
+        if (!actionRes.ok) throw new Error(actionData.error || 'Action métier non exécutée');
+      }
       setMessages((prev) => [...prev, { role: 'assistant', content: '✅ Action exécutée et ajoutée au journal d’activité.', ts: new Date() }]);
       setConfirmation(null);
     } catch (error) {
