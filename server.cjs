@@ -39,6 +39,15 @@ try {
   console.warn('⚠️ Route billing indisponible:', e.message);
 }
 
+// ── API Task Dispatch (agent runs) ──────────────────────────────
+try {
+  const dispatchRouter = require('./server-dispatch.cjs');
+  app.use('/api', dispatchRouter);
+  console.log('✅ Route /api/tasks/dispatch activée (task → agent Base44)');
+} catch (e) {
+  console.warn('⚠️ Route dispatch indisponible:', e.message);
+}
+
 // ── Proxy /api/data/* → jsinnovia-agent /data/* ─────────────
 // Server-to-server: pas de restrictions CORS
 // Le frontend appelle /api/data/Devis → Express → jsinnovia-agent
@@ -83,4 +92,14 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cockpit-
 app.listen(PORT, () => {
   console.log(`✅ JS-Innov.IA Cockpit API — port ${PORT}`);
   console.log(`   Proxy /api/data → ${AGENT_PROXY_URL}/data`);
+
+  // ── Récupération après crash : marquer les runs bloqués en dispatching ──
+  try {
+    const dispatchRouter = require('./server-dispatch.cjs');
+    if (typeof dispatchRouter.recoveryStuckRuns === 'function') {
+      dispatchRouter.recoveryStuckRuns();
+    }
+  } catch (e) {
+    console.warn('⚠️ Récupération dispatch indisponible:', e.message);
+  }
 });
