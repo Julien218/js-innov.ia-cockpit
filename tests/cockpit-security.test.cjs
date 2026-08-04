@@ -17,10 +17,21 @@ test('frontend bundles contain no privileged agent credential', () => {
 
 test('sensitive server routes require an authenticated session', () => {
   const source = read('server.cjs');
-  assert.match(source, /\/api\/emails', requireSession\('admin'\)/);
+  assert.match(source, /const emailSessionGuard = requireSession\('admin'\)/);
+  assert.match(source, /req\.path === '\/official'/);
+  assert.match(source, /return emailSessionGuard\(req, res, next\)/);
   assert.match(source, /\/api\/billing', requireSession\('admin'\)/);
   assert.match(source, /\/api\/data', requireSession\('client'\)/);
   assert.match(source, /\/api\/assistant', requireSession\('collaborateur'\)/);
+});
+
+test('official email uses its dedicated server key without opening other mailbox routes', () => {
+  const server = read('server.cjs');
+  const email = read('server-email.cjs');
+  assert.match(server, /if \(req\.path === '\/official'\) return next\(\)/);
+  assert.match(email, /process\.env\.EMAIL_PROXY_KEY/);
+  assert.match(email, /req\.headers\['x-agent-key'\]/);
+  assert.match(email, /router\.post\('\/official', requireOfficialApiKey/);
 });
 
 test('personal assistant actions are allowlisted, confirmed and audited', () => {
