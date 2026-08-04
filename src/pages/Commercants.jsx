@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+const useMutationAny = /** @type {any} */ (useMutation);
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -464,7 +465,7 @@ export default function Commercants() {
     queryFn: () => base44.entities.MerchantSubmission.list("-created_at"),
   });
 
-  const updateMutation = useMutation({
+  const updateMutation = useMutationAny({
     mutationFn: ({ id, data }) => base44.entities.MerchantSubmission.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["merchantSubmissions"] });

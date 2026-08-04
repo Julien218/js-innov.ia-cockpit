@@ -44,12 +44,12 @@ export default function Taches() {
   const save = useMutation({
     mutationFn: (data) =>
       editing ? base44.entities.Tache.update(editing.id, data) : base44.entities.Tache.create(data),
-    onSuccess: () => { qc.invalidateQueries(["Tache"]); setOpen(false); setEditing(null); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["Tache"] }); setOpen(false); setEditing(null); },
   });
 
   const del = useMutation({
     mutationFn: (id) => base44.entities.Tache.delete(id),
-    onSuccess: () => qc.invalidateQueries(["Tache"]),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["Tache"] }),
   });
 
   const actions = (row) => (

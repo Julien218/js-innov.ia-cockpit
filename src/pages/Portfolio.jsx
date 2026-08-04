@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+const useMutationAny = /** @type {any} */ (useMutation);
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import StatCard from "@/components/shared/StatCard";
@@ -88,7 +89,7 @@ export default function Portfolio() {
     });
   };
 
-  const actionMutation = useMutation({
+  const actionMutation = useMutationAny({
     mutationFn: async ({ type, asset }) => {
       const now = new Date().toISOString();
       if (type === "valider") {
@@ -182,9 +183,9 @@ export default function Portfolio() {
                   <div className="flex items-start justify-between gap-2">
                     <h3 className="text-sm font-semibold text-foreground line-clamp-2">{asset.titre || "(sans titre)"}</h3>
                     {asset.portfolio_visible ? (
-                      <Eye className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0 mt-0.5" title="Visible dans le Portfolio public" />
+                      <span title="Visible dans le Portfolio public"><Eye className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0 mt-0.5" /></span>
                     ) : (
-                      <EyeOff className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mt-0.5" title="Non visible publiquement" />
+                      <span title="Non visible publiquement"><EyeOff className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mt-0.5" /></span>
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground line-clamp-2">{asset.description || "Pas de description."}</p>
@@ -248,7 +249,7 @@ export default function Portfolio() {
             {history.length === 0 && <p className="text-xs text-muted-foreground">Aucun historique.</p>}
             {history
               .slice()
-              .sort((a, b) => new Date(b.created_date) - new Date(a.created_date))
+              .sort((a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime())
               .map((h) => (
                 <div key={h.id} className="border border-border rounded-lg p-3 text-xs">
                   <div className="flex items-center justify-between mb-1">

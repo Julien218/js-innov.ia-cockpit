@@ -44,10 +44,10 @@ export default function ExportsDashboard({ exports = [] }) {
     if (sortBy === "name") {
       return a.title.localeCompare(b.title);
     } else if (sortBy === "oldest") {
-      return new Date(a.created_date) - new Date(b.created_date);
+      return new Date(a.created_date).getTime() - new Date(b.created_date).getTime();
     } else {
       // recent (défaut)
-      return new Date(b.created_date) - new Date(a.created_date);
+      return new Date(b.created_date).getTime() - new Date(a.created_date).getTime();
     }
   });
 
@@ -142,12 +142,12 @@ export default function ExportsDashboard({ exports = [] }) {
                     className="w-full h-full object-cover"
                     preload="metadata"
                     onMouseEnter={(e) => {
-                      e.target.currentTime = 0;
-                      e.target.play().catch(() => {});
+                      e.currentTarget.currentTime = 0;
+                      e.currentTarget.play().catch(() => {});
                     }}
-                    onMouseLeave={(e) => e.target.pause()}
+                    onMouseLeave={(e) => e.currentTarget.pause()}
                     onError={(e) => {
-                      e.target.style.display = 'none';
+                      e.currentTarget.style.display = 'none';
                     }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent hidden group-hover:flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">

@@ -42,12 +42,12 @@ export default function Projets() {
   const save = useMutation({
     mutationFn: (data) =>
       editing ? base44.entities.Projet.update(editing.id, data) : base44.entities.Projet.create(data),
-    onSuccess: () => { qc.invalidateQueries(["Projet"]); setOpen(false); setEditing(null); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["Projet"] }); setOpen(false); setEditing(null); },
   });
 
   const del = useMutation({
     mutationFn: (id) => base44.entities.Projet.delete(id),
-    onSuccess: () => qc.invalidateQueries(["Projet"]),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["Projet"] }),
   });
 
   const actions = (row) => (

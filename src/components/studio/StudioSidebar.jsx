@@ -53,8 +53,8 @@ export default function StudioSidebar({ vp, update, transitions, sourceProject }
   const [addingText, setAddingText] = useState(false);
   const [newText, setNewText] = useState({ content: "", position: "centre", color: "#ffffff", size: "2rem", font: "Inter, sans-serif", bold: false });
   const [uploading, setUploading] = useState(false);
-  const fileRef = useRef();
-  const audioRef = useRef();
+  const fileRef = useRef(null);
+  const audioRef = useRef(null);
 
   const handleMediaUpload = async (files) => {
     setUploading(true);

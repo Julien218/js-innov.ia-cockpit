@@ -523,8 +523,6 @@ export default function Emails() {
       <ComposeModal
         open={composeOpen}
         onClose={() => { setComposeOpen(false); setReplyTo(null); }}
-        mailbox={activeMailbox}
-        mailboxLabel={activeMailboxCfg?.label}
         fromEmail={activeMailboxCfg?.email}
         replyTo={replyTo}
         onSend={handleSend}

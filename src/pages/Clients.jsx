@@ -45,12 +45,12 @@ export default function Clients() {
   const save = useMutation({
     mutationFn: (data) =>
       editing ? base44.entities.Client.update(editing.id, data) : base44.entities.Client.create(data),
-    onSuccess: () => { qc.invalidateQueries(["Client"]); setOpen(false); setEditing(null); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["Client"] }); setOpen(false); setEditing(null); },
   });
 
   const del = useMutation({
     mutationFn: (id) => base44.entities.Client.delete(id),
-    onSuccess: () => qc.invalidateQueries(["Client"]),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["Client"] }),
   });
 
   const actions = (row) => (

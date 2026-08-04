@@ -56,12 +56,12 @@ export default function Factures() {
         ? base44.entities.Facture.update(editing.id, payload)
         : base44.entities.Facture.create(payload);
     },
-    onSuccess: () => { qc.invalidateQueries(["Facture"]); setOpen(false); setEditing(null); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["Facture"] }); setOpen(false); setEditing(null); },
   });
 
   const del = useMutation({
     mutationFn: (id) => base44.entities.Facture.delete(id),
-    onSuccess: () => qc.invalidateQueries(["Facture"]),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["Facture"] }),
   });
 
   // ── Télécharger PDF (route relative cockpit) ──
@@ -120,7 +120,7 @@ export default function Factures() {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
       setSendMsg({ type: "success", text: `Facture envoyée à ${data.sentTo || to}` });
-      qc.invalidateQueries(["Facture"]);
+      qc.invalidateQueries({ queryKey: ["Facture"] });
     } catch (err) {
       setSendMsg({ type: "error", text: "Erreur envoi: " + err.message });
     } finally {

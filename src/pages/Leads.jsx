@@ -44,12 +44,12 @@ export default function Leads() {
   const save = useMutation({
     mutationFn: (data) =>
       editing ? base44.entities.Lead.update(editing.id, data) : base44.entities.Lead.create(data),
-    onSuccess: () => { qc.invalidateQueries(["Lead"]); setOpen(false); setEditing(null); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["Lead"] }); setOpen(false); setEditing(null); },
   });
 
   const del = useMutation({
     mutationFn: (id) => base44.entities.Lead.delete(id),
-    onSuccess: () => qc.invalidateQueries(["Lead"]),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["Lead"] }),
   });
 
   const actions = (row) => (

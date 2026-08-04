@@ -27,6 +27,7 @@ import {
 // ET l'ancien pattern:
 //   data={data} onChange={setData} onSubmit={onSubmit} isSubmitting={loading}
 
+/** @param {any} props */
 export default function FormModal({
   open,
   onClose,

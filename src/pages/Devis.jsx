@@ -59,12 +59,12 @@ export default function Devis() {
         ? base44.entities.Devis.update(editing.id, payload)
         : base44.entities.Devis.create(payload);
     },
-    onSuccess: () => { qc.invalidateQueries(["Devis"]); setOpen(false); setEditing(null); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["Devis"] }); setOpen(false); setEditing(null); },
   });
 
   const del = useMutation({
     mutationFn: (id) => base44.entities.Devis.delete(id),
-    onSuccess: () => qc.invalidateQueries(["Devis"]),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["Devis"] }),
   });
 
   // ── Télécharger PDF (route relative cockpit) ──
@@ -123,7 +123,7 @@ export default function Devis() {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
       setSendMsg({ type: "success", text: `Devis envoyé à ${data.sentTo || to}` });
-      qc.invalidateQueries(["Devis"]);
+      qc.invalidateQueries({ queryKey: ["Devis"] });
     } catch (err) {
       setSendMsg({ type: "error", text: "Erreur envoi: " + err.message });
     } finally {

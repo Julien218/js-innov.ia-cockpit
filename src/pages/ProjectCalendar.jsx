@@ -19,7 +19,7 @@ export default function ProjectCalendar() {
   };
 
   useEffect(() => {
-    base44.entities.Project.list("-created_date", 100).then(p => {
+    base44.entities.Project.list("-created_date").then(p => {
       setProjects(p);
       setLoading(false);
     });
@@ -209,13 +209,13 @@ export default function ProjectCalendar() {
                 <div className="space-y-2 max-h-96 overflow-y-auto">
                   {projects
                     .filter(p => p.delivery_date && new Date(p.delivery_date) >= new Date())
-                    .sort((a, b) => new Date(a.delivery_date) - new Date(b.delivery_date))
+                    .sort((a, b) => new Date(a.delivery_date).getTime() - new Date(b.delivery_date).getTime())
                     .slice(0, 5)
                     .map(p => {
                       const statusConfig = STATUS_CONFIG[p.status || "planning"];
                       const StatusIcon = statusConfig.icon;
                       const daysUntil = Math.ceil(
-                        (new Date(p.delivery_date) - new Date()) / (1000 * 60 * 60 * 24)
+                        (new Date(p.delivery_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
                       );
                       return (
                         <div

@@ -20,11 +20,11 @@ export default function VideoExporter({ vp, sourceProject, onClose }) {
 
   async function loadImage(url) {
     return new Promise((resolve) => {
-      const img = new Image();
+      const img = new window.Image();
       img.crossOrigin = "anonymous";
       img.onload = () => resolve(img);
       img.onerror = () => {
-        const img2 = new Image();
+        const img2 = new window.Image();
         img2.onload = () => resolve(img2);
         img2.onerror = () => resolve(null);
         img2.src = url;

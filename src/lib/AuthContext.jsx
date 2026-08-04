@@ -7,7 +7,7 @@ import React, { createContext, useState, useContext, useEffect, useCallback } fr
 
 const STORAGE_KEY = 'cockpit_session_user'; // Stocke uniquement le profil user (pas le token)
 const OLD_STORAGE_KEY = 'cockpit_session'; // Ancienne clé — à nettoyer
-const AuthContext = createContext();
+const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);

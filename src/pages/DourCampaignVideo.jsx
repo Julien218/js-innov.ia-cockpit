@@ -903,7 +903,7 @@ export default function DourCampaignVideo() {
                     [0, "Hook"], [3, "Logo"], [5, "Content"], [20, "Émotion"],
                     [25, "CTA"], [30, "Outro"], [33, "Brand"]
                   ].map(([ts, lbl]) => (
-                    <button key={ts} onClick={() => { setIsPlaying(false); setPreviewT(ts); }}
+                    <button key={ts} onClick={() => { setIsPlaying(false); setPreviewT(Number(ts)); }}
                       className="text-[10px] px-2 py-0.5 rounded bg-muted text-muted-foreground hover:bg-primary/20 hover:text-primary transition-colors">
                       {ts}s {lbl}
                     </button>
