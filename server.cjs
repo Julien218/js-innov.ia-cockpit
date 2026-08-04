@@ -25,7 +25,13 @@ try {
 // ── API Emails IMAP ──────────────────────────────────────────
 try {
   const emailRouter = require('./server-email.cjs');
-  app.use('/api/emails', requireSession('admin'), emailRouter);
+  const emailSessionGuard = requireSession('admin');
+  app.use('/api/emails', (req, res, next) => {
+    // HainoFlow utilise sa clé serveur dédiée sur cette unique route.
+    // Toutes les autres routes email restent protégées par la session admin.
+    if (req.path === '/official') return next();
+    return emailSessionGuard(req, res, next);
+  }, emailRouter);
   console.log('✅ Route /api/emails activée (IMAP IONOS — multi-mailbox)');
   console.log('   Mailboxes: jsinnovia, assurances');
 } catch (e) {
