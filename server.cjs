@@ -4,12 +4,14 @@ const express = require('express');
 const path = require('path');
 const app = express();
 const PORT = process.env.API_PORT || 3001;
+const { requireSession, requireSameOrigin, ROLE_LEVEL } = require('./server-security.cjs');
 
 // Trust proxy — nécessaire pour détecter HTTPS (X-Forwarded-Proto) et l'IP réelle (X-Real-IP)
 // nginx reverse proxy est le premier hop
 app.set('trust proxy', 1);
 
 app.use(express.json({ limit: '10mb' }));
+app.use(requireSameOrigin);
 
 // ── API Auth (backend, service_role) ────────────────────────
 try {
@@ -23,7 +25,7 @@ try {
 // ── API Emails IMAP ──────────────────────────────────────────
 try {
   const emailRouter = require('./server-email.cjs');
-  app.use('/api/emails', emailRouter);
+  app.use('/api/emails', requireSession('admin'), emailRouter);
   console.log('✅ Route /api/emails activée (IMAP IONOS — multi-mailbox)');
   console.log('   Mailboxes: jsinnovia, assurances');
 } catch (e) {
@@ -33,7 +35,7 @@ try {
 // ── API Billing (PDF + envoi devis/factures) ─────────────────
 try {
   const billingRouter = require('./server-billing.cjs');
-  app.use('/api/billing', billingRouter);
+  app.use('/api/billing', requireSession('admin'), billingRouter);
   console.log('✅ Route /api/billing activée (PDF + email devis/factures)');
 } catch (e) {
   console.warn('⚠️ Route billing indisponible:', e.message);
@@ -42,10 +44,20 @@ try {
 // ── Proxy /api/data/* → jsinnovia-agent /data/* ─────────────
 // Server-to-server: pas de restrictions CORS
 // Le frontend appelle /api/data/Devis → Express → jsinnovia-agent
-const AGENT_PROXY_URL = process.env.VITE_AGENT_URL || process.env.JSINNOVIA_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
+const AGENT_PROXY_URL = process.env.JSINNOVIA_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_PROXY_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
 
-app.use('/api/data', async (req, res) => {
+app.use('/api/data', requireSession('client'), async (req, res) => {
+  const table = req.path.split('/').filter(Boolean)[0];
+  const role = req.user.role;
+  const clientReadTables = new Set(['Projet', 'Devis', 'Facture', 'Demande']);
+  if (role === 'client' && (req.method !== 'GET' || !clientReadTables.has(table))) {
+    return res.status(403).json({ error: 'Cette opération nécessite un collaborateur' });
+  }
+  const adminTables = new Set(['LogAction', 'Validation', 'Commission']);
+  if (adminTables.has(table) && (ROLE_LEVEL[role] || 0) < ROLE_LEVEL.admin) {
+    return res.status(403).json({ error: 'Cette ressource nécessite un administrateur' });
+  }
   const targetUrl = `${AGENT_PROXY_URL}/data${req.url}`;
   const method = req.method;
 
@@ -76,6 +88,14 @@ app.use('/api/data', async (req, res) => {
     res.status(502).json({ error: 'Proxy error: ' + err.message });
   }
 });
+
+try {
+  const assistantRouter = require('./server-assistant.cjs');
+  app.use('/api/assistant', requireSession('collaborateur'), assistantRouter);
+  console.log('Assistant personnel sécurisé activé');
+} catch (e) {
+  console.warn('Route assistant indisponible:', e.message);
+}
 
 // Health check API
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cockpit-api' }));

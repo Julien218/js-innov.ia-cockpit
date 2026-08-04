@@ -18,6 +18,7 @@ const fs   = require("fs");
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 function requireApiKey(req, res, next) {
+  if (req.user) return next();
   const key = req.headers["x-agent-key"] || req.headers["x-api-key"];
   if (!key || key !== process.env.AGENT_API_KEY) {
     return res.status(401).json({ error: "Unauthorized" });

@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { AGENT_KEY } from "@/config/agent";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
 import ErrorState from "@/components/shared/ErrorState";
@@ -73,8 +72,8 @@ export default function Factures() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-agent-key": AGENT_KEY,
         },
+        credentials: "same-origin",
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -112,8 +111,8 @@ export default function Factures() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-agent-key": AGENT_KEY,
         },
+        credentials: "same-origin",
         body: JSON.stringify({}),
       });
       const data = await res.json();

@@ -5,10 +5,8 @@ import {
   Shield, Store, Send, Loader2, Reply, Trash2, Archive, Check, AlertCircle,
   MailOpen
 } from "lucide-react";
-import { AGENT_KEY } from '@/config/agent';
 
 const API_BASE = '';
-const API_KEY = AGENT_KEY;
 
 const MAILBOXES = [
   { id: 'jsinnovia',  label: 'JS-Innov.IA',     email: 'info@jsinnovia.com',      icon: Mail,   color: '#D4AF37', isAlias: true,  canSend: false },
@@ -199,7 +197,7 @@ function EmailDetail({ email, onBack, onReply, onDelete, onArchive }) {
   );
 }
 
-function ComposeModal({ open, onClose, mailbox, mailboxLabel, fromEmail, replyTo, onSend }) {
+function ComposeModal({ open, onClose, fromEmail, replyTo, onSend }) {
   const [to, setTo] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
@@ -296,7 +294,7 @@ export default function Emails() {
     setLoading(true); setError(null);
     try {
       const endpoint = isSentFolder ? `${API_BASE}/api/emails/sent?mailbox=${activeMailbox}&limit=50` : `${API_BASE}/api/emails?mailbox=${activeMailbox}&limit=50`;
-      const res = await fetch(endpoint, { headers: { 'x-agent-key': API_KEY } });
+      const res = await fetch(endpoint, { credentials: 'same-origin' });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Erreur de chargement');
       setEmails(data.emails || []);
@@ -307,7 +305,7 @@ export default function Emails() {
   const fetchDetail = useCallback(async (uid) => {
     setLoadingDetail(true);
     try {
-      const res = await fetch(`${API_BASE}/api/emails/${uid}?mailbox=${activeMailbox}`, { headers: { 'x-agent-key': API_KEY } });
+      const res = await fetch(`${API_BASE}/api/emails/${uid}?mailbox=${activeMailbox}`, { credentials: 'same-origin' });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Erreur');
       setDetail(data.email);
@@ -318,7 +316,7 @@ export default function Emails() {
 
   const handleDelete = async (uid) => {
     try {
-      const res = await fetch(`${API_BASE}/api/emails/${uid}?mailbox=${activeMailbox}`, { method: 'DELETE', headers: { 'x-agent-key': API_KEY } });
+      const res = await fetch(`${API_BASE}/api/emails/${uid}?mailbox=${activeMailbox}`, { method: 'DELETE', credentials: 'same-origin' });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
       setEmails(prev => prev.filter(e => e.uid !== uid));
@@ -329,7 +327,7 @@ export default function Emails() {
 
   const handleArchive = async (uid) => {
     try {
-      const res = await fetch(`${API_BASE}/api/emails/${uid}/archive?mailbox=${activeMailbox}`, { method: 'POST', headers: { 'x-agent-key': API_KEY } });
+      const res = await fetch(`${API_BASE}/api/emails/${uid}/archive?mailbox=${activeMailbox}`, { method: 'POST', credentials: 'same-origin' });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
       setEmails(prev => prev.map(e => e.uid === uid ? { ...e, seen: true } : e));
@@ -341,7 +339,8 @@ export default function Emails() {
     if (activeMailboxCfg?.isAlias) throw new Error('Alias - envoi non disponible.');
     const res = await fetch(`${API_BASE}/api/emails/send`, {
       method: 'POST',
-      headers: { 'x-agent-key': API_KEY, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify({ mailbox: activeMailbox, to, subject, text, replyToUid }),
     });
     const data = await res.json();

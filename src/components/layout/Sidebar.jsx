@@ -14,7 +14,6 @@ import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { usePermissions } from "@/lib/usePermissions";
 import { ROLE_LABELS, ROLE_COLORS } from "@/lib/roles";
-import { AGENT_KEY } from '@/config/agent';
 
 const useValidationsBadge = () => {
   const { data = [] } = useQuery({
@@ -27,11 +26,9 @@ const useValidationsBadge = () => {
 
 const useEmailBadge = () => {
   const [unread, setUnread] = React.useState(0);
-  const apiKey = AGENT_KEY;
   React.useEffect(() => {
-    if (!apiKey) return;
     const poll = () => {
-      fetch('/api/emails?limit=1', { headers: { 'x-agent-key': apiKey } })
+      fetch('/api/emails?limit=1', { credentials: 'same-origin' })
         .then(r => r.ok ? r.json() : { unread: 0 })
         .then(d => setUnread(d.unread || 0))
         .catch(() => {});
@@ -39,7 +36,7 @@ const useEmailBadge = () => {
     poll();
     const interval = setInterval(poll, 120000);
     return () => clearInterval(interval);
-  }, [apiKey]);
+  }, []);
   return unread;
 };
 
@@ -131,7 +128,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { role, isSuperAdmin, isAdmin, canAccess } = usePermissions();
+  const { role, canAccess } = usePermissions();
   const validationCount = useValidationsBadge();
   const emailCount = useEmailBadge();
   const demandeCount = useDemandeBadge();

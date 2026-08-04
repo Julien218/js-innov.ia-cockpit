@@ -5,13 +5,6 @@
 // Le serveur Express forward vers jsinnovia-agent (server-to-server)
 // ============================================================
 
-import { AGENT_KEY as AGENT_AUTH } from '@/config/agent';
-
-// Guard: if no API key is configured, fail fast with a clear message
-if (!AGENT_AUTH) {
-  console.error('[base44Client] VITE_AGENT_KEY manquant côté frontend cockpit — toutes les API CRM retourneront 401');
-}
-
 // TABLE_MAP — noms PascalCase = noms réels dans Supabase (via jsinnovia-agent proxy)
 const TABLE_MAP = {
   Client:     'Client',
@@ -45,9 +38,9 @@ async function agentReq(table, path = '', options = {}) {
   const url = `/api/data/${table}${path}`;
   const res = await fetch(url, {
     ...options,
+    credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
-      'x-agent-key': AGENT_AUTH,
       ...(options.headers || {}),
     },
   });

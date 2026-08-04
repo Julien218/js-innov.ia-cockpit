@@ -69,6 +69,7 @@ function isAliasMailbox(mailboxKey) {
 }
 
 function requireApiKey(req, res, next) {
+  if (req.user) return next();
   const key = req.headers['x-agent-key'] || req.headers['x-api-key'] || req.query.key;
   // Safe auth logging — never log actual key values
   console.log('[EMAIL AUTH]', {
