@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { AGENT_KEY } from "@/config/agent";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
 import ErrorState from "@/components/shared/ErrorState";
@@ -60,12 +59,12 @@ export default function Devis() {
         ? base44.entities.Devis.update(editing.id, payload)
         : base44.entities.Devis.create(payload);
     },
-    onSuccess: () => { qc.invalidateQueries(["Devis"]); setOpen(false); setEditing(null); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["Devis"] }); setOpen(false); setEditing(null); },
   });
 
   const del = useMutation({
     mutationFn: (id) => base44.entities.Devis.delete(id),
-    onSuccess: () => qc.invalidateQueries(["Devis"]),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["Devis"] }),
   });
 
   // ── Télécharger PDF (route relative cockpit) ──
@@ -76,8 +75,8 @@ export default function Devis() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-agent-key": AGENT_KEY,
         },
+        credentials: "same-origin",
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -115,8 +114,8 @@ export default function Devis() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-agent-key": AGENT_KEY,
         },
+        credentials: "same-origin",
         body: JSON.stringify({}),
       });
       const data = await res.json();
@@ -124,7 +123,7 @@ export default function Devis() {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
       setSendMsg({ type: "success", text: `Devis envoyé à ${data.sentTo || to}` });
-      qc.invalidateQueries(["Devis"]);
+      qc.invalidateQueries({ queryKey: ["Devis"] });
     } catch (err) {
       setSendMsg({ type: "error", text: "Erreur envoi: " + err.message });
     } finally {

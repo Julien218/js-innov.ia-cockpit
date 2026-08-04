@@ -28,7 +28,7 @@ function AgentsIA() {
 
   const addAgent = () => {
     if (!newAgent.nom) return;
-    setAgents(prev => [...prev, { id: Date.now(), ...newAgent, actif: true }]);
+    setAgents(prev => [...prev, { id: Date.now(), ...newAgent, url: newAgent.endpoint || "", actif: true }]);
     setNewAgent({ nom: "", type: "openai", apiKey: "", model: "gpt-4o", endpoint: "" });
     setShowForm(false);
   };

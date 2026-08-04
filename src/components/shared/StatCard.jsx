@@ -2,6 +2,7 @@ import React from "react";
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown } from "lucide-react";
 
+/** @param {any} props */
 export default function StatCard({ title, value, icon: Icon, trend, trendLabel, color = "primary", subtitle }) {
   const colorMap = {
     primary: { bg: "bg-primary/10", text: "text-primary", glow: "shadow-primary/20" },

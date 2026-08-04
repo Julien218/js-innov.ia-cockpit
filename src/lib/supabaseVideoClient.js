@@ -73,9 +73,9 @@ export const base44Shim = {
       subscribe: (callback) => {
         const channel = supabase.channel('video_export_changes')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'VideoExport' },
-            (payload) => callback({ type: payload.eventType, id: payload.old?.id, data: payload.new })
+            (payload) => callback({ type: payload.eventType, id: /** @type {any} */ (payload.old)?.id, data: payload.new })
           ).subscribe();
-        return () => supabase.removeChannel(channel);
+        return () => { void supabase.removeChannel(channel); };
       },
     },
     Project: {
@@ -95,7 +95,7 @@ export const base44Shim = {
         const data = await res.json();
         return { url: data.image_url || data.url || '' };
       },
-      UploadFile: async ({ file, fileName }) => {
+      UploadFile: async ({ file, fileName = file?.name }) => {
         const url = await uploadToStorage(file, 'uploads', fileName);
         return { url };
       },

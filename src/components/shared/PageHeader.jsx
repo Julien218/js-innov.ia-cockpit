@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Plus, Search } from "lucide-react";
 import BackButton from "@/components/shared/BackButton";
 
+/** @param {any} props */
 export default function PageHeader({ title, subtitle, onAdd, addLabel = "Ajouter", search, onSearch, actions, action, showBack = true }) {
   // action (singulier) = alias pour actions (pluriel) — compatibilité
   const extra = actions || action;

@@ -5,7 +5,7 @@ import { Upload, Link, Loader2, X } from "lucide-react";
 export default function ProjectForm({ formData, onChange, disabled }) {
   const [uploading, setUploading] = useState(false);
   const [imageMode, setImageMode] = useState("upload"); // upload | url
-  const fileRef = useRef();
+  const fileRef = useRef(null);
 
   function set(key, val) {
     onChange(prev => ({ ...prev, [key]: val }));

@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { AGENT_KEY } from "@/config/agent";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
 import ErrorState from "@/components/shared/ErrorState";
@@ -57,12 +56,12 @@ export default function Factures() {
         ? base44.entities.Facture.update(editing.id, payload)
         : base44.entities.Facture.create(payload);
     },
-    onSuccess: () => { qc.invalidateQueries(["Facture"]); setOpen(false); setEditing(null); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["Facture"] }); setOpen(false); setEditing(null); },
   });
 
   const del = useMutation({
     mutationFn: (id) => base44.entities.Facture.delete(id),
-    onSuccess: () => qc.invalidateQueries(["Facture"]),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["Facture"] }),
   });
 
   // ── Télécharger PDF (route relative cockpit) ──
@@ -73,8 +72,8 @@ export default function Factures() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-agent-key": AGENT_KEY,
         },
+        credentials: "same-origin",
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -112,8 +111,8 @@ export default function Factures() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-agent-key": AGENT_KEY,
         },
+        credentials: "same-origin",
         body: JSON.stringify({}),
       });
       const data = await res.json();
@@ -121,7 +120,7 @@ export default function Factures() {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
       setSendMsg({ type: "success", text: `Facture envoyée à ${data.sentTo || to}` });
-      qc.invalidateQueries(["Facture"]);
+      qc.invalidateQueries({ queryKey: ["Facture"] });
     } catch (err) {
       setSendMsg({ type: "error", text: "Erreur envoi: " + err.message });
     } finally {

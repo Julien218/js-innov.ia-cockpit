@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+const useMutationAny = /** @type {any} */ (useMutation);
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import FormModal from "@/components/shared/FormModal";
@@ -64,15 +65,15 @@ export default function Validations() {
     queryFn: () => base44.entities.Validation.list("-created_at"),
   });
 
-  const updateMutation = useMutation({
+  const updateMutation = useMutationAny({
     mutationFn: ({ id, data }) => base44.entities.Validation.update(id, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["validations"] }); closeModal(); },
   });
-  const createMutation = useMutation({
+  const createMutation = useMutationAny({
     mutationFn: (d) => base44.entities.Validation.create(d),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["validations"] }); closeModal(); },
   });
-  const deleteMutation = useMutation({
+  const deleteMutation = useMutationAny({
     mutationFn: (id) => base44.entities.Validation.delete(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["validations"] }),
   });

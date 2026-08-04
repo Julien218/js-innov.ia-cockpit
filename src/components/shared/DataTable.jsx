@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 
+/** @param {any} props */
 export default function DataTable({
   columns,
   data = [],

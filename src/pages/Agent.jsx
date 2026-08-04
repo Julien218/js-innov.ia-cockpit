@@ -1,17 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Bot, Send, Trash2, Zap, User, Loader2, Sparkles } from "lucide-react";
+import { Bot, Check, Send, ShieldCheck, Trash2, User, Loader2, Sparkles, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { AGENT_URL, agentHeaders } from "@/config/agent";
 import { fr } from "date-fns/locale";
-
-const SESSION_ID = `julien-${Date.now()}`;
 
 const SUGGESTIONS = [
   "Résume mes projets en cours",
-  "Quels leads sont en attente ?",
-  "Montre-moi les tâches urgentes",
-  "Quel est mon chiffre d'affaires ce mois ?",
+  "Prépare un devis pour mon prochain client",
+  "Montre-moi les factures en retard",
+  "Crée une tâche urgente pour un projet",
 ];
 
 export default function AgentPage() {
@@ -24,6 +21,8 @@ export default function AgentPage() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [confirmation, setConfirmation] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -39,23 +38,25 @@ export default function AgentPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${AGENT_URL}/chat`, {
+      const res = await fetch('/api/assistant/chat', {
         method: "POST",
-        headers: agentHeaders(),
-        body: JSON.stringify({ message: msg, session_id: SESSION_ID }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ message: msg }),
       });
 
       const data = await res.json();
 
       if (res.ok) {
         setMessages((prev) => [...prev, { role: "assistant", content: data.response || data.reply || data.message || "⚠️ Réponse vide", ts: new Date() }]);
+        setConfirmation(data.confirmation || null);
       } else {
         setMessages((prev) => [
           ...prev,
           { role: "assistant", content: `❌ Erreur : ${data.error || "Réponse invalide de l'agent"}`, ts: new Date(), error: true },
         ]);
       }
-    } catch (err) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: "❌ Impossible de joindre l'agent. Vérifiez votre connexion.", ts: new Date(), error: true },
@@ -63,6 +64,45 @@ export default function AgentPage() {
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  };
+
+  const confirmAction = async () => {
+    if (!confirmation || actionLoading) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch('/api/assistant/confirm', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+        body: JSON.stringify({ token: confirmation.token })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Action refusée');
+      if (data.client_action) {
+        const actionRes = await fetch(data.client_action.url, {
+          method: data.client_action.method,
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(data.client_action.body || {})
+        });
+        const actionData = await actionRes.json().catch(() => ({}));
+        await fetch('/api/assistant/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            token: data.completion_token,
+            success: actionRes.ok,
+            details: actionRes.ok ? 'Action exécutée par la route métier sécurisée' : (actionData.error || `HTTP ${actionRes.status}`)
+          })
+        });
+        if (!actionRes.ok) throw new Error(actionData.error || 'Action métier non exécutée');
+      }
+      setMessages((prev) => [...prev, { role: 'assistant', content: '✅ Action exécutée et ajoutée au journal d’activité.', ts: new Date() }]);
+      setConfirmation(null);
+    } catch (error) {
+      setMessages((prev) => [...prev, { role: 'assistant', content: `❌ ${error.message}`, ts: new Date(), error: true }]);
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -74,6 +114,7 @@ export default function AgentPage() {
         ts: new Date(),
       },
     ]);
+    setConfirmation(null);
   };
 
   return (
@@ -109,7 +150,7 @@ export default function AgentPage() {
           <div key={i} className={cn("flex gap-2 sm:gap-3", msg.role === "user" ? "justify-end" : "justify-start")}>
             {msg.role === "assistant" && (
               <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full gradient-primary flex items-center justify-center flex-shrink-0 shadow shadow-primary/20 mt-0.5">
-                <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+                <img src="/logo.png" alt="" className="w-6 h-6 object-contain" />
               </div>
             )}
             <div className={cn("max-w-[80%] sm:max-w-[75%] space-y-1")}>
@@ -140,7 +181,7 @@ export default function AgentPage() {
         {loading && (
           <div className="flex gap-2 sm:gap-3 justify-start">
             <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full gradient-primary flex items-center justify-center flex-shrink-0 shadow shadow-primary/20">
-              <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+              <img src="/logo.png" alt="" className="w-6 h-6 object-contain" />
             </div>
             <div className="bg-card border border-border rounded-2xl rounded-tl-sm px-3 sm:px-4 py-2.5 sm:py-3 shadow-sm">
               <div className="flex gap-1.5 items-center">
@@ -153,6 +194,24 @@ export default function AgentPage() {
         )}
         <div ref={bottomRef} />
       </div>
+
+      {confirmation && (
+        <div className="mx-3 sm:mx-6 mb-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4" role="alert">
+          <div className="flex items-start gap-3">
+            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold">Confirmation obligatoire</p>
+              <p className="mt-1 text-xs text-muted-foreground">{confirmation.summary}</p>
+              <div className="mt-3 flex gap-2">
+                <button type="button" onClick={confirmAction} disabled={actionLoading} className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-black disabled:opacity-50">
+                  {actionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Confirmer
+                </button>
+                <button type="button" onClick={() => setConfirmation(null)} disabled={actionLoading} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs"><X className="h-3.5 w-3.5" /> Annuler</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Suggestions */}
       {messages.length === 1 && (

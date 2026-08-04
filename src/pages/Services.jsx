@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+const useMutationAny = /** @type {any} */ (useMutation);
 import PageHeader from "@/components/shared/PageHeader";
 import FormModal from "@/components/shared/FormModal";
 import ErrorState from "@/components/shared/ErrorState";
@@ -49,7 +50,7 @@ const categorieLabels = {
 
 export default function Services() {
   const [modalOpen, setModalOpen] = useState(false);
-  const [formData, setFormData] = useState({});
+  const [formData, setFormData] = useState(/** @type {any} */ ({}));
   const [editingId, setEditingId] = useState(null);
   const [search, setSearch] = useState("");
   const queryClient = useQueryClient();
@@ -59,19 +60,19 @@ export default function Services() {
     queryFn: () => base44.entities.Service.list("-created_at"),
   });
 
-  const createMutation = useMutation({
+  const createMutation = useMutationAny({
     mutationFn: (d) => base44.entities.Service.create(d),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["services"] }); closeModal(); },
   });
-  const updateMutation = useMutation({
+  const updateMutation = useMutationAny({
     mutationFn: ({ id, data }) => base44.entities.Service.update(id, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["services"] }); closeModal(); },
   });
-  const deleteMutation = useMutation({
+  const deleteMutation = useMutationAny({
     mutationFn: (id) => base44.entities.Service.delete(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["services"] }),
   });
-  const toggleMutation = useMutation({
+  const toggleMutation = useMutationAny({
     mutationFn: ({ id, actif }) => base44.entities.Service.update(id, { actif: !actif }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["services"] }),
   });

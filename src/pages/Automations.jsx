@@ -146,7 +146,7 @@ export default function Automations() {
               {errorConfig && (
                 <div className="flex items-center gap-2 bg-red-500/10 rounded-lg p-3 text-xs text-red-600 mb-2">
                   <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span>Erreur de connexion à SystemConfig. <button onClick={refetchConfig} className="underline ml-1">Réessayer</button></span>
+                  <span>Erreur de connexion à SystemConfig. <button onClick={() => refetchConfig()} className="underline ml-1">Réessayer</button></span>
                 </div>
               )}
               {!errorConfig && !configRows.length && (
