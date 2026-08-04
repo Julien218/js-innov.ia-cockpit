@@ -36,9 +36,11 @@ COPY server.cjs ./server.cjs
 COPY server-auth.cjs ./server-auth.cjs
 COPY server-email.cjs ./server-email.cjs
 COPY server-billing.cjs ./server-billing.cjs
+COPY server-security.cjs ./server-security.cjs
+COPY server-assistant.cjs ./server-assistant.cjs
 COPY assets ./assets
 
-# Installer les dépendances prod (imap, mailparser, express, cookie)
+# Installer les dépendances prod (imap, mailparser, express, cookie, assistant)
 RUN npm ci --omit=dev --legacy-peer-deps
 
 # Config nginx — SPA fallback + proxy /api vers Express :3001 + headers sécurité
