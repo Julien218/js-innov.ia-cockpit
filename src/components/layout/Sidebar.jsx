@@ -6,7 +6,7 @@ import {
   CheckSquare, MessageSquare, Shield,
   Bot, Network, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
-  PlayCircle, GalleryHorizontalEnd,
+  PlayCircle, GalleryHorizontalEnd, Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -93,6 +93,7 @@ const allNavGroups = [
     minRole: "admin",
     items: [
       { label: "Emails", icon: Mail, path: "/emails", badge: "emails", minRole: "admin" },
+      { label: "Email Core", icon: Send, path: "/emails-core", minRole: "admin" },
     ]
   },
   {

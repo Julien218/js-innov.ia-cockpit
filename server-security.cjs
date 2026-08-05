@@ -26,7 +26,7 @@ async function resolveSession(req) {
 function requireSession(minRole = 'client') {
   return async (req, res, next) => {
     try {
-      const user = await resolveSession(req);
+      const user = req.user || await resolveSession(req);
       if (!user) return res.status(401).json({ error: 'Session requise' });
       if ((ROLE_LEVEL[user.role] || 0) < (ROLE_LEVEL[minRole] || 0)) {
         return res.status(403).json({ error: 'Droits insuffisants' });

@@ -103,6 +103,15 @@ try {
   console.warn('Route assistant indisponible:', e.message);
 }
 
+
+// ── Email Core Framework (queue + send + API) ──────────────
+try {
+  const emailCoreRouter = require('./server-email-core.cjs');
+  app.use('/api/emails', emailCoreRouter);
+  console.log('✅ Route /api/emails (core framework) activée');
+} catch (e) {
+  console.warn('⚠️ Route email-core indisponible:', e.message);
+}
 // Health check API
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cockpit-api' }));
 
