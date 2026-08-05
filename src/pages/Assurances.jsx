@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 
 const OLIVIER_EMAIL = 'olivier.trevis@pv.be';
+const SUPERADMIN_ROLES = new Set(['superadmin', 'super_admin']);
 const STATUS_OPTIONS = ['nouveau', 'contacte', 'rendez_vous', 'devis', 'contrat_emis', 'perdu'];
 const COMMISSION_OPTIONS = ['a_verifier', 'validee', 'payee'];
 
@@ -29,7 +30,8 @@ const commissionLabels = {
 };
 
 function canViewInsurance(user) {
-  return user?.role === 'superadmin'
+  const role = String(user?.role || '').toLowerCase();
+  return SUPERADMIN_ROLES.has(role)
     || String(user?.email || '').toLowerCase() === OLIVIER_EMAIL;
 }
 
