@@ -1,0 +1,94 @@
+name: Cockpit Quality Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'chore/cockpit-hainoflow-productization'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: cockpit-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, types, tests, build and server syntax
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and integration tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Server syntax checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in \
+            server.cjs \
+            server-auth.cjs \
+            server-security.cjs \
+            server-email.cjs \
+            server-billing.cjs \
+            server-assistant.cjs; do
+            test -f "$file"
+            node --check "$file"
+          done
+
+      - name: Reject privileged VITE variables
+        shell: bash
+        run: |
+          set -euo pipefail
+          pattern='^[[:space:]]*(export[[:space:]]+)?(VITE_AGENT_KEY|VITE_AGENT_AUTH|VITE_AGENT_API_KEY|VITE_BASE44_API_KEY|VITE_SUPABASE_SERVICE_ROLE_KEY)[[:space:]]*='
+          if grep -RInE "$pattern" --exclude-dir=node_modules --exclude-dir=dist .; then
+            echo 'ERROR: privileged VITE_* variable assignment detected'
+            exit 1
+          fi
+          echo 'PASS: no privileged VITE_* variable assignment detected'
+
+      - name: Verify clean generated diff
+        run: git diff --check
+
+  docker:
+    name: Docker production image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build --tag jsinnovia-cockpit:ci .
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: 'false'
