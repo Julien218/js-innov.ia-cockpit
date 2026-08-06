@@ -474,7 +474,97 @@ async function checkIdempotency(key) {
 }
 
 // ── 7. Fonction sendEmail({ ... }) ────────────────────────────────
-async function sendEmail({ to, cc, bcc, subject, text, html, brand, application, idempotencyKey, template, metadata, from, priority }) {
+
+// ── Gestion des pièces jointes ─────────────────────────────────────
+// Validation et transformation des pièces jointes base64 → nodemailer format
+// Supporte : photos, audio, documents, zip, vidéos — tout type MIME
+const MAX_ATTACHMENT_SIZE = 15 * 1024 * 1024; // 15 MB par fichier
+const MAX_TOTAL_ATTACHMENTS = 20 * 1024 * 1024; // 20 MB total
+const MAX_ATTACHMENT_COUNT = 10; // max 10 fichiers par email
+
+const ALLOWED_MIME_PREFIXES = [
+  'image/', 'audio/', 'video/', 'application/',
+  'text/', 'font/', 'model/'
+];
+
+const BLOCKED_MIMES = [
+  'application/x-msdownload',
+  'application/x-msdos-program',
+  'application/x-sh',
+  'application/x-bat',
+  'application/x-csh',
+  'application/x-httpd-php',
+];
+
+function validateAndParseAttachments(attachments) {
+  if (!attachments) return [];
+
+  const arr = Array.isArray(attachments) ? attachments : [attachments];
+  if (arr.length > MAX_ATTACHMENT_COUNT) {
+    throw new Error(`Trop de pièces jointes (max ${MAX_ATTACHMENT_COUNT})`);
+  }
+
+  const result = [];
+  let totalSize = 0;
+
+  for (let i = 0; i < arr.length; i++) {
+    const att = arr[i];
+    if (!att || typeof att !== 'object') {
+      throw new Error(`Pièce jointe ${i + 1}: format invalide`);
+    }
+
+    // Accepter filename ou filename original
+    const filename = att.filename || att.name || `fichier_${i + 1}`;
+    if (typeof filename !== 'string' || filename.length > 255) {
+      throw new Error(`Pièce jointe ${i + 1}: nom invalide`);
+    }
+
+    // Sécurité : pas de chemins de traversal
+    const safeFilename = filename.replace(/[\/\\]/g, '_').replace(/\.\./g, '');
+
+    // Content : base64 string
+    const content_base64 = att.content_base64 || att.content || att.data;
+    if (!content_base64 || typeof content_base64 !== 'string') {
+      throw new Error(`Pièce jointe ${safeFilename}: contenu base64 manquant`);
+    }
+
+    // Décoder pour vérifier la taille
+    const buffer = Buffer.from(content_base64, 'base64');
+    if (buffer.length > MAX_ATTACHMENT_SIZE) {
+      throw new Error(`Pièce jointe ${safeFilename}: trop volumineuse (${Math.round(buffer.length / 1024 / 1024)} MB, max ${MAX_ATTACHMENT_SIZE / 1024 / 1024} MB)`);
+    }
+
+    totalSize += buffer.length;
+    if (totalSize > MAX_TOTAL_ATTACHMENTS) {
+      throw new Error(`Total des pièces jointes trop volumineux (max ${MAX_TOTAL_ATTACHMENTS / 1024 / 1024} MB)`);
+    }
+
+    // Content type
+    let contentType = att.content_type || att.contentType || att.type || 'application/octet-stream';
+
+    // Sécurité : bloquer les types MIME dangereux
+    if (BLOCKED_MIMES.includes(contentType.toLowerCase())) {
+      throw new Error(`Pièce jointe ${safeFilename}: type MIME non autorisé (${contentType})`);
+    }
+
+    // Stocker les métadonnées (sans le contenu base64)
+    result.push({
+      filename: safeFilename,
+      content: buffer, // Buffer pour nodemailer
+      contentType,
+      size: buffer.length,
+      metadata: {
+        filename: safeFilename,
+        content_type: contentType,
+        size: buffer.length,
+      },
+    });
+  }
+
+  return result;
+}
+
+async function sendEmail({ to, cc, bcc, subject, text, html, brand, application, idempotencyKey, template, metadata, from, priority, attachments }) {
   if (!to) throw new Error('Champ to obligatoire');
   if (!subject) throw new Error('Champ subject obligatoire');
   if (!brand) throw new Error('Champ brand obligatoire');
@@ -498,6 +588,10 @@ async function sendEmail({ to, cc, bcc, subject, text, html, brand, application,
     }
   }
 
+  // ── Validation des pièces jointes ──
+  const parsedAttachments = attachments ? validateAndParseAttachments(attachments) : [];
+  const attachmentMeta = parsedAttachments.length > 0 ? parsedAttachments.map(a => a.metadata) : [];
+
   const smtpConfig = getSmtpConfig(resolvedSlug);
 
   const emailLogId = await logEmail({
@@ -511,7 +605,7 @@ async function sendEmail({ to, cc, bcc, subject, text, html, brand, application,
     application: application || 'cockpit',
     idempotencyKey,
     template,
-    metadata,
+    metadata: { ...(metadata || {}), attachments: attachmentMeta },
     status: 'pending',
   });
 
@@ -527,6 +621,7 @@ async function sendEmail({ to, cc, bcc, subject, text, html, brand, application,
       subject,
       text: text || undefined,
       html: html || undefined,
+      attachments: parsedAttachments.length > 0 ? parsedAttachments.map(a => ({ filename: a.filename, content: a.content, contentType: a.contentType })) : undefined,
     };
 
     const sendRes = await transport.sendMail(mailOptions);
@@ -614,7 +709,7 @@ async function sendEmail({ to, cc, bcc, subject, text, html, brand, application,
 router.post('/send', requireSession('collaborateur'), async (req, res) => {
   try {
     const idempotencyKey = req.headers['idempotency-key'] || req.headers['x-idempotency-key'] || req.body.idempotencyKey;
-    const { to, cc, bcc, subject, text, html, brand, application, template, metadata, priority } = req.body;
+    const { to, cc, bcc, subject, text, html, brand, application, template, metadata, priority, attachments } = req.body;
 
     const result = await sendEmail({
       to,
@@ -629,6 +724,7 @@ router.post('/send', requireSession('collaborateur'), async (req, res) => {
       template,
       metadata,
       priority,
+      attachments,
     });
 
     return res.json(result);
@@ -862,6 +958,46 @@ router.get('/:id', requireSession('admin'), async (req, res) => {
   }
 });
 
+// GET /api/emails/:id/attachments (minRole: admin) — métadonnées des pièces jointes
+router.get('/:id/attachments', requireSession('admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    let logs = await supabaseFetch(`EmailLog?id=eq.${encodeURIComponent(id)}&limit=1`);
+    let log = Array.isArray(logs) ? logs[0] : null;
+
+    if (!log) {
+      log = memoryStore.logs.get(id) || null;
+    }
+
+    if (!log) {
+      return res.status(404).json({ error: 'EmailLog non trouvé' });
+    }
+
+    // Les métadonnées des pièces jointes sont stockées dans le champ metadata (jsonb)
+    const meta = typeof log.metadata === 'string' ? JSON.parse(log.metadata) : (log.metadata || {});
+    const attachments = meta.attachments || [];
+
+    return res.json({
+      email_id: id,
+      attachments: attachments.map((a, i) => ({
+        index: i,
+        filename: a.filename,
+        content_type: a.content_type,
+        size: a.size,
+        size_human: a.size > 1024 * 1024
+          ? (a.size / 1024 / 1024).toFixed(1) + ' MB'
+          : a.size > 1024
+            ? (a.size / 1024).toFixed(0) + ' KB'
+            : a.size + ' B',
+      })),
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+
+
 // POST /api/emails/:id/retry (minRole: admin)
 router.post('/:id/retry', requireSession('admin'), async (req, res) => {
   try {
@@ -1033,7 +1169,7 @@ router.post('/official', requireOfficialApiKey, async (req, res) => {
     return res.status(400).json({ error: 'The "mailbox" field is prohibited — mailbox is fixed to info@jsinnovia.store' });
   }
 
-  const { to, cc, bcc, replyTo, subject, text, html, metadata } = req.body;
+  const { to, cc, bcc, replyTo, subject, text, html, metadata, attachments } = req.body;
 
   if (!subject || typeof subject !== 'string' || subject.trim().length === 0) {
     return res.status(400).json({ error: 'subject is required and must be a non-empty string' });
@@ -1112,6 +1248,7 @@ router.post('/official', requireOfficialApiKey, async (req, res) => {
       application: 'external',
       idempotencyKey,
       metadata,
+      attachments,
     });
 
     if (!sendResult.success && sendResult.status === 'retry') {

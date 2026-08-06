@@ -10,7 +10,7 @@ const { requireSession, requireSameOrigin, ROLE_LEVEL } = require('./server-secu
 // nginx reverse proxy est le premier hop
 app.set('trust proxy', 1);
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '25mb' }));
 app.use(requireSameOrigin);
 
 // ── API Auth (backend, service_role) ────────────────────────

@@ -73,17 +73,54 @@ export default function EmailCore() {
 function SendTab() {
   const [brands,setBrands]=useState([]); const [templates,setTemplates]=useState([]);
   const [sending,setSending]=useState(false); const [result,setResult]=useState(null);
+  const [files,setFiles]=useState([]);
   const [f,setF]=useState({brand:"",to:"",cc:"",bcc:"",subject:"",text:"",html:"",useHtml:false,template:"",idempotencyKey:""});
   useEffect(()=>{apiFetch("/api/emails/brands").then(setBrands).catch(()=>{});},[]);
   useEffect(()=>{if(f.brand){apiFetch(`/api/emails/templates?brand=${f.brand}`).then(d=>setTemplates(d||[])).catch(()=>setTemplates([]));}},[f.brand]);
-  const submit=async(e)=>{e.preventDefault();setSending(true);setResult(null);
-    try{const body={brand:f.brand,to:f.to,cc:f.cc||undefined,bcc:f.bcc||undefined,subject:f.subject,text:f.useHtml?undefined:f.text,html:f.useHtml?f.html:undefined,template:f.template||undefined};
+
+  const handleFiles=(e)=>{
+    const selected=Array.from(e.target.files||[]);
+    const valid=[];
+    for(const file of selected){
+      if(file.size>15*1024*1024){setResult({success:false,error:`${file.name} trop volumineux (max 15 MB)`});return;}
+      valid.push(file);
+    }
+    setFiles(prev=>[...prev,...valid]);
+  };
+
+  const removeFile=(idx)=>setFiles(prev=>prev.filter((_,i)=>i!==idx));
+
+  const fileToBase64=(file)=>new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result.split(",")[1]);
+    reader.onerror=reject;
+    reader.readAsDataURL(file);
+  });
+
+  const submit=async(e)=>{
+    e.preventDefault();setSending(true);setResult(null);
+    try{
+      // Convertir les fichiers en base64
+      const attachments=[];
+      for(const file of files){
+        const b64=await fileToBase64(file);
+        attachments.push({filename:file.name,content_base64:b64,content_type:file.type||"application/octet-stream"});
+      }
+
+      const body={brand:f.brand,to:f.to,cc:f.cc||undefined,bcc:f.bcc||undefined,
+        subject:f.subject,text:f.useHtml?undefined:f.text,html:f.useHtml?f.html:undefined,
+        template:f.template||undefined,
+        attachments:attachments.length>0?attachments:undefined};
       const headers={}; if(f.idempotencyKey)headers["Idempotency-Key"]=f.idempotencyKey;
       const r=await apiFetch("/api/emails/send",{method:"POST",headers,body:JSON.stringify(body)});
       setResult({success:true,...r});
+      if(r.success) setFiles([]);
     }catch(err){setResult({success:false,error:err.message});}
     setSending(false);
   };
+
+  const fmtSize=(b)=>b>1024*1024?(b/1024/1024).toFixed(1)+" MB":b>1024?(b/1024).toFixed(0)+" KB":b+" B";
+
   return (
     <form onSubmit={submit} className="max-w-2xl space-y-4">
       <div><label className="block text-sm text-gray-400 mb-1">Marque</label>
@@ -108,6 +145,35 @@ function SendTab() {
       ):(
         <textarea placeholder="Contenu..." value={f.text} onChange={e=>setF({...f,text:e.target.value})} rows={8} className="w-full bg-[#0F172A] border border-gray-700 rounded-lg px-3 py-2 text-sm" />
       )}
+
+      {/* ── Pièces jointes ── */}
+      <div>
+        <label className="block text-sm text-gray-400 mb-1">Pièces jointes (photos, audio, documents, zip — max 15 MB/fichier, 20 MB total)</label>
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 px-3 py-2 bg-[#0F172A] border border-gray-700 rounded-lg text-sm cursor-pointer hover:border-[#D4AF37] transition-colors">
+            <Plus size={16} className="text-[#D4AF37]" />
+            <span>Ajouter des fichiers</span>
+            <input type="file" multiple onChange={handleFiles} className="hidden" accept="image/*,audio/*,video/*,application/pdf,application/zip,application/x-zip-compressed,text/*,application/msword,application/vnd.openxmlformats-officedocument.*,application/vnd.oasis.opendocument.*" />
+          </label>
+          {files.length>0&&<span className="text-xs text-gray-400">{files.length} fichier(s) — {fmtSize(files.reduce((s,f)=>s+f.size,0))}</span>}
+        </div>
+        {files.length>0&&(
+          <div className="mt-2 space-y-1">
+            {files.map((file,idx)=>(
+              <div key={idx} className="flex items-center gap-2 bg-[#0F172A] border border-gray-800 rounded-lg px-3 py-2">
+                <FileText size={14} className="text-gray-400 shrink-0" />
+                <span className="text-sm text-gray-200 truncate flex-1">{file.name}</span>
+                <span className="text-xs text-gray-500 shrink-0">{fmtSize(file.size)}</span>
+                <span className="text-xs text-gray-600 shrink-0 hidden sm:inline">{file.type||"—"}</span>
+                <button type="button" onClick={()=>removeFile(idx)} className="p-1 hover:bg-gray-800 rounded shrink-0">
+                  <X size={14} className="text-red-400" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <input type="text" placeholder="Idempotency-Key (auto si vide)" value={f.idempotencyKey} onChange={e=>setF({...f,idempotencyKey:e.target.value})} className="w-full bg-[#0F172A] border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono" />
       <button type="submit" disabled={sending} className="flex items-center gap-2 px-4 py-2 bg-[#D4AF37] text-black rounded-lg font-medium text-sm hover:bg-[#C49B2F] disabled:opacity-50">
         {sending?<Loader2 size={16} className="animate-spin" />:<Send size={16} />} Envoyer
