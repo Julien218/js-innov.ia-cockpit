@@ -1,10 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, Check, Send, ShieldCheck, Trash2, User, Loader2, Sparkles, X, Cpu, Cloud, Wifi, WifiOff, ChevronDown } from "lucide-react";
+import { Bot, Check, Send, ShieldCheck, Trash2, User, Loader2, Sparkles, X, Cpu, Cloud, Wifi, WifiOff, ChevronDown, Server } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 
-const OLLAMA_URL = "http://localhost:11434";
+// ── Agent Local JS-Innov.IA (port 8787) ─────────────────────────────
+// Le cockpit parle à l'Agent Local, PAS directement à Ollama.
+// L'Agent Local gère lui-même: Ollama, fichiers, outils, mémoire, actions.
+const LOCAL_AGENT_URL = "http://127.0.0.1:8787";
 const STORAGE_KEY = "jsinnovia_ai_provider";
 const STORAGE_MODEL = "jsinnovia_ai_model";
 
@@ -23,7 +26,7 @@ Propose des actions concrètes quand c'est pertinent.`;
 
 export default function AgentPage() {
   const [messages, setMessages] = useState([
-    { role: "assistant", content: "Bonjour Julien 👋 Je suis ton agent IA personnel JS-Innov.IA. Choisis ton IA locale ou cloud ci-dessus et pose ta question.", ts: new Date() },
+    { role: "assistant", content: "Bonjour Julien 👋 Je suis ton agent IA JS-Innov.IA. Je passe par ton Agent Local (8787) qui gère Ollama, les fichiers et les outils. Pose ta question.", ts: new Date() },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -31,9 +34,9 @@ export default function AgentPage() {
   const [actionLoading, setActionLoading] = useState(false);
 
   const [provider, setProvider] = useState(() => localStorage.getItem(STORAGE_KEY) || "local");
-  const [ollamaModels, setOllamaModels] = useState([]);
+  const [agentModels, setAgentModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem(STORAGE_MODEL) || "");
-  const [ollamaStatus, setOllamaStatus] = useState("checking");
+  const [agentStatus, setAgentStatus] = useState("checking"); // checking | online | offline
   const [showProviderMenu, setShowProviderMenu] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
 
@@ -42,24 +45,41 @@ export default function AgentPage() {
   const providerRef = useRef(null);
   const modelRef = useRef(null);
 
-  const checkOllama = useCallback(async () => {
-    setOllamaStatus("checking");
+  // ── Vérifier l'Agent Local au montage ──
+  const checkAgent = useCallback(async () => {
+    setAgentStatus("checking");
     try {
-      const res = await fetch(`${OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(3000) });
+      const res = await fetch(`${LOCAL_AGENT_URL}/health`, { signal: AbortSignal.timeout(4000) });
       if (res.ok) {
-        const data = await res.json();
-        const models = (data.models || []).map(m => m.name);
-        setOllamaModels(models);
-        setOllamaStatus("online");
-        if (models.length > 0 && !selectedModel) {
-          setSelectedModel(models[0]);
-          localStorage.setItem(STORAGE_MODEL, models[0]);
+        // L'agent est en ligne — essayer de récupérer les modèles
+        try {
+          const modelsRes = await fetch(`${LOCAL_AGENT_URL}/api/agent/models`, { signal: AbortSignal.timeout(3000) });
+          if (modelsRes.ok) {
+            const modelsData = await modelsRes.json();
+            // Format flexible: { models: [...] } ou [ ... ] ou { models: [{name}] }
+            const rawModels = Array.isArray(modelsData) ? modelsData
+              : (modelsData.models || modelsData.data || []);
+            const modelNames = rawModels.map(m => typeof m === "string" ? m : (m.name || m.model || m.id)).filter(Boolean);
+            setAgentModels(modelNames);
+            if (modelNames.length > 0 && !selectedModel) {
+              setSelectedModel(modelNames[0]);
+              localStorage.setItem(STORAGE_MODEL, modelNames[0]);
+            }
+          }
+        } catch {
+          // L'agent n'expose pas /api/agent/models — ce n'est pas bloquant
+          setAgentModels([]);
         }
-      } else { setOllamaStatus("offline"); }
-    } catch { setOllamaStatus("offline"); }
+        setAgentStatus("online");
+      } else {
+        setAgentStatus("offline");
+      }
+    } catch {
+      setAgentStatus("offline");
+    }
   }, [selectedModel]);
 
-  useEffect(() => { checkOllama(); }, [checkOllama]);
+  useEffect(() => { checkAgent(); }, [checkAgent]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -75,22 +95,35 @@ export default function AgentPage() {
   const switchProvider = (p) => { setProvider(p); localStorage.setItem(STORAGE_KEY, p); setShowProviderMenu(false); };
   const switchModel = (m) => { setSelectedModel(m); localStorage.setItem(STORAGE_MODEL, m); setShowModelMenu(false); };
 
+  // ── Envoyer à l'Agent Local (8787) ──
   const sendToLocal = async (msg) => {
-    const ollamaMessages = [
-      { role: "system", content: SYSTEM_PROMPT },
-      ...messages.slice(-8).map(m => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content })),
-      { role: "user", content: msg },
-    ];
-    const res = await fetch(`${OLLAMA_URL}/api/chat`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: selectedModel || "llama3.1", messages: ollamaMessages, stream: false, options: { temperature: 0.7 } }),
-      signal: AbortSignal.timeout(60000),
+    const history = messages.slice(-8).map(m => ({
+      role: m.role === "assistant" ? "assistant" : "user",
+      content: m.content,
+    }));
+
+    const res = await fetch(`${LOCAL_AGENT_URL}/api/agent/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: msg,
+        model: selectedModel || undefined,
+        history,
+        system_prompt: SYSTEM_PROMPT,
+        context: { source: "cockpit", user: "julien" },
+      }),
+      signal: AbortSignal.timeout(90000),
     });
-    if (!res.ok) throw new Error(`Ollama ${res.status}`);
+
+    if (!res.ok) throw new Error(`Agent Local ${res.status}`);
+
     const data = await res.json();
-    return { response: data.message?.content || "Réponse vide d'Ollama", confirmation: null };
+    // Format flexible: { response } ou { reply } ou { message } ou { content }
+    const response = data.response || data.reply || data.message || data.content || data.text || "⚠️ Réponse vide de l'agent local";
+    return { response, confirmation: data.confirmation || null };
   };
 
+  // ── Envoyer au backend cloud ──
   const sendToCloud = async (msg) => {
     const res = await fetch('/api/assistant/chat', {
       method: "POST", headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
@@ -104,10 +137,10 @@ export default function AgentPage() {
   const send = async (text) => {
     const msg = (text || input).trim();
     if (!msg || loading) return;
-    if (provider === "local" && ollamaStatus !== "online") {
+    if (provider === "local" && agentStatus !== "online") {
       setMessages((prev) => [...prev,
         { role: "user", content: msg, ts: new Date() },
-        { role: "assistant", content: "❌ Ollama n'est pas accessible sur localhost:11434. Lance Ollama sur ton PC ou bascule en mode Cloud.", ts: new Date(), error: true },
+        { role: "assistant", content: "❌ Agent Local (8787) non accessible. Lance l'agent sur ton PC ou bascule en mode Cloud.", ts: new Date(), error: true },
       ]);
       return;
     }
@@ -120,7 +153,7 @@ export default function AgentPage() {
       setConfirmation(result.confirmation || null);
     } catch (error) {
       setMessages((prev) => [...prev,
-        { role: "assistant", content: `❌ ${error.message}${provider === "local" ? " — Vérifie qu'Ollama tourne sur localhost:11434" : ""}`, ts: new Date(), error: true },
+        { role: "assistant", content: `❌ ${error.message}${provider === "local" ? " — Vérifie que l'Agent Local tourne sur 127.0.0.1:8787" : ""}`, ts: new Date(), error: true },
       ]);
     } finally {
       setLoading(false);
@@ -151,9 +184,9 @@ export default function AgentPage() {
   const clearChat = () => { setMessages([{ role: "assistant", content: "Conversation réinitialisée. Comment puis-je t'aider ?", ts: new Date() }]); setConfirmation(null); };
 
   const providerBadge = provider === "local" ? {
-    icon: ollamaStatus === "online" ? <Wifi className="w-3 h-3 text-emerald-500" /> : <WifiOff className="w-3 h-3 text-red-500" />,
-    label: ollamaStatus === "checking" ? "Vérification…" : ollamaStatus === "online" ? (selectedModel || "Ollama") : "Ollama offline",
-    color: ollamaStatus === "online" ? "text-emerald-500" : "text-red-500",
+    icon: agentStatus === "online" ? <Wifi className="w-3 h-3 text-emerald-500" /> : <WifiOff className="w-3 h-3 text-red-500" />,
+    label: agentStatus === "checking" ? "Connexion…" : agentStatus === "online" ? `Agent 8787${selectedModel ? " · " + selectedModel : ""}` : "Agent 8787 offline",
+    color: agentStatus === "online" ? "text-emerald-500" : "text-red-500",
   } : { icon: <Cloud className="w-3 h-3 text-primary" />, label: "Cloud · JS-Innov.IA", color: "text-primary" };
 
   return (
@@ -169,32 +202,40 @@ export default function AgentPage() {
         <div className="flex items-center gap-2 shrink-0">
           <div className="relative" ref={providerRef}>
             <button onClick={() => setShowProviderMenu(!showProviderMenu)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border bg-background text-xs font-medium hover:bg-accent transition-colors min-h-[36px]">
-              {provider === "local" ? <Cpu className="w-3.5 h-3.5 text-emerald-500" /> : <Cloud className="w-3.5 h-3.5 text-primary" />}
-              <span className="hidden sm:inline">{provider === "local" ? "Local" : "Cloud"}</span>
+              {provider === "local" ? <Server className="w-3.5 h-3.5 text-emerald-500" /> : <Cloud className="w-3.5 h-3.5 text-primary" />}
+              <span className="hidden sm:inline">{provider === "local" ? "Agent Local" : "Cloud"}</span>
               <ChevronDown className="w-3 h-3 text-muted-foreground" />
             </button>
             {showProviderMenu && (
-              <div className="absolute right-0 top-full mt-1 w-56 rounded-xl border border-border bg-popover shadow-xl z-50 overflow-hidden">
+              <div className="absolute right-0 top-full mt-1 w-60 rounded-xl border border-border bg-popover shadow-xl z-50 overflow-hidden">
                 <button onClick={() => switchProvider("local")} className={cn("w-full flex items-start gap-3 px-3 py-2.5 hover:bg-accent transition-colors text-left", provider === "local" && "bg-accent/50")}>
-                  <Cpu className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
-                  <div><div className="text-sm font-medium">IA Locale (Ollama)</div><div className="text-[10px] text-muted-foreground">localhost:11434 · gratuit · privé</div>
-                  <div className={cn("text-[10px] mt-0.5", ollamaStatus === "online" ? "text-emerald-500" : "text-red-500")}>{ollamaStatus === "online" ? `✓ ${ollamaModels.length} modèle(s)` : ollamaStatus === "checking" ? "…" : "✗ Hors ligne"}</div></div>
+                  <Server className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+                  <div>
+                    <div className="text-sm font-medium">Agent Local (8787)</div>
+                    <div className="text-[10px] text-muted-foreground">127.0.0.1:8787 · Ollama + fichiers + outils</div>
+                    <div className={cn("text-[10px] mt-0.5", agentStatus === "online" ? "text-emerald-500" : "text-red-500")}>
+                      {agentStatus === "online" ? `✓ Connecté${agentModels.length > 0 ? " · " + agentModels.length + " modèle(s)" : ""}` : agentStatus === "checking" ? "…" : "✗ Hors ligne — lance l'agent 8787"}
+                    </div>
+                  </div>
                 </button>
                 <button onClick={() => switchProvider("cloud")} className={cn("w-full flex items-start gap-3 px-3 py-2.5 hover:bg-accent transition-colors text-left border-t border-border", provider === "cloud" && "bg-accent/50")}>
                   <Cloud className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                  <div><div className="text-sm font-medium">Cloud (JS-Innov.IA)</div><div className="text-[10px] text-muted-foreground">Backend Railway · GPT-4o</div></div>
+                  <div>
+                    <div className="text-sm font-medium">Cloud (JS-Innov.IA)</div>
+                    <div className="text-[10px] text-muted-foreground">Backend Railway · cockpit.jsinnovia.com</div>
+                  </div>
                 </button>
               </div>
             )}
           </div>
-          {provider === "local" && ollamaStatus === "online" && ollamaModels.length > 0 && (
+          {provider === "local" && agentStatus === "online" && agentModels.length > 0 && (
             <div className="relative" ref={modelRef}>
               <button onClick={() => setShowModelMenu(!showModelMenu)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border bg-background text-xs font-medium hover:bg-accent transition-colors max-w-[140px] min-h-[36px]">
                 <span className="truncate">{selectedModel || "Modèle"}</span><ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />
               </button>
               {showModelMenu && (
                 <div className="absolute right-0 top-full mt-1 w-56 max-h-64 overflow-y-auto rounded-xl border border-border bg-popover shadow-xl z-50">
-                  {ollamaModels.map(m => (
+                  {agentModels.map(m => (
                     <button key={m} onClick={() => switchModel(m)} className={cn("w-full flex items-center gap-2 px-3 py-2 hover:bg-accent transition-colors text-left text-sm", m === selectedModel && "bg-accent/50")}>
                       <Cpu className="w-3.5 h-3.5 text-emerald-500 shrink-0" /><span className="truncate">{m}</span>{m === selectedModel && <Check className="w-3.5 h-3.5 text-emerald-500 ml-auto shrink-0" />}
                     </button>
@@ -204,17 +245,17 @@ export default function AgentPage() {
             </div>
           )}
           {provider === "local" && (
-            <button onClick={checkOllama} className="p-2 rounded-lg border border-border bg-background hover:bg-accent transition-colors min-h-[36px]" title="Reconnecter Ollama">
-              <Loader2 className={cn("w-3.5 h-3.5 text-muted-foreground", ollamaStatus === "checking" && "animate-spin")} />
+            <button onClick={checkAgent} className="p-2 rounded-lg border border-border bg-background hover:bg-accent transition-colors min-h-[36px]" title="Reconnecter l'Agent Local">
+              <Loader2 className={cn("w-3.5 h-3.5 text-muted-foreground", agentStatus === "checking" && "animate-spin")} />
             </button>
           )}
           <button onClick={clearChat} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors px-3 py-1.5 rounded-lg hover:bg-destructive/10 shrink-0 min-h-[36px]"><Trash2 className="w-3.5 h-3.5" /><span className="hidden sm:inline">Effacer</span></button>
         </div>
       </div>
 
-      {provider === "local" && ollamaStatus === "offline" && (
+      {provider === "local" && agentStatus === "offline" && (
         <div className="mx-3 sm:mx-6 mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-600 dark:text-amber-400">
-          <strong>Ollama non détecté sur localhost:11434.</strong> Lance Ollama sur ton PC (<code className="px-1 py-0.5 rounded bg-amber-500/20">ollama serve</code>), puis clique sur refresh. Ou bascule en mode Cloud.
+          <strong>Agent Local (8787) non détecté.</strong> Lance ton Agent Local JS-Innov.IA sur <code className="px-1 py-0.5 rounded bg-amber-500/20">127.0.0.1:8787</code>, puis clique sur le bouton refresh. L'agent gère Ollama, les fichiers et les outils — le cockpit ne se connecte plus directement à Ollama.
         </div>
       )}
 
@@ -274,10 +315,10 @@ export default function AgentPage() {
 
       <div className="px-3 sm:px-6 py-3 border-t border-border bg-card shrink-0 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
         <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex gap-2 items-end">
-          <input ref={inputRef} type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder={provider === "local" ? `Écrire à ${selectedModel || "Ollama"}…` : "Écrire à l'agent cloud…"} disabled={loading} className="flex-1 bg-background border border-border rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 disabled:opacity-50" />
+          <input ref={inputRef} type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder={provider === "local" ? `Écrire à l'Agent Local${selectedModel ? " (" + selectedModel + ")" : ""}…` : "Écrire à l'agent cloud…"} disabled={loading} className="flex-1 bg-background border border-border rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 disabled:opacity-50" />
           <button type="submit" disabled={loading || !input.trim()} className="rounded-2xl gradient-primary p-2.5 text-white disabled:opacity-40 hover:opacity-90 transition-opacity shrink-0">{loading ? <Loader2 className="w-4 h-4 text-white animate-spin" /> : <Send className="w-4 h-4 text-white" />}</button>
         </form>
-        <p className="text-center text-[10px] text-muted-foreground mt-2 hidden sm:block">{provider === "local" ? `IA Locale · Ollama ${selectedModel || ""} · 100% privé sur ton PC` : "Agent IA · JS-Innov.IA · Données via Supabase"}</p>
+        <p className="text-center text-[10px] text-muted-foreground mt-2 hidden sm:block">{provider === "local" ? `Agent Local · 127.0.0.1:8787 · Ollama + fichiers + outils${selectedModel ? " · " + selectedModel : ""}` : "Agent IA · JS-Innov.IA · Données via Supabase"}</p>
       </div>
     </div>
   );
