@@ -6,7 +6,7 @@ import {
   CheckSquare, MessageSquare, Shield,
   Bot, Network, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
-  PlayCircle, GalleryHorizontalEnd, Send,
+  PlayCircle, GalleryHorizontalEnd, Send, Server,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -49,6 +49,23 @@ const useDemandeBadge = () => {
     staleTime: 30000,
   });
   return data.filter(d => d.statut === "ouverte").length;
+};
+
+
+// ── Statut Agent Local 8787 ───────────────────────────────────────────
+const useAgentLocalStatus = () => {
+  const [status, setStatus] = React.useState('checking');
+  React.useEffect(() => {
+    const check = () => {
+      fetch('http://127.0.0.1:8787/health', { signal: AbortSignal.timeout(3000) })
+        .then(r => setStatus(r.ok ? 'online' : 'offline'))
+        .catch(() => setStatus('offline'));
+    };
+    check();
+    const interval = setInterval(check, 30000);
+    return () => clearInterval(interval);
+  }, []);
+  return status;
 };
 
 const ROLE_ICONS = {
@@ -120,7 +137,8 @@ const allNavGroups = [
   {
     label: "IA & Système",
     items: [
-      { label: "Julien AI", icon: Bot, path: "/agent", minRole: "collaborateur" },
+      { label: "Julien AI", icon: Bot, path: "/agent", minRole: "collaborateur", agentStatus: true },
+      { label: "Agent Local", icon: Server, path: "/agent", minRole: "admin", agentLocal: true },
       { label: "Agents IA", icon: Network, path: "/agents-ia" },
       { label: "Paramètres", icon: Settings, path: "/parametres", minRole: "admin" },
     ]
@@ -136,6 +154,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
   const validationCount = useValidationsBadge();
   const emailCount = useEmailBadge();
   const demandeCount = useDemandeBadge();
+  const agentStatus = useAgentLocalStatus();
 
   const colors = ROLE_COLORS[role] || ROLE_COLORS.client;
   const RoleIcon = ROLE_ICONS[role] || User;
@@ -257,6 +276,12 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
                           <span className="text-[10px] font-bold bg-red-500 text-white rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center">
                             {badge}
                           </span>
+                        )}
+                        {item.agentStatus && !collapsed && (
+                          <span className={cn("w-2 h-2 rounded-full flex-shrink-0", agentStatus === "online" ? "bg-emerald-500" : agentStatus === "checking" ? "bg-amber-400 animate-pulse" : "bg-red-500")} title={agentStatus === "online" ? "Agent 8787 connecté" : "Agent 8787 hors ligne"} />
+                        )}
+                        {item.agentLocal && !collapsed && (
+                          <span className={cn("text-[9px] font-mono", agentStatus === "online" ? "text-emerald-500" : "text-red-400")}>8787</span>
                         )}
                       </>
                     )}

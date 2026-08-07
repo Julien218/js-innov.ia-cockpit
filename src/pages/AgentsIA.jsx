@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
   Bot, Send, ChevronLeft, Loader2, Sparkles, User,
-  MessageSquare, Zap, RefreshCw, Lock, AlertCircle, CheckCircle2
+  MessageSquare, Zap, RefreshCw, Lock, AlertCircle, CheckCircle2,
+  Server, Cpu, FileText, Wrench, Brain, FolderOpen
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -313,6 +314,32 @@ function AgentCard({ agent, onClick }) {
   );
 }
 
+
+// ── Badge statut Agent Local ───────────────────────────────────────────────────
+function AgentLocalBadge() {
+  const [status, setStatus] = useState("checking");
+  useEffect(() => {
+    const check = () => {
+      fetch("http://127.0.0.1:8787/health", { signal: AbortSignal.timeout(3000) })
+        .then(r => setStatus(r.ok ? "online" : "offline"))
+        .catch(() => setStatus("offline"));
+    };
+    check();
+    const interval = setInterval(check, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const dotColor = status === "online" ? "bg-emerald-500" : status === "checking" ? "bg-amber-400 animate-pulse" : "bg-red-500";
+  const textColor = status === "online" ? "text-emerald-600" : status === "checking" ? "text-amber-500" : "text-red-500";
+
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-medium ${textColor}`}>
+      <span className={`w-2 h-2 rounded-full ${dotColor}`} />
+      {status === "online" ? "Connecté" : status === "checking" ? "…" : "Hors ligne"}
+    </span>
+  );
+}
+
 // ─── Page principale ──────────────────────────────────────────────────────────
 export default function AgentsIA() {
   const [selected, setSelected] = useState(null);
@@ -355,6 +382,63 @@ export default function AgentsIA() {
             <p className="text-[11px] text-gray-500 mt-0.5">{label}</p>
           </div>
         ))}
+      </div>
+
+
+      {/* ── Agent Local 8787 ─────────────────────────────────────────────── */}
+      <div className="mb-5 rounded-xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-11 h-11 rounded-xl bg-emerald-600 flex items-center justify-center flex-shrink-0">
+            <Server className="w-5 h-5 text-white" />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-bold text-gray-900 text-sm">Agent Local JS-Innov.IA</h3>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-700">
+                127.0.0.1:8787
+              </span>
+              <AgentLocalBadge />
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Hub IA local — gère Ollama, fichiers, outils, mémoire et actions du cockpit
+            </p>
+          </div>
+        </div>
+
+        {/* Sous-composants de l'Agent Local */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
+          {[
+            { icon: Cpu, label: "Ollama", sub: "qwen3.5:4b · llama3.2:3b", color: "text-blue-600 bg-blue-50" },
+            { icon: FileText, label: "Fichiers locaux", sub: "Lecture / écriture", color: "text-amber-600 bg-amber-50" },
+            { icon: Wrench, label: "Outils", sub: "Actions autorisées", color: "text-purple-600 bg-purple-50" },
+            { icon: Brain, label: "Mémoire locale", sub: "Futur", color: "text-gray-500 bg-gray-50", future: true },
+            { icon: FolderOpen, label: "Contrôle cockpit", sub: "Navigation / données", color: "text-emerald-600 bg-emerald-50" },
+            { icon: Lock, label: "Actions autorisées", sub: "Futur", color: "text-gray-400 bg-gray-50", future: true },
+          ].map((comp) => (
+            <div key={comp.label} className={`rounded-lg p-2.5 ${comp.color} ${comp.future ? "opacity-50" : ""}`}>
+              <comp.icon className="w-4 h-4 mb-1" />
+              <p className="text-xs font-semibold">{comp.label}</p>
+              <p className="text-[10px] opacity-70">{comp.sub}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Architecture flow */}
+        <div className="mt-3 flex items-center gap-2 text-[10px] text-gray-400 font-mono">
+          <span className="px-2 py-1 rounded bg-gray-100">Cockpit</span>
+          <span>→</span>
+          <span className="px-2 py-1 rounded bg-emerald-100 text-emerald-700 font-semibold">Agent 8787</span>
+          <span>→</span>
+          <span className="px-2 py-1 rounded bg-blue-100 text-blue-600">Ollama 11434</span>
+          <span className="text-gray-300">·</span>
+          <span className="px-2 py-1 rounded bg-gray-100">fichiers</span>
+          <span className="text-gray-300">·</span>
+          <span className="px-2 py-1 rounded bg-gray-100">outils</span>
+        </div>
+
+        <a href="/agent" className="mt-3 block text-center text-xs font-medium text-emerald-700 hover:text-emerald-800 transition-colors py-2 rounded-lg bg-emerald-100 hover:bg-emerald-200">
+          Ouvrir Julien AI →
+        </a>
       </div>
 
       {/* Alerte clé manquante */}
