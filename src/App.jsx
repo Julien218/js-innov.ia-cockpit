@@ -15,6 +15,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 
 // Pages
 import Dashboard from "@/pages/Dashboard";
+import Assurances from "@/pages/Assurances";
 // ── Nouvelles pages v2
 import AppsAgents from "@/pages/AppsAgents";
 import Production from "@/pages/Production";
@@ -69,15 +70,14 @@ const AppRoutes = () => {
   return (
     <Routes>
       {/* ─── Routes publiques ─────────────────────────── */}
-      <Route path="/login" element={
-        isAuthenticated ? <Navigate to="/" replace /> : <Login />
-      } />
+      <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/register" element={<Register />} />
 
       {/* ─── Routes protégées ─────────────────────────── */}
       <Route element={<ProtectedRoute />}>
         <Route element={<AppErrorBoundary><AppLayout /></AppErrorBoundary>}>
           <Route path="/" element={<PageBoundary><Dashboard /></PageBoundary>} />
+          <Route path="/assurances" element={<PageBoundary><Assurances /></PageBoundary>} />
 
           {/* CRM */}
           <Route path="/clients" element={<PageBoundary><Clients /></PageBoundary>} />
@@ -110,7 +110,6 @@ const AppRoutes = () => {
 
           {/* Catalogue */}
           <Route path="/services" element={<Services />} />
-
 
           {/* ── Studio Vidéo */}
           <Route path="/video-studio" element={<VideoStudio />} />
