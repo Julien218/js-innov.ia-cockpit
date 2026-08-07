@@ -1,0 +1,35 @@
+name: JYSIA integration
+
+on:
+  pull_request:
+    paths:
+      - "server-jysia.cjs"
+      - "server.cjs"
+      - "src/pages/Jysia.jsx"
+      - "src/App.jsx"
+      - "src/components/layout/Sidebar.jsx"
+      - "src/lib/roles.js"
+      - "Dockerfile"
+      - ".env.example"
+      - ".github/workflows/jysia-integration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - run: node --check server-jysia.cjs
+      - run: node --check server.cjs
+      - run: npm run lint
+      # Le typecheck global du dépôt possède une dette préexistante hors de cette PR.
+      - run: npm run build
