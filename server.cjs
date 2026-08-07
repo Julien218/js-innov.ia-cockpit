@@ -47,6 +47,16 @@ try {
   console.warn('⚠️ Route billing indisponible:', e.message);
 }
 
+// ── Assurances-Dour : suivi partagé Julien / Olivier ─────────
+try {
+  const insuranceRouter = require('./server-insurance.cjs');
+  app.use('/api/insurance', requireSession('client'), insuranceRouter);
+  insuranceRouter.startInsuranceEmailSyncScheduler?.();
+  console.log('✅ Route /api/insurance activée (Julien + Olivier uniquement)');
+} catch (e) {
+  console.warn('⚠️ Route assurances indisponible:', e.message);
+}
+
 // ── Proxy /api/data/* → jsinnovia-agent /data/* ─────────────
 // Server-to-server: pas de restrictions CORS
 // Le frontend appelle /api/data/Devis → Express → jsinnovia-agent
