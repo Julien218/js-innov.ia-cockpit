@@ -31,11 +31,11 @@ export const ROLE_COLORS = {
 };
 
 // Routes accessibles par rôle — PRODUCTION v2
-// Menu simplifié : 16 items principaux
-// Les routes masquées restent dans le code (accessibles par URL directe)
+// /assurances reste masquée aux rôles génériques : Olivier est autorisé nominativement
+// dans le composant et, surtout, côté serveur.
 export const ROLE_ROUTES = {
   superadmin: [
-    "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
+    "/", "/assurances", "/clients", "/leads", "/demandes", "/projets", "/taches",
     "/devis", "/factures", "/emails", "/emails-core",
     "/production", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
