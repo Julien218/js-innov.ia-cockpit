@@ -15,6 +15,8 @@ import { useAuth } from "@/lib/AuthContext";
 import { usePermissions } from "@/lib/usePermissions";
 import { ROLE_LABELS, ROLE_COLORS } from "@/lib/roles";
 
+const OLIVIER_EMAIL = 'olivier.trevis@pv.be';
+
 const useValidationsBadge = () => {
   const { data = [] } = useQuery({
     queryKey: ["validations"],
@@ -56,12 +58,13 @@ const ROLE_ICONS = {
   client: User,
 };
 
-// ─── MENU PRINCIPAL v2 — 16 items ───────────────────────────────────────────
+// ─── MENU PRINCIPAL v2 ──────────────────────────────────────────────────────
 const allNavGroups = [
   {
     label: "Pilotage",
     items: [
       { label: "Accueil", icon: LayoutDashboard, path: "/" },
+      { label: "Assurances-Dour", icon: Shield, path: "/assurances", insuranceOnly: true },
     ]
   },
   {
@@ -136,6 +139,8 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
 
   const colors = ROLE_COLORS[role] || ROLE_COLORS.client;
   const RoleIcon = ROLE_ICONS[role] || User;
+  const insuranceAllowed = role === 'superadmin'
+    || String(user?.email || '').toLowerCase() === OLIVIER_EMAIL;
 
   const handleLogout = () => {
     logout();
@@ -156,7 +161,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
   const navGroups = allNavGroups
     .map(group => ({
       ...group,
-      items: group.items.filter(item => canAccess(getPath(item)))
+      items: group.items.filter(item => item.insuranceOnly ? insuranceAllowed : canAccess(getPath(item)))
     }))
     .filter(group => group.items.length > 0);
 
