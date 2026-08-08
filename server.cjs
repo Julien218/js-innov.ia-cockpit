@@ -105,6 +105,16 @@ app.use('/api/data', requireSession('client'), async (req, res) => {
   }
 });
 
+// ── AI Cost Control ─────────────────────────────────────────
+// Lecture/configuration : session admin. Ingestion inter-services : clé serveur dédiée.
+try {
+  const { router: aiCostRouter } = require('./server-ai-cost.cjs');
+  app.use('/api/ai-cost', aiCostRouter);
+  console.log('✅ Route /api/ai-cost activée (usage, budgets, routage, hard limits)');
+} catch (e) {
+  console.warn('⚠️ Route AI Cost Control indisponible:', e.message);
+}
+
 try {
   const assistantRouter = require('./server-assistant.cjs');
   app.use('/api/assistant', requireSession('collaborateur'), assistantRouter);
