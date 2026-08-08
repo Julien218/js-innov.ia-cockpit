@@ -144,7 +144,7 @@ async function testLocalAgentConnection() {
       method: "GET",
       headers: {
         "x-agent-key": key,
-        "Accept": "application/json",
+        Accept: "application/json",
       },
       signal: controller.signal,
     });
@@ -164,13 +164,30 @@ async function testLocalAgentConnection() {
   }
 }
 
+function isUsableWindow(window) {
+  return Boolean(window && !window.isDestroyed());
+}
+
+function showWindowSafely(window) {
+  if (!isUsableWindow(window)) return false;
+  window.show();
+  return true;
+}
+
+function closeWindowSafely(window) {
+  if (!isUsableWindow(window)) return false;
+  window.close();
+  return true;
+}
+
 function createLocalAgentSettingsWindow() {
-  if (localAgentSettingsWindow && !localAgentSettingsWindow.isDestroyed()) {
+  if (isUsableWindow(localAgentSettingsWindow)) {
     localAgentSettingsWindow.show();
     localAgentSettingsWindow.focus();
     return localAgentSettingsWindow;
   }
 
+  const parentWindow = isUsableWindow(mainWindow) ? mainWindow : undefined;
   localAgentSettingsWindow = new BrowserWindow({
     width: 560,
     height: 560,
@@ -180,7 +197,7 @@ function createLocalAgentSettingsWindow() {
     autoHideMenuBar: true,
     title: "Agent local — JS-Innov.IA Cockpit",
     icon: path.join(__dirname, "icon.png"),
-    parent: mainWindow || undefined,
+    parent: parentWindow,
     modal: false,
     webPreferences: {
       nodeIntegration: false,
@@ -243,16 +260,26 @@ function createWindow() {
   mainWindow.setMenuBarVisibility(false);
   mainWindow.removeMenu();
   mainWindow.loadURL("https://cockpit.jsinnovia.com");
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
 
   return mainWindow;
 }
 
 // ── Tray icon ───────────────────────────────────────────────────────────────
 function createTray() {
+  if (tray && !tray.isDestroyed()) return tray;
+
   try {
     tray = new Tray(path.join(__dirname, "icon.png"));
     const menu = Menu.buildFromTemplate([
-      { label: "Ouvrir le Cockpit", click: () => mainWindow && mainWindow.show() },
+      {
+        label: "Ouvrir le Cockpit",
+        click: () => {
+          if (isUsableWindow(mainWindow)) mainWindow.show();
+        },
+      },
       {
         label: "Configurer l'agent local",
         click: () => createLocalAgentSettingsWindow(),
@@ -262,9 +289,14 @@ function createTray() {
     ]);
     tray.setToolTip("JS-Innov.IA Cockpit");
     tray.setContextMenu(menu);
-    tray.on("double-click", () => mainWindow && mainWindow.show());
+    tray.on("double-click", () => {
+      if (isUsableWindow(mainWindow)) mainWindow.show();
+    });
+    return tray;
   } catch (e) {
     console.log("Tray non disponible:", e.message);
+    tray = null;
+    return null;
   }
 }
 
@@ -302,24 +334,39 @@ ipcMain.handle("local-agent-config:test", (event) => {
 app.whenReady().then(() => {
   const splash = createSplash();
   const win = createWindow();
+  let bootFinalized = false;
+  let bootTimer = null;
+
+  const finalizeBoot = ({ openAgentSettings = false } = {}) => {
+    if (bootFinalized) return;
+    bootFinalized = true;
+
+    if (bootTimer) {
+      clearTimeout(bootTimer);
+      bootTimer = null;
+    }
+
+    closeWindowSafely(splash);
+    showWindowSafely(win);
+
+    if (os.platform() !== "darwin") createTray();
+
+    if (openAgentSettings && !getLocalAgentConfigPublic().configured) {
+      createLocalAgentSettingsWindow();
+    }
+  };
 
   win.webContents.on("did-finish-load", () => {
-    setTimeout(() => {
-      splash.close();
-      win.show();
-      if (os.platform() !== "darwin") createTray();
+    if (bootFinalized) return;
+    if (bootTimer) clearTimeout(bootTimer);
 
-      // Première installation / clé absente : ouvrir une seule fois le panneau
-      // de configuration afin que la clé soit enregistrée dans le coffre chiffré.
-      if (!getLocalAgentConfigPublic().configured) {
-        createLocalAgentSettingsWindow();
-      }
+    bootTimer = setTimeout(() => {
+      finalizeBoot({ openAgentSettings: true });
     }, 1200);
   });
 
   win.webContents.on("did-fail-load", () => {
-    splash.close();
-    win.show();
+    finalizeBoot({ openAgentSettings: false });
   });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
