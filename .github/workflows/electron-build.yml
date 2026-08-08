@@ -6,6 +6,9 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -55,10 +58,11 @@ jobs:
             
             ### Inclus
             - Cockpit complet (clients, devis, factures, tâches, projets)
-            - Boîte email avec pièces jointes
+            - Boîte email avec pièces jointes (transfert + impression corrigés)
             - Module Twilio (SMS, appels)
             - Tray icon + Notifications Windows
             - Splash screen
             - Vérification automatique des mises à jour
+            - Fix crash Electron (TypeError: Object has been destroyed)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
