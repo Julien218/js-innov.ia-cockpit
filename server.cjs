@@ -105,6 +105,16 @@ app.use('/api/data', requireSession('client'), async (req, res) => {
   }
 });
 
+// ── AI Cost Control ─────────────────────────────────────────
+// Lecture/configuration : session admin. Ingestion inter-services : clé serveur dédiée.
+try {
+  const { router: aiCostRouter } = require('./server-ai-cost.cjs');
+  app.use('/api/ai-cost', aiCostRouter);
+  console.log('✅ Route /api/ai-cost activée (usage, budgets, routage, hard limits)');
+} catch (e) {
+  console.warn('⚠️ Route AI Cost Control indisponible:', e.message);
+}
+
 try {
   const assistantRouter = require('./server-assistant.cjs');
   app.use('/api/assistant', requireSession('collaborateur'), assistantRouter);
@@ -119,46 +129,9 @@ try {
   const emailCoreRouter = require('./server-email-core.cjs');
   app.use('/api/emails', emailCoreRouter);
   console.log('✅ Route /api/emails (core framework) activée');
-
-// ── Twilio ────────────────────────────────────────────────
-try {
-  const twilioRouter = require('./server-twilio.cjs');
-  app.use('/api/twilio', twilioRouter);
-  console.log('✅ Route /api/twilio activée');
-} catch (e) {
-  console.warn('⚠️ Route twilio indisponible:', e.message);
-}
 } catch (e) {
   console.warn('⚠️ Route email-core indisponible:', e.message);
 }
-
-// ── Version check for Electron auto-update ─────────────────
-app.get('/api/version', async (req, res) => {
-  try {
-    const fs = require('fs');
-    const path = require('path');
-    const versionFile = path.join(__dirname, 'public', 'version.json');
-    
-    if (fs.existsSync(versionFile)) {
-      const versionData = JSON.parse(fs.readFileSync(versionFile, 'utf8'));
-      res.json({ success: true, latest: versionData });
-    } else {
-      // Fallback: return hardcoded version
-      res.json({
-        success: true,
-        latest: {
-          version: '1.0.0',
-          publishedAt: '2026-06-18',
-          downloadUrl: 'https://github.com/Julien218/js-innov.ia-cockpit/releases/latest',
-          changelog: 'Version initiale',
-        },
-      });
-    }
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
 // Health check API
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cockpit-api' }));
 

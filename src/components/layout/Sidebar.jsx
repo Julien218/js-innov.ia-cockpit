@@ -6,8 +6,8 @@ import {
   CheckSquare, MessageSquare, Shield,
   Bot, Network, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
-  PlayCircle, GalleryHorizontalEnd, Send, Server,
-  Smartphone } from "lucide-react";
+  PlayCircle, GalleryHorizontalEnd, Send, Server, Gauge,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
@@ -114,7 +114,6 @@ const allNavGroups = [
     items: [
       { label: "Emails", icon: Mail, path: "/emails", badge: "emails", minRole: "admin" },
       { label: "Email Core", icon: Send, path: "/emails-core", minRole: "admin" },
-      { label: "Twilio", icon: Smartphone, path: "/twilio", minRole: "admin" },
     ]
   },
   {
@@ -141,6 +140,7 @@ const allNavGroups = [
       { label: "Julien AI", icon: Bot, path: "/agent", minRole: "collaborateur", agentStatus: true },
       { label: "Agent Local", icon: Server, path: "/agent", minRole: "admin", agentLocal: true },
       { label: "Agents IA", icon: Network, path: "/agents-ia" },
+      { label: "AI Cost Control", icon: Gauge, path: "/ai-cost-control", minRole: "admin" },
       { label: "Paramètres", icon: Settings, path: "/parametres", minRole: "admin" },
     ]
   },

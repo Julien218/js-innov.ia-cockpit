@@ -38,6 +38,7 @@ COPY server-email.cjs ./server-email.cjs
 COPY server-billing.cjs ./server-billing.cjs
 COPY server-security.cjs ./server-security.cjs
 COPY server-assistant.cjs ./server-assistant.cjs
+COPY server-ai-cost.cjs ./server-ai-cost.cjs
 COPY server-email-core.cjs ./server-email-core.cjs
 COPY server-twilio.cjs ./server-twilio.cjs
 COPY assets ./assets
