@@ -37,6 +37,13 @@ jobs:
           if ($main -notmatch 'safeStorage\.encryptString') { throw 'safeStorage encryption missing' }
           if ($main -notmatch 'app\.getPath\("userData"\)') { throw 'persistent userData storage missing' }
           if ($main -match 'writeFileSync\([^\n]*apiKey') { throw 'possible plaintext API key write detected' }
+      - name: Ensure startup guards destroyed windows
+        shell: pwsh
+        run: |
+          $main = Get-Content electron/main.js -Raw
+          if ($main -notmatch '!window\.isDestroyed\(\)') { throw 'BrowserWindow destruction guard missing' }
+          if ($main -notmatch 'bootFinalized') { throw 'boot finalization guard missing' }
+          if ($main -match 'setTimeout\(\(\) => \{\s*splash\.close\(\)') { throw 'unsafe delayed splash.close detected' }
       - name: Ensure key is never exposed by preload
         shell: pwsh
         run: |
