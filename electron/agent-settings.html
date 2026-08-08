@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent local — JS-Innov.IA Cockpit</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0b0b0f;
+      color: #f8fafc;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at top right, #172033 0, #0b0b0f 44%); }
+    main { padding: 28px; }
+    .eyebrow { color: #d4af37; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 8px 0 8px; font-size: 24px; }
+    .lead { margin: 0 0 22px; color: #94a3b8; font-size: 14px; line-height: 1.5; }
+    .card { background: rgba(15, 23, 42, .9); border: 1px solid #334155; border-radius: 16px; padding: 18px; box-shadow: 0 18px 60px rgba(0,0,0,.28); }
+    label { display: block; margin: 0 0 6px; color: #cbd5e1; font-size: 12px; font-weight: 600; }
+    input { width: 100%; border: 1px solid #475569; border-radius: 10px; background: #111827; color: #fff; padding: 11px 12px; outline: none; font-size: 14px; }
+    input:focus { border-color: #d4af37; box-shadow: 0 0 0 2px rgba(212,175,55,.12); }
+    .field + .field { margin-top: 15px; }
+    .hint { margin-top: 6px; color: #64748b; font-size: 11px; line-height: 1.4; }
+    .status { margin: 16px 0 0; padding: 11px 12px; border-radius: 10px; background: #0f172a; border: 1px solid #334155; color: #cbd5e1; font-size: 12px; line-height: 1.5; }
+    .status.ok { border-color: rgba(34,197,94,.45); color: #86efac; background: rgba(20,83,45,.22); }
+    .status.error { border-color: rgba(239,68,68,.45); color: #fca5a5; background: rgba(127,29,29,.2); }
+    .actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+    button { border: 1px solid #475569; border-radius: 10px; background: #1e293b; color: #e2e8f0; padding: 10px 14px; cursor: pointer; font-weight: 650; }
+    button.primary { background: #d4af37; color: #111827; border-color: #d4af37; }
+    button.danger { color: #fca5a5; border-color: rgba(239,68,68,.4); background: rgba(127,29,29,.16); }
+    button:disabled { opacity: .55; cursor: wait; }
+    .security { margin-top: 16px; color: #94a3b8; font-size: 11px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">JS-Innov.IA Cockpit</div>
+    <h1>Agent local</h1>
+    <p class="lead">Enregistre une seule fois l’URL et la clé API de ton agent local. La clé est chiffrée par le système d’exploitation et reste sur ce PC.</p>
+
+    <section class="card">
+      <div class="field">
+        <label for="endpoint">URL locale</label>
+        <input id="endpoint" type="url" value="http://127.0.0.1:8787" autocomplete="off" spellcheck="false" />
+        <div class="hint">Seules les adresses locales localhost / 127.0.0.1 / ::1 sont acceptées.</div>
+      </div>
+
+      <div class="field">
+        <label for="apiKey">Clé API locale</label>
+        <input id="apiKey" type="password" placeholder="Coller la clé API" autocomplete="off" spellcheck="false" />
+        <div id="keyHint" class="hint">Aucune clé enregistrée.</div>
+      </div>
+
+      <div id="status" class="status">Chargement de la configuration…</div>
+
+      <div class="actions">
+        <button id="save" class="primary">Enregistrer</button>
+        <button id="test">Tester l’agent</button>
+        <button id="clear" class="danger">Supprimer la clé</button>
+      </div>
+
+      <div class="security">
+        La clé n’est jamais stockée en clair dans le Cockpit web ni dans GitHub. Sur Windows, Electron utilise le chiffrement système via <strong>safeStorage</strong> (DPAPI). Le fichier local ne contient que la valeur chiffrée.
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const endpointInput = document.getElementById('endpoint');
+    const apiKeyInput = document.getElementById('apiKey');
+    const keyHint = document.getElementById('keyHint');
+    const status = document.getElementById('status');
+    const saveButton = document.getElementById('save');
+    const testButton = document.getElementById('test');
+    const clearButton = document.getElementById('clear');
+
+    function setStatus(message, kind = '') {
+      status.className = `status ${kind}`.trim();
+      status.textContent = message;
+    }
+
+    function setBusy(busy) {
+      saveButton.disabled = busy;
+      testButton.disabled = busy;
+      clearButton.disabled = busy;
+    }
+
+    async function refresh() {
+      try {
+        const config = await window.electronAPI.localAgent.getConfig();
+        endpointInput.value = config.endpoint || 'http://127.0.0.1:8787';
+        keyHint.textContent = config.configured
+          ? `Clé enregistrée : ${config.keyHint}${config.updatedAt ? ` — mise à jour ${new Date(config.updatedAt).toLocaleString('fr-BE')}` : ''}`
+          : 'Aucune clé enregistrée.';
+        setStatus(
+          config.configured
+            ? 'Configuration locale enregistrée et chiffrée.'
+            : 'La clé doit être enregistrée avant de connecter l’agent local.',
+          config.configured ? 'ok' : ''
+        );
+      } catch (error) {
+        setStatus(error.message || String(error), 'error');
+      }
+    }
+
+    saveButton.addEventListener('click', async () => {
+      setBusy(true);
+      try {
+        const result = await window.electronAPI.localAgent.saveConfig({
+          endpoint: endpointInput.value,
+          apiKey: apiKeyInput.value,
+        });
+        apiKeyInput.value = '';
+        keyHint.textContent = `Clé enregistrée : ${result.keyHint}`;
+        setStatus('Clé enregistrée de façon chiffrée sur ce PC.', 'ok');
+      } catch (error) {
+        setStatus(error.message || String(error), 'error');
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    testButton.addEventListener('click', async () => {
+      setBusy(true);
+      try {
+        const result = await window.electronAPI.localAgent.testConnection();
+        setStatus(`${result.message} — HTTP ${result.status}`, result.ok ? 'ok' : 'error');
+      } catch (error) {
+        setStatus(error.message || String(error), 'error');
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    clearButton.addEventListener('click', async () => {
+      if (!confirm('Supprimer la clé API locale enregistrée sur ce PC ?')) return;
+      setBusy(true);
+      try {
+        await window.electronAPI.localAgent.clearConfig();
+        apiKeyInput.value = '';
+        await refresh();
+      } catch (error) {
+        setStatus(error.message || String(error), 'error');
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    refresh();
+  </script>
+</body>
+</html>
