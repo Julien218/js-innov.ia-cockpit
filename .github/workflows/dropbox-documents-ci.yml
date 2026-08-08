@@ -1,0 +1,50 @@
+name: Dropbox documents and email attachments
+
+on:
+  pull_request:
+    paths:
+      - 'server-documents.cjs'
+      - 'server-email-compose.cjs'
+      - 'server.cjs'
+      - 'src/pages/Emails.jsx'
+      - 'Dockerfile'
+      - '.env.example'
+      - 'supabase/migrations/20260808021700_dropbox_document_index.sql'
+      - '.github/workflows/dropbox-documents-ci.yml'
+  push:
+    branches:
+      - feat/dropbox-documents-email-attachments
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - name: Server syntax
+        run: |
+          node --check server-documents.cjs
+          node --check server-email-compose.cjs
+          node --check server.cjs
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Production build
+        run: npm run build
+      - name: Verify no Dropbox secret values were committed
+        shell: bash
+        run: |
+          if grep -RInE 'DROPBOX_(APP_SECRET|REFRESH_TOKEN|ACCESS_TOKEN)=[^[:space:]]+' --exclude='.env.example' --exclude-dir=node_modules --exclude-dir=.git .; then
+            echo 'Dropbox secret assignment found in repository'
+            exit 1
+          fi
+          echo 'No Dropbox secret values committed'
