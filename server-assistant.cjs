@@ -1,5 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
+const { recordUsage } = require('./server-ai-cost.cjs');
 
 const router = express.Router();
 const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
@@ -128,6 +129,21 @@ router.post('/chat', async (req, res) => {
     }) });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || `Agent ${response.status}`);
+
+    // Si jsinnovia-agent renvoie les tokens/coûts, ils sont enregistrés sans bloquer la réponse utilisateur.
+    if (data.usage || data.cost_usd !== undefined) {
+      recordUsage({
+        usage: data.usage || {},
+        model: data.model || data.usage?.model,
+        cost_usd: data.cost_usd,
+        request_id: data.request_id || data.id,
+        processing_mode: data.processing_mode || 'standard',
+        source: 'cockpit-assistant',
+        metadata: { upstream: 'jsinnovia-agent', endpoint: '/chat' },
+      }, req.user.email).catch((error) => {
+        console.warn('[assistant] AI cost logging failed:', error.message);
+      });
+    }
 
     const action = sanitizeAction(data.proposed_action || data.action, req.user);
     let confirmation = null;
