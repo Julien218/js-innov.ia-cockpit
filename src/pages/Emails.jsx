@@ -80,9 +80,9 @@ function EmailListItem({ email, isSelected, onClick, onDelete, onArchive }) {
 
   return (
     <div
-      className={`relative px-3 sm:px-4 py-3 cursor-pointer border-b border-white/5 transition-all duration-150 ${
-        isSelected ? 'bg-white/10 border-l-[3px] border-l-[#D4AF37]' : 'hover:bg-white/5 border-l-[3px] border-l-transparent'
-      } ${!email.seen ? 'bg-white/[0.04]' : ''}`}
+      className={`relative px-3 sm:px-4 py-3 cursor-pointer border-b border-gray-100 transition-all duration-150 ${
+        isSelected ? 'bg-[#D4AF37]/8 border-l-[3px] border-l-[#D4AF37]' : 'hover:bg-gray-100 border-l-[3px] border-l-transparent'
+      } ${!email.seen ? 'bg-amber-50/40' : ''}`}
       onClick={onClick}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
@@ -91,24 +91,24 @@ function EmailListItem({ email, isSelected, onClick, onDelete, onArchive }) {
         <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full bg-[#D4AF37]" />
       )}
       <div className="flex items-start gap-2 pl-1">
-        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white/60 mt-0.5">
+        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#D4AF37]/8 flex items-center justify-center text-xs font-bold text-gray-900/60 mt-0.5">
           {sender.name.charAt(0).toUpperCase()}
         </div>
         <div className="flex-1 min-w-0 pr-16">
           <div className="flex items-center justify-between mb-0.5">
-            <span className={`text-sm truncate ${!email.seen ? 'font-semibold text-white' : 'font-medium text-gray-300'}`}>
+            <span className={`text-sm truncate ${!email.seen ? 'font-semibold text-gray-900' : 'font-medium text-gray-400'}`}>
               {sender.name}
             </span>
             <span className="text-[10px] text-gray-500 whitespace-nowrap ml-2 flex-shrink-0">{timeAgo(email.date)}</span>
           </div>
           <div className="flex items-center gap-1">
             {hasAttach && <Paperclip className="w-3 h-3 text-[#D4AF37]/70 flex-shrink-0" />}
-            <p className={`text-xs truncate ${!email.seen ? 'text-gray-100' : 'text-gray-400'}`}>
+            <p className={`text-xs truncate ${!email.seen ? 'text-gray-800' : 'text-gray-500'}`}>
               {email.subject || '(sans objet)'}
             </p>
           </div>
           {email.body && (
-            <p className="text-[11px] text-gray-600 truncate mt-0.5">
+            <p className="text-[11px] text-gray-400 truncate mt-0.5">
               {cleanTextBody(email.body).substring(0, 80)}
             </p>
           )}
@@ -118,10 +118,10 @@ function EmailListItem({ email, isSelected, onClick, onDelete, onArchive }) {
         className={`absolute right-2 top-1/2 -translate-y-1/2 flex gap-1 transition-opacity ${showActions ? 'opacity-100' : 'opacity-0'}`}
         onClick={e => e.stopPropagation()}
       >
-        <button onClick={() => onArchive(email.uid)} className="p-1.5 rounded-md bg-[#0B0B0F]/90 border border-white/10 text-gray-500 hover:text-cyan-400 hover:border-cyan-400/30 transition-colors" title="Archiver">
+        <button onClick={() => onArchive(email.uid)} className="p-1.5 rounded-md bg-gray-50/90 border border-gray-200 text-gray-400 hover:text-cyan-600 hover:border-cyan-300 transition-colors" title="Archiver">
           <Archive className="w-3.5 h-3.5" />
         </button>
-        <button onClick={() => onDelete(email.uid)} className="p-1.5 rounded-md bg-[#0B0B0F]/90 border border-white/10 text-gray-500 hover:text-red-400 hover:border-red-400/30 transition-colors" title="Supprimer">
+        <button onClick={() => onDelete(email.uid)} className="p-1.5 rounded-md bg-gray-50/90 border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors" title="Supprimer">
           <Trash2 className="w-3.5 h-3.5" />
         </button>
       </div>
@@ -168,14 +168,14 @@ function EmailDetail({ email, onBack, onReply, onForward, onPrint, onDelete, onA
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-3 sm:px-6 py-3 border-b border-white/10 flex items-start gap-3">
-        <button onClick={onBack} className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors flex-shrink-0">
+      <div className="px-3 sm:px-6 py-3 border-b border-gray-200 flex items-start gap-3">
+        <button onClick={onBack} className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg hover:bg-[#D4AF37]/8 text-gray-500 hover:text-gray-900 transition-colors flex-shrink-0">
           <ArrowLeft className="w-4 h-4" />
         </button>
         <div className="flex-1 min-w-0">
-          <h2 className="text-sm sm:text-base font-semibold text-white leading-snug">{email.subject || '(sans objet)'}</h2>
+          <h2 className="text-sm sm:text-base font-semibold text-gray-900 leading-snug">{email.subject || '(sans objet)'}</h2>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <span className="flex items-center gap-1 text-xs text-gray-300">
+            <span className="flex items-center gap-1 text-xs text-gray-400">
               <User className="w-3 h-3 flex-shrink-0 text-[#D4AF37]" />
               <span className="font-medium">{sender.name}</span>
               {sender.email && sender.email !== sender.name && <span className="text-gray-500 hidden sm:inline">({sender.email})</span>}
@@ -186,20 +186,20 @@ function EmailDetail({ email, onBack, onReply, onForward, onPrint, onDelete, onA
         </div>
         {/* Action bar */}
         <div className="flex items-center gap-1 flex-shrink-0">
-          <button onClick={onReply} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-[#D4AF37]/15 text-[#D4AF37] hover:bg-[#D4AF37]/25 border border-[#D4AF37]/30 transition-all min-h-[36px]" title="Répondre">
+          <button onClick={onReply} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-[#D4AF37]/15 text-[#D4AF37] hover:bg-[#D4AF37]/25 border border-[#D4AF37]/40 transition-all min-h-[36px]" title="Répondre">
             <Reply className="w-3.5 h-3.5" /><span className="hidden lg:inline">Répondre</span>
           </button>
-          <button onClick={onForward} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white border border-white/10 transition-all min-h-[36px]" title="Transférer">
+          <button onClick={onForward} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-400 hover:bg-[#D4AF37]/8 hover:text-gray-900 border border-gray-200 transition-all min-h-[36px]" title="Transférer">
             <Forward className="w-3.5 h-3.5" /><span className="hidden lg:inline">Transférer</span>
           </button>
-          <button onClick={handlePrint} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white border border-white/10 transition-all min-h-[36px]" title="Imprimer / PDF">
+          <button onClick={handlePrint} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-400 hover:bg-[#D4AF37]/8 hover:text-gray-900 border border-gray-200 transition-all min-h-[36px]" title="Imprimer / PDF">
             <Printer className="w-3.5 h-3.5" /><span className="hidden lg:inline">Imprimer</span>
           </button>
-          <div className="w-px h-6 bg-white/10 mx-0.5" />
-          <button onClick={() => onArchive(email.uid)} className="p-1.5 rounded-lg text-gray-400 hover:text-cyan-400 hover:bg-cyan-400/10 transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center" title="Archiver">
+          <div className="w-px h-6 bg-[#D4AF37]/8 mx-0.5" />
+          <button onClick={() => onArchive(email.uid)} className="p-1.5 rounded-lg text-gray-500 hover:text-cyan-400 hover:bg-cyan-400/10 transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center" title="Archiver">
             <Archive className="w-4 h-4" />
           </button>
-          <button onClick={() => onDelete(email.uid)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-400/10 transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center" title="Supprimer">
+          <button onClick={() => onDelete(email.uid)} className="p-1.5 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-400/10 transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center" title="Supprimer">
             <Trash2 className="w-4 h-4" />
           </button>
         </div>
@@ -207,17 +207,17 @@ function EmailDetail({ email, onBack, onReply, onForward, onPrint, onDelete, onA
 
       <div ref={printRef} className="flex-1 overflow-y-auto p-4 sm:p-6 overscroll-contain">
         {email.html ? (
-          <div className="prose prose-invert max-w-none text-sm text-gray-200 break-words leading-relaxed" dangerouslySetInnerHTML={{ __html: email.html }} />
+          <div className="prose max-w-none text-sm text-gray-800 break-words leading-relaxed" dangerouslySetInnerHTML={{ __html: email.html }} />
         ) : bodyText ? (
-          <pre className="text-sm text-gray-200 whitespace-pre-wrap font-sans break-words leading-relaxed">{bodyText}</pre>
+          <pre className="text-sm text-gray-300 whitespace-pre-wrap font-sans break-words leading-relaxed">{bodyText}</pre>
         ) : (
           <p className="text-sm text-gray-500 italic">Corps du message vide ou non disponible.</p>
         )}
 
         {/* Attachments — downloadable */}
         {email.attachments && email.attachments.length > 0 && (
-          <div className="mt-6 pt-4 border-t border-white/10">
-            <p className="text-xs font-semibold text-gray-400 mb-2 flex items-center gap-1.5">
+          <div className="mt-6 pt-4 border-t border-gray-200">
+            <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
               <Paperclip className="w-3.5 h-3.5 text-[#D4AF37]" /> Pièces jointes ({email.attachments.length})
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -228,16 +228,16 @@ function EmailDetail({ email, onBack, onReply, onForward, onPrint, onDelete, onA
                     key={i}
                     href={`${API_BASE}/api/emails/${email.uid}/attachments/${i}?mailbox=${mailboxId}`}
                     download={a.filename || `attachment-${i}`}
-                    className="flex items-center gap-3 text-xs text-gray-300 py-2.5 px-3 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 hover:border-[#D4AF37]/30 transition-all group"
+                    className="flex items-center gap-3 text-xs text-gray-400 py-2.5 px-3 rounded-lg bg-gray-100 hover:bg-[#D4AF37]/8 border border-gray-100 hover:border-[#D4AF37]/40 transition-all group"
                   >
                     <div className="w-9 h-9 rounded-lg bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
                       <Icon className="w-4 h-4 text-[#D4AF37]" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="truncate font-medium text-gray-200 group-hover:text-white">{a.filename || `attachment-${i}`}</p>
+                      <p className="truncate font-medium text-gray-300 group-hover:text-gray-900">{a.filename || `attachment-${i}`}</p>
                       <p className="text-[10px] text-gray-500">{formatSize(a.size || a.filesize)} · {a.contentType || a.content_type || 'fichier'}</p>
                     </div>
-                    <Download className="w-3.5 h-3.5 text-gray-500 group-hover:text-[#D4AF37] flex-shrink-0" />
+                    <Download className="w-3.5 h-3.5 text-gray-400 group-hover:text-[#D4AF37] flex-shrink-0" />
                   </a>
                 );
               })}
@@ -327,48 +327,48 @@ function ComposeModal({ open, onClose, fromEmail, replyTo, forwardTo, onSend }) 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4" onClick={onClose}>
-      <div className="w-full sm:max-w-2xl bg-[#0F0F14] sm:rounded-2xl border border-white/10 shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[85vh]" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4" onClick={onClose}>
+      <div className="w-full sm:max-w-2xl bg-white sm:rounded-2xl border border-gray-200 shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[85vh]" onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white">
+        <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900">
             {replyTo ? 'Répondre' : forwardTo ? 'Transférer' : 'Nouveau message'}
           </h3>
           <div className="flex items-center gap-2">
             {fromEmail && <span className="text-[10px] text-gray-500 hidden sm:inline">De: {fromEmail}</span>}
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[#D4AF37]/8 text-gray-500 hover:text-gray-900 transition-colors"><X className="w-4 h-4" /></button>
           </div>
         </div>
 
         {/* Form body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           <div>
-            <label className="block text-xs text-gray-400 mb-1 font-medium">Destinataire</label>
-            <input value={to} onChange={e => setTo(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-[#D4AF37]/50 focus:outline-none" placeholder="email@exemple.com" />
+            <label className="block text-xs text-gray-500 mb-1 font-medium">Destinataire</label>
+            <input value={to} onChange={e => setTo(e.target.value)} className="w-full bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-600 focus:border-[#D4AF37]/50 focus:outline-none" placeholder="email@exemple.com" />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1 font-medium">Objet</label>
-            <input value={subject} onChange={e => setSubject(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-[#D4AF37]/50 focus:outline-none" placeholder="Objet du message" />
+            <label className="block text-xs text-gray-500 mb-1 font-medium">Objet</label>
+            <input value={subject} onChange={e => setSubject(e.target.value)} className="w-full bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-600 focus:border-[#D4AF37]/50 focus:outline-none" placeholder="Objet du message" />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1 font-medium">Message</label>
-            <textarea value={body} onChange={e => setBody(e.target.value)} rows={8} className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-[#D4AF37]/50 focus:outline-none resize-none" placeholder="Votre message..." />
+            <label className="block text-xs text-gray-500 mb-1 font-medium">Message</label>
+            <textarea value={body} onChange={e => setBody(e.target.value)} rows={8} className="w-full bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-600 focus:border-[#D4AF37]/50 focus:outline-none resize-none" placeholder="Votre message..." />
           </div>
 
           {/* Attachment zone */}
           <div>
-            <label className="block text-xs text-gray-400 mb-1 font-medium">Pièces jointes</label>
+            <label className="block text-xs text-gray-500 mb-1 font-medium">Pièces jointes</label>
             <div
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
               className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed cursor-pointer transition-all ${
-                dragOver ? 'border-[#D4AF37] bg-[#D4AF37]/10' : 'border-white/10 hover:border-[#D4AF37]/30 hover:bg-white/5'
+                dragOver ? 'border-[#D4AF37] bg-[#D4AF37]/10' : 'border-gray-200 hover:border-[#D4AF37]/40 hover:bg-gray-100'
               }`}
             >
               <Paperclip className="w-4 h-4 text-[#D4AF37]" />
-              <span className="text-xs text-gray-400">Glisser des fichiers ici ou cliquer pour parcourir (max 15 MB/fichier, 20 MB total)</span>
+              <span className="text-xs text-gray-500">Glisser des fichiers ici ou cliquer pour parcourir (max 15 MB/fichier, 20 MB total)</span>
               <input ref={fileInputRef} type="file" multiple onChange={handleFileSelect} className="hidden" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.csv" />
             </div>
             {attachments.length > 0 && (
@@ -376,11 +376,11 @@ function ComposeModal({ open, onClose, fromEmail, replyTo, forwardTo, onSend }) 
                 {attachments.map((a, i) => {
                   const Icon = fileIcon(a.filename);
                   return (
-                    <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/5 text-xs">
+                    <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 border border-gray-100 text-xs">
                       <Icon className="w-3.5 h-3.5 text-[#D4AF37] flex-shrink-0" />
-                      <span className="truncate flex-1 text-gray-300">{a.filename}</span>
+                      <span className="truncate flex-1 text-gray-400">{a.filename}</span>
                       <span className="text-gray-500 flex-shrink-0">{formatSize(a.size)}</span>
-                      <button onClick={() => removeAttachment(i)} className="p-0.5 rounded hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-colors flex-shrink-0"><X className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => removeAttachment(i)} className="p-0.5 rounded hover:bg-red-500/20 text-gray-500 hover:text-red-600 transition-colors flex-shrink-0"><X className="w-3.5 h-3.5" /></button>
                     </div>
                   );
                 })}
@@ -388,17 +388,17 @@ function ComposeModal({ open, onClose, fromEmail, replyTo, forwardTo, onSend }) 
             )}
           </div>
 
-          {error && <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 text-xs text-red-400"><AlertCircle className="w-3.5 h-3.5 flex-shrink-0" /> {error}</div>}
-          {status === 'success' && <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-xs text-emerald-400"><Check className="w-3.5 h-3.5" /> Envoyé !</div>}
+          {error && <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 text-xs text-red-600"><AlertCircle className="w-3.5 h-3.5 flex-shrink-0" /> {error}</div>}
+          {status === 'success' && <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-xs text-emerald-600"><Check className="w-3.5 h-3.5" /> Envoyé !</div>}
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-white/10 flex justify-between items-center gap-2">
-          <div className="text-[10px] text-gray-500 hidden sm:block">
+        <div className="px-4 py-3 border-t border-gray-200 flex justify-between items-center gap-2">
+          <div className="text-[10px] text-gray-400 hidden sm:block">
             {attachments.length > 0 ? `${attachments.length} fichier(s) · ${formatSize(totalSize)}` : 'Aucune pièce jointe'}
           </div>
           <div className="flex gap-2 ml-auto">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/10 transition-colors">Annuler</button>
+            <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-gray-500 hover:text-gray-900 hover:bg-[#D4AF37]/8 transition-colors">Annuler</button>
             <button onClick={handleSend} disabled={sending} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-[#D4AF37] text-black hover:bg-[#D4AF37]/90 disabled:opacity-50 transition-all">
               {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
               {sending ? 'Envoi...' : 'Envoyer'}
@@ -500,11 +500,11 @@ export default function Emails() {
   const unreadCount = emails.filter(e => !e.seen).length;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem-env(safe-area-inset-top))] sm:h-[calc(100vh-4rem)] bg-[#0B0B0F]">
+    <div className="flex flex-col h-[calc(100vh-3.5rem-env(safe-area-inset-top))] sm:h-[calc(100vh-4rem)] bg-gray-50">
       {/* Header */}
-      <div className="px-3 sm:px-6 py-3 border-b border-white/8 bg-[#0F0F14] shrink-0">
+      <div className="px-3 sm:px-6 py-3 border-b border-gray-200 bg-white shrink-0">
         <div className="flex items-center justify-between mb-3">
-          <h1 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
+          <h1 className="text-base sm:text-lg font-semibold text-gray-900 flex items-center gap-2">
             <Mail className="w-5 h-5 text-[#D4AF37]" />
             {isSentFolder ? "Emails envoyés" : "Boîtes mail"}
             {unreadCount > 0 && <span className="ml-1 bg-[#D4AF37] text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full">{unreadCount}</span>}
@@ -514,13 +514,13 @@ export default function Emails() {
               onClick={() => { setReplyTo(null); setForwardTo(null); setComposeOpen(true); }}
               disabled={activeMailboxCfg?.isAlias}
               className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-all min-h-[36px] border ${
-                activeMailboxCfg?.isAlias ? 'bg-white/5 text-gray-600 border-white/10 cursor-not-allowed' : 'bg-[#D4AF37]/15 text-[#D4AF37] hover:bg-[#D4AF37]/25 border-[#D4AF37]/30'
+                activeMailboxCfg?.isAlias ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-[#D4AF37]/15 text-[#D4AF37] hover:bg-[#D4AF37]/25 border-[#D4AF37]/40'
               }`}
               title={activeMailboxCfg?.isAlias ? 'Alias — envoi non disponible' : 'Écrire'}
             >
               <Send className="w-3.5 h-3.5" /><span className="hidden sm:inline">Écrire</span>
             </button>
-            <button onClick={fetchList} disabled={loading} className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5 min-h-[36px]">
+            <button onClick={fetchList} disabled={loading} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-900 transition-colors px-3 py-1.5 rounded-lg hover:bg-gray-100 min-h-[36px]">
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /><span className="hidden sm:inline">Actualiser</span>
             </button>
           </div>
@@ -536,7 +536,7 @@ export default function Emails() {
                 key={mb.id}
                 onClick={() => setActiveMailbox(mb.id)}
                 className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all whitespace-nowrap min-h-[44px] border ${
-                  isActive ? 'bg-white/10 text-white border-white/20' : 'text-gray-500 hover:text-white hover:bg-white/5 border-transparent'
+                  isActive ? 'bg-[#D4AF37]/8 text-gray-900 border-gray-300' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100 border-transparent'
                 }`}
                 style={isActive ? { borderColor: mb.color + '60', boxShadow: `0 0 0 1px ${mb.color}25` } : {}}
               >
@@ -551,7 +551,7 @@ export default function Emails() {
 
       {actionMsg && (
         <div className={`mx-3 sm:mx-6 mt-2 rounded-lg px-3 py-2 text-xs flex items-center gap-2 ${
-          actionMsg.type === 'success' ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'
+          actionMsg.type === 'success' ? 'bg-emerald-50 border border-emerald-200 text-emerald-600' : 'bg-red-50 border border-red-200 text-red-600'
         }`}>
           {actionMsg.type === 'success' ? <Check className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
           {actionMsg.text}
@@ -559,12 +559,12 @@ export default function Emails() {
       )}
 
       {activeMailboxCfg?.isAlias && (
-        <div className="mx-3 sm:mx-6 mt-3 bg-amber-500/8 border border-amber-500/20 rounded-xl p-4">
+        <div className="mx-3 sm:mx-6 mt-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
           <div className="flex items-start gap-3">
             <span className="text-xl flex-shrink-0">📬</span>
             <div>
-              <p className="text-sm font-semibold text-amber-400">Alias de redirection</p>
-              <p className="text-xs text-amber-400/70 mt-1">
+              <p className="text-sm font-semibold text-amber-600">Alias de redirection</p>
+              <p className="text-xs text-amber-600/70 mt-1">
                 {activeMailboxCfg.email} est une adresse de redirection, pas une boîte IMAP.<br />
                 Sélectionnez « JS Store » ou « Assurances Dour » pour consulter et envoyer des emails.
               </p>
@@ -576,17 +576,17 @@ export default function Emails() {
       {!activeMailboxCfg?.isAlias && (
         <div className="flex flex-1 overflow-hidden">
           {/* Liste */}
-          <div className={`flex flex-col ${detail ? 'hidden sm:flex sm:w-80 lg:w-96' : 'w-full'} border-r border-white/8 overflow-hidden`}>
-            <div className="px-3 py-2 border-b border-white/8 shrink-0">
+          <div className={`flex flex-col ${detail ? 'hidden sm:flex sm:w-80 lg:w-96' : 'w-full'} border-r border-gray-200 overflow-hidden`}>
+            <div className="px-3 py-2 border-b border-gray-200 shrink-0">
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="w-full bg-white/5 border border-white/10 rounded-lg pl-8 pr-3 py-2 text-sm text-white placeholder-gray-600 focus:border-[#D4AF37]/40 focus:outline-none" />
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="w-full bg-gray-100 border border-gray-200 rounded-lg pl-8 pr-3 py-2 text-sm text-gray-900 placeholder-gray-600 focus:border-[#D4AF37]/40 focus:outline-none" />
               </div>
             </div>
             {loading ? (
               <div className="flex-1 flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-[#D4AF37]" /></div>
             ) : filtered.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-gray-600 text-sm gap-2 py-10"><MailOpen className="w-8 h-8 text-gray-700" />Aucun email</div>
+              <div className="flex-1 flex flex-col items-center justify-center text-gray-400 text-sm gap-2 py-10"><MailOpen className="w-8 h-8 text-gray-300" />Aucun email</div>
             ) : (
               <div className="flex-1 overflow-y-auto overscroll-contain">
                 {filtered.map(email => (
@@ -612,7 +612,7 @@ export default function Emails() {
                 onArchive={async (uid) => { await handleArchive(uid); setDetail(null); setSelectedUid(null); }}
               />
             ) : (
-              <div className="flex-1 hidden sm:flex flex-col items-center justify-center text-gray-700 gap-2"><Mail className="w-10 h-10" /><p className="text-sm">Sélectionnez un email</p></div>
+              <div className="flex-1 hidden sm:flex flex-col items-center justify-center text-gray-300 gap-2"><Mail className="w-10 h-10" /><p className="text-sm">Sélectionnez un email</p></div>
             )}
           </div>
         </div>
