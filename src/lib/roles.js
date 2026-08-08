@@ -39,14 +39,14 @@ export const ROLE_ROUTES = {
     "/devis", "/factures", "/emails", "/emails-core",
     "/production", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
-    "/services", "/validations", "/agent", "/agents-ia", "/invitations"
+    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations"
   ],
   admin: [
     "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
     "/devis", "/factures", "/emails", "/emails-core",
     "/production", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
-    "/services", "/validations", "/agent", "/agents-ia", "/invitations"
+    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations"
   ],
   collaborateur: [
     "/", "/projets", "/taches", "/demandes", "/agent", "/agents-ia"
