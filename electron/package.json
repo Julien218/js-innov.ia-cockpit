@@ -31,7 +31,8 @@
       "main.js",
       "preload.js",
       "splash.html",
-      "icon.png"
+      "icon.png",
+      "icon.ico"
     ],
     "win": {
       "target": [
@@ -42,7 +43,7 @@
           ]
         }
       ],
-      "icon": "icon.png",
+      "icon": "icon.ico",
       "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
@@ -56,8 +57,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "uninstallDisplayName": "JS-Innov.IA Cockpit",
-      "installerIcon": "icon.png",
-      "uninstallerIcon": "icon.png"
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico"
     },
     "mac": {
       "target": "dmg",
