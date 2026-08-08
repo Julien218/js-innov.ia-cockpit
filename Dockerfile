@@ -41,6 +41,8 @@ COPY server-assistant.cjs ./server-assistant.cjs
 COPY server-ai-cost.cjs ./server-ai-cost.cjs
 COPY server-email-core.cjs ./server-email-core.cjs
 COPY server-twilio.cjs ./server-twilio.cjs
+COPY server-documents.cjs ./server-documents.cjs
+COPY server-email-compose.cjs ./server-email-compose.cjs
 COPY assets ./assets
 COPY public ./public
 
