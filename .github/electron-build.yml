@@ -27,6 +27,8 @@ jobs:
 
       - name: Build Windows .exe
         run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload .exe artifact
         uses: actions/upload-artifact@v4
@@ -36,17 +38,27 @@ jobs:
           retention-days: 90
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, "refs/tags/")
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: electron/dist/*.exe
-          name: "JS-Innov.IA Cockpit ${{ github.ref_name }}"
+          name: "🚀 JS-Innov.IA Cockpit ${{ github.ref_name }}"
           body: |
             ## JS-Innov.IA Cockpit ${{ github.ref_name }}
             
-            Télécharge et lance le fichier `.exe` — installation silencieuse, raccourci bureau créé automatiquement.
+            ### Téléchargement
+            Téléchargez et lancez le fichier `.exe` — installation silencieuse, raccourci bureau créé automatiquement.
             
-            **Inclus :** Cockpit complet · Tray icon · Notifications Windows · Splash screen
+            ### Mise à jour
+            Si vous avez déjà une version installée, l'app vous notifiera automatiquement d'une mise à jour disponible.
+            Cliquez sur la notification ou faites un clic droit sur l'icône tray → "Vérifier les mises à jour".
+            
+            ### Inclus
+            - Cockpit complet (clients, devis, factures, tâches, projets)
+            - Boîte email avec pièces jointes
+            - Module Twilio (SMS, appels)
+            - Tray icon + Notifications Windows
+            - Splash screen
+            - Vérification automatique des mises à jour
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
