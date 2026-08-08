@@ -4,6 +4,12 @@ const os = require("os");
 
 let mainWindow = null;
 let tray = null;
+let splashTimer = null;
+
+// ── Helper: vérifier qu'une fenêtre est toujours vivante ────────────────────
+function isAlive(win) {
+  return win && !win.isDestroyed();
+}
 
 // ── Splash screen ───────────────────────────────────────────────────────────
 function createSplash() {
@@ -49,6 +55,15 @@ function createWindow() {
   mainWindow.removeMenu();
   mainWindow.loadURL("https://cockpit.jsinnovia.com");
 
+  // ── Nettoyer la référence quand la fenêtre est fermée ──
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+    if (splashTimer) {
+      clearTimeout(splashTimer);
+      splashTimer = null;
+    }
+  });
+
   return mainWindow;
 }
 
@@ -57,13 +72,13 @@ function createTray() {
   try {
     tray = new Tray(path.join(__dirname, "icon.png"));
     const menu = Menu.buildFromTemplate([
-      { label: "Ouvrir le Cockpit", click: () => mainWindow && mainWindow.show() },
+      { label: "Ouvrir le Cockpit", click: () => { if (isAlive(mainWindow)) mainWindow.show(); else createWindow().show(); } },
       { type: "separator" },
       { label: "Quitter", click: () => app.quit() },
     ]);
     tray.setToolTip("JS-Innov.IA Cockpit");
     tray.setContextMenu(menu);
-    tray.on("double-click", () => mainWindow && mainWindow.show());
+    tray.on("double-click", () => { if (isAlive(mainWindow)) mainWindow.show(); else createWindow().show(); });
   } catch(e) { console.log("Tray non disponible:", e.message); }
 }
 
@@ -80,16 +95,23 @@ app.whenReady().then(() => {
   const win = createWindow();
 
   win.webContents.on("did-finish-load", () => {
-    setTimeout(() => {
-      splash.close();
-      win.show();
-      if (os.platform() !== "darwin") createTray();
+    // Annuler tout timer précédent pour éviter les callbacks orphelins
+    if (splashTimer) clearTimeout(splashTimer);
+    splashTimer = setTimeout(() => {
+      splashTimer = null;
+      // Vérifier que les objets sont toujours vivants avant d'agir
+      if (isAlive(splash)) splash.close();
+      if (isAlive(win)) {
+        win.show();
+        if (os.platform() !== "darwin") createTray();
+      }
     }, 1200);
   });
 
   win.webContents.on("did-fail-load", () => {
-    splash.close();
-    win.show();
+    if (splashTimer) { clearTimeout(splashTimer); splashTimer = null; }
+    if (isAlive(splash)) splash.close();
+    if (isAlive(win)) win.show();
   });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -103,6 +125,14 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
+  // Nettoyer les timers avant de quitter
+  if (splashTimer) { clearTimeout(splashTimer); splashTimer = null; }
   if (process.platform !== "darwin") app.quit();
 });
 
+// ── Nettoyage global à la fermeture ─────────────────────────────────────────
+app.on("before-quit", () => {
+  if (splashTimer) { clearTimeout(splashTimer); splashTimer = null; }
+  tray = null;
+  mainWindow = null;
+});
