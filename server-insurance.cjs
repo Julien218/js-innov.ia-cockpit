@@ -3,20 +3,17 @@ const cookie = require('cookie');
 
 const router = express.Router();
 
-const SUPABASE_URL = process.env.SUPABASE_URL
-  || process.env.VITE_SUPABASE_URL
-  || 'https://rzvvwcwyaddzsaattwqt.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
   || process.env.SUPABASE_SERVICE_KEY
   || '';
-const AGENT_URL = process.env.JSINNOVIA_AGENT_URL
-  || process.env.VITE_AGENT_URL
-  || '';
+const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || '';
 const AGENT_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
-const COCKPIT_URL = process.env.COCKPIT_URL || 'https://cockpit.jsinnovia.com';
+const COCKPIT_URL = process.env.COCKPIT_URL || '';
 const OLIVIER_EMAIL = 'olivier.trevis@pv.be';
 const SUPERADMIN_ROLES = new Set(['superadmin', 'super_admin']);
 const UPSTREAM_TIMEOUT_MS = Number(process.env.INSURANCE_PROXY_TIMEOUT_MS || 15000);
+const WRITE_METHODS = new Set(['POST', 'PATCH']);
 
 function parseSessionToken(req) {
   const header = req.headers.cookie;
@@ -26,7 +23,8 @@ function parseSessionToken(req) {
 
 function validOrigin(req) {
   const origin = req.headers.origin || '';
-  if (!origin) return true;
+  if (!origin) return !WRITE_METHODS.has(req.method);
+  if (!COCKPIT_URL) return false;
   try {
     const url = new URL(origin);
     return url.origin === COCKPIT_URL
@@ -38,8 +36,9 @@ function validOrigin(req) {
 }
 
 async function supabaseRows(path) {
+  if (!SUPABASE_URL) throw new Error('SUPABASE_URL manquante');
   if (!SUPABASE_SERVICE_KEY) throw new Error('SUPABASE_SERVICE_ROLE_KEY ou SUPABASE_SERVICE_KEY manquante');
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  const response = await fetch(`${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${path}`, {
     headers: {
       apikey: SUPABASE_SERVICE_KEY,
       Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
@@ -53,6 +52,9 @@ async function supabaseRows(path) {
 }
 
 async function requireInsuranceAccess(req, res, next) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+    return res.status(503).json({ error: 'Authentification cockpit non configurée.' });
+  }
   if (!validOrigin(req)) return res.status(403).json({ error: 'Origine non autorisée.' });
 
   const token = parseSessionToken(req);
@@ -102,7 +104,7 @@ router.use(async (req, res) => {
     },
     signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
   };
-  if (['PATCH', 'POST'].includes(req.method)) options.body = JSON.stringify(req.body || {});
+  if (WRITE_METHODS.has(req.method)) options.body = JSON.stringify(req.body || {});
 
   try {
     const response = await fetch(target, options);
