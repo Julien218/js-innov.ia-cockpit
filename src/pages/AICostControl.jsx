@@ -92,7 +92,7 @@ export default function AICostControl() {
     simple_model: 'gpt-5.6-luna',
     balanced_model: 'gpt-5.6-terra',
     complex_model: 'gpt-5.6-sol',
-    max_request_usd: 2,
+    max_request_usd: 0,
   });
 
   const summaryQuery = useQuery({
@@ -351,7 +351,7 @@ export default function AICostControl() {
             ))}
             <label className="grid grid-cols-[1fr_190px] items-center gap-3 text-sm">
               <span>Coût max estimé par requête</span>
-              <input type="number" min="0" step="0.1" value={routingForm.max_request_usd ?? ''} onChange={(e) => setRoutingForm((v) => ({ ...v, max_request_usd: e.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm" />
+              <input type="number" min="0" step="0.1" value={routingForm.max_request_usd ?? ''} onChange={(e) => setRoutingForm((v) => ({ ...v, max_request_usd: Number(e.target.value || 0) }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm" />
             </label>
             <button onClick={saveRouting} disabled={saving === 'routing'} className="w-full h-10 mt-2 rounded-xl bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 text-sm font-medium">
               <Save className="w-4 h-4" /> {saving === 'routing' ? 'Enregistrement…' : 'Enregistrer le routage'}
