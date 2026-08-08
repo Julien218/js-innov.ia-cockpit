@@ -1,0 +1,50 @@
+name: Electron secure local-agent key CI
+
+on:
+  pull_request:
+    paths:
+      - 'electron/**'
+      - '.github/workflows/electron-secure-key-ci.yml'
+  push:
+    branches:
+      - 'fix/electron-secure-local-agent-key'
+    paths:
+      - 'electron/**'
+      - '.github/workflows/electron-secure-key-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install Electron dependencies
+        working-directory: electron
+        run: npm install --no-audit --no-fund
+      - name: JavaScript syntax
+        working-directory: electron
+        run: npm run check
+      - name: Ensure secure storage is used
+        shell: pwsh
+        run: |
+          $main = Get-Content electron/main.js -Raw
+          if ($main -notmatch 'safeStorage\.encryptString') { throw 'safeStorage encryption missing' }
+          if ($main -notmatch 'app\.getPath\("userData"\)') { throw 'persistent userData storage missing' }
+          if ($main -match 'writeFileSync\([^\n]*apiKey') { throw 'possible plaintext API key write detected' }
+      - name: Ensure key is never exposed by preload
+        shell: pwsh
+        run: |
+          $preload = Get-Content electron/preload.js -Raw
+          if ($preload -match 'decryptString') { throw 'preload must never decrypt the local API key' }
+          if ($preload -notmatch 'localAgent') { throw 'localAgent bridge missing' }
+      - name: Package definition includes settings window
+        shell: pwsh
+        run: |
+          $pkg = Get-Content electron/package.json -Raw | ConvertFrom-Json
+          if ($pkg.build.files -notcontains 'agent-settings.html') { throw 'agent-settings.html missing from package' }
