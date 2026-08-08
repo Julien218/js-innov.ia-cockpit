@@ -1,0 +1,6 @@
+{
+  "version": "1.0.16",
+  "publishedAt": "2026-08-08",
+  "downloadUrl": "https://github.com/Julien218/js-innov.ia-cockpit/releases/download/v1.0.16/JS-Innov.IA.Cockpit.Setup.1.0.0.exe",
+  "changelog": "Fix crash Electron + pièces jointes email + module Twilio + auto-update"
+}

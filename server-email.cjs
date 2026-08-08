@@ -216,7 +216,7 @@ function fetchEmails(mailboxKey, { folder = 'INBOX', limit = 30, offset = 0 } = 
 }
 
 // ── Fetch email par UID ──────────────────────────────────────
-function fetchEmailById(mailboxKey, uid) {
+function fetchEmailById(mailboxKey, uid, includeAttachments = false) {
   return new Promise((resolve, reject) => {
     if (isAliasMailbox(mailboxKey)) {
       return reject(new Error('Cette adresse est un alias de redirection, pas une boîte IMAP.'));
@@ -263,6 +263,9 @@ function fetchEmailById(mailboxKey, uid) {
                 filename: a.filename,
                 contentType: a.contentType,
                 size: a.size,
+                ...(includeAttachments && a.content ? {
+                  content_base64: a.content.toString('base64'),
+                } : {}),
               })),
               messageId: p.messageId || '',
               inReplyTo: p.inReplyTo || '',
@@ -277,7 +280,7 @@ function fetchEmailById(mailboxKey, uid) {
 }
 
 // ── Envoyer un email (SMTP) ──────────────────────────────────
-async function sendEmail(mailboxKey, { to, subject, text, html, cc, bcc, replyTo, replyToMessageId }) {
+async function sendEmail(mailboxKey, { to, subject, text, html, cc, bcc, replyTo, replyToMessageId, attachments }) {
   if (isAliasMailbox(mailboxKey)) {
     throw new Error('Cette adresse est un alias, impossible d\'envoyer directement depuis cette boîte. Utilisez JS-Innov.IA Store ou Assurances Dour.');
   }
@@ -288,6 +291,20 @@ async function sendEmail(mailboxKey, { to, subject, text, html, cc, bcc, replyTo
 
   const transport = getSmtpTransport(mailboxKey);
   if (!transport) throw new Error(`Transport SMTP non disponible pour "${mailboxKey}".`);
+
+  // ── Pièces jointes (format base64) ──
+  const parsedAttachments = [];
+  if (attachments && Array.isArray(attachments)) {
+    for (const a of attachments) {
+      if (a.filename && a.content_base64) {
+        parsedAttachments.push({
+          filename: a.filename,
+          content: Buffer.from(a.content_base64, 'base64'),
+          contentType: a.content_type || a.contentType || 'application/octet-stream',
+        });
+      }
+    }
+  }
 
   const mailOptions = {
     from: `"${cfg.label}" <${cfg.email}>`,
@@ -300,6 +317,7 @@ async function sendEmail(mailboxKey, { to, subject, text, html, cc, bcc, replyTo
     html: html || undefined,
     inReplyTo: replyToMessageId || undefined,
     headers: replyToMessageId ? { 'References': replyToMessageId } : undefined,
+    attachments: parsedAttachments.length > 0 ? parsedAttachments : undefined,
   };
 
   const info = await transport.sendMail(mailOptions);
@@ -676,7 +694,7 @@ router.get('/:uid', requireApiKey, async (req, res) => {
 // POST /api/emails/send
 router.post('/send', requireApiKey, async (req, res) => {
   try {
-    const { mailbox, to, subject, text, html, cc, bcc, replyToUid } = req.body;
+    const { mailbox, to, subject, text, html, cc, bcc, replyToUid, attachments } = req.body;
     const mailboxKey = mailbox || 'jsinnovia';
 
     // Si replyToUid est fourni, récupérer le messageId original pour le threading
@@ -688,7 +706,7 @@ router.post('/send', requireApiKey, async (req, res) => {
       } catch (_) { /* non bloquant */ }
     }
 
-    const info = await sendEmail(mailboxKey, { to, subject, text, html, cc, bcc, replyToMessageId });
+    const info = await sendEmail(mailboxKey, { to, subject, text, html, cc, bcc, replyToMessageId, attachments });
     res.json({ success: true, ...info });
   } catch (err) {
     console.error('[SMTP] Envoi:', err.message);
@@ -909,4 +927,55 @@ router.get('/mailboxes/list', requireApiKey, (req, res) => {
   res.json({ success: true, mailboxes: list });
 });
 
+
+// GET /api/emails/:uid/attachments/:index — télécharger une pièce jointe
+router.get('/:uid/attachments/:index', requireApiKey, async (req, res) => {
+  try {
+    const uid = parseInt(req.params.uid);
+    const idx = parseInt(req.params.index);
+    const mailbox = req.query.mailbox || 'assurances';
+    
+    const { fetchEmailById } = require('./server-email.cjs');
+    const email = await fetchEmailById(mailbox, uid, true);
+    
+    if (!email.attachments || idx >= email.attachments.length) {
+      return res.status(404).json({ success: false, error: 'Pièce jointe non trouvée' });
+    }
+    
+    const att = email.attachments[idx];
+    const buffer = Buffer.from(att.content_base64 || att.content || att.data || '', 'base64');
+    
+    res.setHeader('Content-Type', att.contentType || att.content_type || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${att.filename || 'download'}"`);
+    res.send(buffer);
+  } catch (err) {
+    console.error('[IMAP] Download attachment:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/emails/forward — transférer un email
+router.post('/forward', requireApiKey, async (req, res) => {
+  try {
+    const { mailbox, uid, to, subject, text } = req.body;
+    const mailboxKey = mailbox || 'assurances';
+    
+    // Récupérer l'email original
+    const { fetchEmailById } = require('./server-email.cjs');
+    const original = await fetchEmailById(mailboxKey, parseInt(uid), true);
+    
+    const fwdSubject = subject || (original.subject?.startsWith('Fwd:') ? original.subject : `Fwd: ${original.subject || ''}`);
+    const fwdText = `\n\n---------- Message transféré ----------\nDe: ${original.from}\nDate: ${original.date}\nObjet: ${original.subject}\n\n${cleanTextBody(original.text || original.body || '')}\n\n----------------------------------------\n\n${text || ''}`;
+    
+    const info = await sendEmail(mailboxKey, { to, subject: fwdSubject, text: fwdText });
+    res.json({ success: true, ...info });
+  } catch (err) {
+    console.error('[SMTP] Forward:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
 module.exports = router;
+module.exports.fetchEmailById = fetchEmailById;
+module.exports.sendEmail = sendEmail;

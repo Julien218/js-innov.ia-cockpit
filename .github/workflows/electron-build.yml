@@ -1,10 +1,9 @@
-name: 🚀 Build JS-Innov.IA Cockpit Desktop
+name: Build Electron .exe Windows
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'electron/**'
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -12,104 +11,58 @@ permissions:
 
 jobs:
   build-windows:
-    name: 🪟 Build Windows (.exe)
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: electron
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install dependencies
-        working-directory: electron
         run: npm install
 
-      - name: Build Windows installer
-        working-directory: electron
+      - name: Build Windows .exe
         run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Windows artifact
+      - name: Upload .exe artifact
         uses: actions/upload-artifact@v4
         with:
-          name: JSInnovIA-Cockpit-Windows
+          name: JSInnovIA-Cockpit-Setup-Windows
           path: electron/dist/*.exe
-          retention-days: 30
+          retention-days: 90
 
-  build-mac:
-    name: 🍎 Build Mac (.dmg)
-    runs-on: macos-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        working-directory: electron
-        run: npm install
-
-      - name: Build Mac DMG
-        working-directory: electron
-        run: npm run build:mac
-
-      - name: Upload Mac artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: JSInnovIA-Cockpit-Mac
-          path: electron/dist/*.dmg
-          retention-days: 30
-
-  release:
-    name: 📦 Créer Release GitHub
-    needs: [build-windows, build-mac]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download Windows artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: JSInnovIA-Cockpit-Windows
-          path: dist/
-
-      - name: Download Mac artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: JSInnovIA-Cockpit-Mac
-          path: dist/
-
-      - name: List files
-        run: ls -la dist/
-
-      - name: Create Release
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: "🚀 JS-Innov.IA Cockpit v1.0.${{ github.run_number }}"
+          files: electron/dist/*.exe
+          name: "🚀 JS-Innov.IA Cockpit ${{ github.ref_name }}"
           body: |
-            ## JS-Innov.IA Cockpit — Release automatique
-
-            ### 📦 Téléchargements
-            - **Windows** : `.exe` installeur (double-clic pour installer)
-            - **Mac** : `.dmg` (glisser dans Applications)
-
-            ### ✅ Ce qui est inclus
-            - Tableau de bord complet avec KPIs
-            - CRM (Clients, Leads, Pipeline)
-            - Gestion projets, tâches, devis, factures, commissions
-            - **Julien AI** — agent IA intégré
-            - Logo JS-Innov.IA® officiel
-
-            ---
-            *🚀 JS-Innov.IA — Intelligence artificielle amplifiée par l'humain*
-          files: dist/*
-          draft: false
-          prerelease: false
+            ## JS-Innov.IA Cockpit ${{ github.ref_name }}
+            
+            ### Téléchargement
+            Téléchargez et lancez le fichier `.exe` — installation silencieuse, raccourci bureau créé automatiquement.
+            
+            ### Mise à jour
+            Si vous avez déjà une version installée, l'app vous notifiera automatiquement d'une mise à jour disponible.
+            Cliquez sur la notification ou faites un clic droit sur l'icône tray → "Vérifier les mises à jour".
+            
+            ### Inclus
+            - Cockpit complet (clients, devis, factures, tâches, projets)
+            - Boîte email avec pièces jointes (transfert + impression corrigés)
+            - Module Twilio (SMS, appels)
+            - Tray icon + Notifications Windows
+            - Splash screen
+            - Vérification automatique des mises à jour
+            - Fix crash Electron (TypeError: Object has been destroyed)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
