@@ -73,7 +73,7 @@ values (
     "simple_model": "gpt-5.6-luna",
     "balanced_model": "gpt-5.6-terra",
     "complex_model": "gpt-5.6-sol",
-    "max_request_usd": 2
+    "max_request_usd": 0
   }'::jsonb
 )
 on conflict (key) do nothing;
