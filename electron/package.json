@@ -1,6 +1,6 @@
 {
   "name": "jsinnovia-cockpit",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "JS-Innov.IA Cockpit — Application desktop Windows",
   "main": "main.js",
   "author": "Julien Pagin <julien@jsinnovia.com>",
@@ -11,6 +11,7 @@
   },
   "scripts": {
     "start": "electron .",
+    "check": "node --check main.js && node --check preload.js",
     "build:win": "electron-builder --win --publish never",
     "build:mac": "electron-builder --mac --publish never",
     "build:all": "electron-builder --win --mac --publish never"
@@ -31,6 +32,7 @@
       "main.js",
       "preload.js",
       "splash.html",
+      "agent-settings.html",
       "icon.png"
     ],
     "win": {
@@ -61,4 +63,3 @@
     }
   }
 }
-
