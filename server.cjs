@@ -135,45 +135,25 @@ try {
 // ── Version check for Electron auto-update ─────────────────
 app.get('/api/version', async (req, res) => {
   try {
-    const https = require('https');
+    const fs = require('fs');
+    const path = require('path');
+    const versionFile = path.join(__dirname, 'public', 'version.json');
     
-    const options = {
-      hostname: 'api.github.com',
-      path: '/repos/Julien218/js-innov.ia-cockpit/releases/latest',
-      method: 'GET',
-      headers: {
-        'User-Agent': 'jsinnovia-cockpit',
-        'Authorization': `Bearer ${process.env.GITHUB_TOKEN_4 || process.env.GITHUB_TOKEN || ''}`,
-      },
-    };
-    
-    const ghReq = https.request(options, (ghRes) => {
-      let data = '';
-      ghRes.on('data', c => data += c);
-      ghRes.on('end', () => {
-        try {
-          const release = JSON.parse(data);
-          if (release.tag_name) {
-            res.json({
-              success: true,
-              latest: {
-                version: release.tag_name,
-                name: release.name,
-                publishedAt: release.published_at,
-                downloadUrl: release.assets?.find(a => a.name.endsWith('.exe'))?.browser_download_url || null,
-                body: release.body,
-              },
-            });
-          } else {
-            res.json({ success: false, error: 'No release found' });
-          }
-        } catch (e) {
-          res.json({ success: false, error: 'Parse error' });
-        }
+    if (fs.existsSync(versionFile)) {
+      const versionData = JSON.parse(fs.readFileSync(versionFile, 'utf8'));
+      res.json({ success: true, latest: versionData });
+    } else {
+      // Fallback: return hardcoded version
+      res.json({
+        success: true,
+        latest: {
+          version: '1.0.0',
+          publishedAt: '2026-06-18',
+          downloadUrl: 'https://github.com/Julien218/js-innov.ia-cockpit/releases/latest',
+          changelog: 'Version initiale',
+        },
       });
-    });
-    ghReq.on('error', () => res.json({ success: false, error: 'GitHub API error' }));
-    ghReq.end();
+    }
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
