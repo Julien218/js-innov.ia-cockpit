@@ -137,13 +137,10 @@ function EmailDetail({ email, onBack, onReply, onForward, onPrint, onDelete, onA
 
   const handlePrint = () => {
     if (onPrint) onPrint();
-    const content = printRef.current;
-    if (!content) return;
-    const win = window.open('', '_blank', 'width=800,height=600');
-    if (!win) { alert('Autorise les popups pour imprimer'); return; }
-    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${email.subject || 'Email'}</title>
+    const printHTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${email.subject || 'Email'}</title>
     <style>
-      body { font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; max-width: 700px; margin: 40px auto; padding: 20px; color: #222; line-height: 1.6; }
+      @page { margin: 2cm; }
+      body { font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 0; color: #222; line-height: 1.6; }
       .header { border-bottom: 2px solid #D4AF37; padding-bottom: 16px; margin-bottom: 20px; }
       .header h2 { font-size: 20px; margin: 0 0 8px 0; }
       .meta { font-size: 12px; color: #666; }
@@ -158,12 +155,35 @@ function EmailDetail({ email, onBack, onReply, onForward, onPrint, onDelete, onA
       <div class="meta"><strong>De:</strong> ${email.from || '—'}<br><strong>Date:</strong> ${formatDate(email.date)}<br><strong>À:</strong> ${email.to || '—'}</div>
     </div>
     <div class="body">${bodyText || '(corps vide)'}</div>
-    ${email.attachments?.length > 0 ? `<div class="attachments"><strong>Pièces jointes (${email.attachments.length}):</strong><br>${email.attachments.map(a => `<div class="att">📎 ${a.filename} (${formatSize(a.size)})</div>`).join('')}</div>` : ''}
+    ${email.attachments?.length > 0 ? `<div class="attachments"><strong>Pièces jointes (${email.attachments.length}):</strong><br>${email.attachments.map(a => `<div class="att">\u00F0\u009F\u0093\u008E ${a.filename} (${formatSize(a.size)})</div>`).join('')}</div>` : ''}
     <div class="footer">JS-Innov.IA Cockpit — Email imprimé le ${formatDate(new Date().toISOString())}</div>
-    </body></html>`);
-    win.document.close();
-    win.focus();
-    setTimeout(() => { win.print(); }, 300);
+    </body></html>`;
+
+    // Utiliser une iframe cachée au lieu de window.open (évite l'ouverture d'une app externe)
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed; right:0; bottom:0; width:0; height:0; border:0; visibility:hidden;';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(printHTML);
+    doc.close();
+    // Attendre que le contenu soit rendu puis imprimer
+    iframe.contentWindow.onload = () => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      // Nettoyer l'iframe après l'impression
+      setTimeout(() => { document.body.removeChild(iframe); }, 2000);
+    };
+    // Fallback si onload ne se déclenche pas (content déjà écrit)
+    setTimeout(() => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch(e) { /* déjà imprimé ou fenêtre fermée */ }
+      setTimeout(() => {
+        if (iframe.parentNode) document.body.removeChild(iframe);
+      }, 2000);
+    }, 500);
   };
 
   return (
@@ -263,16 +283,30 @@ function ComposeModal({ open, onClose, fromEmail, replyTo, forwardTo, onSend }) 
 
   useEffect(() => {
     if (open) {
-      setStatus(null); setError(null); setAttachments([]);
+      setStatus(null); setError(null);
       if (replyTo) {
+        setAttachments([]);
         setTo(extractSender(replyTo.from).email || replyTo.from || '');
         setSubject(replyTo.subject?.startsWith('Re:') ? replyTo.subject : `Re: ${replyTo.subject || ''}`);
         setBody(`\n\n---\nLe ${formatDate(replyTo.date)}, ${replyTo.from || ''} a écrit :\n\n${cleanTextBody(replyTo.text || '').substring(0, 400)}`);
       } else if (forwardTo) {
+        // Pré-charger les pièces jointes de l'email transféré
+        const fwdAttachments = (forwardTo.attachments || [])
+          .filter(a => a.content_base64)
+          .map(a => ({
+            filename: a.filename || 'attachment',
+            content_base64: a.content_base64,
+            content_type: a.contentType || 'application/octet-stream',
+            size: a.size || 0,
+          }));
+        setAttachments(fwdAttachments);
         setTo('');
         setSubject(forwardTo.subject?.startsWith('Fwd:') ? forwardTo.subject : `Fwd: ${forwardTo.subject || ''}`);
         setBody(`\n\n---------- Message transféré ----------\nDe: ${forwardTo.from || ''}\nDate: ${formatDate(forwardTo.date)}\nObjet: ${forwardTo.subject || ''}\n\n${cleanTextBody(forwardTo.text || '').substring(0, 1000)}\n\n----------------------------------------\n`);
-      } else { setTo(''); setSubject(''); setBody(''); }
+      } else {
+        setAttachments([]);
+        setTo(''); setSubject(''); setBody('');
+      }
     }
   }, [open, replyTo, forwardTo]);
 

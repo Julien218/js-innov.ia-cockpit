@@ -216,7 +216,7 @@ function fetchEmails(mailboxKey, { folder = 'INBOX', limit = 30, offset = 0 } = 
 }
 
 // ── Fetch email par UID ──────────────────────────────────────
-function fetchEmailById(mailboxKey, uid) {
+function fetchEmailById(mailboxKey, uid, includeAttachments = false) {
   return new Promise((resolve, reject) => {
     if (isAliasMailbox(mailboxKey)) {
       return reject(new Error('Cette adresse est un alias de redirection, pas une boîte IMAP.'));
@@ -263,6 +263,9 @@ function fetchEmailById(mailboxKey, uid) {
                 filename: a.filename,
                 contentType: a.contentType,
                 size: a.size,
+                ...(includeAttachments && a.content ? {
+                  content_base64: a.content.toString('base64'),
+                } : {}),
               })),
               messageId: p.messageId || '',
               inReplyTo: p.inReplyTo || '',
@@ -933,14 +936,14 @@ router.get('/:uid/attachments/:index', requireApiKey, async (req, res) => {
     const mailbox = req.query.mailbox || 'assurances';
     
     const { fetchEmailById } = require('./server-email.cjs');
-    const email = await fetchEmailById(mailbox, uid);
+    const email = await fetchEmailById(mailbox, uid, true);
     
     if (!email.attachments || idx >= email.attachments.length) {
       return res.status(404).json({ success: false, error: 'Pièce jointe non trouvée' });
     }
     
     const att = email.attachments[idx];
-    const buffer = Buffer.from(att.content || att.data || '', 'base64');
+    const buffer = Buffer.from(att.content_base64 || att.content || att.data || '', 'base64');
     
     res.setHeader('Content-Type', att.contentType || att.content_type || 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${att.filename || 'download'}"`);
@@ -959,7 +962,7 @@ router.post('/forward', requireApiKey, async (req, res) => {
     
     // Récupérer l'email original
     const { fetchEmailById } = require('./server-email.cjs');
-    const original = await fetchEmailById(mailboxKey, parseInt(uid));
+    const original = await fetchEmailById(mailboxKey, parseInt(uid), true);
     
     const fwdSubject = subject || (original.subject?.startsWith('Fwd:') ? original.subject : `Fwd: ${original.subject || ''}`);
     const fwdText = `\n\n---------- Message transféré ----------\nDe: ${original.from}\nDate: ${original.date}\nObjet: ${original.subject}\n\n${cleanTextBody(original.text || original.body || '')}\n\n----------------------------------------\n\n${text || ''}`;
