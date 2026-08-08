@@ -119,6 +119,15 @@ try {
   const emailCoreRouter = require('./server-email-core.cjs');
   app.use('/api/emails', emailCoreRouter);
   console.log('✅ Route /api/emails (core framework) activée');
+
+// ── Twilio ────────────────────────────────────────────────
+try {
+  const twilioRouter = require('./server-twilio.cjs');
+  app.use('/api/twilio', twilioRouter);
+  console.log('✅ Route /api/twilio activée');
+} catch (e) {
+  console.warn('⚠️ Route twilio indisponible:', e.message);
+}
 } catch (e) {
   console.warn('⚠️ Route email-core indisponible:', e.message);
 }

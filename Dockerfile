@@ -39,6 +39,7 @@ COPY server-billing.cjs ./server-billing.cjs
 COPY server-security.cjs ./server-security.cjs
 COPY server-assistant.cjs ./server-assistant.cjs
 COPY server-email-core.cjs ./server-email-core.cjs
+COPY server-twilio.cjs ./server-twilio.cjs
 COPY assets ./assets
 
 # Installer les dépendances prod (imap, mailparser, express, cookie, assistant)
