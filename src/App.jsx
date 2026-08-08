@@ -52,6 +52,7 @@ import Portfolio from "@/pages/Portfolio";
 import Automations from "@/pages/Automations";
 import Emails from "@/pages/Emails";
 import EmailCore from "@/pages/EmailCore";
+import Twilio from "@/pages/Twilio";
 import AppErrorBoundary from "@/components/shared/AppErrorBoundary";
 
 // Wrapper per-route — isole les crashes par page au lieu de tout casser
@@ -132,6 +133,7 @@ const AppRoutes = () => {
           {/* Emails */}
           <Route path="/emails" element={<PageBoundary><Emails /></PageBoundary>} />
           <Route path="/emails-core" element={<PageBoundary><EmailCore /></PageBoundary>} />
+          <Route path="/twilio" element={<PageBoundary><Twilio /></PageBoundary>} />
           <Route path="/amails" element={<Navigate to="/emails?folder=sent" replace />} />
 
           {/* Paramètres */}
