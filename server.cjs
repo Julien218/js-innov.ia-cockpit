@@ -1,7 +1,6 @@
 // server.cjs — API uniquement (nginx gère le SPA statique)
 // Écoute sur :3001, accessible via nginx proxy /api/
 const express = require('express');
-const path = require('path');
 const app = express();
 const PORT = process.env.API_PORT || 3001;
 
@@ -27,12 +26,11 @@ try {
 try {
   const billingRouter = require('./server-billing.cjs');
   app.use('/api/billing', billingRouter);
-  console.log('Route /api/billing activée');
+  console.log('Route billing activée');
 } catch (e) {
   console.warn('Route billing indisponible:', e.message);
 }
 
-// Proxy assurances protégé par session : Julien superadmin et Olivier uniquement.
 try {
   const insuranceRouter = require('./server-insurance.cjs');
   app.use('/api/insurance', insuranceRouter);
@@ -41,14 +39,15 @@ try {
   console.warn('Route assurances indisponible:', e.message);
 }
 
-// Proxy de données existant — conservé sans modification fonctionnelle.
-const AGENT_PROXY_URL = process.env.VITE_AGENT_URL
-  || process.env.JSINNOVIA_AGENT_URL
-  || 'https://jsinnovia-agent-production.up.railway.app';
+const AGENT_PROXY_URL = process.env.JSINNOVIA_AGENT_URL || '';
 const AGENT_PROXY_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
 
 app.use('/api/data', async (req, res) => {
-  const targetUrl = `${AGENT_PROXY_URL}/data${req.url}`;
+  if (!AGENT_PROXY_URL || !AGENT_PROXY_KEY) {
+    return res.status(503).json({ error: 'Backend de données non configuré.' });
+  }
+
+  const targetUrl = `${AGENT_PROXY_URL.replace(/\/$/, '')}/data${req.url}`;
   const method = req.method;
   const fetchOptions = {
     method,
@@ -70,7 +69,7 @@ app.use('/api/data', async (req, res) => {
     return res.status(response.status).set('Content-Type', contentType).send(body);
   } catch (err) {
     console.error('[Proxy /api/data] Error:', err.message);
-    return res.status(502).json({ error: 'Proxy error: ' + err.message });
+    return res.status(502).json({ error: 'Service de données indisponible.' });
   }
 });
 
@@ -78,5 +77,5 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cockpit-
 
 app.listen(PORT, () => {
   console.log(`JS-Innov.IA Cockpit API — port ${PORT}`);
-  console.log(`Proxy /api/data → ${AGENT_PROXY_URL}/data`);
+  console.log(`Proxy /api/data configuré: ${Boolean(AGENT_PROXY_URL && AGENT_PROXY_KEY)}`);
 });
