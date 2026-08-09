@@ -81,6 +81,59 @@ function BreakdownTable({ title, icon: Icon, rows, emptyLabel }) {
   );
 }
 
+function ProviderBillingCard({ provider }) {
+  const isOpenAI = provider?.provider === 'openai';
+  const label = isOpenAI ? 'OpenAI API' : 'Grok / xAI API';
+  const configured = Boolean(provider?.configured);
+  const available = Boolean(provider?.available);
+  const value = available ? usd(provider?.cost_usd, 4) : configured ? 'Indisponible' : 'À configurer';
+  const required = Array.isArray(provider?.required_variables) ? provider.required_variables.join(' + ') : '';
+
+  return (
+    <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`w-2.5 h-2.5 rounded-full ${available ? 'bg-emerald-500' : configured ? 'bg-amber-500' : 'bg-slate-400'}`} />
+            <h3 className="font-semibold">{label}</h3>
+          </div>
+          <p className="text-2xl font-bold mt-3 tabular-nums">{value}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {available ? (provider.source || 'Facturation fournisseur') : configured ? (provider.error || 'API de facturation non joignable') : `Secret serveur requis : ${required || 'configuration manquante'}`}
+          </p>
+        </div>
+        <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+          {isOpenAI ? <CircleDollarSign className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
+        </div>
+      </div>
+
+      {available && isOpenAI && Array.isArray(provider.line_items) && provider.line_items.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-border/70 space-y-1.5">
+          {provider.line_items.slice(0, 3).map((item) => (
+            <div key={item.label} className="flex justify-between gap-3 text-xs">
+              <span className="text-muted-foreground truncate">{item.label}</span>
+              <span className="font-medium tabular-nums">{usd(item.cost_usd, 4)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {available && !isOpenAI && (
+        <div className="mt-4 pt-3 border-t border-border/70 grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <p className="text-muted-foreground">Aperçu postpaid</p>
+            <p className="font-semibold">{provider.postpaid_invoice_preview_usd == null ? '—' : usd(provider.postpaid_invoice_preview_usd, 2)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Limite postpaid</p>
+            <p className="font-semibold">{provider.spending_limit_usd == null ? '—' : usd(provider.spending_limit_usd, 2)}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AICostControl() {
   const [month, setMonth] = useState(currentMonth());
   const [saving, setSaving] = useState('');
@@ -107,8 +160,18 @@ export default function AICostControl() {
     refetchInterval: 60000,
   });
 
+  const providerBillingQuery = useQuery({
+    queryKey: ['ai-provider-billing', month],
+    queryFn: () => fetchJson(`/api/ai-cost/provider-billing?month=${encodeURIComponent(month)}`),
+    refetchInterval: 300000,
+    retry: false,
+  });
+
   const summary = summaryQuery.data;
   const globalBudget = summary?.global_budget;
+  const providerBilling = providerBillingQuery.data;
+  const openAiBilling = providerBilling?.providers?.find((item) => item.provider === 'openai');
+  const xaiBilling = providerBilling?.providers?.find((item) => item.provider === 'xai');
 
   useEffect(() => {
     if (!globalBudget) return;
@@ -144,7 +207,7 @@ export default function AICostControl() {
         body: JSON.stringify({
           scope_type: 'global',
           scope_key: 'global',
-          scope_name: 'Budget OpenAI global',
+          scope_name: 'Budget IA global',
           enabled: budgetForm.enabled,
           monthly_budget_usd: Number(budgetForm.monthly_budget_usd || 0),
           hard_limit_usd: Number(budgetForm.hard_limit_usd || 0),
@@ -211,7 +274,7 @@ export default function AICostControl() {
             </div>
             <div>
               <h1 className="text-2xl font-bold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>AI Cost Control</h1>
-              <p className="text-sm text-muted-foreground">Coûts OpenAI, budgets, alertes et routage intelligent des modèles.</p>
+              <p className="text-sm text-muted-foreground">Coûts internes, budgets et facturation réelle OpenAI + Grok/xAI.</p>
             </div>
           </div>
         </div>
@@ -223,10 +286,10 @@ export default function AICostControl() {
             className="h-10 px-3 rounded-xl border border-border bg-background text-sm"
           />
           <button
-            onClick={() => { summaryQuery.refetch(); usageQuery.refetch(); }}
+            onClick={() => { summaryQuery.refetch(); usageQuery.refetch(); providerBillingQuery.refetch(); }}
             className="h-10 px-3 rounded-xl border border-border hover:bg-muted flex items-center gap-2 text-sm"
           >
-            <RefreshCw className="w-4 h-4" /> Actualiser
+            <RefreshCw className={`w-4 h-4 ${providerBillingQuery.isFetching ? 'animate-spin' : ''}`} /> Actualiser
           </button>
         </div>
       </div>
@@ -245,10 +308,35 @@ export default function AICostControl() {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <KpiCard icon={CircleDollarSign} label="Dépense du mois" value={usd(totals.cost_usd)} detail={`${totals.requests || 0} appels enregistrés`} />
+        <KpiCard icon={CircleDollarSign} label="Dépense interne suivie" value={usd(totals.cost_usd)} detail={`${totals.requests || 0} appels enregistrés`} />
         <KpiCard icon={TrendingUp} label="Prévision fin de mois" value={usd(totals.forecast_usd)} detail="Projection au rythme actuel" tone="violet" />
         <KpiCard icon={ShieldCheck} label="Budget restant" value={remaining === null ? 'À configurer' : usd(remaining)} detail={globalBudget?.enabled ? `${globalBudget.percent || 0}% consommé` : 'Protection désactivée'} tone="emerald" />
         <KpiCard icon={Bot} label="Tokens" value={tokens((totals.input_tokens || 0) + (totals.output_tokens || 0))} detail={`${tokens(totals.input_tokens)} entrée · ${tokens(totals.output_tokens)} sortie`} tone="amber" />
+      </div>
+
+      <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-4">
+          <div>
+            <h2 className="font-semibold">Facturation fournisseurs API</h2>
+            <p className="text-xs text-muted-foreground">Lecture serveur uniquement. Les clés Admin/Management ne sont jamais envoyées au navigateur.</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-muted-foreground">Total disponible</p>
+            <p className="font-bold tabular-nums">{providerBilling ? usd(providerBilling.total_provider_cost_usd, 4) : providerBillingQuery.isLoading ? 'Chargement…' : '—'}</p>
+          </div>
+        </div>
+        {providerBillingQuery.isError && (
+          <div className="mb-4 rounded-xl px-4 py-3 text-sm bg-amber-500/10 border border-amber-500/20 text-amber-700">
+            Facturation fournisseur temporairement indisponible : {providerBillingQuery.error?.message}
+          </div>
+        )}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <ProviderBillingCard provider={openAiBilling || { provider: 'openai', configured: false, required_variables: ['OPENAI_ADMIN_KEY'] }} />
+          <ProviderBillingCard provider={xaiBilling || { provider: 'xai', configured: false, required_variables: ['XAI_MANAGEMENT_API_KEY', 'XAI_TEAM_ID'] }} />
+        </div>
+        <p className="text-[11px] text-muted-foreground mt-3">
+          OpenAI utilise la Costs API d’organisation pour une valeur réconciliable avec la facture. xAI utilise la Management Billing API pour la consommation Grok de l’équipe.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">

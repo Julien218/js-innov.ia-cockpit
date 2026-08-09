@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { requireSession } = require('./server-security.cjs');
+const { getProviderBilling } = require('./server-provider-billing.cjs');
 
 const router = express.Router();
 
@@ -352,6 +353,17 @@ router.get('/usage', adminGuard, async (req, res) => {
     res.json({ month: window.month, items: rows });
   } catch (error) {
     res.status(503).json({ error: 'Historique indisponible' });
+  }
+});
+
+router.get('/provider-billing', adminGuard, async (req, res) => {
+  try {
+    const window = monthWindow(req.query.month);
+    const billing = await getProviderBilling(window);
+    res.json(billing);
+  } catch (error) {
+    console.error('[ai-cost] provider billing failed:', error.message);
+    res.status(503).json({ error: 'Facturation fournisseurs indisponible' });
   }
 });
 
