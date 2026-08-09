@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'server-ai-cost.cjs'
+      - 'server-provider-billing.cjs'
       - 'server-assistant.cjs'
       - 'server.cjs'
       - 'src/pages/AICostControl.jsx'
@@ -11,13 +12,16 @@ on:
       - 'src/components/layout/Sidebar.jsx'
       - 'src/lib/roles.js'
       - 'tests/ai-cost-control.test.cjs'
+      - 'tests/provider-billing.test.cjs'
       - 'supabase/migrations/002_ai_cost_control.sql'
       - '.github/workflows/ai-cost-control-ci.yml'
   push:
     branches:
       - 'feat/ai-cost-control'
+      - 'feat/provider-billing-openai-xai'
     paths:
       - 'server-ai-cost.cjs'
+      - 'server-provider-billing.cjs'
       - 'server-assistant.cjs'
       - 'server.cjs'
       - 'src/pages/AICostControl.jsx'
@@ -25,6 +29,7 @@ on:
       - 'src/components/layout/Sidebar.jsx'
       - 'src/lib/roles.js'
       - 'tests/ai-cost-control.test.cjs'
+      - 'tests/provider-billing.test.cjs'
       - 'supabase/migrations/002_ai_cost_control.sql'
       - '.github/workflows/ai-cost-control-ci.yml'
 
@@ -50,6 +55,9 @@ jobs:
 
       - name: Unit tests
         run: npm test
+
+      - name: Server syntax
+        run: node --check server-ai-cost.cjs && node --check server-provider-billing.cjs
 
       - name: Lint
         run: npm run lint
