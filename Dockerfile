@@ -33,6 +33,8 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
 # Tous les modules serveur sont embarqués afin d'éviter une route manquante lors d'un ajout futur.
+# Cache-bust: force re-copy of all server modules
+ARG CACHE_BUST=1
 COPY server-*.cjs ./
 COPY assets ./assets
 COPY public ./public
