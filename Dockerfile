@@ -32,13 +32,27 @@ COPY --from=builder /app/dist ./dist
 # Copier les fichiers serveur
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
-# Tous les modules serveur sont embarqués afin d'éviter une route manquante lors d'un ajout futur.
-COPY --from=builder /app/server-*.cjs ./
+# Tous les modules serveur embarqués explicitement (pas de glob, pour fiabilité maximale)
+COPY --from=builder /app/server.cjs ./server.cjs
+COPY --from=builder /app/server-auth.cjs ./server-auth.cjs
+COPY --from=builder /app/server-email.cjs ./server-email.cjs
+COPY --from=builder /app/server-email-core.cjs ./server-email-core.cjs
+COPY --from=builder /app/server-email-compose.cjs ./server-email-compose.cjs
+COPY --from=builder /app/server-billing.cjs ./server-billing.cjs
+COPY --from=builder /app/server-security.cjs ./server-security.cjs
+COPY --from=builder /app/server-assistant.cjs ./server-assistant.cjs
+COPY --from=builder /app/server-ai-cost.cjs ./server-ai-cost.cjs
+COPY --from=builder /app/server-twilio.cjs ./server-twilio.cjs
+COPY --from=builder /app/server-insurance.cjs ./server-insurance.cjs
+COPY --from=builder /app/server-insurance-mailbox.cjs ./server-insurance-mailbox.cjs
+COPY --from=builder /app/server-documents.cjs ./server-documents.cjs
 COPY assets ./assets
 COPY public ./public
 
 # Installer les dépendances prod (imap, mailparser, express, cookie, assistant)
 RUN npm ci --omit=dev --legacy-peer-deps
+# Verify all server modules are present
+RUN ls -la /app/server-*.cjs | wc -l && echo "Server modules check OK" 
 
 # Config nginx — SPA fallback + proxy /api vers Express :3001 + headers sécurité
 RUN mkdir -p /etc/nginx/http.d && cat > /etc/nginx/http.d/default.conf << 'NGINXEOF'
