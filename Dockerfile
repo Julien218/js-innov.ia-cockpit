@@ -32,15 +32,8 @@ COPY --from=builder /app/dist ./dist
 # Copier les fichiers serveur
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
-COPY server.cjs ./server.cjs
-COPY server-auth.cjs ./server-auth.cjs
-COPY server-email.cjs ./server-email.cjs
-COPY server-billing.cjs ./server-billing.cjs
-COPY server-security.cjs ./server-security.cjs
-COPY server-assistant.cjs ./server-assistant.cjs
-COPY server-ai-cost.cjs ./server-ai-cost.cjs
-COPY server-email-core.cjs ./server-email-core.cjs
-COPY server-twilio.cjs ./server-twilio.cjs
+# Tous les modules serveur sont embarqués afin d'éviter une route manquante lors d'un ajout futur.
+COPY server-*.cjs ./
 COPY assets ./assets
 COPY public ./public
 

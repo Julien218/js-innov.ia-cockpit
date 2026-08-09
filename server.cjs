@@ -38,6 +38,24 @@ try {
   console.warn('⚠️ Route emails indisponible:', e.message);
 }
 
+// ── Coffre documentaire Dropbox + index Supabase ───────────
+try {
+  const documentsRouter = require('./server-documents.cjs');
+  app.use('/api/documents', requireSession('collaborateur'), documentsRouter);
+  console.log('✅ Route /api/documents activée (Dropbox + index Supabase)');
+} catch (e) {
+  console.warn('⚠️ Route documents indisponible:', e.message);
+}
+
+// ── Composition email avec pièces jointes / Dropbox ─────────
+try {
+  const emailComposeRouter = require('./server-email-compose.cjs');
+  app.use('/api/email-compose', requireSession('admin'), emailComposeRouter);
+  console.log('✅ Route /api/email-compose activée (pièces jointes + Dropbox)');
+} catch (e) {
+  console.warn('⚠️ Route email-compose indisponible:', e.message);
+}
+
 // ── API Billing (PDF + envoi devis/factures) ─────────────────
 try {
   const billingRouter = require('./server-billing.cjs');
@@ -123,7 +141,6 @@ try {
   console.warn('Route assistant indisponible:', e.message);
 }
 
-
 // ── Email Core Framework (queue + send + API) ──────────────
 try {
   const emailCoreRouter = require('./server-email-core.cjs');
@@ -132,6 +149,7 @@ try {
 } catch (e) {
   console.warn('⚠️ Route email-core indisponible:', e.message);
 }
+
 // Health check API
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cockpit-api' }));
 
