@@ -7,6 +7,10 @@ on:
       - 'server-email-compose.cjs'
       - 'server.cjs'
       - 'src/pages/Emails.jsx'
+      - 'src/pages/Documents.jsx'
+      - 'src/App.jsx'
+      - 'src/components/layout/Sidebar.jsx'
+      - 'src/lib/roles.js'
       - 'Dockerfile'
       - '.env.example'
       - 'supabase/migrations/20260808021700_dropbox_document_index.sql'
@@ -14,6 +18,7 @@ on:
   push:
     branches:
       - feat/dropbox-documents-email-attachments
+      - feat/documents-center-page
 
 permissions:
   contents: read
