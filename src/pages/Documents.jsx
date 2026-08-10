@@ -367,7 +367,7 @@ export default function Documents() {
   );
 }
 
-function Metric({ icon: Icon, label, value, good }) {
+function Metric({ icon: Icon, label, value, good = false }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3.5">
       <div className="flex items-center gap-2 text-xs text-slate-400"><Icon className="w-4 h-4" /> {label}</div>
