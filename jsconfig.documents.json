@@ -1,0 +1,5 @@
+{
+  "extends": "./jsconfig.json",
+  "include": ["src/pages/Documents.jsx"],
+  "exclude": ["node_modules", "dist"]
+}
