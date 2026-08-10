@@ -51,8 +51,6 @@ const useDemandeBadge = () => {
   return data.filter(d => d.statut === "ouverte").length;
 };
 
-
-// ── Statut Agent Local 8787 ───────────────────────────────────────────
 const useAgentLocalStatus = () => {
   const [status, setStatus] = React.useState('checking');
   React.useEffect(() => {
@@ -75,7 +73,6 @@ const ROLE_ICONS = {
   client: User,
 };
 
-// ─── MENU PRINCIPAL v2 ──────────────────────────────────────────────────────
 const allNavGroups = [
   {
     label: "Pilotage",
@@ -90,6 +87,7 @@ const allNavGroups = [
     items: [
       { label: "Clients", icon: Users, path: "/clients", minRole: "collaborateur" },
       { label: "Leads", icon: Target, path: "/leads", minRole: "collaborateur" },
+      { label: "Documents", icon: FileText, path: "/documents", minRole: "collaborateur" },
       { label: "Demandes", icon: MessageSquare, path: "/demandes", badge: "demandes" },
     ]
   },
@@ -207,7 +205,6 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >
-        {/* Logo */}
         <div className={cn(
           "flex items-center gap-3 px-4 py-4 border-b border-border",
           collapsed && "md:justify-center md:px-2"
@@ -230,7 +227,6 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
           </button>
         </div>
 
-        {/* Badge rôle */}
         {!collapsed && (
           <div className="mx-3 mt-3 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5"
             style={{ backgroundColor: colors.badge + "15" }}>
@@ -241,7 +237,6 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
           </div>
         )}
 
-        {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
           {navGroups.map((group) => (
             <div key={group.label} className="mb-3">
@@ -298,7 +293,6 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
           ))}
         </nav>
 
-        {/* Collapse toggle desktop */}
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="hidden md:flex items-center justify-center py-2 border-t border-border text-muted-foreground hover:bg-muted"
@@ -306,7 +300,6 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
           {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
         </button>
 
-        {/* User footer */}
         {!collapsed ? (
           <div className="border-t border-border p-3">
             <div className="flex items-center gap-2 mb-2">
