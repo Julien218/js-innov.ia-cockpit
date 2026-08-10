@@ -16,6 +16,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 // Pages
 import Dashboard from "@/pages/Dashboard";
 import Assurances from "@/pages/Assurances";
+import Documents from "@/pages/Documents";
 // ── Nouvelles pages v2
 import AppsAgents from "@/pages/AppsAgents";
 import Production from "@/pages/Production";
@@ -55,7 +56,6 @@ import EmailCore from "@/pages/EmailCore";
 import Twilio from "@/pages/Twilio";
 import AppErrorBoundary from "@/components/shared/AppErrorBoundary";
 
-// Wrapper per-route — isole les crashes par page au lieu de tout casser
 const PageBoundary = ({ children }) => <AppErrorBoundary>{children}</AppErrorBoundary>;
 
 const AppRoutes = () => {
@@ -71,50 +71,38 @@ const AppRoutes = () => {
 
   return (
     <Routes>
-      {/* ─── Routes publiques ─────────────────────────── */}
       <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/register" element={<Register />} />
 
-      {/* ─── Routes protégées ─────────────────────────── */}
       <Route element={<ProtectedRoute />}>
         <Route element={<AppErrorBoundary><AppLayout /></AppErrorBoundary>}>
           <Route path="/" element={<PageBoundary><Dashboard /></PageBoundary>} />
           <Route path="/assurances" element={<PageBoundary><Assurances /></PageBoundary>} />
+          <Route path="/documents" element={<PageBoundary><Documents /></PageBoundary>} />
 
-          {/* CRM */}
           <Route path="/clients" element={<PageBoundary><Clients /></PageBoundary>} />
           <Route path="/leads" element={<PageBoundary><Leads /></PageBoundary>} />
 
-          {/* Opérations */}
           <Route path="/projets" element={<PageBoundary><Projets /></PageBoundary>} />
           <Route path="/mes-projets" element={<PageBoundary><Projets /></PageBoundary>} />
           <Route path="/taches" element={<PageBoundary><Taches /></PageBoundary>} />
           <Route path="/demandes" element={<PageBoundary><Demandes /></PageBoundary>} />
 
-          {/* Finance */}
           <Route path="/devis" element={<PageBoundary><Devis /></PageBoundary>} />
           <Route path="/mes-devis" element={<PageBoundary><Devis /></PageBoundary>} />
           <Route path="/factures" element={<PageBoundary><Factures /></PageBoundary>} />
           <Route path="/mes-factures" element={<PageBoundary><Factures /></PageBoundary>} />
           <Route path="/commissions" element={<PageBoundary><Commissions /></PageBoundary>} />
 
-          {/* IA & Contrôle */}
           <Route path="/agent" element={<PageBoundary><Agent /></PageBoundary>} />
           <Route path="/agents-ia" element={<PageBoundary><AgentsIA /></PageBoundary>} />
           <Route path="/ai-cost-control" element={<PageBoundary><AICostControl /></PageBoundary>} />
           <Route path="/validations" element={<PageBoundary><Validations /></PageBoundary>} />
           <Route path="/logs" element={<PageBoundary><Logs /></PageBoundary>} />
-
-          {/* Équipe */}
           <Route path="/invitations" element={<PageBoundary><Invitations /></PageBoundary>} />
-
-          {/* VilleConnect */}
           <Route path="/commercants" element={<PageBoundary><Commercants /></PageBoundary>} />
-
-          {/* Catalogue */}
           <Route path="/services" element={<Services />} />
 
-          {/* ── Studio Vidéo */}
           <Route path="/video-studio" element={<VideoStudio />} />
           <Route path="/video-studio/new" element={<VideoStudio />} />
           <Route path="/video-studio/:id" element={<VideoStudio />} />
@@ -126,20 +114,15 @@ const AppRoutes = () => {
           <Route path="/templates" element={<Templates />} />
           <Route path="/calendar" element={<ProjectCalendar />} />
 
-          {/* Portfolio & Automatisations */}
           <Route path="/portfolio" element={<PageBoundary><Portfolio /></PageBoundary>} />
           <Route path="/automations" element={<PageBoundary><Automations /></PageBoundary>} />
 
-          {/* Emails */}
           <Route path="/emails" element={<PageBoundary><Emails /></PageBoundary>} />
           <Route path="/emails-core" element={<PageBoundary><EmailCore /></PageBoundary>} />
           <Route path="/twilio" element={<PageBoundary><Twilio /></PageBoundary>} />
           <Route path="/amails" element={<Navigate to="/emails?folder=sent" replace />} />
 
-          {/* Paramètres */}
           <Route path="/parametres" element={<PageBoundary><Parametres /></PageBoundary>} />
-
-          {/* ── Nouvelles pages v2 ─────────────────────────── */}
           <Route path="/apps-agents" element={<PageBoundary><AppsAgents /></PageBoundary>} />
           <Route path="/production" element={<PageBoundary><Production /></PageBoundary>} />
           <Route path="/domaines" element={<PageBoundary><Domaines /></PageBoundary>} />
@@ -147,7 +130,6 @@ const AppRoutes = () => {
         </Route>
       </Route>
 
-      {/* ─── 404 ──────────────────────────────────────── */}
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

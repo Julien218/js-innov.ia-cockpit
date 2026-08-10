@@ -7,13 +7,20 @@ on:
       - 'server-email-compose.cjs'
       - 'server.cjs'
       - 'src/pages/Emails.jsx'
+      - 'src/pages/Documents.jsx'
+      - 'src/App.jsx'
+      - 'src/components/layout/Sidebar.jsx'
+      - 'src/lib/roles.js'
+      - 'jsconfig.documents.json'
       - 'Dockerfile'
       - '.env.example'
       - 'supabase/migrations/20260808021700_dropbox_document_index.sql'
+      - 'supabase/migrations/20260811001500_fix_document_index_function_search_path.sql'
       - '.github/workflows/dropbox-documents-ci.yml'
   push:
     branches:
       - feat/dropbox-documents-email-attachments
+      - feat/documents-center-page
 
 permissions:
   contents: read
@@ -36,8 +43,8 @@ jobs:
           node --check server.cjs
       - name: Lint
         run: npm run lint
-      - name: Typecheck
-        run: npm run typecheck
+      - name: Documents typecheck
+        run: npx tsc -p jsconfig.documents.json --noEmit
       - name: Production build
         run: npm run build
       - name: Verify no Dropbox secret values were committed

@@ -7,7 +7,6 @@ export const ROLES = {
   CLIENT: "client",
 };
 
-// Hiérarchie des rôles (plus le niveau est élevé, plus on a de droits)
 export const ROLE_LEVEL = {
   superadmin: 4,
   admin: 3,
@@ -15,7 +14,6 @@ export const ROLE_LEVEL = {
   client: 1,
 };
 
-// Labels affichés dans l'interface
 export const ROLE_LABELS = {
   superadmin: "Super Admin",
   admin: "Admin",
@@ -30,39 +28,34 @@ export const ROLE_COLORS = {
   client:     { bg: "#1a0d00", text: "#f97316", badge: "#f97316" },
 };
 
-// Routes accessibles par rôle — PRODUCTION v2
-// /assurances reste masquée aux rôles génériques : Olivier est autorisé nominativement
-// dans le composant et, surtout, côté serveur.
 export const ROLE_ROUTES = {
   superadmin: [
-    "/", "/assurances", "/clients", "/leads", "/demandes", "/projets", "/taches",
+    "/", "/assurances", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
     "/devis", "/factures", "/emails", "/emails-core",
     "/production", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
     "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations"
   ],
   admin: [
-    "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
+    "/", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
     "/devis", "/factures", "/emails", "/emails-core",
     "/production", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
     "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations"
   ],
   collaborateur: [
-    "/", "/projets", "/taches", "/demandes", "/agent", "/agents-ia"
+    "/", "/documents", "/projets", "/taches", "/demandes", "/agent", "/agents-ia"
   ],
   client: [
     "/", "/mes-projets", "/mes-devis", "/mes-factures", "/demandes", "/agents-ia"
   ],
 };
 
-// Vérifier si un rôle a accès à une route
 export const hasRouteAccess = (role, path) => {
   const routes = ROLE_ROUTES[role] || [];
   return routes.includes(path);
 };
 
-// Vérifier si un rôle a au moins le niveau d'un autre rôle
 export const hasMinRole = (userRole, requiredRole) => {
   return (ROLE_LEVEL[userRole] || 0) >= (ROLE_LEVEL[requiredRole] || 0);
 };
