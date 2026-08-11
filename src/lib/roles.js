@@ -34,20 +34,24 @@ export const ROLE_ROUTES = {
     "/devis", "/factures", "/emails", "/emails-core",
     "/production", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
-    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations"
+    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations",
+    "/ecran-geant", "/videosurveillance"
   ],
   admin: [
     "/", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
     "/devis", "/factures", "/emails", "/emails-core",
     "/production", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
-    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations"
+    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations",
+    "/ecran-geant", "/videosurveillance"
   ],
   collaborateur: [
-    "/", "/documents", "/projets", "/taches", "/demandes", "/agent", "/agents-ia"
+    "/", "/documents", "/projets", "/taches", "/demandes", "/agent", "/agents-ia",
+    "/ecran-geant", "/videosurveillance"
   ],
   client: [
-    "/", "/mes-projets", "/mes-devis", "/mes-factures", "/demandes", "/agents-ia"
+    "/", "/mes-projets", "/mes-devis", "/mes-factures", "/demandes", "/agents-ia",
+    "/ecran-geant", "/videosurveillance"
   ],
 };
 
