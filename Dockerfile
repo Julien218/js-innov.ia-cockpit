@@ -40,6 +40,7 @@ COPY --from=builder /app/server-twilio.cjs ./server-twilio.cjs
 COPY --from=builder /app/server-insurance.cjs ./server-insurance.cjs
 COPY --from=builder /app/server-insurance-mailbox.cjs ./server-insurance-mailbox.cjs
 COPY --from=builder /app/server-documents.cjs ./server-documents.cjs
+COPY --from=builder /app/server-ecranlead.cjs ./server-ecranlead.cjs
 COPY assets ./assets
 COPY public ./public
 
@@ -58,8 +59,6 @@ server {
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 
-    # Adresse produit dédiée. On conserve l'authentification sur cockpit.jsinnovia.com
-    # plutôt que d'élargir le cookie de session à tous les sous-domaines.
     if ($host = documents.jsinnovia.com) {
         return 302 https://cockpit.jsinnovia.com/documents;
     }

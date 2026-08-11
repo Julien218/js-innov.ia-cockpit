@@ -9,6 +9,18 @@ import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
 import { Pencil, Trash2 } from "lucide-react";
 
+const sourceLabels = {
+  site_web: "Site web",
+  chatbot: "Chatbot",
+  formulaire: "Formulaire",
+  recommandation: "Recommandation",
+  linkedin: "LinkedIn",
+  salon: "Salon",
+  appel_entrant: "Appel entrant",
+  ecran_led: "Écran LED",
+  autre: "Autre",
+};
+
 const formFields = [
   { name: "nom",        label: "Nom",        type: "text",   required: true },
   { name: "prenom",     label: "Prénom",      type: "text" },
@@ -16,18 +28,21 @@ const formFields = [
   { name: "telephone",  label: "Téléphone",   type: "text" },
   { name: "entreprise", label: "Entreprise",  type: "text" },
   { name: "source",     label: "Source",      type: "select",
-    options: ["site_web","chatbot","formulaire","recommandation","linkedin","autre"] },
+    options: ["site_web","recommandation","linkedin","salon","appel_entrant","ecran_led","autre"] },
   { name: "statut",     label: "Statut",      type: "select",
     options: ["nouveau","contacte","qualifie","proposition","gagne","perdu"] },
-  { name: "notes",      label: "Notes",       type: "textarea" },
+  { name: "contrat_signe", label: "Contrat signé", type: "checkbox" },
+  { name: "secteur", label: "Secteur", type: "text" },
+  { name: "notes",       label: "Notes",       type: "textarea" },
 ];
 
 const columns = [
   { key: "nom",        label: "Nom",         render: (v, row) => `${v || ""} ${row.prenom || ""}`.trim() },
   { key: "email",      label: "Email" },
   { key: "entreprise", label: "Entreprise" },
-  { key: "source",     label: "Source",      render: v => <span className="capitalize">{v}</span> },
+  { key: "source",     label: "Source",      render: v => <span>{sourceLabels[v] || v || "—"}</span> },
   { key: "statut",     label: "Statut",      render: v => <StatusBadge status={v} /> },
+  { key: "contrat_signe", label: "Contrat", render: v => v ? <span className="text-emerald-600 font-medium">Signé</span> : <span className="text-muted-foreground">—</span> },
   { key: "created_at", label: "Créé le",     render: v => v ? new Date(v).toLocaleDateString("fr-BE") : "—" },
 ];
 

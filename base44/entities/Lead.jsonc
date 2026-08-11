@@ -8,7 +8,7 @@
     },
     "prenom": {
       "type": "string",
-      "description": "Pr\u00e9nom du lead"
+      "description": "Prénom du lead"
     },
     "email": {
       "type": "string",
@@ -28,6 +28,7 @@
         "linkedin",
         "salon",
         "appel_entrant",
+        "ecran_led",
         "autre"
       ],
       "default": "site_web"
@@ -46,7 +47,7 @@
     },
     "valeur_estimee": {
       "type": "number",
-      "description": "Valeur estim\u00e9e en euros"
+      "description": "Valeur estimée en euros"
     },
     "notes": {
       "type": "string"
@@ -54,6 +55,29 @@
     "date_relance": {
       "type": "string",
       "format": "date"
+    },
+    "external_source": {
+      "type": "string",
+      "description": "Système source externe, par exemple ecranlead"
+    },
+    "external_id": {
+      "type": "string",
+      "description": "Identifiant idempotent dans le système source"
+    },
+    "contrat_signe": {
+      "type": "boolean",
+      "default": false
+    },
+    "secteur": {
+      "type": "string"
+    },
+    "source_metadata": {
+      "type": "object",
+      "description": "Métadonnées techniques de synchronisation"
+    },
+    "date_conversion_client": {
+      "type": "string",
+      "format": "date-time"
     }
   },
   "required": [
