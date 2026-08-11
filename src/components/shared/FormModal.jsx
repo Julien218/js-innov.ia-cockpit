@@ -33,19 +33,15 @@ export default function FormModal({
   onClose,
   title,
   fields = [],
-  // Pattern 1: pages passent initialData + onSubmit
   initialData,
   onSubmit,
   loading,
-  // Pattern 2: ancien pattern data + onChange + isSubmitting
   data: controlledData,
   onChange,
   isSubmitting,
 }) {
-  // State local si pas de controlled data
   const [localData, setLocalData] = useState({});
 
-  // Réinitialiser quand le modal s'ouvre ou que initialData change
   useEffect(() => {
     if (open) {
       setLocalData(initialData || controlledData || {});
@@ -57,26 +53,16 @@ export default function FormModal({
 
   const handleChange = (key, value) => {
     const newData = { ...currentData, [key]: value };
-    if (onChange) {
-      onChange(newData);
-    } else {
-      setLocalData(newData);
-    }
+    if (onChange) onChange(newData);
+    else setLocalData(newData);
   };
 
   const handleSubmit = (e) => {
     e?.preventDefault?.();
-    // Pattern 1: onSubmit reçoit les données directement
-    if (onSubmit) {
-      onSubmit(currentData);
-    }
-    // Pattern 2: si pas de onSubmit, propager via onChange
-    else if (onChange) {
-      onChange(currentData);
-    }
+    if (onSubmit) onSubmit(currentData);
+    else if (onChange) onChange(currentData);
   };
 
-  // Supporter field.name ET field.key
   const safeFields = Array.isArray(fields) ? fields : [];
 
   return (
@@ -101,7 +87,6 @@ export default function FormModal({
                     </SelectTrigger>
                     <SelectContent>
                       {(field.options || []).map((opt) => {
-                        // Supporter ["val1","val2"] et [{value, label}]
                         const optVal = typeof opt === "string" ? opt : opt.value;
                         const optLabel = typeof opt === "string" ? opt : opt.label;
                         return (
@@ -119,6 +104,16 @@ export default function FormModal({
                     placeholder={field.placeholder || ""}
                     className="h-20"
                   />
+                ) : field.type === "checkbox" ? (
+                  <label className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(currentData?.[fieldKey])}
+                      onChange={(e) => handleChange(fieldKey, e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    <span>{currentData?.[fieldKey] ? "Oui" : "Non"}</span>
+                  </label>
                 ) : (
                   <Input
                     type={field.type || "text"}
