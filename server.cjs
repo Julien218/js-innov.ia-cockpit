@@ -90,6 +90,16 @@ try {
   console.warn('⚠️ Route Social Content Agent indisponible:', e.message);
 }
 
+// ── Provisionnement site web → cockpit (après commande/paiement) ─────────────
+// Route serveur-à-serveur protégée par SOCIAL_PROVISIONING_KEY.
+try {
+  const { router: socialProvisionRouter } = require('./server-social-provisioning.cjs');
+  app.use('/api/social-provision', socialProvisionRouter);
+  console.log('✅ Route /api/social-provision activée (provisionnement SaaS sécurisé)');
+} catch (e) {
+  console.warn('⚠️ Route Social Provisioning indisponible:', e.message);
+}
+
 // ── Proxy /api/data/* → jsinnovia-agent /data/* ─────────────
 const AGENT_PROXY_URL = process.env.JSINNOVIA_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_PROXY_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
