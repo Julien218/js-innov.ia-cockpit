@@ -38,6 +38,8 @@ import Agent from "@/pages/Agent";
 import AgentsIA from "@/pages/AgentsIA";
 import AICostControl from "@/pages/AICostControl";
 import Invitations from "@/pages/Invitations";
+import DigitalSignage from "@/pages/DigitalSignage";
+import VideoSurveillance from "@/pages/VideoSurveillance";
 
 // ── Studio Vidéo
 import VideoStudio from "@/pages/VideoStudio";
@@ -93,6 +95,9 @@ const AppRoutes = () => {
           <Route path="/factures" element={<PageBoundary><Factures /></PageBoundary>} />
           <Route path="/mes-factures" element={<PageBoundary><Factures /></PageBoundary>} />
           <Route path="/commissions" element={<PageBoundary><Commissions /></PageBoundary>} />
+
+          <Route path="/ecran-geant" element={<PageBoundary><DigitalSignage /></PageBoundary>} />
+          <Route path="/videosurveillance" element={<PageBoundary><VideoSurveillance /></PageBoundary>} />
 
           <Route path="/agent" element={<PageBoundary><Agent /></PageBoundary>} />
           <Route path="/agents-ia" element={<PageBoundary><AgentsIA /></PageBoundary>} />
