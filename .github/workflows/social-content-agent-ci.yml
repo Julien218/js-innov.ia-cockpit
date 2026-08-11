@@ -8,6 +8,7 @@ on:
       - 'src/pages/SocialContentAgent.jsx'
       - 'src/data/socialAgentTemplates.js'
       - 'supabase/migrations/003_social_content_agent.sql'
+      - 'supabase/migrations/004_social_agent_ai_cost.sql'
       - 'tests/social-content-agent.test.cjs'
       - 'src/App.jsx'
       - 'src/lib/roles.js'
@@ -39,6 +40,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Check backend syntax
+        run: |
+          node --check server-social-content-agent.cjs
+          node --check server-social-provisioning.cjs
+          node --check server.cjs
 
       - name: Social agent tests
         run: node --test tests/social-content-agent.test.cjs
