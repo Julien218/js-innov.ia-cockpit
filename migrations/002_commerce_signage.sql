@@ -43,11 +43,9 @@ create table if not exists public.client_module_entitlements (
   enabled boolean not null default true,
   source_order_id uuid references public.commerce_orders(id) on delete set null,
   activated_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  unique(email, module_code)
 );
-
-create unique index if not exists client_module_entitlements_email_module_uidx
-  on public.client_module_entitlements (lower(email), module_code);
 
 create table if not exists public.commerce_onboarding_tasks (
   id uuid primary key default gen_random_uuid(),
