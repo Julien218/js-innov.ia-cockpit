@@ -1,0 +1,47 @@
+name: EcranLead central sync CI
+
+on:
+  pull_request:
+    paths:
+      - 'server-ecranlead.cjs'
+      - 'server.cjs'
+      - 'Dockerfile'
+      - '.env.example'
+      - 'src/pages/Leads.jsx'
+      - 'src/components/shared/FormModal.jsx'
+      - 'base44/entities/Lead.jsonc'
+      - 'tests/ecranlead-sync.test.cjs'
+      - '.github/workflows/ecranlead-sync-ci.yml'
+  push:
+    branches:
+      - feat/ecranlead-central-sync
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: EcranLead unit tests
+        run: node --test tests/ecranlead-sync.test.cjs
+      - name: Server syntax
+        run: node --check server-ecranlead.cjs && node --check server.cjs
+      - name: Targeted lint
+        run: npx eslint src/pages/Leads.jsx src/components/shared/FormModal.jsx --quiet
+      - name: Production build
+        run: npm run build
+      - name: Docker module guard
+        run: grep -q 'server-ecranlead.cjs' Dockerfile
+      - name: Secret exposure guard
+        run: |
+          ! grep -Rni --exclude-dir=node_modules --exclude-dir=.git 'VITE_ECRANLEAD\|ECRANLEAD_SYNC_KEY=' src public
