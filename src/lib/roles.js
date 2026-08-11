@@ -36,14 +36,14 @@ export const ROLE_COLORS = {
 export const ROLE_ROUTES = {
   superadmin: [
     "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
-    "/devis", "/factures", "/emails", "/cost-centers",
+    "/devis", "/factures", "/emails", "/cost-centers", "/ai-cost",
     "/production", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
     "/services", "/validations", "/agent", "/agents-ia", "/invitations"
   ],
   admin: [
     "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
-    "/devis", "/factures", "/emails", "/cost-centers",
+    "/devis", "/factures", "/emails", "/cost-centers", "/ai-cost",
     "/production", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
     "/services", "/validations", "/agent", "/agents-ia", "/invitations"
