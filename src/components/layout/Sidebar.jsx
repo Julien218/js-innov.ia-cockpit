@@ -6,7 +6,7 @@ import {
   CheckSquare, MessageSquare, Shield,
   Bot, Network, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
-  PlayCircle, GalleryHorizontalEnd, Send, Server, Gauge,
+  PlayCircle, GalleryHorizontalEnd, Send, Server, Gauge, Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -118,6 +118,7 @@ const allNavGroups = [
     label: "Studio",
     minRole: "admin",
     items: [
+      { label: "Agent Réseaux IA", icon: Megaphone, path: "/agent-reseaux", minRole: "admin" },
       { label: "Production", icon: Clapperboard, path: "/production", minRole: "admin" },
       { label: "Portfolio", icon: GalleryHorizontalEnd, path: "/portfolio", minRole: "admin" },
     ]

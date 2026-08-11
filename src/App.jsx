@@ -38,6 +38,7 @@ import Agent from "@/pages/Agent";
 import AgentsIA from "@/pages/AgentsIA";
 import AICostControl from "@/pages/AICostControl";
 import Invitations from "@/pages/Invitations";
+import SocialContentAgent from "@/pages/SocialContentAgent";
 
 // ── Studio Vidéo
 import VideoStudio from "@/pages/VideoStudio";
@@ -96,6 +97,7 @@ const AppRoutes = () => {
 
           <Route path="/agent" element={<PageBoundary><Agent /></PageBoundary>} />
           <Route path="/agents-ia" element={<PageBoundary><AgentsIA /></PageBoundary>} />
+          <Route path="/agent-reseaux" element={<PageBoundary><SocialContentAgent /></PageBoundary>} />
           <Route path="/ai-cost-control" element={<PageBoundary><AICostControl /></PageBoundary>} />
           <Route path="/validations" element={<PageBoundary><Validations /></PageBoundary>} />
           <Route path="/logs" element={<PageBoundary><Logs /></PageBoundary>} />

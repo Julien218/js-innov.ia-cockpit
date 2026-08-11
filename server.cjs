@@ -6,8 +6,7 @@ const app = express();
 const PORT = process.env.API_PORT || 3001;
 const { requireSession, requireSameOrigin, ROLE_LEVEL } = require('./server-security.cjs');
 
-// Trust proxy — nécessaire pour détecter HTTPS (X-Forwarded-Proto) et l'IP réelle (X-Real-IP)
-// nginx reverse proxy est le premier hop
+// Trust proxy — nécessaire pour détecter HTTPS (X-Forwarded-Proto) et l'IP réelle
 app.set('trust proxy', 1);
 
 app.use(express.json({ limit: '25mb' }));
@@ -27,8 +26,6 @@ try {
   const emailRouter = require('./server-email.cjs');
   const emailSessionGuard = requireSession('admin');
   app.use('/api/emails', (req, res, next) => {
-    // HainoFlow utilise sa clé serveur dédiée sur cette unique route.
-    // Toutes les autres routes email restent protégées par la session admin.
     if (req.path === '/official') return next();
     return emailSessionGuard(req, res, next);
   }, emailRouter);
@@ -75,9 +72,35 @@ try {
   console.warn('⚠️ Route assurances indisponible:', e.message);
 }
 
+// ── Twilio SMS / WhatsApp ────────────────────────────────────
+try {
+  const twilioRouter = require('./server-twilio.cjs');
+  app.use('/api/twilio', twilioRouter);
+  console.log('✅ Route /api/twilio activée');
+} catch (e) {
+  console.warn('⚠️ Route Twilio indisponible:', e.message);
+}
+
+// ── Agent Réseaux IA SaaS : multi-client + validation WhatsApp ─
+try {
+  const { router: socialAgentRouter } = require('./server-social-content-agent.cjs');
+  app.use('/api/social-agent', socialAgentRouter);
+  console.log('✅ Route /api/social-agent activée (multi-client, HITL WhatsApp, publication)');
+} catch (e) {
+  console.warn('⚠️ Route Social Content Agent indisponible:', e.message);
+}
+
+// ── Provisionnement site web → cockpit (après commande/paiement) ─────────────
+// Route serveur-à-serveur protégée par SOCIAL_PROVISIONING_KEY.
+try {
+  const { router: socialProvisionRouter } = require('./server-social-provisioning.cjs');
+  app.use('/api/social-provision', socialProvisionRouter);
+  console.log('✅ Route /api/social-provision activée (provisionnement SaaS sécurisé)');
+} catch (e) {
+  console.warn('⚠️ Route Social Provisioning indisponible:', e.message);
+}
+
 // ── Proxy /api/data/* → jsinnovia-agent /data/* ─────────────
-// Server-to-server: pas de restrictions CORS
-// Le frontend appelle /api/data/Devis → Express → jsinnovia-agent
 const AGENT_PROXY_URL = process.env.JSINNOVIA_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_PROXY_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
 
@@ -124,7 +147,6 @@ app.use('/api/data', requireSession('client'), async (req, res) => {
 });
 
 // ── AI Cost Control ─────────────────────────────────────────
-// Lecture/configuration : session admin. Ingestion inter-services : clé serveur dédiée.
 try {
   const { router: aiCostRouter } = require('./server-ai-cost.cjs');
   app.use('/api/ai-cost', aiCostRouter);
