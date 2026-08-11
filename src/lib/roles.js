@@ -32,6 +32,8 @@ export const ROLE_ROUTES = {
   superadmin: [
     "/", "/assurances", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
     "/devis", "/factures", "/emails", "/emails-core", "/cost-centers", "/ai-cost",
+    "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
+    "/devis", "/factures", "/emails", "/cost-centers", "/ai-cost",
     "/production", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
     "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations"
@@ -39,6 +41,8 @@ export const ROLE_ROUTES = {
   admin: [
     "/", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
     "/devis", "/factures", "/emails", "/emails-core", "/cost-centers", "/ai-cost",
+    "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
+    "/devis", "/factures", "/emails", "/cost-centers", "/ai-cost",
     "/production", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
     "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations"
