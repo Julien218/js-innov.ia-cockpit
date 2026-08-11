@@ -1,0 +1,47 @@
+name: Social Content Agent CI
+
+on:
+  pull_request:
+    paths:
+      - 'server-social-content-agent.cjs'
+      - 'server-social-provisioning.cjs'
+      - 'src/pages/SocialContentAgent.jsx'
+      - 'src/data/socialAgentTemplates.js'
+      - 'supabase/migrations/003_social_content_agent.sql'
+      - 'tests/social-content-agent.test.cjs'
+      - 'src/App.jsx'
+      - 'src/lib/roles.js'
+      - 'src/components/layout/Sidebar.jsx'
+      - 'server.cjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/social-content-agent-ci.yml'
+  push:
+    branches:
+      - feature/social-content-agent-saas
+
+permissions:
+  contents: read
+
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Social agent tests
+        run: node --test tests/social-content-agent.test.cjs
+
+      - name: Build cockpit
+        run: npm run build
