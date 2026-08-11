@@ -132,7 +132,7 @@ async function importOpenAICharges(mapping, periodYear, periodMonth) {
   const endTs = Math.floor(endDate.getTime() / 1000);
 
   const projectId = mapping.external_id;
-  const url = `https://api.openai.com/v1/organization/costs?start_time=${startTs}&end_time=${endTs}&limit=365&project_id=${projectId}`;
+  const url = `https://api.openai.com/v1/organization/costs?start_time=${startTs}&end_time=${endTs}&limit=365&project_ids=${projectId}&group_by=line_item`;
 
   const res = await fetch(url, {
     headers: {
@@ -150,21 +150,24 @@ async function importOpenAICharges(mapping, periodYear, periodMonth) {
   const costLines = [];
   let totalUsd = 0;
 
-  for (const item of (data.data || [])) {
-    const model = item.name || item.model || "unknown";
-    const costUsd = parseFloat(item.cost || item.amount || 0);
-    if (costUsd <= 0) continue;
+  // OpenAI costs API returns: data[].results[].amount.value and .line_item
+  for (const bucket of (data.data || [])) {
+    for (const result of (bucket.results || [])) {
+      const lineItem = result.line_item || result.name || "unknown";
+      const costUsd = parseFloat(result.amount?.value || result.cost || result.amount || 0);
+      if (costUsd <= 0) continue;
 
-    totalUsd += costUsd;
-    costLines.push({
-      line_type: "llm_api",
-      description: `OpenAI API — ${model}`,
-      quantity: 1,
-      unit_price_minor: usdToEurMinor(costUsd),
-      total_minor: usdToEurMinor(costUsd),
-      external_ref: `openai:${projectId}:${model}`,
-      metadata: { source: "openai", model, cost_usd: costUsd, project_id: projectId },
-    });
+      totalUsd += costUsd;
+      costLines.push({
+        line_type: "llm_api",
+        description: `OpenAI API — ${lineItem}`,
+        quantity: 1,
+        unit_price_minor: usdToEurMinor(costUsd),
+        total_minor: usdToEurMinor(costUsd),
+        external_ref: `openai:${projectId}:${lineItem}`,
+        metadata: { source: "openai", line_item: lineItem, cost_usd: costUsd, project_id: projectId },
+      });
+    }
   }
 
   return { lines: costLines, totalUsd, totalEurMinor: usdToEurMinor(totalUsd) };
@@ -178,7 +181,7 @@ async function importRailwayCharges(mapping, periodYear, periodMonth) {
 
   const projectId = mapping.external_id;
 
-  // Try RAILWAY_COSTS_ENDPOINT if configured
+  // Try RAILWAY_COSTS_ENDPOINT if configured (custom adapter)
   if (RAILWAY_COSTS_ENDPOINT) {
     const url = `${RAILWAY_COSTS_ENDPOINT}?project_id=${projectId}&year=${periodYear}&month=${periodMonth}`;
     const res = await fetch(url, {
@@ -207,9 +210,11 @@ async function importRailwayCharges(mapping, periodYear, periodMonth) {
     return { lines: costLines, totalUsd, totalEurMinor: usdToEurMinor(totalUsd) };
   }
 
-  // Fallback: Railway GraphQL API (usage metrics)
-  // Note: Railway doesn't expose a direct cost endpoint via GraphQL.
-  // This is a placeholder that returns a descriptive line.
+  // Fallback: Railway GraphQL API (usage metrics — estimated usage)
+  // Note: Railway doesn't expose direct monetary costs via GraphQL.
+  // The estimatedUsage query returns resource usage (CPU, RAM, Disk, Network)
+  // which can be used to estimate costs, but actual billing amounts are not available.
+  // For now, this creates a placeholder line requiring manual entry.
   return {
     lines: [{
       line_type: "railway",
@@ -222,7 +227,7 @@ async function importRailwayCharges(mapping, periodYear, periodMonth) {
     }],
     totalUsd: 0,
     totalEurMinor: 0,
-    error: "RAILWAY_COSTS_ENDPOINT not configured — manual entry required",
+    error: "RAILWAY_COSTS_ENDPOINT not configured — manual entry required. Railway GraphQL provides usage metrics (CPU/RAM/Disk) but not direct monetary costs.",
   };
 }
 
