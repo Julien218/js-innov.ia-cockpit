@@ -91,6 +91,26 @@ async function upsertEntitlement({ email, moduleCode, orderId, enabled }) {
   });
 }
 
+async function upsertPilotEntitlement({ email, moduleCode, billingAccount }) {
+  const now = new Date().toISOString();
+  const payload = {
+    email: String(email || '').trim().toLowerCase(),
+    module_code: moduleCode,
+    enabled: true,
+    source_order_id: null,
+    grant_reason: 'pilot_gift',
+    recurring_fee_cents: 0,
+    usage_billing_account: String(billingAccount || '').trim(),
+    usage_billing_enabled: true,
+    updated_at: now,
+  };
+  await supabase('client_module_entitlements?on_conflict=email,module_code', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ ...payload, activated_at: now }),
+  });
+}
+
 async function setOrderEntitlements(order, enabled = true) {
   if (!order?.email) return;
   await upsertEntitlement({ email: order.email, moduleCode: 'digital_signage', orderId: order.id, enabled });
@@ -259,6 +279,28 @@ router.get('/orders', requireSession('admin'), async (req, res) => {
     res.json({ success: true, orders: Array.isArray(orders) ? orders : [] });
   } catch (error) {
     res.status(503).json({ error: error.message });
+  }
+});
+
+router.post('/pilot-grant', requireSession('admin'), async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const billingAccount = String(req.body?.usageBillingAccount || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Email pilote invalide' });
+    if (!billingAccount) return res.status(400).json({ error: 'Compte payeur requis' });
+    for (const moduleCode of ['digital_signage', 'videosurveillance']) {
+      await upsertPilotEntitlement({ email, moduleCode, billingAccount });
+    }
+    res.status(201).json({
+      success: true,
+      email,
+      modules: ['digital_signage', 'videosurveillance'],
+      recurringFeeCents: 0,
+      usageBillingAccount: billingAccount,
+    });
+  } catch (error) {
+    console.error('[commerce] pilot-grant:', error.message);
+    res.status(500).json({ error: 'Activation pilote impossible' });
   }
 });
 

@@ -26,7 +26,7 @@ async function migrate() {
   try {
     await client.query('select pg_advisory_lock($1)', [2182026]);
     await client.query('create table if not exists pilot_schema_migrations (name text primary key, applied_at timestamptz not null default now())');
-    for (const file of ['002_commerce_signage.sql', '003_signage_runtime.sql']) {
+    for (const file of ['002_commerce_signage.sql', '003_signage_runtime.sql', '004_pilot_sponsorship.sql']) {
       const exists = await client.query('select 1 from pilot_schema_migrations where name=$1', [file]);
       if (exists.rowCount) continue;
       await client.query('begin');
@@ -35,6 +35,22 @@ async function migrate() {
         await client.query('insert into pilot_schema_migrations(name) values($1)', [file]);
         await client.query('commit');
       } catch (error) { await client.query('rollback'); throw error; }
+    }
+    const pilotEmail = String(process.env.PILOT_GRANT_EMAIL || '').trim().toLowerCase();
+    const billingAccount = String(process.env.PILOT_USAGE_BILLING_ACCOUNT || '').trim();
+    if (pilotEmail && billingAccount) {
+      for (const moduleCode of ['digital_signage', 'videosurveillance']) {
+        await client.query(
+          `insert into client_module_entitlements
+            (email, module_code, enabled, grant_reason, recurring_fee_cents, usage_billing_account, usage_billing_enabled, updated_at)
+           values ($1, $2, true, 'pilot_gift', 0, $3, true, now())
+           on conflict (email, module_code) do update set
+             enabled=true, grant_reason='pilot_gift', recurring_fee_cents=0,
+             usage_billing_account=excluded.usage_billing_account,
+             usage_billing_enabled=true, updated_at=now()`,
+          [pilotEmail, moduleCode, billingAccount]
+        );
+      }
     }
   } finally {
     await client.query('select pg_advisory_unlock($1)', [2182026]).catch(() => {});
