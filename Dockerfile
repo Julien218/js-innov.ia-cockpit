@@ -40,6 +40,7 @@ COPY --from=builder /app/server-twilio.cjs ./server-twilio.cjs
 COPY --from=builder /app/server-insurance.cjs ./server-insurance.cjs
 COPY --from=builder /app/server-insurance-mailbox.cjs ./server-insurance-mailbox.cjs
 COPY --from=builder /app/server-documents.cjs ./server-documents.cjs
+COPY --from=builder /app/server-governance.cjs ./server-governance.cjs
 COPY assets ./assets
 COPY public ./public
 

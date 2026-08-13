@@ -36,7 +36,7 @@ export const ROLE_ROUTES = {
     "/devis", "/factures", "/emails", "/cost-centers", "/ai-cost",
     "/production", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
-    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations"
+    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations", "/gouvernance", "/confidentialite"
   ],
   admin: [
     "/", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
@@ -45,13 +45,13 @@ export const ROLE_ROUTES = {
     "/devis", "/factures", "/emails", "/cost-centers", "/ai-cost",
     "/production", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
-    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations"
+    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations", "/gouvernance", "/confidentialite"
   ],
   collaborateur: [
     "/", "/documents", "/projets", "/taches", "/demandes", "/agent", "/agents-ia"
   ],
   client: [
-    "/", "/mes-projets", "/mes-devis", "/mes-factures", "/demandes", "/agents-ia"
+    "/", "/mes-projets", "/mes-devis", "/mes-factures", "/demandes", "/agents-ia", "/confidentialite"
   ],
 };
 
