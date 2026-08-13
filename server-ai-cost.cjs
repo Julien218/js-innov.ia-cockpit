@@ -53,6 +53,48 @@ function toNonNegativeNumber(value, fallback = 0) {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
+function secretSegment(value, fallback = 'NON_NOMME') {
+  const normalized = String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 50);
+  return normalized || fallback;
+}
+
+function buildSecretRef(provider, clientName, projectName) {
+  return `${secretSegment(provider, 'OPENAI')}_API_KEY_${secretSegment(clientName)}_${secretSegment(projectName)}`;
+}
+
+function sanitizeAttribution(raw = {}) {
+  const provider = String(raw.provider || 'openai').trim().toLowerCase().slice(0, 50);
+  const clientId = String(raw.client_id || '').trim().slice(0, 120);
+  const projectId = String(raw.project_id || '').trim().slice(0, 120);
+  const clientName = String(raw.client_name || '').trim().slice(0, 180);
+  const projectName = String(raw.project_name || '').trim().slice(0, 180);
+  if (!clientId || !projectId || !clientName || !projectName) throw new Error('Client et projet requis');
+  if (raw.api_key || raw.secret || raw.key_value) throw new Error('La clé brute ne doit jamais être transmise au Cockpit');
+  const generatedRef = buildSecretRef(provider, clientName, projectName);
+  const secretRef = String(raw.secret_ref || generatedRef).trim().toUpperCase();
+  if (!/^[A-Z][A-Z0-9_]{5,179}$/.test(secretRef)) throw new Error('secret_ref invalide');
+  return {
+    client_id: clientId,
+    project_id: projectId,
+    client_name: clientName,
+    project_name: projectName,
+    provider,
+    secret_ref: secretRef,
+    status: ['a_creer', 'configuree', 'active', 'erreur'].includes(raw.status) ? raw.status : 'a_creer',
+    monthly_budget_usd: toNonNegativeNumber(raw.monthly_budget_usd, 0),
+    hard_limit_usd: toNonNegativeNumber(raw.hard_limit_usd, 0),
+    alert_thresholds: Array.isArray(raw.alert_thresholds)
+      ? raw.alert_thresholds.map(Number).filter((n) => n > 0 && n <= 100).slice(0, 10)
+      : [50, 75, 90],
+  };
+}
+
 function findPricing(model) {
   const key = String(model || '').toLowerCase();
   if (PRICING[key]) return { key, ...PRICING[key] };
@@ -124,9 +166,9 @@ function normalizeUsage(raw = {}, actor = 'service') {
     pricing_key: calculated.pricingKey,
     pricing_warning: hasExplicitCost ? null : calculated.warning,
     processing_mode: processingMode,
-    project_key: raw.project_key ? String(raw.project_key).slice(0, 120) : null,
+    project_key: raw.project_key || raw.project_id ? String(raw.project_key || raw.project_id).slice(0, 120) : null,
     project_name: raw.project_name ? String(raw.project_name).slice(0, 180) : null,
-    client_key: raw.client_key ? String(raw.client_key).slice(0, 120) : null,
+    client_key: raw.client_key || raw.client_id ? String(raw.client_key || raw.client_id).slice(0, 120) : null,
     client_name: raw.client_name ? String(raw.client_name).slice(0, 180) : null,
     source: String(raw.source || 'unknown').slice(0, 120),
     request_id: raw.request_id || raw.response_id || raw.id
@@ -355,6 +397,61 @@ router.get('/usage', adminGuard, async (req, res) => {
   }
 });
 
+router.get('/attributions', adminGuard, async (req, res) => {
+  try {
+    const clientFilter = req.query.client_id
+      ? `&client_id=eq.${encodeURIComponent(String(req.query.client_id).slice(0, 120))}`
+      : '';
+    const [attributions, events] = await Promise.all([
+      select(`ai_key_attributions?select=*&order=client_name.asc,project_name.asc,provider.asc${clientFilter}`),
+      loadMonthEvents(monthWindow(req.query.month)),
+    ]);
+    const items = attributions.map((item) => {
+      const usage = events.filter((event) => event.client_key === item.client_id && event.project_key === item.project_id && event.provider === item.provider);
+      const cost = usage.reduce((sum, event) => sum + Number(event.cost_usd || 0), 0);
+      const lastUsage = usage.reduce((latest, event) => !latest || event.created_at > latest ? event.created_at : latest, null);
+      const percent = Number(item.monthly_budget_usd) > 0 ? (cost / Number(item.monthly_budget_usd)) * 100 : 0;
+      const reached = (item.alert_thresholds || []).filter((threshold) => percent >= Number(threshold));
+      return {
+        ...item,
+        consumption_usd: Number(cost.toFixed(6)),
+        requests: usage.length,
+        last_usage_at: lastUsage,
+        budget_percent: Number(percent.toFixed(2)),
+        alerts: reached,
+        blocked: Number(item.hard_limit_usd) > 0 && cost >= Number(item.hard_limit_usd),
+      };
+    });
+    res.json({ items });
+  } catch (error) {
+    res.status(503).json({ error: 'Attributions indisponibles', details: error.message });
+  }
+});
+
+router.post('/attributions', adminGuard, async (req, res) => {
+  try {
+    const attribution = sanitizeAttribution(req.body);
+    const rows = await supabaseRequest('ai_key_attributions?on_conflict=client_id,project_id,provider', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+      body: JSON.stringify({ ...attribution, updated_at: new Date().toISOString(), updated_by: req.user?.email || 'admin' }),
+    });
+    await supabaseRequest('ai_cost_budgets?on_conflict=scope_type,scope_key', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        scope_type: 'project', scope_key: attribution.project_id, scope_name: attribution.project_name,
+        monthly_budget_usd: attribution.monthly_budget_usd, hard_limit_usd: attribution.hard_limit_usd,
+        alert_thresholds: attribution.alert_thresholds, enabled: attribution.monthly_budget_usd > 0 || attribution.hard_limit_usd > 0,
+        updated_at: new Date().toISOString(), updated_by: req.user?.email || 'admin',
+      }),
+    });
+    res.status(201).json({ success: true, attribution: rows[0] });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Attribution non enregistrée' });
+  }
+});
+
 router.post('/usage', allowIngestOrAdmin, async (req, res) => {
   try {
     const sourceRows = Array.isArray(req.body?.events) ? req.body.events.slice(0, 100) : [req.body || {}];
@@ -470,4 +567,6 @@ module.exports = {
   recommendModel,
   DEFAULT_PRICING,
   DEFAULT_ROUTING,
+  buildSecretRef,
+  sanitizeAttribution,
 };

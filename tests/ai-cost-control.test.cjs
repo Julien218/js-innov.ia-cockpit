@@ -7,6 +7,8 @@ const {
   evaluateBudget,
   recommendModel,
   DEFAULT_ROUTING,
+  buildSecretRef,
+  sanitizeAttribution,
 } = require('../server-ai-cost.cjs');
 
 test('calculates Luna standard cost with cached input', () => {
@@ -18,6 +20,26 @@ test('calculates Luna standard cost with cached input', () => {
   });
   assert.equal(result.priced, true);
   assert.equal(result.costUsd, 0.00391);
+});
+
+test('generates a nominative normalized secret reference', () => {
+  assert.equal(buildSecretRef('openai', 'Synergie Dour', 'Auto-publish été'), 'OPENAI_API_KEY_SYNERGIE_DOUR_AUTO_PUBLISH_ETE');
+});
+
+test('stores attribution metadata without accepting a raw key', () => {
+  const value = sanitizeAttribution({
+    client_id: 'client-1', project_id: 'project-1', client_name: 'Client X', project_name: 'Projet 1', provider: 'openai',
+  });
+  assert.equal(value.secret_ref, 'OPENAI_API_KEY_CLIENT_X_PROJET_1');
+  assert.equal(Object.hasOwn(value, 'api_key'), false);
+  assert.throws(() => sanitizeAttribution({ ...value, api_key: 'sk-secret' }), /clé brute/i);
+});
+
+test('maps client_id and project_id into the cost attribution keys', () => {
+  const row = normalizeUsage({ model: 'gpt-5.6-luna', client_id: 'client-1', project_id: 'project-1' });
+  assert.equal(row.client_key, 'client-1');
+  assert.equal(row.project_key, 'project-1');
+  assert.equal(row.provider, 'openai');
 });
 
 test('applies priority processing multiplier', () => {
