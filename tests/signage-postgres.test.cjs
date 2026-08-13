@@ -7,6 +7,7 @@ const root = path.join(__dirname, '..');
 const adapter = fs.readFileSync(path.join(root, 'server-postgres.cjs'), 'utf8');
 const commerce = fs.readFileSync(path.join(root, 'server-commerce.cjs'), 'utf8');
 const signage = fs.readFileSync(path.join(root, 'server-signage.cjs'), 'utf8');
+const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
 
 test('PostgreSQL staging uses DATABASE_URL and an advisory migration lock', () => {
   assert.match(adapter, /process\.env\.DATABASE_URL/);
@@ -23,4 +24,8 @@ test('only pilot tables are accepted by the REST compatibility adapter', () => {
 test('commerce and signage prefer Railway PostgreSQL when configured', () => {
   assert.match(commerce, /if \(process\.env\.DATABASE_URL\) return postgresRest/);
   assert.match(signage, /if \(process\.env\.DATABASE_URL\) return postgresRest/);
+});
+
+test('production image contains the SQL migrations used at startup', () => {
+  assert.match(dockerfile, /COPY --from=builder \/app\/migrations \.\/migrations/);
 });
