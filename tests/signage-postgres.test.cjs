@@ -39,3 +39,11 @@ test('commerce and signage prefer Railway PostgreSQL when configured', () => {
 test('production image contains the SQL migrations used at startup', () => {
   assert.match(dockerfile, /COPY --from=builder \/app\/migrations \.\/migrations/);
 });
+
+test('signage uses the configured Dropbox root and temporary Player links', () => {
+  assert.match(signage, /DROPBOX_ROOT_PATH/);
+  assert.match(signage, /get_temporary_upload_link/);
+  assert.match(signage, /get_temporary_link/);
+  assert.match(signage, /expiresIn:14400/);
+});
+
