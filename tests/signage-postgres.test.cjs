@@ -45,5 +45,8 @@ test('signage uses the configured Dropbox root and temporary Player links', () =
   assert.match(signage, /get_temporary_upload_link/);
   assert.match(signage, /get_temporary_link/);
   assert.match(signage, /expiresIn:14400/);
+  assert.match(signage, /DROPBOX_REFRESH_TOKEN/);
+  assert.match(signage, /grant_type: 'refresh_token'/);
+  assert.match(signage, /dropboxTokenCache/);
 });
 
