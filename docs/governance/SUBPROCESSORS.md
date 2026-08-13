@@ -1,10 +1,10 @@
 # Registre des Sous-Traitants (Subprocessors) — JS-Innov.IA Cockpit
 
-**Projet :** JS-Innov.IA Cockpit  
-**Référence réglementaire :** RGPD Article 28  
-**Statut juridique :** **A VALIDER JURIDIQUEMENT** (Tous les contrats DPA et mécanismes de transfert sont en cours de validation)  
-**Version :** 1.0.0  
-**Date :** 13 août 2026  
+**Projet :** JS-Innov.IA Cockpit
+**Référence réglementaire :** RGPD Article 28
+**Statut juridique :** **A VALIDER JURIDIQUEMENT** (Tous les contrats DPA et mécanismes de transfert sont en cours de validation)
+**Version :** 1.0.0
+**Date :** 13 août 2026
 
 ---
 
@@ -53,5 +53,5 @@ Conformément à l'article 28.2 du RGPD :
 
 ## 5. Avertissement Légal
 
-> **STATUT : A VALIDER JURIDIQUEMENT**  
+> **STATUT : A VALIDER JURIDIQUEMENT**
 > L'ensemble des mentions relatives aux contrats DPA et aux mécanismes de transfert hors UE contenues dans ce registre doit être formellement audité et validé par un juriste spécialisé avant toute signature de convention de traitement de données avec nos clients.

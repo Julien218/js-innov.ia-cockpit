@@ -1,10 +1,10 @@
 # Politique & Mesures de Sécurité Techniques — JS-Innov.IA Cockpit
 
-**Projet :** JS-Innov.IA Cockpit  
-**Domaine :** `cockpit.jsinnovia.com`  
-**Statut :** Recommandations techniques & mesures applicables  
-**Version :** 1.0.0  
-**Date :** 13 août 2026  
+**Projet :** JS-Innov.IA Cockpit
+**Domaine :** `cockpit.jsinnovia.com`
+**Statut :** Recommandations techniques & mesures applicables
+**Version :** 1.0.0
+**Date :** 13 août 2026
 
 ---
 
@@ -73,5 +73,5 @@ La sécurité du Cockpit JS-Innov.IA repose sur le principe de **défense en pro
 
 ## 5. Avertissement Légal
 
-> **STATUT : A VALIDER JURIDIQUEMENT & TECHNIQUEMENT**  
+> **STATUT : A VALIDER JURIDIQUEMENT & TECHNIQUEMENT**
 > Les mesures de sécurité décrites doivent faire l'objet de tests de pénétration (*pentest*) et de revues de code régulières pour s'assurer de leur efficacité constante face aux nouvelles vulnérabilités.

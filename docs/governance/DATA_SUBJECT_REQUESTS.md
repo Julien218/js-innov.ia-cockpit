@@ -1,10 +1,10 @@
 # Procédure de Traitement des Demandes RGPD (Data Subject Requests — DSR) — JS-Innov.IA Cockpit
 
-**Projet :** JS-Innov.IA Cockpit  
-**Référence réglementaire :** RGPD Articles 12 à 22  
-**Statut juridique :** **A VALIDER JURIDIQUEMENT**  
-**Version :** 1.0.0  
-**Date :** 13 août 2026  
+**Projet :** JS-Innov.IA Cockpit
+**Référence réglementaire :** RGPD Articles 12 à 22
+**Statut juridique :** **A VALIDER JURIDIQUEMENT**
+**Version :** 1.0.0
+**Date :** 13 août 2026
 
 ---
 
@@ -79,5 +79,5 @@ Lorsqu'un client ou prospect formule une demande d'effacement (`erasure`), le dr
 
 ## 6. Avertissement Légal
 
-> **STATUT : A VALIDER JURIDIQUEMENT**  
+> **STATUT : A VALIDER JURIDIQUEMENT**
 > Les procédures d'arbitrage entre effacement et obligations légales de conservation ainsi que les modèles de réponse au demandeur doivent être validés par le service juridique ou le DPO avant la première mise en œuvre opérationnelle.

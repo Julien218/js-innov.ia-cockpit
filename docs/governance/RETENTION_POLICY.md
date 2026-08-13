@@ -1,9 +1,9 @@
 # Politiques de Conservation des Données — JS-Innov.IA Cockpit
 
-**Projet :** JS-Innov.IA Cockpit  
-**Statut juridique :** **A VALIDER JURIDIQUEMENT** (Toutes les durées et actions proposées sont soumises à validation juridique formelle)  
-**Version :** 1.0.0  
-**Date :** 13 août 2026  
+**Projet :** JS-Innov.IA Cockpit
+**Statut juridique :** **A VALIDER JURIDIQUEMENT** (Toutes les durées et actions proposées sont soumises à validation juridique formelle)
+**Version :** 1.0.0
+**Date :** 13 août 2026
 
 ---
 
@@ -56,5 +56,5 @@ Le Cockpit JS-Innov.IA met en œuvre la table de référence `governance.retenti
 
 ## 5. Reserve de Validation Juridique
 
-> **STATUT : A VALIDER JURIDIQUEMENT**  
+> **STATUT : A VALIDER JURIDIQUEMENT**
 > Les durées de rétention inscrites ci-dessus sont des propositions techniques formulées à partir des usages courants du secteur. Elles ne constituent en aucun cas une règle juridique contraignante tant qu'elles n'ont pas été formellement validées et signées par le DPO ou le conseil juridique de l'entreprise.

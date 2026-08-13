@@ -1,9 +1,9 @@
 # Architecture de Gouvernance des Données — JS-Innov.IA Cockpit
 
-**Projet :** JS-Innov.IA Cockpit  
-**Domaine :** `cockpit.jsinnovia.com` (Hébergé sur Railway)  
-**Version :** 1.0.0  
-**Date :** 13 août 2026  
+**Projet :** JS-Innov.IA Cockpit
+**Domaine :** `cockpit.jsinnovia.com` (Hébergé sur Railway)
+**Version :** 1.0.0
+**Date :** 13 août 2026
 **Statut juridique :** **A VALIDER JURIDIQUEMENT** (Toutes les durées, bases légales et rôles sont soumis à revue juridique formelle).
 
 ---
@@ -101,8 +101,8 @@ Afin de garantir le cloisonnement étanche des données entre différentes entit
 - **Schéma `governance` :** La sécurité au niveau des lignes (RLS) est active sur **toutes** les tables de gouvernance (`audit_log`, `data_classification`, `processing_activity`, `subprocessor_registry`, `consent_record`, `data_subject_request`, `retention_policy`).
 - **Politique Unique `service_role` :** Seul le rôle `service_role` de Supabase a le droit d'effectuer des requêtes (SELECT, INSERT, UPDATE, DELETE) sur le schéma `governance`.
   ```sql
-  CREATE POLICY "gov_audit_sr" ON governance.audit_log 
-  FOR ALL USING (auth.role() = 'service_role') 
+  CREATE POLICY "gov_audit_sr" ON governance.audit_log
+  FOR ALL USING (auth.role() = 'service_role')
   WITH CHECK (auth.role() = 'service_role');
   ```
 - **Validation Métier Serveur :** La clé `SUPABASE_SERVICE_ROLE_KEY` est strictement confinée au backend Cockpit (Railway). Le frontend ne communique jamais directement avec le schéma `governance` de Supabase.
@@ -131,5 +131,5 @@ Une fonction SQL sécurisée `governance.log_action()` est disponible pour enreg
 
 ## 7. Avertissement Légal
 
-> **STATUT : A VALIDER JURIDIQUEMENT**  
+> **STATUT : A VALIDER JURIDIQUEMENT**
 > L'ensemble de la présente architecture de gouvernance, des règles d'accès, des principes d'isolation et de logging constitue une mise en œuvre technique préparatoire. Elle doit impérativement faire l'objet d'une revue et d'une validation formelle par un juriste ou DPO (Délégué à la Protection des Données) qualifié avant mise en production définitive.

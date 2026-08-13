@@ -1,9 +1,9 @@
 # Architecture de Confidentialité & Privacy by Design — JS-Innov.IA Cockpit
 
-**Projet :** JS-Innov.IA Cockpit  
-**Statut juridique :** **A VALIDER JURIDIQUEMENT**  
-**Version :** 1.0.0  
-**Date :** 13 août 2026  
+**Projet :** JS-Innov.IA Cockpit
+**Statut juridique :** **A VALIDER JURIDIQUEMENT**
+**Version :** 1.0.0
+**Date :** 13 août 2026
 
 ---
 
@@ -76,5 +76,5 @@ Toute consultation, exportation, modification ou suppression de données classé
 
 ## 6. Avertissement Légal
 
-> **STATUT : A VALIDER JURIDIQUEMENT**  
+> **STATUT : A VALIDER JURIDIQUEMENT**
 > Les catégories de données, les règles de classification ainsi que les flux de consentement décrits dans ce document sont établis à titre de spécification technique. Ils doivent être validés par un conseiller juridique spécialisé en protection des données personnelles.

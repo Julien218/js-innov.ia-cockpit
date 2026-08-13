@@ -1,9 +1,9 @@
 # Implémentation Technique RGPD — JS-Innov.IA Cockpit
 
-**Projet :** JS-Innov.IA Cockpit  
-**Statut juridique :** **A VALIDER JURIDIQUEMENT** (Toutes les bases légales, durées et statuts sont 'pending')  
-**Version :** 1.0.0  
-**Date :** 13 août 2026  
+**Projet :** JS-Innov.IA Cockpit
+**Statut juridique :** **A VALIDER JURIDIQUEMENT** (Toutes les bases légales, durées et statuts sont 'pending')
+**Version :** 1.0.0
+**Date :** 13 août 2026
 
 ---
 
@@ -98,5 +98,5 @@ La table `retention_policy` définit les règles d'archivage et de destruction d
 
 ## 7. Engagement de Validation Juridique
 
-> **STATUT : A VALIDER JURIDIQUEMENT**  
+> **STATUT : A VALIDER JURIDIQUEMENT**
 > L'ensemble des structures, paramètres, durées et bases légales configurés dans le schéma `governance` constituent le cadre technique applicatif. Aucun traitement n'est considéré comme juridiquement définitif tant qu'un avis favorable écrit n'a pas été rendu par un conseil juridique ou un DPO désigné.
