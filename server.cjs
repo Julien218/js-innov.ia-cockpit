@@ -75,6 +75,14 @@ try {
   console.warn('⚠️ Route commerce indisponible:', e.message);
 }
 
+try {
+  const signageRouter = require('./server-signage.cjs');
+  app.use('/api/signage', signageRouter);
+  console.log('Digital Signage runtime active');
+} catch (e) {
+  console.warn('Signage runtime unavailable:', e.message);
+}
+
 const AGENT_PROXY_URL = process.env.JSINNOVIA_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_PROXY_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
 

@@ -7,6 +7,7 @@ import {
   Bot, Network, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
   PlayCircle, GalleryHorizontalEnd, Send, Server, Gauge,
+  MonitorPlay, Camera,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -14,6 +15,7 @@ import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { usePermissions } from "@/lib/usePermissions";
 import { ROLE_LABELS, ROLE_COLORS } from "@/lib/roles";
+import { useCommerceEntitlements } from "@/lib/useCommerceEntitlements";
 
 const OLIVIER_EMAIL = 'olivier.trevis@pv.be';
 
@@ -74,6 +76,13 @@ const ROLE_ICONS = {
 };
 
 const allNavGroups = [
+  {
+    label: "Services client",
+    items: [
+      { label: "Ecran geant", icon: MonitorPlay, path: "/ecran-geant", module: "digital_signage" },
+      { label: "Videosurveillance", icon: Camera, path: "/videosurveillance", module: "videosurveillance" },
+    ]
+  },
   {
     label: "Pilotage",
     items: [
@@ -154,6 +163,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
   const emailCount = useEmailBadge();
   const demandeCount = useDemandeBadge();
   const agentStatus = useAgentLocalStatus();
+  const { hasModule, isLoading: entitlementsLoading } = useCommerceEntitlements();
 
   const colors = ROLE_COLORS[role] || ROLE_COLORS.client;
   const RoleIcon = ROLE_ICONS[role] || User;
@@ -179,7 +189,11 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
   const navGroups = allNavGroups
     .map(group => ({
       ...group,
-      items: group.items.filter(item => item.insuranceOnly ? insuranceAllowed : canAccess(getPath(item)))
+      items: group.items.filter(item => {
+        if (item.insuranceOnly) return insuranceAllowed;
+        if (item.module && role === 'client' && (entitlementsLoading || !hasModule(item.module))) return false;
+        return canAccess(getPath(item));
+      })
     }))
     .filter(group => group.items.length > 0);
 

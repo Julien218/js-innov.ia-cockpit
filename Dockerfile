@@ -41,6 +41,7 @@ COPY --from=builder /app/server-insurance.cjs ./server-insurance.cjs
 COPY --from=builder /app/server-insurance-mailbox.cjs ./server-insurance-mailbox.cjs
 COPY --from=builder /app/server-documents.cjs ./server-documents.cjs
 COPY --from=builder /app/server-commerce.cjs ./server-commerce.cjs
+COPY --from=builder /app/server-signage.cjs ./server-signage.cjs
 COPY assets ./assets
 COPY public ./public
 

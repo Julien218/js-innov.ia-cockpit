@@ -1,0 +1,24 @@
+name: Signage pilot CI
+on:
+  pull_request:
+    paths:
+      - 'server-signage.cjs'
+      - 'server-commerce.cjs'
+      - 'migrations/**'
+      - 'src/pages/DigitalSignage.jsx'
+      - 'src/pages/VideoSurveillance.jsx'
+      - 'src/components/layout/Sidebar.jsx'
+      - 'tests/signage*.test.cjs'
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: node --check server-signage.cjs
+      - run: node --check server-commerce.cjs
+      - run: npm test
+      - run: npm run build
