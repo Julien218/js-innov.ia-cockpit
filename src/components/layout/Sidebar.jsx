@@ -19,18 +19,20 @@ import { useCommerceEntitlements } from "@/lib/useCommerceEntitlements";
 
 const OLIVIER_EMAIL = 'olivier.trevis@pv.be';
 
-const useValidationsBadge = () => {
+const useValidationsBadge = (enabled) => {
   const { data = [] } = useQuery({
     queryKey: ["validations"],
     queryFn: () => base44.entities.Validation.list(),
     staleTime: 30000,
+    enabled,
   });
   return data.filter(v => v.statut === "en_attente").length;
 };
 
-const useEmailBadge = () => {
+const useEmailBadge = (enabled) => {
   const [unread, setUnread] = React.useState(0);
   React.useEffect(() => {
+    if (!enabled) return undefined;
     const poll = () => {
       fetch('/api/emails?limit=1', { credentials: 'same-origin' })
         .then(r => r.ok ? r.json() : { unread: 0 })
@@ -40,15 +42,16 @@ const useEmailBadge = () => {
     poll();
     const interval = setInterval(poll, 120000);
     return () => clearInterval(interval);
-  }, []);
+  }, [enabled]);
   return unread;
 };
 
-const useDemandeBadge = () => {
+const useDemandeBadge = (enabled) => {
   const { data = [] } = useQuery({
     queryKey: ["demandes"],
     queryFn: () => base44.entities.Demande.list(),
     staleTime: 30000,
+    enabled,
   });
   return data.filter(d => d.statut === "ouverte").length;
 };
@@ -159,9 +162,10 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { role, canAccess } = usePermissions();
-  const validationCount = useValidationsBadge();
-  const emailCount = useEmailBadge();
-  const demandeCount = useDemandeBadge();
+  const staffBadgesEnabled = role !== 'client';
+  const validationCount = useValidationsBadge(staffBadgesEnabled);
+  const emailCount = useEmailBadge(staffBadgesEnabled);
+  const demandeCount = useDemandeBadge(staffBadgesEnabled);
   const agentStatus = useAgentLocalStatus();
   const { hasModule, isLoading: entitlementsLoading } = useCommerceEntitlements();
 
@@ -344,3 +348,4 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
     </>
   );
 }
+
