@@ -1,5 +1,6 @@
 const express = require('express');
 const { requireSession } = require('./server-security.cjs');
+const { postgresRest } = require('./server-postgres.cjs');
 
 const router = express.Router();
 
@@ -23,6 +24,7 @@ function requireBridge(req, res, next) {
 }
 
 async function supabase(resource, options = {}) {
+  if (process.env.DATABASE_URL) return postgresRest(resource, options);
   assertConfigured();
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${resource}`, {
     ...options,

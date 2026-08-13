@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { requireSession } = require('./server-security.cjs');
+const { postgresRest } = require('./server-postgres.cjs');
 const router = express.Router();
 
 const SUPABASE_URL = process.env.SUPABASE_CRM_URL || process.env.SUPABASE_URL || '';
@@ -11,6 +12,7 @@ const hash = value => crypto.createHash('sha256').update(String(value)).digest('
 const token = () => crypto.randomBytes(32).toString('base64url');
 
 async function db(resource, options = {}) {
+  if (process.env.DATABASE_URL) return postgresRest(resource, options);
   if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error('Supabase runtime non configure');
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${resource}`, { ...options, headers: {
     apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', ...(options.headers || {})

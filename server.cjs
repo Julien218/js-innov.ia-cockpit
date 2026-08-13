@@ -5,6 +5,7 @@ const path = require('path');
 const app = express();
 const PORT = process.env.API_PORT || 3001;
 const { requireSession, requireSameOrigin, ROLE_LEVEL } = require('./server-security.cjs');
+require('./server-postgres.cjs').ensureReady().catch(error => console.error('[postgres] migration failed:', error.message));
 
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '25mb' }));

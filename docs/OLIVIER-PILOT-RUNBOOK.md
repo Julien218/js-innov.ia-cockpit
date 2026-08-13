@@ -2,8 +2,8 @@
 
 ## Prerequis staging
 
-- Appliquer `002_commerce_signage.sql`, puis `003_signage_runtime.sql` sur Supabase staging.
-- Configurer uniquement sur Railway staging : `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `COMMERCE_BRIDGE_KEY`, `DROPBOX_ACCESS_TOKEN`.
+- Le cockpit applique automatiquement `002_commerce_signage.sql`, puis `003_signage_runtime.sql` au PostgreSQL Railway staging via `DATABASE_URL` et un verrou transactionnel.
+- Configurer uniquement sur Railway staging : `DATABASE_URL`, `COMMERCE_BRIDGE_KEY`, `DROPBOX_ACCESS_TOKEN`. Supabase reste uniquement le fournisseur d'authentification existant tant que l'auth cockpit n'est pas migree.
 - Configurer le site staging avec la meme `COMMERCE_BRIDGE_KEY`, les cles Stripe **test** et les quatre Price IDs test.
 - Brancher le mini-PC Player en HDMI sur l'entree du Colorlight X2M. Ne modifier ni le mapping LED ni la production.
 
