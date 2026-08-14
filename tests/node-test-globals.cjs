@@ -25,6 +25,7 @@ function makeMatchers(actual, negate = false) {
       else throw new TypeError('toContain expects a string or array');
     }); },
     toHaveLength(expected) { return run(() => assert.strictEqual(actual?.length, expected)); },
+    toBeDefined() { return run(() => assert.notStrictEqual(actual, undefined)); },
     toBeUndefined() { return run(() => assert.strictEqual(actual, undefined)); },
     toBeNull() { return run(() => assert.strictEqual(actual, null)); },
     toBeTruthy() { return run(() => assert.ok(actual)); },
