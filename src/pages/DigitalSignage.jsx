@@ -16,6 +16,7 @@ export default function DigitalSignage() {
   const queryClient = useQueryClient();
   const [message, setMessage] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [enrollmentToken, setEnrollmentToken] = React.useState("");
   const fileInput = React.useRef(null);
   const { data = {}, isLoading, error } = useQuery({ queryKey: ["signage-dashboard"], queryFn: () => api("/manage/dashboard"), refetchInterval: 30000 });
   const players = data.players || [], media = data.media || [], playlists = data.playlists || [], publications = data.publications || [];
@@ -26,7 +27,7 @@ export default function DigitalSignage() {
 
   const createPlayer = () => run(async () => {
     const result = await api("/manage/players", { method: "POST", body: JSON.stringify({ name: "Player Pixelium Olivier", resolution: "1920x1080" }) });
-    sessionStorage.setItem("pixeliumEnrollmentToken", result.enrollmentToken);
+    setEnrollmentToken(result.enrollmentToken);
   }, "Player créé. Le jeton d’installation est conservé dans cette session uniquement.");
 
   const upload = file => run(async () => {
@@ -51,6 +52,7 @@ export default function DigitalSignage() {
     <PageHeader title="Écran géant" subtitle="Pilotage du Player HDMI relié au contrôleur Colorlight X2M." />
     {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-700">{error.message}</div>}
     {message && <div className="rounded-xl border border-primary/20 bg-primary/10 p-3 text-sm">{message}</div>}
+    {enrollmentToken && <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2"><p className="font-semibold">Jeton d’association — affiché une seule fois</p><p className="text-xs text-muted-foreground">Saisissez exactement ce jeton sur la MXQ, puis effacez-le de toute note temporaire.</p><div className="flex gap-2"><input readOnly value={enrollmentToken} className="flex-1 rounded-lg border bg-background px-3 py-2 font-mono text-sm"/><button onClick={() => navigator.clipboard.writeText(enrollmentToken)} className="rounded-lg border px-4 py-2 text-sm">Copier</button></div></div>}
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       <StatusCard icon={Wifi} label="Player" value={player ? (player.status === "online" ? "Connecté" : "Hors ligne") : "À créer"} detail={player?.last_seen_at ? `Dernier signal : ${new Date(player.last_seen_at).toLocaleString("fr-BE")}` : "Heartbeat sécurisé requis"} />
       <StatusCard icon={MonitorPlay} label="Contrôleur LED" value="Colorlight X2M" detail="Sortie Player en HDMI" />
