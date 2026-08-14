@@ -157,6 +157,14 @@ try {
   console.log('✅ Route /api/governance activée (audit, RGPD, consentements, politiques)');
 } catch (e) {
   console.warn('⚠️ Route governance indisponible:', e.message);
+  // --- Superagent flottant (proxy sécurisé) ---
+  try {
+    const agentChatRouter = require('./server-agent-chat.cjs');
+    app.use('/api/agent-chat', requireSession('collaborateur'), agentChatRouter);
+    console.log('✅ Route /api/agent-chat activée (Superagent flottant)');
+  } catch (e) {
+    console.warn('⚠️ Route agent-chat indisponible:', e.message);
+  }
 }
 
 // Health check API
