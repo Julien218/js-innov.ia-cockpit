@@ -1,0 +1,14 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'ia.jsinnov.pixeliumplayer'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'ia.jsinnov.pixeliumplayer'
+        minSdk 23
+        targetSdk 28
+        versionCode 1
+        versionName '0.1.0-pilot'
+    }
+}
+
