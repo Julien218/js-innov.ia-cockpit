@@ -148,6 +148,8 @@ try {
   console.warn('⚠️ Route email-core indisponible:', e.message);
 }
 
+app.use('/api/player-download', require('./server-player-apk.cjs'));
+
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cockpit-api' }));
 
 app.listen(PORT, () => {
