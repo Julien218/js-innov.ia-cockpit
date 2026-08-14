@@ -39,6 +39,7 @@ import AgentsIA from "@/pages/AgentsIA";
 import AICostControl from "@/pages/AICostControl";
 import Invitations from "@/pages/Invitations";
 import Gouvernance from "@/pages/Gouvernance";
+import FloatingAgent from "@/components/FloatingAgent";
 
 // ── Studio Vidéo
 import VideoStudio from "@/pages/VideoStudio";
@@ -144,6 +145,7 @@ function App() {
         <Router>
           <AppRoutes />
         </Router>
+        <FloatingAgent />
         <Toaster />
       </QueryClientProvider>
     </AuthProvider>
