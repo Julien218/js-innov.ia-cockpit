@@ -35,6 +35,7 @@ COPY --from=builder /app/server-email-compose.cjs ./server-email-compose.cjs
 COPY --from=builder /app/server-billing.cjs ./server-billing.cjs
 COPY --from=builder /app/server-security.cjs ./server-security.cjs
 COPY --from=builder /app/server-assistant.cjs ./server-assistant.cjs
+COPY --from=builder /app/server-dropbox-helper.cjs ./server-dropbox-helper.cjs
 COPY --from=builder /app/server-ai-cost.cjs ./server-ai-cost.cjs
 COPY --from=builder /app/server-twilio.cjs ./server-twilio.cjs
 COPY --from=builder /app/server-insurance.cjs ./server-insurance.cjs
