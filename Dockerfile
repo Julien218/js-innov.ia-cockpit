@@ -42,6 +42,7 @@ COPY --from=builder /app/server-insurance-mailbox.cjs ./server-insurance-mailbox
 COPY --from=builder /app/server-documents.cjs ./server-documents.cjs
 COPY --from=builder /app/server-commerce.cjs ./server-commerce.cjs
 COPY --from=builder /app/server-signage.cjs ./server-signage.cjs
+COPY --from=builder /app/server-player-apk.cjs ./server-player-apk.cjs
 COPY --from=builder /app/server-postgres.cjs ./server-postgres.cjs
 COPY --from=builder /app/migrations ./migrations
 COPY assets ./assets
