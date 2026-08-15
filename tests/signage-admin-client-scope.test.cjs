@@ -28,6 +28,7 @@ test('admin cockpit provides a client selector and scopes every operation', () =
   assert.match(page, /preferredManagedClient/);
   assert.match(page, /\.endsWith\("\.invalid"\)/);
   assert.match(page, /localStorage\.setItem\(managedClientKey, email\)/);
+  assert.match(page, /!stored\.endsWith\("\.invalid"\)/);
   assert.match(page, /Diagnostic des Players/);
   assert.match(page, /queryKey: \["signage-player-diagnostics"\]/);
 });
@@ -36,6 +37,16 @@ test('admin player diagnostics expose operational fields only behind admin auth'
   assert.match(server, /router\.get\('\/manage\/player-diagnostics', requireSession\('admin'\)/);
   assert.match(server, /select=id,name,owner_email,status,last_seen_at,app_version,created_at/);
   assert.doesNotMatch(server.match(/router\.get\('\/manage\/player-diagnostics'[\s\S]*?\n\}\);/)?.[0] || '', /token_hash/);
+});
+
+test('admin can atomically attach a recent connected Player to the selected client', () => {
+  assert.match(server, /router\.post\('\/manage\/players\/reassign-connected', requireSession\('admin'\)/);
+  assert.match(server, /await client\.query\('begin'\)/);
+  assert.match(server, /update signage_publications set player_id=\$1/);
+  assert.match(server, /status='retired'/);
+  assert.match(server, /await client\.query\('commit'\)/);
+  assert.match(server, /await client\.query\('rollback'\)/);
+  assert.match(page, /Rattacher ce Player/);
 });
 
 
