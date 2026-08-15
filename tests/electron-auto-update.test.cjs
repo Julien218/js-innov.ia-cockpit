@@ -10,13 +10,13 @@ const pkg = JSON.parse(fs.readFileSync(path.join(root, 'electron', 'package.json
 const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'electron-build.yml'), 'utf8');
 
 test('desktop cockpit remains a secure shell around the hosted cockpit', () => {
-  assert.match(main, /loadURL\("https:\/\/cockpit\.jsinnovia\.com"\)/);
+  assert.match(main, /loadURL\(COCKPIT_URL\)/);
   assert.match(main, /contextIsolation: true/);
   assert.match(main, /nodeIntegration: false/);
 });
 
 test('desktop updates download automatically and install safely on exit', () => {
-  assert.equal(pkg.version, '1.1.0');
+  assert.equal(pkg.version, '1.1.1');
   assert.ok(pkg.dependencies['electron-updater']);
   assert.equal(pkg.build.publish[0].provider, 'github');
   assert.equal(pkg.build.publish[0].owner, 'Julien218');
