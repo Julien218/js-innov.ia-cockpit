@@ -3,6 +3,15 @@ alter table public.signage_publications
   add column if not exists recurrence jsonb not null default '{"type":"none"}'::jsonb,
   add column if not exists rolled_back_at timestamptz;
 
+alter table public.commerce_events
+  alter column processed_at drop not null,
+  add column if not exists processing_status text not null default 'received',
+  add column if not exists processing_error text,
+  add column if not exists processing_attempts integer not null default 0;
+update public.commerce_events
+  set processing_status='processed', processing_attempts=greatest(processing_attempts, 1)
+  where processed_at is not null and processing_status='received';
+
 create index if not exists signage_publications_due_idx
   on public.signage_publications(player_id, status, scheduled_at desc);
 
