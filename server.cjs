@@ -133,6 +133,52 @@ try {
   console.warn('⚠️ Route AI Cost Control indisponible:', e.message);
 }
 
+// ── Coûts par projet — clients + projets internes JS-Innov.IA ─
+try {
+  const { router: projectCostsRouter } = require('./server-project-costs.cjs');
+  app.use('/api/project-costs', projectCostsRouter);
+  console.log('✅ Route /api/project-costs activée (IA, Railway et coûts externes par projet)');
+} catch (e) {
+  console.warn('⚠️ Route coûts projet indisponible:', e.message);
+}
+
+// ── Facturation centres de coûts + validation humaine ───────
+try {
+  const costCentersRouter = require('./server-cost-centers.cjs');
+  const { router: approvalRouter, requireApprovedSend } = require('./server-billing-approval.cjs');
+
+  app.use('/api/billing-approvals', approvalRouter);
+
+  // Le navigateur ne reçoit jamais AGENT_API_KEY : après validation de session,
+  // le serveur l'injecte uniquement dans la requête interne vers le routeur historique.
+  app.use(
+    '/api/cost-centers',
+    requireSession('admin'),
+    requireApprovedSend,
+    (req, res, next) => {
+      if (!AGENT_PROXY_KEY) return res.status(503).json({ error: 'AGENT_API_KEY non configurée' });
+      req.headers['x-agent-key'] = AGENT_PROXY_KEY;
+      next();
+    },
+    costCentersRouter,
+  );
+
+  const billingCronKey = process.env.BILLING_CRON_KEY || '';
+  app.post('/api/internal/monthly-billing/prepare', (req, res, next) => {
+    if (!billingCronKey || req.headers['x-billing-cron-key'] !== billingCronKey) {
+      return res.status(401).json({ error: 'Clé cron invalide' });
+    }
+    if (!AGENT_PROXY_KEY) return res.status(503).json({ error: 'AGENT_API_KEY non configurée' });
+    req.headers['x-agent-key'] = AGENT_PROXY_KEY;
+    req.url = '/run-monthly-billing';
+    return costCentersRouter(req, res, next);
+  });
+
+  console.log('✅ Centres de coûts activés — envoi bloqué sans validation humaine');
+} catch (e) {
+  console.warn('⚠️ Route centres de coûts indisponible:', e.message);
+}
+
 try {
   const assistantRouter = require('./server-assistant.cjs');
   app.use('/api/assistant', requireSession('collaborateur'), assistantRouter);
@@ -165,4 +211,10 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cockpit-
 app.listen(PORT, () => {
   console.log(`✅ JS-Innov.IA Cockpit API — port ${PORT}`);
   console.log(`   Proxy /api/data → ${AGENT_PROXY_URL}/data`);
+  try {
+    const { startMonthlyBillingScheduler } = require('./server-monthly-billing-scheduler.cjs');
+    startMonthlyBillingScheduler({ port: PORT });
+  } catch (error) {
+    console.warn('⚠️ Scheduler facturation indisponible:', error.message);
+  }
 });
