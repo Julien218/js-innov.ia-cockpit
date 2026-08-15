@@ -25,6 +25,15 @@ test('sensitive server routes require an authenticated session', () => {
   assert.match(source, /\/api\/assistant', requireSession\('collaborateur'\)/);
 });
 
+test('account activation uses single-use hashed invite tokens', () => {
+  const source = read('server-auth.cjs');
+  assert.match(source, /router\.get\('\/invite'/);
+  assert.match(source, /router\.post\('\/activate'/);
+  assert.match(source, /inviteTokenHash/);
+  assert.match(source, /password\.length < 12/);
+  assert.match(source, /used_at/);
+});
+
 test('official email uses its dedicated server key without opening other mailbox routes', () => {
   const server = read('server.cjs');
   const email = read('server-email.cjs');

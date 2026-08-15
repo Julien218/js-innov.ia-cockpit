@@ -170,6 +170,10 @@ function safeCompare(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+function inviteTokenHash(token) {
+  return crypto.createHash('sha256').update(String(token || '')).digest('hex');
+}
+
 // ─── Cookie helpers ──────────────────────────────────────────────────────────
 function setSessionCookie(res, token) {
   // Manual Set-Cookie to always include Secure (production = always HTTPS via Railway)
@@ -326,6 +330,39 @@ router.post('/login', async (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════════
 // GET /api/auth/session — valider la session via cookie
 // ══════════════════════════════════════════════════════════════════════════════
+router.get('/invite', async (req, res) => {
+  const token = String(req.query?.token || '');
+  if (!/^[A-Za-z0-9_-]{40,160}$/.test(token)) return res.status(400).json({ valid: false });
+  try {
+    const rows = await supabaseSelect(`cockpit_invites?select=user_id,expires_at,used_at&token_hash=eq.${inviteTokenHash(token)}&limit=1`);
+    const invite = rows?.[0];
+    return res.json({ valid: Boolean(invite && !invite.used_at && new Date(invite.expires_at) > new Date()) });
+  } catch (err) {
+    console.error('[auth] invite validation error:', err.message);
+    return res.status(503).json({ valid: false });
+  }
+});
+
+router.post('/activate', async (req, res) => {
+  if (!validateOrigin(req)) return res.status(403).json({ error: 'Origine non autorisée.' });
+  const token = String(req.body?.token || '');
+  const password = String(req.body?.password || '');
+  if (!/^[A-Za-z0-9_-]{40,160}$/.test(token)) return res.status(400).json({ error: 'Invitation invalide ou expirée.' });
+  if (password.length < 12 || password.length > 128) return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 12 caractères.' });
+  try {
+    const rows = await supabaseSelect(`cockpit_invites?select=id,user_id,expires_at,used_at&token_hash=eq.${inviteTokenHash(token)}&limit=1`);
+    const invite = rows?.[0];
+    if (!invite || invite.used_at || new Date(invite.expires_at) <= new Date()) return res.status(400).json({ error: 'Invitation invalide ou expirée.' });
+    const now = new Date().toISOString();
+    await supabaseUpdate(`cockpit_users?id=eq.${invite.user_id}`, { password_hash: sha256Legacy(password), is_active: true, updated_at: now });
+    await supabaseUpdate(`cockpit_invites?user_id=eq.${invite.user_id}&used_at=is.null`, { used_at: now });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[auth] activation error:', err.message);
+    return res.status(500).json({ error: 'Activation impossible. Réessayez.' });
+  }
+});
+
 router.get('/session', async (req, res) => {
   const token = getSessionToken(req);
 

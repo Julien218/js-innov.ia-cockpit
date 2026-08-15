@@ -7,6 +7,7 @@ import {
   Bot, Network, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
   PlayCircle, GalleryHorizontalEnd, Send, Server, Gauge,
+  MonitorPlay, Camera,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -14,21 +15,24 @@ import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { usePermissions } from "@/lib/usePermissions";
 import { ROLE_LABELS, ROLE_COLORS } from "@/lib/roles";
+import { useCommerceEntitlements } from "@/lib/useCommerceEntitlements";
 
 const OLIVIER_EMAIL = 'olivier.trevis@pv.be';
 
-const useValidationsBadge = () => {
+const useValidationsBadge = (enabled) => {
   const { data = [] } = useQuery({
     queryKey: ["validations"],
     queryFn: () => base44.entities.Validation.list(),
     staleTime: 30000,
+    enabled,
   });
   return data.filter(v => v.statut === "en_attente").length;
 };
 
-const useEmailBadge = () => {
+const useEmailBadge = (enabled) => {
   const [unread, setUnread] = React.useState(0);
   React.useEffect(() => {
+    if (!enabled) return undefined;
     const poll = () => {
       fetch('/api/emails?limit=1', { credentials: 'same-origin' })
         .then(r => r.ok ? r.json() : { unread: 0 })
@@ -38,15 +42,16 @@ const useEmailBadge = () => {
     poll();
     const interval = setInterval(poll, 120000);
     return () => clearInterval(interval);
-  }, []);
+  }, [enabled]);
   return unread;
 };
 
-const useDemandeBadge = () => {
+const useDemandeBadge = (enabled) => {
   const { data = [] } = useQuery({
     queryKey: ["demandes"],
     queryFn: () => base44.entities.Demande.list(),
     staleTime: 30000,
+    enabled,
   });
   return data.filter(d => d.statut === "ouverte").length;
 };
@@ -74,6 +79,13 @@ const ROLE_ICONS = {
 };
 
 const allNavGroups = [
+  {
+    label: "Services client",
+    items: [
+      { label: "Ecran geant", icon: MonitorPlay, path: "/ecran-geant", module: "digital_signage" },
+      { label: "Videosurveillance", icon: Camera, path: "/videosurveillance", module: "videosurveillance" },
+    ]
+  },
   {
     label: "Pilotage",
     items: [
@@ -137,7 +149,7 @@ const allNavGroups = [
     items: [
       { label: "Julien AI", icon: Bot, path: "/agent", minRole: "collaborateur", agentStatus: true },
       { label: "Agent Local", icon: Server, path: "/agent", minRole: "admin", agentLocal: true },
-      { label: "Agents IA", icon: Network, path: "/agents-ia" },
+      { label: "Agents IA", icon: Network, path: "/agents-ia", module: "ai_agents" },
       { label: "AI Cost Control", icon: Gauge, path: "/ai-cost-control", minRole: "admin" },
       { label: "Paramètres", icon: Settings, path: "/parametres", minRole: "admin" },
     ]
@@ -150,10 +162,12 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { role, canAccess } = usePermissions();
-  const validationCount = useValidationsBadge();
-  const emailCount = useEmailBadge();
-  const demandeCount = useDemandeBadge();
+  const staffBadgesEnabled = role !== 'client';
+  const validationCount = useValidationsBadge(staffBadgesEnabled);
+  const emailCount = useEmailBadge(staffBadgesEnabled);
+  const demandeCount = useDemandeBadge(staffBadgesEnabled);
   const agentStatus = useAgentLocalStatus();
+  const { hasModule, isLoading: entitlementsLoading } = useCommerceEntitlements();
 
   const colors = ROLE_COLORS[role] || ROLE_COLORS.client;
   const RoleIcon = ROLE_ICONS[role] || User;
@@ -179,7 +193,11 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
   const navGroups = allNavGroups
     .map(group => ({
       ...group,
-      items: group.items.filter(item => item.insuranceOnly ? insuranceAllowed : canAccess(getPath(item)))
+      items: group.items.filter(item => {
+        if (item.insuranceOnly) return insuranceAllowed;
+        if (item.module && role === 'client' && (entitlementsLoading || !hasModule(item.module))) return false;
+        return canAccess(getPath(item));
+      })
     }))
     .filter(group => group.items.length > 0);
 
@@ -330,3 +348,4 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
     </>
   );
 }
+
