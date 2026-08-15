@@ -78,13 +78,13 @@ test('signage uses the configured Dropbox root and temporary Player links', () =
 test('offline players can rotate to an easy-to-enter secure token', () => {
   assert.match(signage, /randomBytes\(12\).*toString\('hex'\).*toUpperCase/);
   assert.match(signage, /\/manage\/players\/:id\/rotate-token/);
-  assert.match(signagePage, /Générer un nouveau jeton/);
+  assert.match(signagePage, /GÃ©nÃ©rer un nouveau jeton/);
 });
 
 test('Android validates a token before persisting it or opening the player', () => {
   assert.match(signage, /\/player\/verify/);
   assert.match(androidPlayer, /\/api\/signage\/player\/verify/);
-  assert.match(androidPlayer, /Vérifier et associer ce Player/);
+  assert.match(androidPlayer, /VÃ©rifier et associer ce Player/);
   assert.match(androidPlayer, /HTTP 401/);
 });
 
@@ -105,25 +105,25 @@ test('cockpit serves the compiled Player 0.3 APK without embedding stale bytes',
   assert.match(apkRoute, /Cache-Control': 'no-store'/);
   assert.doesNotMatch(apkRoute, /Buffer\.from/);
   assert.match(signagePage, /href="\/api\/player-download\/android"/);
-  assert.match(signagePage, /Générer un nouveau jeton d’association/);
+  assert.match(signagePage, /GÃ©nÃ©rer un nouveau jeton dâ€™association/);
 });
 
 test('signage page reports non-JSON responses without exposing parser errors', () => {
   assert.match(signagePage, /content-type/);
-  assert.match(signagePage, /Le service du cockpit est momentanément indisponible/);
+  assert.match(signagePage, /Le service du cockpit est momentanÃ©ment indisponible/);
   assert.doesNotMatch(signagePage, /await response\.json\(\)/);
 });
 
 test('Dropbox media upload handles non-JSON failures and proxies binary through the cockpit', () => {
   assert.match(signage, /async function dropboxJson/);
   assert.match(signage, /const raw = await response\.text\(\)/);
-  assert.match(signage, /réponse non JSON/);
-  assert.match(signage, /La connexion Dropbox du cockpit doit être renouvelée/);
+  assert.match(signage, /rÃ©ponse non JSON/);
+  assert.match(signage, /La connexion Dropbox du cockpit doit Ãªtre renouvelÃ©e/);
   assert.match(signage, /api\.dropboxapi\.com\/2\/files\/get_temporary_upload_link/);
   assert.doesNotMatch(signage, /content\.dropboxapi\.com\/2\/files\/get_temporary_upload_link/);
   assert.match(signage, /content\.dropboxapi\.com\/2\/files\/upload/);
   assert.match(signage, /express\.raw\(\{type:'application\/octet-stream',limit:MAX_MEDIA_BYTES\}\)/);
-  assert.match(signage, /Le média dépasse la limite de 150 Mo/);
+  assert.match(signage, /Le mÃ©dia dÃ©passe la limite de 150 Mo/);
   assert.match(signagePage, /\/manage\/media\/upload\?name=/);
   assert.doesNotMatch(signagePage, /session\.uploadUrl/);
   assert.match(signagePage, /setRequestHeader\("Content-Type", "application\/octet-stream"\)/);
@@ -135,8 +135,17 @@ test('signage cockpit exposes upload progress and a durable completion state', (
   assert.match(signagePage, /new XMLHttpRequest\(\)/);
   assert.match(signagePage, /xhr\.upload\.onprogress/);
   assert.match(signagePage, /role="progressbar"/);
-  assert.match(signagePage, /Conversion vidéo compatible MXQ/);
-  assert.match(signagePage, /Conversion terminée\. Le média est prêt pour le Player/);
+  assert.match(signagePage, /Conversion vidÃ©o compatible MXQ/);
+  assert.match(signagePage, /Conversion terminÃ©e\. Le mÃ©dia est prÃªt pour le Player/);
   assert.match(signagePage, /aria-valuenow=\{transfer\.percent\}/);
 });
+
+test('publications always target the most recently connected Player', () => {
+  assert.match(signage, /Date\.now\(\)-new Date\(player\.last_seen_at\)\.getTime\(\)<120000/);
+  assert.match(signage, /const targetPlayer=recentPlayers\[0\]\|\|requestedPlayer/);
+  assert.match(signage, /player_id:targetPlayer\.id/);
+  assert.match(signagePage, /new Date\(b\.last_seen_at \|\| 0\).*new Date\(a\.last_seen_at \|\| 0\)/);
+  assert.doesNotMatch(signagePage, /const player = players\[0\]/);
+});
+
 
