@@ -9,6 +9,8 @@ const postgres = fs.readFileSync(path.join(root, 'server-postgres.cjs'), 'utf8')
 const signage = fs.readFileSync(path.join(root, 'src', 'pages', 'DigitalSignage.jsx'), 'utf8');
 const surveillance = fs.readFileSync(path.join(root, 'src', 'pages', 'VideoSurveillance.jsx'), 'utf8');
 const gateway = fs.readFileSync(path.join(root, 'camera-gateway', 'gateway.mjs'), 'utf8');
+const gatewayInstaller = fs.readFileSync(path.join(root, 'camera-gateway', 'install-windows.ps1'), 'utf8');
+const gatewayRunner = fs.readFileSync(path.join(root, 'camera-gateway', 'run-windows.ps1'), 'utf8');
 const migration = fs.readFileSync(path.join(root, 'migrations', '005_signage_camera_finalization.sql'), 'utf8');
 const commerce = fs.readFileSync(path.join(root, 'server-commerce.cjs'), 'utf8');
 const onboarding = fs.readFileSync(path.join(root, 'server-client-onboarding.cjs'), 'utf8');
@@ -66,6 +68,18 @@ test('local camera gateway supports heartbeat, snapshots and optional recordings
   assert.match(gateway, /captureRecording/);
   assert.match(gateway, /RECORDING_ENABLED/);
   assert.doesNotMatch(gateway, /console\.log\([^\n]*(GATEWAY_TOKEN|rtspUrl)/);
+  assert.match(gateway, /redactCameraSecrets/);
+  assert.ok(gateway.includes("'rtsp://***@'"));
+});
+
+test('Windows camera installer protects local secrets and starts the gateway at logon', () => {
+  assert.match(gatewayInstaller, /Read-Host[^\n]+-AsSecureString/);
+  assert.match(gatewayInstaller, /ConvertFrom-SecureString/);
+  assert.match(gatewayInstaller, /Set-Acl/);
+  assert.match(gatewayInstaller, /Register-ScheduledTask/);
+  assert.match(gatewayRunner, /ConvertTo-SecureString/);
+  assert.match(gatewayRunner, /ZeroFreeBSTR/);
+  assert.doesNotMatch(gatewayRunner, /Write-(Host|Output)[^\n]*(token|rtsp)/i);
 });
 
 test('Stripe events are retryable until provisioning is actually complete', () => {

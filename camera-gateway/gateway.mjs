@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 const COCKPIT_URL = String(process.env.COCKPIT_URL || 'https://olivier-signage-cockpit-production.up.railway.app').replace(/\/$/, '');
 const GATEWAY_TOKEN = String(process.env.GATEWAY_TOKEN || '');
-const APP_VERSION = '0.1.0-pilot';
+const APP_VERSION = '0.2.0-pilot';
 const SNAPSHOT_INTERVAL_MS = Math.max(2000, Number(process.env.SNAPSHOT_INTERVAL_SECONDS || 5) * 1000);
 const HEARTBEAT_INTERVAL_MS = Math.max(10000, Number(process.env.HEARTBEAT_INTERVAL_SECONDS || 30) * 1000);
 const RECORDING_ENABLED = String(process.env.RECORDING_ENABLED || 'false') === 'true';
@@ -19,6 +19,13 @@ function localConfiguration() {
   } catch {
     throw new Error('CAMERA_CONFIG_JSON invalide');
   }
+}
+
+function redactCameraSecrets(value) {
+  return String(value || '')
+    .replace(/rtsp:\/\/[^@\s]+@/gi, 'rtsp://***@')
+    .replace(/([?&](?:token|password|pass)=)[^&\s]+/gi, '$1***')
+    .slice(-300);
 }
 
 const localCameras = localConfiguration();
@@ -35,7 +42,7 @@ function runFfmpeg(args, timeoutMs) {
     child.once('close', code => {
       clearTimeout(timer);
       if (code === 0) resolve();
-      else reject(new Error(`Capture caméra impossible (FFmpeg ${code}): ${errorText.slice(-300)}`));
+      else reject(new Error(`Capture caméra impossible (FFmpeg ${code}): ${redactCameraSecrets(errorText)}`));
     });
   });
 }
