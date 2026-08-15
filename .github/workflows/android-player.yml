@@ -1,6 +1,8 @@
 name: Android Player APK
 on:
   workflow_dispatch:
+  pull_request:
+    paths: ['player-android/**', '.github/workflows/android-player.yml']
   push:
     branches: [feature/olivier-signage-surveillance]
     paths: ['player-android/**', '.github/workflows/android-player.yml']

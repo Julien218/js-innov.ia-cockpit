@@ -5,7 +5,14 @@ import { MonitorPlay, Upload, ListVideo, CalendarClock, Wifi, HardDrive, RotateC
 
 const api = async (path, options = {}) => {
   const response = await fetch(`/api/signage${path}`, { credentials: "same-origin", ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}) } });
-  const body = await response.json().catch(() => ({}));
+  const contentType = response.headers.get("content-type") || "";
+  const text = await response.text();
+  let body = {};
+  if (text && contentType.includes("application/json")) {
+    try { body = JSON.parse(text); } catch { throw new Error("Réponse du cockpit illisible. Réessayez dans quelques secondes."); }
+  } else if (text) {
+    throw new Error(response.status === 401 ? "Votre session a expiré. Reconnectez-vous." : "Le service du cockpit est momentanément indisponible.");
+  }
   if (!response.ok) throw new Error(body.error || "Opération impossible");
   return body;
 };
@@ -29,6 +36,12 @@ export default function DigitalSignage() {
     const result = await api("/manage/players", { method: "POST", body: JSON.stringify({ name: "Player Pixelium Olivier", resolution: "1920x1080" }) });
     setEnrollmentToken(result.enrollmentToken);
   }, "Player créé. Le jeton d’installation est conservé dans cette session uniquement.");
+
+  const rotatePlayerToken = () => run(async () => {
+    if (!player) throw new Error("Créez d’abord le Player");
+    const result = await api(`/manage/players/${player.id}/rotate-token`, { method: "POST", body: "{}" });
+    setEnrollmentToken(result.enrollmentToken);
+  }, "Nouveau jeton généré. L’ancien jeton est maintenant désactivé.");
 
   const upload = file => run(async () => {
     const session = await api("/manage/media/upload-session", { method: "POST", body: JSON.stringify({ name: file.name, sizeBytes: file.size }) });
@@ -64,6 +77,7 @@ export default function DigitalSignage() {
         <h2 className="text-sm font-semibold">État réel</h2>
         <div className="mt-4 grid grid-cols-3 gap-3 text-center"><div className="rounded-xl bg-muted/30 p-4"><b>{media.length}</b><p className="text-xs text-muted-foreground">Médias</p></div><div className="rounded-xl bg-muted/30 p-4"><b>{playlists.length}</b><p className="text-xs text-muted-foreground">Playlists</p></div><div className="rounded-xl bg-muted/30 p-4"><b>{publications.length}</b><p className="text-xs text-muted-foreground">Diffusions</p></div></div>
         {!player && <button disabled={busy} onClick={createPlayer} className="mt-4 rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm">Créer le Player Olivier</button>}
+        {player && player.status !== "online" && <button disabled={busy} onClick={rotatePlayerToken} className="mt-4 rounded-xl border border-border px-4 py-2 text-sm disabled:opacity-50">Générer un nouveau jeton</button>}
       </div>
       <div className="rounded-2xl border border-border bg-card p-5 space-y-3"><h2 className="text-sm font-semibold">Actions</h2>
         <input ref={fileInput} type="file" accept="video/*,image/*" className="hidden" onChange={e => e.target.files?.[0] && upload(e.target.files[0])} />
