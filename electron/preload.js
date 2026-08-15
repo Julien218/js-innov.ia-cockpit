@@ -14,4 +14,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onUpdateDownloaded: (callback) => {
     ipcRenderer.on("update-downloaded", (event, data) => callback(data));
   },
+  onLocalAgentStatus: (callback) => {
+    ipcRenderer.on("local-agent-status", (event, data) => callback(data));
+  },
 });
+
