@@ -7,6 +7,7 @@ on:
       - 'server-player-apk.cjs'
       - 'Dockerfile'
       - 'server-commerce.cjs'
+      - 'server-client-onboarding.cjs'
       - 'migrations/**'
       - 'src/pages/DigitalSignage.jsx'
       - 'src/pages/VideoSurveillance.jsx'
@@ -24,6 +25,7 @@ jobs:
       - run: npm ci
       - run: node --check server-signage.cjs
       - run: node --check server-commerce.cjs
+      - run: node --check server-client-onboarding.cjs
       - run: node --check server-postgres.cjs
       - run: node --check camera-gateway/gateway.mjs
       - run: npm test
