@@ -9,7 +9,7 @@ const TABLES = new Map([
   ['Service', 'services_fr'], ['Tache', 'taches'], ['Devis', 'devis'],
   ['Facture', 'factures'], ['Commission', 'commissions_fr'], ['Demande', 'demandes'],
   ['LogAction', 'logs_actions'], ['Asset', 'Asset'], ['AssetHistory', 'AssetHistory'],
-  ['SystemConfig', 'SystemConfig'], ['AutomationAudit', 'AutomationAudit'], ['Validation', 'validations'],
+  ['SystemConfig', 'SystemConfig'], ['AutomationAudit', 'AutomationAudit'], ['Validation', 'validations'], ['validations', 'validations'],
 ]);
 const CREATED_DATE_ENTITIES = new Set(['Service', 'Validation', 'LogAction']);
 const cleanIdentifier = value => /^[a-z_][a-z0-9_]*$/i.test(String(value || '')) ? String(value) : null;
