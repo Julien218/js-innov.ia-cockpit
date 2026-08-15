@@ -5,7 +5,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const { requireSession } = require('./server-security.cjs');
-const { postgresRest } = require('./server-postgres.cjs');
+const { postgresRest, getPool } = require('./server-postgres.cjs');
 const router = express.Router();
 
 const SUPABASE_URL = process.env.SUPABASE_CRM_URL || process.env.SUPABASE_URL || '';
@@ -305,6 +305,34 @@ router.get('/manage/dashboard', async (req,res) => {
 router.post('/manage/players', async (req,res) => {
   try { const raw=token(); const rows=await db('signage_players',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({owner_email:owner(req),name:String(req.body.name||'Player Olivier').slice(0,100),resolution:String(req.body.resolution||'1920x1080'),token_hash:hash(raw)})}); await audit(req,'player.created','player',rows[0]?.id,{}); res.status(201).json({player:rows[0],enrollmentToken:raw}); }
   catch(e){res.status(400).json({error:e.message});}
+});
+router.post('/manage/players/reassign-connected', requireSession('admin'), async (req,res) => {
+  const sourcePlayerId=String(req.body.sourcePlayerId||'');
+  const targetPlayerId=String(req.body.targetPlayerId||'');
+  const targetOwner=owner(req);
+  if(!sourcePlayerId||!targetPlayerId||sourcePlayerId===targetPlayerId) return res.status(400).json({error:'Players invalides'});
+  if(!process.env.DATABASE_URL||!getPool()) return res.status(501).json({error:'Le rattachement transactionnel requiert PostgreSQL Railway'});
+  const client=await getPool().connect();
+  try {
+    await client.query('begin');
+    const sourceResult=await client.query('select id,name,owner_email,status,last_seen_at from signage_players where id=$1 for update',[sourcePlayerId]);
+    const targetResult=await client.query('select id,name,owner_email,current_publication_id from signage_players where id=$1 and lower(owner_email)=lower($2) for update',[targetPlayerId,targetOwner]);
+    const source=sourceResult.rows[0], target=targetResult.rows[0];
+    if(!source||!target) throw new Error('Player source ou Player client introuvable');
+    if(source.owner_email.toLowerCase()===targetOwner) throw new Error('Le Player est déjà rattaché à ce client');
+    if(source.status!=='online'||!source.last_seen_at||Date.now()-new Date(source.last_seen_at).getTime()>300000) throw new Error('Le Player source ne transmet plus de heartbeat récent');
+    const now=new Date().toISOString();
+    await client.query("update signage_publications set status='cancelled',error='Player réaffecté à un client',updated_at=$2 where player_id=$1 and lower(owner_email)<>lower($3) and status='pending'",[sourcePlayerId,now,targetOwner]);
+    await client.query('update signage_publications set player_id=$1,updated_at=$3 where player_id=$2 and lower(owner_email)=lower($4)',[sourcePlayerId,targetPlayerId,now,targetOwner]);
+    await client.query("update signage_players set owner_email=$2,name=$3,status='retired',last_seen_at=null,current_publication_id=null,token_hash=$4,updated_at=$5 where id=$1",[targetPlayerId,source.owner_email,`${target.name} (remplacé)`,hash(token()),now]);
+    await client.query("update signage_players set owner_email=$2,name=$3,status='online',current_publication_id=$4,updated_at=$5 where id=$1",[sourcePlayerId,targetOwner,target.name,target.current_publication_id,now]);
+    await client.query('commit');
+    await audit(req,'player.reassigned','player',sourcePlayerId,{previousOwner:source.owner_email,replacedPlayerId:targetPlayerId});
+    res.json({success:true,playerId:sourcePlayerId,ownerEmail:targetOwner});
+  } catch(e){
+    await client.query('rollback').catch(()=>{});
+    res.status(400).json({error:e.message});
+  } finally { client.release(); }
 });
 router.post('/manage/players/:id/rotate-token', async (req,res) => {
   try {
