@@ -338,6 +338,24 @@ function drawBottom(pdf, doc, startY) {
   });
 }
 
+function drawCancelledStamp(pdf, doc, type) {
+  if (type !== 'facture' || String(doc.statut || '').toLowerCase() !== 'annulee') return;
+
+  pdf.save()
+    .opacity(0.14)
+    .fillColor('#b42318')
+    .font('Helvetica-Bold')
+    .fontSize(52)
+    .rotate(-24, { origin: [A4.width / 2, A4.height / 2] })
+    .text('ANNULÉE', 80, 390, { width: A4.width - 160, align: 'center' })
+    .restore();
+
+  pdf.save().fillColor('#b42318').roundedRect(397, 68, 166, 15, 2).fill().restore();
+  text(pdf, 'DOCUMENT NON ÉMIS', 402, 72, {
+    size: 6.8, font: 'Helvetica-Bold', color: C.white, width: 156, align: 'center',
+  });
+}
+
 function generateInvoicePDF(doc, type = 'facture') {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -351,6 +369,7 @@ function generateInvoicePDF(doc, type = 'facture') {
       const tableBottom = drawTable(pdf, doc);
       const totalsBottom = drawTotals(pdf, doc, type, tableBottom);
       drawBottom(pdf, doc, totalsBottom + 10);
+      drawCancelledStamp(pdf, doc, type);
       if (pdf.bufferedPageRange().count !== 1) throw new Error('Le PDF officiel doit tenir sur une seule page A4.');
       pdf.end();
     } catch (error) {

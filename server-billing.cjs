@@ -40,7 +40,7 @@ async function fetchDocument(type, id) {
 async function updateDocument(type, id, payload) {
   const table = type === 'facture' ? 'Facture' : 'Devis';
   const response = await fetch(`${AGENT_URL}/data/${table}/${id}`, {
-    method: 'PUT',
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json', 'x-agent-key': AGENT_KEY },
     body: JSON.stringify(payload),
   });

@@ -14,6 +14,7 @@ const formFields = [
   { name: "numero",        label: "N° Facture",      type: "text",   required: true },
   { name: "client_nom",    label: "Client",          type: "text",   required: true },
   { name: "client_email",  label: "Email client",    type: "email" },
+  { name: "objet",         label: "Objet",            type: "text",   required: true },
   { name: "montant_ht",    label: "Montant HT (€)",  type: "number" },
   { name: "tva",           label: "TVA (%)",         type: "number", placeholder: "21" },
   { name: "statut",        label: "Statut",           type: "select",
@@ -58,7 +59,14 @@ export default function Factures() {
 
   const save = useMutation({
     mutationFn: (data) => {
-      const payload = normalizeBillingPayload(data);
+      // Ne transmettre que les champs éditables. Les lignes chargées contiennent
+      // aussi id/created_at et d'autres champs serveur qui ne doivent jamais
+      // repartir dans une requête PATCH.
+      const editableFields = new Set(formFields.map(field => field.name));
+      const editableData = Object.fromEntries(
+        Object.entries(data || {}).filter(([key]) => editableFields.has(key))
+      );
+      const payload = normalizeBillingPayload(editableData);
       if (!payload.numero) {
         payload.numero = generateDocumentNumber("FAC", safeFactures);
       }
@@ -66,7 +74,14 @@ export default function Factures() {
         ? base44.entities.Facture.update(editing.id, payload)
         : base44.entities.Facture.create(payload);
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["Facture"] }); setOpen(false); setEditing(null); },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["Facture"] });
+      setOpen(false);
+      setEditing(null);
+    },
+    onError: (saveError) => {
+      alert("Erreur d’enregistrement : " + (saveError?.message || "Erreur inconnue"));
+    },
   });
 
   const del = useMutation({
