@@ -134,5 +134,5 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cockpit-
 
 app.listen(PORT, () => {
   console.log(`✅ JS-Innov.IA Cockpit API — port ${PORT}`);
-  console.log(`   Proxy /api/data → ${AGENT_PROXY_URL}/data`);
+  console.log(`   Proxy /api/data → ${(process.env.JSINNOVIA_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app')}/data`);
 });
