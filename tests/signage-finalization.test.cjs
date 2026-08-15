@@ -72,6 +72,14 @@ test('local camera gateway supports heartbeat, snapshots and optional recordings
   assert.ok(gateway.includes("'rtsp://***@'"));
 });
 
+test('lost camera gateway tokens can be securely rotated from the cockpit', () => {
+  assert.match(server, /\/manage\/camera-gateways\/:id\/token/);
+  assert.match(server, /camera_gateway\.token_rotated/);
+  assert.match(server, /token_hash:hash\(raw\)/);
+  assert.match(surveillance, /window\.confirm/);
+  assert.match(surveillance, /Générer un nouveau jeton/);
+});
+
 test('Windows camera installer protects local secrets and starts the gateway at logon', () => {
   assert.match(gatewayInstaller, /Read-Host[^\n]+-AsSecureString/);
   assert.match(gatewayInstaller, /ConvertFrom-SecureString/);

@@ -483,6 +483,19 @@ router.post('/manage/camera-gateways', requireSession('admin'), requireCameraEnt
     res.status(201).json({gateway:rows[0],enrollmentToken:raw});
   }catch(e){res.status(400).json({error:e.message});}
 });
+router.post('/manage/camera-gateways/:id/token', requireSession('admin'), requireCameraEntitlement, async(req,res)=>{
+  try{
+    const gatewayId=String(req.params.id||'');
+    const gateways=await db(filterOwner(req,`camera_gateways?select=id&id=eq.${encodeURIComponent(gatewayId)}&limit=1`));
+    if(!gateways?.[0]) return res.status(404).json({error:'Passerelle introuvable'});
+    const raw=token();
+    const now=new Date().toISOString();
+    await db(`camera_gateways?id=eq.${encodeURIComponent(gatewayId)}`,{method:'PATCH',body:JSON.stringify({token_hash:hash(raw),status:'offline',last_seen_at:null,updated_at:now})});
+    await db(`cameras?gateway_id=eq.${encodeURIComponent(gatewayId)}`,{method:'PATCH',body:JSON.stringify({status:'offline'})}).catch(()=>{});
+    await audit(req,'camera_gateway.token_rotated','camera_gateway',gatewayId,{});
+    res.json({gatewayId,enrollmentToken:raw});
+  }catch(e){res.status(400).json({error:e.message});}
+});
 router.post('/manage/cameras', requireSession('admin'), requireCameraEntitlement, async(req,res)=>{
   try{
     const gatewayId=String(req.body.gatewayId||'');
