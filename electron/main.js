@@ -1,5 +1,8 @@
 const { app, BrowserWindow, shell, ipcMain, Notification, Tray, Menu, nativeImage } = require("electron");
 const { autoUpdater } = require("electron-updater");
+const { spawn } = require("child_process");
+const fs = require("fs");
+const http = require("http");
 const path = require("path");
 const os = require("os");
 
@@ -8,6 +11,10 @@ let tray = null;
 let splashTimer = null;
 let updateAvailable = null;
 let updateDownloaded = false;
+let localAgentStartPromise = null;
+let localAgentStatus = { status: "checking", message: "Démarrage de l’IA locale…" };
+
+const LOCAL_AGENT_HEALTH_URL = "http://127.0.0.1:8787/health";
 
 // ── Helper: vérifier qu'une fenêtre est toujours vivante ────────────────────
 function isAlive(win) {
@@ -21,6 +28,92 @@ autoUpdater.allowPrerelease = false;
 
 function notify(title, body) {
   if (Notification.isSupported()) new Notification({ title, body }).show();
+}
+
+// ── IA locale — démarrage silencieux et non bloquant ───────────────────────
+function sendLocalAgentStatus(status, message) {
+  localAgentStatus = { status, message };
+  if (isAlive(mainWindow)) mainWindow.webContents.send("local-agent-status", localAgentStatus);
+}
+
+function isLocalAgentReady(timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    const request = http.get(LOCAL_AGENT_HEALTH_URL, (response) => {
+      response.resume();
+      resolve(response.statusCode >= 200 && response.statusCode < 500);
+    });
+    request.setTimeout(timeoutMs, () => request.destroy());
+    request.on("error", () => resolve(false));
+  });
+}
+
+function resolveLocalAgentFile() {
+  const documents = app.getPath("documents");
+  const candidates = [
+    process.env.JSINNOVIA_LOCAL_AGENT_FILE,
+    path.join(documents, "JS-Innov.IA", "local-agent", "server.mjs"),
+    path.join(documents, "Codex", "2026-08-06", "referenced-chatgpt-conversation-this-is-an-2", "local-agent", "server.mjs"),
+  ].filter(Boolean);
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
+}
+
+function resolveNodeExecutable() {
+  const candidates = [
+    process.env.JSINNOVIA_NODE_EXE,
+    process.env.ProgramFiles && path.join(process.env.ProgramFiles, "nodejs", "node.exe"),
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Programs", "nodejs", "node.exe"),
+  ].filter(Boolean);
+  return candidates.find((candidate) => fs.existsSync(candidate)) || "node.exe";
+}
+
+async function waitForLocalAgent(attempts = 30) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (await isLocalAgentReady()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return false;
+}
+
+function startLocalAgent() {
+  if (localAgentStartPromise) return localAgentStartPromise;
+  localAgentStartPromise = (async () => {
+    sendLocalAgentStatus("checking", "Connexion à l’IA locale…");
+    if (await isLocalAgentReady()) {
+      sendLocalAgentStatus("ready", "IA locale opérationnelle");
+      return true;
+    }
+
+    const agentFile = resolveLocalAgentFile();
+    if (!agentFile) {
+      sendLocalAgentStatus("unavailable", "Agent IA local introuvable — le Cockpit reste accessible en ligne");
+      return false;
+    }
+
+    try {
+      const child = spawn(resolveNodeExecutable(), ["--use-system-ca", agentFile], {
+        cwd: path.dirname(agentFile),
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      });
+      child.on("error", (error) => {
+        console.log("Local agent launch error:", error.message);
+      });
+      child.unref();
+    } catch (error) {
+      console.log("Local agent launch error:", error.message);
+      sendLocalAgentStatus("unavailable", "L’IA locale n’a pas pu démarrer — le Cockpit reste accessible en ligne");
+      return false;
+    }
+
+    if (await waitForLocalAgent()) {
+      sendLocalAgentStatus("ready", "IA locale opérationnelle");
+      return true;
+    }
+    sendLocalAgentStatus("unavailable", "L’IA locale ne répond pas — nouvelle tentative au prochain démarrage");
+    return false;
+  })();
+  return localAgentStartPromise;
 }
 
 function sendUpdateEvent(channel, payload) {
@@ -173,10 +266,13 @@ ipcMain.on("install-update", () => {
 
 // ── Boot ────────────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
+  // Ne bloque jamais l’ouverture du Cockpit pendant le démarrage de l’agent.
+  startLocalAgent().catch((error) => console.log("Local agent startup error:", error.message));
   const splash = createSplash();
   const win = createWindow();
 
   win.webContents.on("did-finish-load", () => {
+    sendLocalAgentStatus(localAgentStatus.status, localAgentStatus.message);
     if (splashTimer) clearTimeout(splashTimer);
     splashTimer = setTimeout(() => {
       splashTimer = null;
@@ -216,3 +312,4 @@ app.on("before-quit", () => {
   tray = null;
   mainWindow = null;
 });
+
