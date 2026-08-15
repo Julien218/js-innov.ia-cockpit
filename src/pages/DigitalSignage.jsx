@@ -36,7 +36,7 @@ const uploadMedia = (file, onProgress) => new Promise((resolve, reject) => {
     const percent = Math.min(80, Math.round((event.loaded / event.total) * 80));
     onProgress({ percent, state: "uploading", label: "Envoi sécurisé vers le cockpit…" });
   };
-  xhr.upload.onload = () => onProgress({ percent: 85, state: "processing", label: "Transfert vers Dropbox et indexation…" });
+  xhr.upload.onload = () => onProgress({ percent: 85, state: "processing", label: "Conversion vidéo compatible MXQ, transfert Dropbox et indexation…" });
   xhr.onload = () => {
     const contentType = xhr.getResponseHeader("content-type") || "";
     let body = {};
@@ -44,7 +44,7 @@ const uploadMedia = (file, onProgress) => new Promise((resolve, reject) => {
       try { body = JSON.parse(xhr.responseText); } catch { return reject(new Error("Réponse du cockpit illisible.")); }
     }
     if (xhr.status < 200 || xhr.status >= 300) return reject(new Error(body.error || `Envoi impossible (HTTP ${xhr.status}).`));
-    onProgress({ percent: 100, state: "done", label: "Téléchargement terminé et média indexé." });
+    onProgress({ percent: 100, state: "done", label: "Conversion terminée. Le média est prêt pour le Player." });
     resolve(body);
   };
   xhr.onerror = () => reject(new Error("Connexion interrompue pendant l’envoi."));
@@ -64,7 +64,7 @@ export default function DigitalSignage() {
   const { data = {}, isLoading, error } = useQuery({ queryKey: ["signage-dashboard"], queryFn: () => api("/manage/dashboard"), refetchInterval: 30000 });
   const players = data.players || [], media = data.media || [], playlists = data.playlists || [], publications = data.publications || [];
   const player = players[0];
-  const activePublication = publications.find(p => p.status === "active") || publications[0];
+  const latestPublication = publications[0];
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["signage-dashboard"] });
   const run = async (task, success) => { setBusy(true); setMessage(""); try { await task(); setMessage(success); await refresh(); } catch (e) { setMessage(e.message); } finally { setBusy(false); } };
 
@@ -87,7 +87,7 @@ export default function DigitalSignage() {
       setTransfer(current => ({ ...current, state: "error", label: error.message }));
       throw error;
     }
-  }, "Média envoyé et indexé.");
+  }, "Média converti, envoyé et prêt pour la diffusion.");
 
   const createPlaylist = () => run(async () => {
     if (!media[0]) throw new Error("Ajoutez d’abord un média");
@@ -113,9 +113,10 @@ export default function DigitalSignage() {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       <StatusCard icon={Wifi} label="Player" value={player ? (player.status === "online" ? "Connecté" : "Hors ligne") : "À créer"} detail={player?.last_seen_at ? `Dernier signal : ${new Date(player.last_seen_at).toLocaleString("fr-BE")}` : "Heartbeat sécurisé requis"} />
       <StatusCard icon={MonitorPlay} label="Contrôleur LED" value="Colorlight X2M" detail="Sortie Player en HDMI" />
-      <StatusCard icon={HardDrive} label="Médiathèque" value={`${media.length} média(s)`} detail="Dropbox Pixelium" />
-      <StatusCard icon={RotateCcw} label="Publications" value={`${publications.length}`} detail={activePublication?.status || "Aucune"} />
+      <StatusCard icon={HardDrive} label="Médiathèque" value={`${media.length} média(s)`} detail={media[0]?.status === "ready" ? "Dernier média prêt pour le Player" : "Conversion du dernier média requise"} />
+      <StatusCard icon={RotateCcw} label="Publications" value={`${publications.length}`} detail={latestPublication?.status || "Aucune"} />
     </div>
+    {latestPublication?.status === "failed" && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-700"><p className="font-semibold">La dernière diffusion a échoué sur le Player.</p><p className="mt-1">{latestPublication.error || "Le Player n’a pas pu lire le média."}</p></div>}
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div className="lg:col-span-2 rounded-2xl border border-border bg-card p-5">
         <h2 className="text-sm font-semibold">État réel</h2>

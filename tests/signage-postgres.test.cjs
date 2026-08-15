@@ -52,6 +52,18 @@ test('production image contains the SQL migrations used at startup', () => {
   assert.match(dockerfile, /COPY --from=builder \/app\/migrations \.\/migrations/);
 });
 
+test('production converts videos to a deterministic MXQ-compatible rendition', () => {
+  assert.match(dockerfile, /apk add --no-cache nginx ffmpeg/);
+  assert.match(signage, /spawn\('ffmpeg'/);
+  assert.match(signage, /libx264/);
+  assert.match(signage, /1920:1080/);
+  assert.match(signage, /yuv420p/);
+  assert.match(signage, /preparePlayerMedia\(req\.body,name,sourceMimeType\)/);
+  assert.match(signage, /status:'ready'/);
+  assert.match(signage, /state: 'ready'/);
+  assert.match(signage, /Le media doit etre converti pour le Player avant sa diffusion/);
+});
+
 test('signage uses the configured Dropbox root and temporary Player links', () => {
   assert.match(signage, /DROPBOX_ROOT_PATH/);
   assert.match(signage, /get_temporary_upload_link/);
@@ -73,6 +85,17 @@ test('Android validates a token before persisting it or opening the player', () 
   assert.match(androidPlayer, /\/api\/signage\/player\/verify/);
   assert.match(androidPlayer, /Vérifier et associer ce Player/);
   assert.match(androidPlayer, /HTTP 401/);
+});
+
+test('Android only acknowledges after decoding and restores cached playback after restart', () => {
+  assert.match(androidPlayer, /playCached\(\);\s*heartbeat\(\);/);
+  assert.match(androidPlayer, /setOnPreparedListener\(this::onVideoPrepared\)/);
+  assert.match(androidPlayer, /if \(preparingCandidate\) activateCandidate\(\)/);
+  assert.match(androidPlayer, /acknowledge\(publicationId, "active", ""\)/);
+  assert.match(androidPlayer, /acknowledge\(publicationId, "failed", reason\)/);
+  assert.match(androidPlayer, /ImageView/);
+  assert.match(androidPlayer, /checksum_sha256/);
+  assert.match(androidPlayer, /0\.3\.0-pilot/);
 });
 
 test('signage page reports non-JSON responses without exposing parser errors', () => {
@@ -102,8 +125,8 @@ test('signage cockpit exposes upload progress and a durable completion state', (
   assert.match(signagePage, /new XMLHttpRequest\(\)/);
   assert.match(signagePage, /xhr\.upload\.onprogress/);
   assert.match(signagePage, /role="progressbar"/);
-  assert.match(signagePage, /Transfert vers Dropbox et indexation/);
-  assert.match(signagePage, /Téléchargement terminé et média indexé/);
+  assert.match(signagePage, /Conversion vidéo compatible MXQ/);
+  assert.match(signagePage, /Conversion terminée\. Le média est prêt pour le Player/);
   assert.match(signagePage, /aria-valuenow=\{transfer\.percent\}/);
 });
 
