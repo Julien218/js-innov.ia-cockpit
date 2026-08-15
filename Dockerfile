@@ -35,6 +35,7 @@ COPY --from=builder /app/server-email-compose.cjs ./server-email-compose.cjs
 COPY --from=builder /app/server-billing.cjs ./server-billing.cjs
 COPY --from=builder /app/server-billing-approval.cjs ./server-billing-approval.cjs
 COPY --from=builder /app/server-cost-centers.cjs ./server-cost-centers.cjs
+COPY --from=builder /app/server-monthly-billing-preparer.cjs ./server-monthly-billing-preparer.cjs
 COPY --from=builder /app/server-monthly-billing-scheduler.cjs ./server-monthly-billing-scheduler.cjs
 COPY --from=builder /app/server-project-costs.cjs ./server-project-costs.cjs
 COPY --from=builder /app/server-security.cjs ./server-security.cjs
@@ -64,8 +65,6 @@ server {
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 
-    # Adresse produit dédiée. On conserve l'authentification sur cockpit.jsinnovia.com
-    # plutôt que d'élargir le cookie de session à tous les sous-domaines.
     if ($host = documents.jsinnovia.com) {
         return 302 https://cockpit.jsinnovia.com/documents;
     }
