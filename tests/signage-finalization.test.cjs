@@ -87,7 +87,8 @@ test('paid orders create a single-use hashed invitation without emailing active 
 });
 
 
-test('the runtime image includes every server module required by commerce and client agents', () => {
-  assert.match(dockerfile, /server-client-onboarding\.cjs/);
-  assert.match(dockerfile, /server-agents\.cjs/);
+test('the runtime image includes every current and future server module', () => {
+  assert.match(dockerfile, /COPY --from=builder \/app\/server-\*\.cjs \.\//);
+  assert.match(dockerfile, /test -f \/app\/server-billing-template\.cjs/);
+  assert.match(dockerfile, /test -f \/app\/server-cost-centers\.cjs/);
 });

@@ -22,32 +22,15 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
 COPY --from=builder /app/server.cjs ./server.cjs
-COPY --from=builder /app/server-auth.cjs ./server-auth.cjs
-COPY --from=builder /app/server-email.cjs ./server-email.cjs
-COPY --from=builder /app/server-email-core.cjs ./server-email-core.cjs
-COPY --from=builder /app/server-email-compose.cjs ./server-email-compose.cjs
-COPY --from=builder /app/server-billing.cjs ./server-billing.cjs
-COPY --from=builder /app/server-security.cjs ./server-security.cjs
-COPY --from=builder /app/server-assistant.cjs ./server-assistant.cjs
-COPY --from=builder /app/server-dropbox-helper.cjs ./server-dropbox-helper.cjs
-COPY --from=builder /app/server-ai-cost.cjs ./server-ai-cost.cjs
-COPY --from=builder /app/server-twilio.cjs ./server-twilio.cjs
-COPY --from=builder /app/server-insurance.cjs ./server-insurance.cjs
-COPY --from=builder /app/server-insurance-mailbox.cjs ./server-insurance-mailbox.cjs
-COPY --from=builder /app/server-documents.cjs ./server-documents.cjs
-COPY --from=builder /app/server-governance.cjs ./server-governance.cjs
-COPY --from=builder /app/server-commerce.cjs ./server-commerce.cjs
-COPY --from=builder /app/server-client-onboarding.cjs ./server-client-onboarding.cjs
-COPY --from=builder /app/server-agents.cjs ./server-agents.cjs
-COPY --from=builder /app/server-signage.cjs ./server-signage.cjs
-COPY --from=builder /app/server-player-apk.cjs ./server-player-apk.cjs
-COPY --from=builder /app/server-postgres.cjs ./server-postgres.cjs
+# Keep the runtime complete when a new backend module is added. server.cjs is
+# copied separately because the wildcard intentionally targets server-*.cjs.
+COPY --from=builder /app/server-*.cjs ./
 COPY --from=builder /app/migrations ./migrations
 COPY assets ./assets
 COPY public ./public
 
 RUN npm ci --omit=dev --legacy-peer-deps
-RUN ls -la /app/server-*.cjs | wc -l && echo "Server modules check OK"
+RUN test -f /app/server-billing-template.cjs && test -f /app/server-cost-centers.cjs && echo "Server modules check OK"
 
 RUN mkdir -p /etc/nginx/http.d && cat > /etc/nginx/http.d/default.conf << 'NGINXEOF'
 server {
