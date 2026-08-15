@@ -37,7 +37,7 @@ export const ROLE_ROUTES = {
     "/production", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
     "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations",
-    "/ecran-geant", "/videosurveillance"
+    "/gouvernance", "/confidentialite", "/ecran-geant", "/videosurveillance"
   ],
   admin: [
     "/", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
@@ -47,7 +47,7 @@ export const ROLE_ROUTES = {
     "/production", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
     "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations",
-    "/ecran-geant", "/videosurveillance"
+    "/gouvernance", "/confidentialite", "/ecran-geant", "/videosurveillance"
   ],
   collaborateur: [
     "/", "/documents", "/projets", "/taches", "/demandes", "/agent", "/agents-ia",
@@ -55,7 +55,7 @@ export const ROLE_ROUTES = {
   ],
   client: [
     "/", "/mes-projets", "/mes-devis", "/mes-factures", "/demandes", "/agents-ia",
-    "/ecran-geant", "/videosurveillance"
+    "/confidentialite", "/ecran-geant", "/videosurveillance"
   ],
 };
 

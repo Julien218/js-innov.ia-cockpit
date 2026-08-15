@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { recordUsage } = require('./server-ai-cost.cjs');
 
+const { buildDropboxContext, isDropboxRelated } = require("./server-dropbox-helper.cjs");
 const router = express.Router();
 const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_KEY = process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '';
@@ -171,8 +172,14 @@ router.post('/chat', async (req, res) => {
 
   const sessionId = sessionIdFor(req);
   try {
+    // === Enrichissement contexte Dropbox ===
+    let dropboxContext = '';
+    try {
+      dropboxContext = await buildDropboxContext(message);
+    } catch (e) { console.warn('[assistant] Dropbox context failed:', e.message); }
+    const enrichedMessage = dropboxContext ? message + dropboxContext : message;
     const response = await agentFetch('/chat', { method: 'POST', body: JSON.stringify({
-      message,
+      message: enrichedMessage,
       session_id: sessionId,
       user_context: { id: req.user.id, role: req.user.role, organisation: req.user.organisation },
       security: { assistant: 'personal', require_confirmation_for_actions: true },

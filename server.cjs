@@ -156,8 +156,18 @@ try {
   console.warn('⚠️ Route email-core indisponible:', e.message);
 }
 
+// ── Data Governance & RGPD ─────────────────────────────────
+try {
+  const governanceRouter = require('./server-governance.cjs');
+  app.use('/api/governance', governanceRouter);
+  console.log('✅ Route /api/governance activée (audit, RGPD, consentements, politiques)');
+} catch (e) {
+  console.warn('⚠️ Route governance indisponible:', e.message);
+}
+
 app.use('/api/player-download', require('./server-player-apk.cjs'));
 
+// Health check API
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cockpit-api' }));
 
 app.listen(PORT, () => {
