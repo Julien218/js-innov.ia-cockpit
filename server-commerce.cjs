@@ -1,6 +1,7 @@
 const express = require('express');
 const { requireSession } = require('./server-security.cjs');
 const { postgresRest } = require('./server-postgres.cjs');
+const { ensureClientInvitation } = require('./server-client-onboarding.cjs');
 
 const router = express.Router();
 
@@ -144,6 +145,12 @@ async function createOnboarding(order) {
   for (const [code, title, days] of tasks) await ensureTask(order.id, code, title, days);
 }
 
+async function provisionPaidOrder(order) {
+  await setOrderEntitlements(order, true);
+  await createOnboarding(order);
+  await ensureClientInvitation({ email: order.email, fullName: order.contact_name, organisation: order.company });
+}
+
 function normalizeOrderPayload(input) {
   const q = input?.questionnaire || {};
   const packageId = String(q.packageId || '');
@@ -198,32 +205,31 @@ router.post('/checkout-created', requireBridge, async (req, res) => {
 });
 
 router.post('/stripe-event', requireBridge, async (req, res) => {
+  let trackedEventId = '';
   try {
     const { eventId, eventType, created, livemode, object } = req.body || {};
     if (!eventId || !eventType || !object) return res.status(400).json({ error: 'Événement incomplet' });
 
-    const existing = await supabase(`commerce_events?select=event_id&event_id=eq.${encodeURIComponent(eventId)}&limit=1`);
-    if (Array.isArray(existing) && existing.length) return res.json({ success: true, duplicate: true });
-
-    await supabase('commerce_events', {
-      method: 'POST',
-      headers: { Prefer: 'return=minimal' },
-      body: JSON.stringify({
-        event_id: String(eventId),
-        event_type: String(eventType),
-        livemode: Boolean(livemode),
-        stripe_created_at: created ? new Date(Number(created) * 1000).toISOString() : null,
-        payload: object,
-      }),
-    });
+    trackedEventId = String(eventId);
+    const existing = await supabase(`commerce_events?select=event_id,processing_status,processing_attempts&event_id=eq.${encodeURIComponent(eventId)}&limit=1`);
+    if (existing?.[0]?.processing_status === 'processed') return res.json({ success: true, duplicate: true });
+    if (existing?.[0]) {
+      await supabase(`commerce_events?event_id=eq.${encodeURIComponent(eventId)}`, { method: 'PATCH', body: JSON.stringify({ processing_status: 'processing', processing_error: null, processing_attempts: Number(existing[0].processing_attempts || 0) + 1 }) });
+    } else {
+      await supabase('commerce_events', {
+        method: 'POST',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ event_id: trackedEventId, event_type: String(eventType), livemode: Boolean(livemode), stripe_created_at: created ? new Date(Number(created) * 1000).toISOString() : null, payload: object, processed_at: null, processing_status: 'processing', processing_attempts: 1 }),
+      });
+    }
 
     let orderId = object.client_reference_id || object.metadata?.commerce_order_id || null;
     let order = orderId ? await getOrderById(orderId) : null;
     if (!order && object.subscription) order = await getOrderBySubscription(String(object.subscription));
     if (!order && object.id && String(object.object || '') === 'subscription') order = await getOrderBySubscription(String(object.id));
 
-    if (eventType === 'checkout.session.completed' && order) {
-      const paid = object.payment_status === 'paid' || object.payment_status === 'no_payment_required';
+    if (['checkout.session.completed', 'checkout.session.async_payment_succeeded'].includes(eventType) && order) {
+      const paid = eventType === 'checkout.session.async_payment_succeeded' || object.payment_status === 'paid' || object.payment_status === 'no_payment_required';
       order = await updateOrder(order.id, {
         status: paid ? 'paid' : 'checkout_complete',
         stripe_checkout_session_id: object.id || order.stripe_checkout_session_id,
@@ -232,14 +238,12 @@ router.post('/stripe-event', requireBridge, async (req, res) => {
         last_stripe_event_type: eventType,
         ...(paid ? { paid_at: new Date().toISOString() } : {}),
       });
-      if (paid) {
-        await setOrderEntitlements(order, true);
-        await createOnboarding(order);
-      }
+      if (paid) await provisionPaidOrder(order);
+    } else if (eventType === 'checkout.session.async_payment_failed' && order) {
+      await updateOrder(order.id, { status: 'payment_failed', last_stripe_event_type: eventType });
     } else if (eventType === 'invoice.paid' && order) {
       order = await updateOrder(order.id, { status: 'active', last_stripe_event_type: eventType, paid_at: order.paid_at || new Date().toISOString() });
-      await setOrderEntitlements(order, true);
-      await createOnboarding(order);
+      await provisionPaidOrder(order);
     } else if (eventType === 'invoice.payment_failed' && order) {
       await updateOrder(order.id, { status: 'payment_attention', last_stripe_event_type: eventType });
     } else if (eventType === 'customer.subscription.updated' && order) {
@@ -253,9 +257,11 @@ router.post('/stripe-event', requireBridge, async (req, res) => {
       await updateOrder(order.id, { status: 'refunded', last_stripe_event_type: eventType });
     }
 
+    await supabase(`commerce_events?event_id=eq.${encodeURIComponent(eventId)}`, { method: 'PATCH', body: JSON.stringify({ processing_status: 'processed', processing_error: null, processed_at: new Date().toISOString() }) });
     res.json({ success: true, orderId: order?.id || null });
   } catch (error) {
     console.error('[commerce] stripe-event:', error.message);
+    if (trackedEventId) await supabase(`commerce_events?event_id=eq.${encodeURIComponent(trackedEventId)}`, { method: 'PATCH', body: JSON.stringify({ processing_status: 'failed', processing_error: String(error.message || 'Erreur').slice(0, 300), processed_at: null }) }).catch(() => {});
     res.status(500).json({ error: error.message });
   }
 });
@@ -314,3 +320,4 @@ router.get('/orders/:id/tasks', requireSession('admin'), async (req, res) => {
 });
 
 module.exports = router;
+
