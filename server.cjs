@@ -6,14 +6,10 @@ const app = express();
 const PORT = process.env.API_PORT || 3001;
 const { requireSession, requireSameOrigin, ROLE_LEVEL } = require('./server-security.cjs');
 
-// Trust proxy — nécessaire pour détecter HTTPS (X-Forwarded-Proto) et l'IP réelle (X-Real-IP)
-// nginx reverse proxy est le premier hop
 app.set('trust proxy', 1);
-
 app.use(express.json({ limit: '25mb' }));
 app.use(requireSameOrigin);
 
-// ── API Auth (backend, service_role) ────────────────────────
 try {
   const authRouter = require('./server-auth.cjs');
   app.use('/api/auth', authRouter);
@@ -22,13 +18,10 @@ try {
   console.warn('⚠️ Route auth indisponible:', e.message);
 }
 
-// ── API Emails IMAP ──────────────────────────────────────────
 try {
   const emailRouter = require('./server-email.cjs');
   const emailSessionGuard = requireSession('admin');
   app.use('/api/emails', (req, res, next) => {
-    // HainoFlow utilise sa clé serveur dédiée sur cette unique route.
-    // Toutes les autres routes email restent protégées par la session admin.
     if (req.path === '/official') return next();
     return emailSessionGuard(req, res, next);
   }, emailRouter);
@@ -38,7 +31,6 @@ try {
   console.warn('⚠️ Route emails indisponible:', e.message);
 }
 
-// ── Coffre documentaire Dropbox + index Supabase ───────────
 try {
   const documentsRouter = require('./server-documents.cjs');
   app.use('/api/documents', requireSession('collaborateur'), documentsRouter);
@@ -47,7 +39,6 @@ try {
   console.warn('⚠️ Route documents indisponible:', e.message);
 }
 
-// ── Composition email avec pièces jointes / Dropbox ─────────
 try {
   const emailComposeRouter = require('./server-email-compose.cjs');
   app.use('/api/email-compose', requireSession('admin'), emailComposeRouter);
@@ -56,7 +47,6 @@ try {
   console.warn('⚠️ Route email-compose indisponible:', e.message);
 }
 
-// ── API Billing (PDF + envoi devis/factures) ─────────────────
 try {
   const billingRouter = require('./server-billing.cjs');
   app.use('/api/billing', requireSession('admin'), billingRouter);
@@ -65,7 +55,6 @@ try {
   console.warn('⚠️ Route billing indisponible:', e.message);
 }
 
-// ── Assurances-Dour : suivi partagé Julien / Olivier ─────────
 try {
   const insuranceRouter = require('./server-insurance.cjs');
   app.use('/api/insurance', requireSession('client'), insuranceRouter);
@@ -75,9 +64,6 @@ try {
   console.warn('⚠️ Route assurances indisponible:', e.message);
 }
 
-// ── Proxy /api/data/* → jsinnovia-agent /data/* ─────────────
-// Server-to-server: pas de restrictions CORS
-// Le frontend appelle /api/data/Devis → Express → jsinnovia-agent
 const AGENT_PROXY_URL = process.env.JSINNOVIA_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_PROXY_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
 
@@ -93,29 +79,17 @@ app.use('/api/data', requireSession('client'), async (req, res) => {
     return res.status(403).json({ error: 'Cette ressource nécessite un administrateur' });
   }
   const targetUrl = `${AGENT_PROXY_URL}/data${req.url}`;
-  const method = req.method;
-
   const fetchOptions = {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      'x-agent-key': AGENT_PROXY_KEY,
-    },
+    method: req.method,
+    headers: { 'Content-Type': 'application/json', 'x-agent-key': AGENT_PROXY_KEY },
   };
-
-  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && req.body) {
-    fetchOptions.body = JSON.stringify(req.body);
-  }
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && req.body) fetchOptions.body = JSON.stringify(req.body);
 
   try {
     const response = await fetch(targetUrl, fetchOptions);
     const contentType = response.headers.get('content-type') || 'application/json';
     const body = await response.text();
-
-    if (response.status === 204 || !body) {
-      return res.status(response.status).end();
-    }
-
+    if (response.status === 204 || !body) return res.status(response.status).end();
     res.status(response.status).set('Content-Type', contentType).send(body);
   } catch (err) {
     console.error('[Proxy /api/data] Error:', err.message);
@@ -123,14 +97,64 @@ app.use('/api/data', requireSession('client'), async (req, res) => {
   }
 });
 
-// ── AI Cost Control ─────────────────────────────────────────
-// Lecture/configuration : session admin. Ingestion inter-services : clé serveur dédiée.
 try {
   const { router: aiCostRouter } = require('./server-ai-cost.cjs');
   app.use('/api/ai-cost', aiCostRouter);
   console.log('✅ Route /api/ai-cost activée (usage, budgets, routage, hard limits)');
 } catch (e) {
   console.warn('⚠️ Route AI Cost Control indisponible:', e.message);
+}
+
+try {
+  const { router: projectCostsRouter } = require('./server-project-costs.cjs');
+  app.use('/api/project-costs', projectCostsRouter);
+  console.log('✅ Route /api/project-costs activée (IA, Railway et coûts externes par projet)');
+} catch (e) {
+  console.warn('⚠️ Route coûts projet indisponible:', e.message);
+}
+
+try {
+  const costCentersRouter = require('./server-cost-centers.cjs');
+  const { router: approvalRouter, requireApprovedSend } = require('./server-billing-approval.cjs');
+  const { prepareMonthlyBilling } = require('./server-monthly-billing-preparer.cjs');
+
+  app.use('/api/billing-approvals', approvalRouter);
+
+  app.use(
+    '/api/cost-centers',
+    requireSession('admin'),
+    requireApprovedSend,
+    (req, res, next) => {
+      if (!process.env.AGENT_API_KEY) return res.status(503).json({ error: 'AGENT_API_KEY non configurée' });
+      req.headers['x-agent-key'] = process.env.AGENT_API_KEY;
+      next();
+    },
+    costCentersRouter,
+  );
+
+  app.post('/api/monthly-billing/prepare', requireSession('admin'), async (req, res) => {
+    try {
+      res.json(await prepareMonthlyBilling(new Date()));
+    } catch (error) {
+      res.status(500).json({ error: 'Préparation mensuelle impossible', details: error.message });
+    }
+  });
+
+  const billingCronKey = process.env.BILLING_CRON_KEY || '';
+  app.post('/api/internal/monthly-billing/prepare', async (req, res) => {
+    if (!billingCronKey || req.headers['x-billing-cron-key'] !== billingCronKey) {
+      return res.status(401).json({ error: 'Clé cron invalide' });
+    }
+    try {
+      res.json(await prepareMonthlyBilling(new Date()));
+    } catch (error) {
+      res.status(500).json({ error: 'Préparation mensuelle impossible', details: error.message });
+    }
+  });
+
+  console.log('✅ Centres de coûts activés — brouillons multi-projets + validation obligatoire');
+} catch (e) {
+  console.warn('⚠️ Route centres de coûts indisponible:', e.message);
 }
 
 try {
@@ -141,7 +165,6 @@ try {
   console.warn('Route assistant indisponible:', e.message);
 }
 
-// ── Email Core Framework (queue + send + API) ──────────────
 try {
   const emailCoreRouter = require('./server-email-core.cjs');
   app.use('/api/emails', emailCoreRouter);
@@ -150,7 +173,6 @@ try {
   console.warn('⚠️ Route email-core indisponible:', e.message);
 }
 
-// ── Data Governance & RGPD ─────────────────────────────────
 try {
   const governanceRouter = require('./server-governance.cjs');
   app.use('/api/governance', governanceRouter);
@@ -159,10 +181,15 @@ try {
   console.warn('⚠️ Route governance indisponible:', e.message);
 }
 
-// Health check API
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cockpit-api' }));
 
 app.listen(PORT, () => {
   console.log(`✅ JS-Innov.IA Cockpit API — port ${PORT}`);
   console.log(`   Proxy /api/data → ${AGENT_PROXY_URL}/data`);
+  try {
+    const { startMonthlyBillingScheduler } = require('./server-monthly-billing-scheduler.cjs');
+    startMonthlyBillingScheduler({ port: PORT });
+  } catch (error) {
+    console.warn('⚠️ Scheduler facturation indisponible:', error.message);
+  }
 });

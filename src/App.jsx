@@ -31,6 +31,8 @@ import Services from "@/pages/Services";
 import Commercants from "@/pages/Commercants";
 import Devis from "@/pages/Devis";
 import Factures from "@/pages/Factures";
+import BillingApprovals from "@/pages/BillingApprovals";
+import ProjectCosts from "@/pages/ProjectCosts";
 import Commissions from "@/pages/Commissions";
 import Validations from "@/pages/Validations";
 import Logs from "@/pages/Logs";
@@ -94,6 +96,8 @@ const AppRoutes = () => {
           <Route path="/mes-devis" element={<PageBoundary><Devis /></PageBoundary>} />
           <Route path="/factures" element={<PageBoundary><Factures /></PageBoundary>} />
           <Route path="/mes-factures" element={<PageBoundary><Factures /></PageBoundary>} />
+          <Route path="/factures-a-valider" element={<PageBoundary><BillingApprovals /></PageBoundary>} />
+          <Route path="/couts-projets" element={<PageBoundary><ProjectCosts /></PageBoundary>} />
           <Route path="/commissions" element={<PageBoundary><Commissions /></PageBoundary>} />
 
           <Route path="/agent" element={<PageBoundary><Agent /></PageBoundary>} />

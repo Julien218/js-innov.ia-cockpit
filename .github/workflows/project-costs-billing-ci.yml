@@ -1,0 +1,56 @@
+name: Project Costs & Billing Approval CI
+
+on:
+  pull_request:
+    paths:
+      - 'server-project-costs.cjs'
+      - 'server-billing-approval.cjs'
+      - 'server-monthly-billing-preparer.cjs'
+      - 'server-monthly-billing-scheduler.cjs'
+      - 'server-cost-centers.cjs'
+      - 'server.cjs'
+      - 'src/pages/ProjectCosts.jsx'
+      - 'src/pages/BillingApprovals.jsx'
+      - 'src/App.jsx'
+      - 'src/components/layout/Sidebar.jsx'
+      - 'src/lib/roles.js'
+      - 'supabase/migrations/20260815203000_project_cost_tracking_and_billing_approval.sql'
+      - 'tests/project-costs-billing.test.cjs'
+      - 'Dockerfile'
+      - '.env.example'
+      - '.github/workflows/project-costs-billing-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - name: Server syntax
+        run: |
+          node --check server-project-costs.cjs
+          node --check server-billing-approval.cjs
+          node --check server-monthly-billing-preparer.cjs
+          node --check server-monthly-billing-scheduler.cjs
+          node --check server-cost-centers.cjs
+          node --check server.cjs
+      - name: Targeted tests
+        run: node --test tests/project-costs-billing.test.cjs
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Security guards
+        run: |
+          ! grep -R "sk-[A-Za-z0-9]" server-project-costs.cjs server-billing-approval.cjs server-monthly-billing-preparer.cjs src/pages/ProjectCosts.jsx src/pages/BillingApprovals.jsx
+          grep -q "approval_status.*approved" server-billing-approval.cjs
+          grep -q "approval_status: 'pending'" server-monthly-billing-preparer.cjs
+          grep -q "billing_mode.*track_only" supabase/migrations/20260815203000_project_cost_tracking_and_billing_approval.sql
+          grep -q "server-project-costs.cjs" Dockerfile
+          grep -q "server-monthly-billing-preparer.cjs" Dockerfile
+          grep -q "server-cost-centers.cjs" Dockerfile
