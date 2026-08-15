@@ -283,6 +283,12 @@ router.get('/manage/clients', requireSession('admin'), async (req, res) => {
     res.json({ clients });
   } catch (e) { res.status(503).json({ error: e.message }); }
 });
+router.get('/manage/player-diagnostics', requireSession('admin'), async (req, res) => {
+  try {
+    const players = await db('signage_players?select=id,name,owner_email,status,last_seen_at,app_version,created_at&order=last_seen_at.desc.nullslast,created_at.desc&limit=100');
+    res.json({ players: players || [] });
+  } catch (e) { res.status(503).json({ error: e.message }); }
+});
 router.get('/manage/dashboard', async (req,res) => {
   try {
     const email = encodeURIComponent(owner(req));
@@ -576,5 +582,6 @@ router.post('/gateway/cameras/:id/recordings',(req,res,next)=>cameraRecordingBod
 });
 
 module.exports=router;
+
 
 
