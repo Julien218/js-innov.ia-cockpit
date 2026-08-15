@@ -7,6 +7,8 @@ const root = path.join(__dirname, '..');
 const adapter = fs.readFileSync(path.join(root, 'server-postgres.cjs'), 'utf8');
 const commerce = fs.readFileSync(path.join(root, 'server-commerce.cjs'), 'utf8');
 const signage = fs.readFileSync(path.join(root, 'server-signage.cjs'), 'utf8');
+const signagePage = fs.readFileSync(path.join(root, 'src', 'pages', 'DigitalSignage.jsx'), 'utf8');
+const androidPlayer = fs.readFileSync(path.join(root, 'player-android', 'app', 'src', 'main', 'java', 'ia', 'jsinnov', 'pixeliumplayer', 'MainActivity.java'), 'utf8');
 const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
 
 test('PostgreSQL staging uses DATABASE_URL and an advisory migration lock', () => {
@@ -48,5 +50,24 @@ test('signage uses the configured Dropbox root and temporary Player links', () =
   assert.match(signage, /DROPBOX_REFRESH_TOKEN/);
   assert.match(signage, /grant_type: 'refresh_token'/);
   assert.match(signage, /dropboxTokenCache/);
+});
+
+test('offline players can rotate to an easy-to-enter secure token', () => {
+  assert.match(signage, /randomBytes\(12\).*toString\('hex'\).*toUpperCase/);
+  assert.match(signage, /\/manage\/players\/:id\/rotate-token/);
+  assert.match(signagePage, /Générer un nouveau jeton/);
+});
+
+test('Android validates a token before persisting it or opening the player', () => {
+  assert.match(signage, /\/player\/verify/);
+  assert.match(androidPlayer, /\/api\/signage\/player\/verify/);
+  assert.match(androidPlayer, /Vérifier et associer ce Player/);
+  assert.match(androidPlayer, /HTTP 401/);
+});
+
+test('signage page reports non-JSON responses without exposing parser errors', () => {
+  assert.match(signagePage, /content-type/);
+  assert.match(signagePage, /Le service du cockpit est momentanément indisponible/);
+  assert.doesNotMatch(signagePage, /await response\.json\(\)/);
 });
 

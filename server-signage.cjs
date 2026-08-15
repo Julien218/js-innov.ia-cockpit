@@ -13,7 +13,9 @@ const DROPBOX_REFRESH_TOKEN = process.env.DROPBOX_REFRESH_TOKEN || '';
 const DROPBOX_ROOT_PATH = String(process.env.DROPBOX_ROOT_PATH || '/Clients').replace(/\/$/, '');
 const FFmpeg_PROFILE = { video_codec: 'h264', pixel_format: 'yuv420p', audio_codec: 'aac', container: 'mp4', faststart: true };
 const hash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
-const token = () => crypto.randomBytes(32).toString('base64url');
+// 96 bits, uppercase hexadecimal only: secure while remaining practical to
+// enter with an Android TV remote (no ambiguous upper/lower-case characters).
+const token = () => crypto.randomBytes(12).toString('hex').toUpperCase();
 const cleanDropboxSegment = value => String(value || '').replace(/[\\/:*?"<>|]/g, '-').trim();
 const mediaRoot = req => DROPBOX_ROOT_PATH === '/Clients'
   ? `${DROPBOX_ROOT_PATH}/${cleanDropboxSegment(owner(req))}/Digital Signage/Medias`
@@ -87,6 +89,19 @@ router.post('/manage/players', async (req,res) => {
   try { const raw=token(); const rows=await db('signage_players',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({owner_email:owner(req),name:String(req.body.name||'Player Olivier').slice(0,100),resolution:String(req.body.resolution||'1920x1080'),token_hash:hash(raw)})}); res.status(201).json({player:rows[0],enrollmentToken:raw}); }
   catch(e){res.status(400).json({error:e.message});}
 });
+router.post('/manage/players/:id/rotate-token', async (req,res) => {
+  try {
+    const playerId=encodeURIComponent(req.params.id);
+    const rows=await db(filterOwner(req,`signage_players?select=id&id=eq.${playerId}&limit=1`));
+    if(!rows?.[0]) return res.status(404).json({error:'Player introuvable'});
+    const raw=token();
+    await db(`signage_players?id=eq.${playerId}&owner_email=eq.${encodeURIComponent(owner(req))}`,{
+      method:'PATCH',
+      body:JSON.stringify({token_hash:hash(raw),status:'provisioning',last_seen_at:null,updated_at:new Date().toISOString()})
+    });
+    res.json({playerId:req.params.id,enrollmentToken:raw});
+  } catch(e){res.status(400).json({error:e.message});}
+});
 router.post('/manage/media/upload-session', async (req,res) => {
   try {
     const accessToken = await getDropboxToken();
@@ -131,6 +146,7 @@ router.post('/manage/publications/:id/rollback', async (req,res) => {
 });
 
 async function device(req, table) { const bearer=String(req.headers.authorization||'').replace(/^Bearer\s+/i,''); if(!bearer)return null; const rows=await db(`${table}?select=*&token_hash=eq.${hash(bearer)}&limit=1`); return rows?.[0]||null; }
+router.post('/player/verify', async (req,res)=>{try{const p=await device(req,'signage_players');if(!p)return res.status(401).json({error:'Jeton Player refuse'});res.json({valid:true,playerId:p.id,name:p.name});}catch(e){res.status(503).json({error:e.message});}});
 router.post('/player/heartbeat', async (req,res)=>{ try{const p=await device(req,'signage_players');if(!p)return res.status(401).json({error:'Player non autorise'});await db(`signage_players?id=eq.${p.id}`,{method:'PATCH',body:JSON.stringify({status:'online',last_seen_at:new Date().toISOString(),app_version:String(req.body.appVersion||''),diagnostics:req.body.diagnostics||{},updated_at:new Date().toISOString()})});const pubs=await db(`signage_publications?select=*&player_id=eq.${p.id}&status=eq.pending&order=created_at.desc&limit=1`);const publication=pubs?.[0]||null;if(publication&&await getDropboxToken()){const items=Array.isArray(publication.manifest?.items)?publication.manifest.items:[];const resolved=[];for(const item of items){const mediaId=String(item.mediaId||item.media_id||'');if(!mediaId){resolved.push(item);continue;}const media=await db(`signage_media?select=id,name,mime_type,dropbox_path,checksum_sha256,rendition&owner_email=eq.${encodeURIComponent(p.owner_email)}&id=eq.${encodeURIComponent(mediaId)}&limit=1`);if(!media?.[0])throw new Error(`Media ${mediaId} introuvable`);resolved.push({...item,media:{...media[0],url:await temporaryDropboxLink(media[0].dropbox_path),expiresIn:14400}});}publication.manifest={...publication.manifest,items:resolved};}res.json({playerId:p.id,publication,nextHeartbeatSeconds:30});}catch(e){res.status(503).json({error:e.message});}});
 router.post('/player/publications/:id/ack', async(req,res)=>{try{const p=await device(req,'signage_players');if(!p)return res.status(401).json({error:'Player non autorise'});const ok=req.body.status==='active';await db(`signage_publications?id=eq.${encodeURIComponent(req.params.id)}&player_id=eq.${p.id}`,{method:'PATCH',body:JSON.stringify({status:ok?'active':'failed',acknowledged_at:new Date().toISOString(),error:ok?null:String(req.body.error||'Validation Player echouee'),updated_at:new Date().toISOString()})});if(ok)await db(`signage_players?id=eq.${p.id}`,{method:'PATCH',body:JSON.stringify({current_publication_id:req.params.id,status:'online',updated_at:new Date().toISOString()})});res.json({success:true});}catch(e){res.status(400).json({error:e.message});}});
 
