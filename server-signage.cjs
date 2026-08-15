@@ -22,17 +22,58 @@ const mediaRoot = req => DROPBOX_ROOT_PATH === '/Clients'
   : `${DROPBOX_ROOT_PATH}/Medias`;
 
 let dropboxTokenCache = { value: DROPBOX_ACCESS_TOKEN, expiresAt: DROPBOX_ACCESS_TOKEN ? Number.MAX_SAFE_INTEGER : 0 };
+
+const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+function dropboxMessage(data, operation, status) {
+  const detail = data && (
+    data.error_description ||
+    data.error_summary ||
+    (typeof data.error === 'string' ? data.error : '')
+  );
+  if (/invalid_grant|expired_access_token|invalid_access_token/i.test(detail || '')) {
+    return 'La connexion Dropbox du cockpit doit être renouvelée.';
+  }
+  return detail || `Dropbox a refusé ${operation} (HTTP ${status}).`;
+}
+
+async function dropboxJson(url, options, operation) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    let response;
+    try {
+      response = await fetch(url, options);
+    } catch {
+      if (attempt === 0) { await wait(300); continue; }
+      throw new Error(`Dropbox est injoignable pendant ${operation}. Réessayez dans quelques secondes.`);
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    const raw = await response.text();
+    let data = null;
+    if (raw && contentType.includes('application/json')) {
+      try { data = JSON.parse(raw); } catch { data = null; }
+    }
+
+    if (data && response.ok) return data;
+    if (data) throw new Error(dropboxMessage(data, operation, response.status));
+
+    console.error(`[signage][dropbox] ${operation}: réponse non JSON (HTTP ${response.status}, ${contentType || 'type inconnu'})`);
+    if (attempt === 0) { await wait(300); continue; }
+    throw new Error(`Dropbox a renvoyé une réponse invalide pendant ${operation} (HTTP ${response.status}). Réessayez dans quelques secondes.`);
+  }
+  throw new Error(`Dropbox est indisponible pendant ${operation}.`);
+}
+
 async function getDropboxToken() {
   if (dropboxTokenCache.value && Date.now() < dropboxTokenCache.expiresAt - 60000) return dropboxTokenCache.value;
   if (!DROPBOX_APP_KEY || !DROPBOX_APP_SECRET || !DROPBOX_REFRESH_TOKEN) return '';
   const credentials = Buffer.from(`${DROPBOX_APP_KEY}:${DROPBOX_APP_SECRET}`).toString('base64');
-  const response = await fetch('https://api.dropboxapi.com/oauth2/token', {
+  const data = await dropboxJson('https://api.dropboxapi.com/oauth2/token', {
     method: 'POST',
     headers: { Authorization: `Basic ${credentials}`, 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: DROPBOX_REFRESH_TOKEN })
-  });
-  const data = await response.json();
-  if (!response.ok || !data.access_token) throw new Error(data.error_description || data.error || 'Renouvellement Dropbox impossible');
+  }, "l'authentification");
+  if (!data.access_token) throw new Error('Dropbox n’a pas fourni de jeton d’accès.');
   dropboxTokenCache = { value: data.access_token, expiresAt: Date.now() + Number(data.expires_in || 14400) * 1000 };
   return dropboxTokenCache.value;
 }
@@ -40,13 +81,11 @@ async function getDropboxToken() {
 async function temporaryDropboxLink(path) {
   const accessToken = await getDropboxToken();
   if (!accessToken) return null;
-  const response = await fetch('https://api.dropboxapi.com/2/files/get_temporary_link', {
+  const data = await dropboxJson('https://api.dropboxapi.com/2/files/get_temporary_link', {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ path })
-  });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error_summary || 'Lien Dropbox impossible');
+  }, 'la création du lien de lecture');
   return data.link;
 }
 
@@ -109,8 +148,7 @@ router.post('/manage/media/upload-session', async (req,res) => {
     const name=String(req.body.name||'').replace(/[^a-zA-Z0-9._ -]/g,'_').slice(0,180);
     if(!name) return res.status(400).json({error:'Nom requis'});
     const path=`${mediaRoot(req)}/${Date.now()}-${name}`;
-    const response=await fetch('https://content.dropboxapi.com/2/files/get_temporary_upload_link',{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:JSON.stringify({commit_info:{path,mode:'add',autorename:true,mute:false},duration:14400})});
-    const data=await response.json(); if(!response.ok) throw new Error(data.error_summary||'Dropbox upload impossible');
+    const data=await dropboxJson('https://content.dropboxapi.com/2/files/get_temporary_upload_link',{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:JSON.stringify({commit_info:{path,mode:'add',autorename:true,mute:false},duration:14400})}, 'la préparation de l’envoi');
     res.json({uploadUrl:data.link,dropboxPath:path,expiresIn:14400});
   } catch(e){res.status(502).json({error:e.message});}
 });
