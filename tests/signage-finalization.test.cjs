@@ -39,6 +39,9 @@ test('playlist ordering, preview and audit history are exposed in the cockpit', 
   assert.match(server, /signage_audit_events/);
   assert.match(signage, /moveMedia/);
   assert.match(signage, /Prévisualisation/);
+  assert.match(dockerfile, /media-src 'self' blob: https:\/\/\*\.dropboxusercontent\.com https:\/\/\*\.dropbox\.com/);
+  assert.match(signage, /onCanPlay/);
+  assert.match(signage, /La vidéo ne peut pas être lue dans ce navigateur/);
   assert.match(signage, /Journal d’activité/);
 });
 
