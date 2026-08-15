@@ -5,16 +5,10 @@ COPY package*.json ./
 RUN npm ci --legacy-peer-deps
 COPY . .
 
-ARG VITE_AGENT_KEY
-ARG VITE_AGENT_URL
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY
-ARG VITE_BASE44_API_KEY
-ENV VITE_AGENT_KEY=$VITE_AGENT_KEY
-ENV VITE_AGENT_URL=$VITE_AGENT_URL
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
-ENV VITE_BASE44_API_KEY=$VITE_BASE44_API_KEY
 
 RUN npm run build
 
@@ -22,53 +16,43 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 
-RUN apk add --no-cache nginx
+RUN apk add --no-cache nginx ffmpeg
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
 COPY --from=builder /app/server.cjs ./server.cjs
-COPY --from=builder /app/server-auth.cjs ./server-auth.cjs
-COPY --from=builder /app/server-email.cjs ./server-email.cjs
-COPY --from=builder /app/server-email-core.cjs ./server-email-core.cjs
-COPY --from=builder /app/server-email-compose.cjs ./server-email-compose.cjs
-COPY --from=builder /app/server-billing.cjs ./server-billing.cjs
-COPY --from=builder /app/server-billing-template.cjs ./server-billing-template.cjs
-COPY --from=builder /app/server-security.cjs ./server-security.cjs
-COPY --from=builder /app/server-assistant.cjs ./server-assistant.cjs
-COPY --from=builder /app/server-dropbox-helper.cjs ./server-dropbox-helper.cjs
-COPY --from=builder /app/server-ai-cost.cjs ./server-ai-cost.cjs
-COPY --from=builder /app/server-twilio.cjs ./server-twilio.cjs
-COPY --from=builder /app/server-insurance.cjs ./server-insurance.cjs
-COPY --from=builder /app/server-insurance-mailbox.cjs ./server-insurance-mailbox.cjs
-COPY --from=builder /app/server-documents.cjs ./server-documents.cjs
-COPY --from=builder /app/server-governance.cjs ./server-governance.cjs
+# Keep the runtime complete when a new backend module is added. server.cjs is
+# copied separately because the wildcard intentionally targets server-*.cjs.
+COPY --from=builder /app/server-*.cjs ./
+COPY --from=builder /app/migrations ./migrations
 COPY assets ./assets
 COPY public ./public
 
 RUN npm ci --omit=dev --legacy-peer-deps
-RUN ls -la /app/server-*.cjs | wc -l && echo "Server modules check OK"
+RUN test -f /app/server-billing-template.cjs && test -f /app/server-cost-centers.cjs && echo "Server modules check OK"
 
 RUN mkdir -p /etc/nginx/http.d && cat > /etc/nginx/http.d/default.conf << 'NGINXEOF'
 server {
     listen __PORT__;
     root /app/dist;
     index index.html;
+    client_max_body_size 150m;
 
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.railway.app https://app.base44.com https://api.base44.com wss://*.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: https://*.dropboxusercontent.com https://*.dropbox.com; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787 https://*.supabase.co https://*.railway.app https://app.base44.com https://api.base44.com wss://*.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "DENY" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 
-    # Adresse produit dédiée. On conserve l'authentification sur cockpit.jsinnovia.com
-    # plutôt que d'élargir le cookie de session à tous les sous-domaines.
     if ($host = documents.jsinnovia.com) {
         return 302 https://cockpit.jsinnovia.com/documents;
     }
 
     location /api/ {
         proxy_pass http://127.0.0.1:3001;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

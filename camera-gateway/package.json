@@ -1,0 +1,12 @@
+{
+  "name": "pixelium-camera-gateway",
+  "version": "0.2.0-pilot",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node gateway.mjs",
+    "check": "node --check gateway.mjs"
+  },
+  "engines": { "node": ">=20" }
+}
+

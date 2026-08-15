@@ -5,15 +5,12 @@ const path = require('path');
 const app = express();
 const PORT = process.env.API_PORT || 3001;
 const { requireSession, requireSameOrigin, ROLE_LEVEL } = require('./server-security.cjs');
+require('./server-postgres.cjs').ensureReady().catch(error => console.error('[postgres] migration failed:', error.message));
 
-// Trust proxy — nécessaire pour détecter HTTPS (X-Forwarded-Proto) et l'IP réelle (X-Real-IP)
-// nginx reverse proxy est le premier hop
 app.set('trust proxy', 1);
-
 app.use(express.json({ limit: '25mb' }));
 app.use(requireSameOrigin);
 
-// ── API Auth (backend, service_role) ────────────────────────
 try {
   const authRouter = require('./server-auth.cjs');
   app.use('/api/auth', authRouter);
@@ -22,13 +19,10 @@ try {
   console.warn('⚠️ Route auth indisponible:', e.message);
 }
 
-// ── API Emails IMAP ──────────────────────────────────────────
 try {
   const emailRouter = require('./server-email.cjs');
   const emailSessionGuard = requireSession('admin');
   app.use('/api/emails', (req, res, next) => {
-    // HainoFlow utilise sa clé serveur dédiée sur cette unique route.
-    // Toutes les autres routes email restent protégées par la session admin.
     if (req.path === '/official') return next();
     return emailSessionGuard(req, res, next);
   }, emailRouter);
@@ -38,7 +32,6 @@ try {
   console.warn('⚠️ Route emails indisponible:', e.message);
 }
 
-// ── Coffre documentaire Dropbox + index Supabase ───────────
 try {
   const documentsRouter = require('./server-documents.cjs');
   app.use('/api/documents', requireSession('collaborateur'), documentsRouter);
@@ -47,7 +40,6 @@ try {
   console.warn('⚠️ Route documents indisponible:', e.message);
 }
 
-// ── Composition email avec pièces jointes / Dropbox ─────────
 try {
   const emailComposeRouter = require('./server-email-compose.cjs');
   app.use('/api/email-compose', requireSession('admin'), emailComposeRouter);
@@ -56,7 +48,6 @@ try {
   console.warn('⚠️ Route email-compose indisponible:', e.message);
 }
 
-// ── API Billing (PDF + envoi devis/factures) ─────────────────
 try {
   const billingRouter = require('./server-billing.cjs');
   app.use('/api/billing', requireSession('admin'), billingRouter);
@@ -65,7 +56,6 @@ try {
   console.warn('⚠️ Route billing indisponible:', e.message);
 }
 
-// ── Assurances-Dour : suivi partagé Julien / Olivier ─────────
 try {
   const insuranceRouter = require('./server-insurance.cjs');
   app.use('/api/insurance', requireSession('client'), insuranceRouter);
@@ -75,26 +65,61 @@ try {
   console.warn('⚠️ Route assurances indisponible:', e.message);
 }
 
-// ── Proxy /api/data/* → jsinnovia-agent /data/* ─────────────
-// Server-to-server: pas de restrictions CORS
-// Le frontend appelle /api/data/Devis → Express → jsinnovia-agent
+// ── Commerce Digital Signage / Vidéosurveillance ────────────
+// Les endpoints server-to-server vérifient x-commerce-key dans le routeur.
+// Les endpoints /me et /orders appliquent eux-mêmes le contrôle de session.
+try {
+  const commerceRouter = require('./server-commerce.cjs');
+  app.use('/api/commerce', commerceRouter);
+  console.log('✅ Route /api/commerce activée (intake, Stripe, provisioning modules)');
+} catch (e) {
+  console.warn('⚠️ Route commerce indisponible:', e.message);
+}
+
+try {
+  const crmRouter = require('./server-crm.cjs');
+  app.use('/api/crm', requireSession('collaborateur'), crmRouter);
+  console.log('✅ Route /api/crm activée (clients Supabase)');
+} catch (e) {
+  console.warn('⚠️ Route CRM indisponible:', e.message);
+}
+
+try {
+  const signageRouter = require('./server-signage.cjs');
+  app.use('/api/signage', signageRouter);
+  console.log('Digital Signage runtime active');
+} catch (e) {
+  console.warn('Signage runtime unavailable:', e.message);
+}
+
 const AGENT_PROXY_URL = process.env.JSINNOVIA_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_PROXY_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
 
-app.use('/api/data', requireSession('client'), async (req, res) => {
+app.use('/api/data', requireSession('client'), (req, res, next) => {
   const table = req.path.split('/').filter(Boolean)[0];
   const role = req.user.role;
   const clientReadTables = new Set(['Projet', 'Devis', 'Facture', 'Demande']);
   if (role === 'client' && (req.method !== 'GET' || !clientReadTables.has(table))) {
     return res.status(403).json({ error: 'Cette opération nécessite un collaborateur' });
   }
-  const adminTables = new Set(['LogAction', 'Validation', 'Commission']);
+  const adminTables = new Set(['LogAction', 'Validation', 'validations', 'Commission']);
   if (adminTables.has(table) && (ROLE_LEVEL[role] || 0) < ROLE_LEVEL.admin) {
     return res.status(403).json({ error: 'Cette ressource nécessite un administrateur' });
   }
+  next();
+});
+
+try {
+  const businessDataRouter = require('./server-business-data.cjs');
+  app.use('/api/data', businessDataRouter);
+  console.log('✅ Route /api/data locale activée (Supabase métier)');
+} catch (e) {
+  console.warn('⚠️ Route données métier locale indisponible:', e.message);
+}
+
+app.use('/api/data', async (req, res) => {
   const targetUrl = `${AGENT_PROXY_URL}/data${req.url}`;
   const method = req.method;
-
   const fetchOptions = {
     method,
     headers: {
@@ -111,11 +136,7 @@ app.use('/api/data', requireSession('client'), async (req, res) => {
     const response = await fetch(targetUrl, fetchOptions);
     const contentType = response.headers.get('content-type') || 'application/json';
     const body = await response.text();
-
-    if (response.status === 204 || !body) {
-      return res.status(response.status).end();
-    }
-
+    if (response.status === 204 || !body) return res.status(response.status).end();
     res.status(response.status).set('Content-Type', contentType).send(body);
   } catch (err) {
     console.error('[Proxy /api/data] Error:', err.message);
@@ -123,8 +144,6 @@ app.use('/api/data', requireSession('client'), async (req, res) => {
   }
 });
 
-// ── AI Cost Control ─────────────────────────────────────────
-// Lecture/configuration : session admin. Ingestion inter-services : clé serveur dédiée.
 try {
   const { router: aiCostRouter } = require('./server-ai-cost.cjs');
   app.use('/api/ai-cost', aiCostRouter);
@@ -141,7 +160,14 @@ try {
   console.warn('Route assistant indisponible:', e.message);
 }
 
-// ── Email Core Framework (queue + send + API) ──────────────
+try {
+  const agentsRouter = require('./server-agents.cjs');
+  app.use('/api/agents', agentsRouter);
+  console.log('Agents IA sécurisés par abonnements activés');
+} catch (e) {
+  console.warn('Route Agents IA indisponible:', e.message);
+}
+
 try {
   const emailCoreRouter = require('./server-email-core.cjs');
   app.use('/api/emails', emailCoreRouter);
@@ -159,6 +185,8 @@ try {
   console.warn('⚠️ Route governance indisponible:', e.message);
 }
 
+app.use('/api/player-download', require('./server-player-apk.cjs'));
+
 // Health check API
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cockpit-api' }));
 
@@ -166,3 +194,5 @@ app.listen(PORT, () => {
   console.log(`✅ JS-Innov.IA Cockpit API — port ${PORT}`);
   console.log(`   Proxy /api/data → ${AGENT_PROXY_URL}/data`);
 });
+
+

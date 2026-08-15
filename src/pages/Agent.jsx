@@ -105,7 +105,14 @@ export default function AgentPage() {
     }
   }, [selectedModel]);
 
-  useEffect(() => { loadHistory(); checkAgent(); }, [loadHistory, checkAgent]);
+  useEffect(() => {
+    loadHistory();
+    checkAgent();
+    // Electron démarre l'agent en parallèle du cockpit : une première
+    // vérification peut donc arriver quelques secondes trop tôt.
+    const localAgentRetry = window.setInterval(checkAgent, 10000);
+    return () => window.clearInterval(localAgentRetry);
+  }, [loadHistory, checkAgent]);
 
   useEffect(() => {
     const handler = (event) => {
