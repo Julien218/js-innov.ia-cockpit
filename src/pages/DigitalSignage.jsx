@@ -56,6 +56,13 @@ const uploadMedia = (file, onProgress, clientEmail = "") => new Promise((resolve
 
 const StatusCard = ({ icon: Icon, label, value, detail }) => <div className="rounded-2xl border border-border bg-card p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center"><Icon className="w-5 h-5" /></div><div><p className="text-xs text-muted-foreground">{label}</p><p className="text-sm font-semibold">{value}</p>{detail && <p className="text-xs text-muted-foreground mt-0.5">{detail}</p>}</div></div></div>;
 
+const managedClientKey = "jsinnovia-managed-client";
+const preferredManagedClient = clients => {
+  const stored = window.localStorage.getItem(managedClientKey);
+  if (stored && clients.some(client => client.email === stored)) return stored;
+  return clients.find(client => !String(client.email).endsWith(".invalid"))?.email || clients[0]?.email || "";
+};
+
 export default function DigitalSignage() {
   const { user } = useAuth();
   const isAdmin = ['admin', 'superadmin'].includes(user?.role);
@@ -74,7 +81,7 @@ export default function DigitalSignage() {
   const clientsQuery = useQuery({ queryKey: ["signage-managed-clients"], queryFn: () => api("/manage/clients"), enabled: isAdmin, staleTime: 60000 });
   const managedClients = clientsQuery.data?.clients || [];
   React.useEffect(() => {
-    if (isAdmin && !managedClient && managedClients.length) setManagedClient(managedClients[0].email);
+    if (isAdmin && !managedClient && managedClients.length) setManagedClient(preferredManagedClient(managedClients));
   }, [isAdmin, managedClient, managedClients]);
   const dashboardEnabled = !isAdmin || Boolean(managedClient);
   const { data = {}, isLoading, error } = useQuery({ queryKey: ["signage-dashboard", managedClient || "self"], queryFn: () => api("/manage/dashboard", {}, managedClient), enabled: dashboardEnabled, refetchInterval: 30000 });
@@ -130,7 +137,7 @@ export default function DigitalSignage() {
     <PageHeader title="Écran géant" subtitle="Pilotage du Player HDMI relié au contrôleur Colorlight X2M." />
     {isAdmin && <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
       <div className="flex-1"><p className="text-sm font-semibold">Client géré</p><p className="text-xs text-muted-foreground">Vous pilotez uniquement les écrans du client sélectionné.</p></div>
-      <select value={managedClient} onChange={event => { setManagedClient(event.target.value); setEnrollmentToken(""); setTransfer(null); setMessage(""); setSelectedMediaIds([]); setPreview(null); setPreviewError(""); }} className="rounded-xl border border-border bg-background px-3 py-2 text-sm min-w-[260px]">
+      <select value={managedClient} onChange={event => { const email = event.target.value; setManagedClient(email); window.localStorage.setItem(managedClientKey, email); setEnrollmentToken(""); setTransfer(null); setMessage(""); setSelectedMediaIds([]); setPreview(null); setPreviewError(""); }} className="rounded-xl border border-border bg-background px-3 py-2 text-sm min-w-[260px]">
         {!managedClients.length && <option value="">Aucun client Signage actif</option>}
         {managedClients.map(client => <option key={client.email} value={client.email}>{client.name} — {client.email}</option>)}
       </select>
@@ -187,5 +194,6 @@ export default function DigitalSignage() {
     </div>
   </div>;
 }
+
 
 
