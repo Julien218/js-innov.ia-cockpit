@@ -1,7 +1,7 @@
 import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
-import { MonitorPlay, Upload, ListVideo, CalendarClock, Wifi, HardDrive, RotateCcw } from "lucide-react";
+import { MonitorPlay, Upload, Download, ListVideo, CalendarClock, Wifi, HardDrive, RotateCcw } from "lucide-react";
 
 const api = async (path, options = {}) => {
   const response = await fetch(`/api/signage${path}`, { credentials: "same-origin", ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}) } });
@@ -122,9 +122,10 @@ export default function DigitalSignage() {
         <h2 className="text-sm font-semibold">État réel</h2>
         <div className="mt-4 grid grid-cols-3 gap-3 text-center"><div className="rounded-xl bg-muted/30 p-4"><b>{media.length}</b><p className="text-xs text-muted-foreground">Médias</p></div><div className="rounded-xl bg-muted/30 p-4"><b>{playlists.length}</b><p className="text-xs text-muted-foreground">Playlists</p></div><div className="rounded-xl bg-muted/30 p-4"><b>{publications.length}</b><p className="text-xs text-muted-foreground">Diffusions</p></div></div>
         {!player && <button disabled={busy} onClick={createPlayer} className="mt-4 rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm">Créer le Player Olivier</button>}
-        {player && player.status !== "online" && <button disabled={busy} onClick={rotatePlayerToken} className="mt-4 rounded-xl border border-border px-4 py-2 text-sm disabled:opacity-50">Générer un nouveau jeton</button>}
+        {player && <div className="mt-4 space-y-2"><button disabled={busy} onClick={rotatePlayerToken} className="rounded-xl border border-border px-4 py-2 text-sm disabled:opacity-50">Générer un nouveau jeton d’association</button><p className="text-xs text-muted-foreground">À utiliser après la réinstallation du Player. La génération désactive immédiatement l’ancien jeton.</p></div>}
       </div>
       <div className="rounded-2xl border border-border bg-card p-5 space-y-3"><h2 className="text-sm font-semibold">Actions</h2>
+        <a href="/api/player-download/android" download className="w-full rounded-xl border border-border px-4 py-3 text-sm font-medium flex items-center justify-center gap-2"><Download className="w-4 h-4" /> Télécharger le Player Android 0.3</a>
         <input ref={fileInput} type="file" accept="video/*,image/*" className="hidden" onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) upload(file); }} />
         <button disabled={busy || isLoading} onClick={() => fileInput.current?.click()} className="w-full rounded-xl bg-primary text-primary-foreground px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"><Upload className="w-4 h-4" /> Ajouter un média</button>
         <button disabled={busy || !media.length} onClick={createPlaylist} className="w-full rounded-xl border border-border px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"><ListVideo className="w-4 h-4" /> Créer une playlist</button>

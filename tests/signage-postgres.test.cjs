@@ -104,6 +104,8 @@ test('cockpit serves the compiled Player 0.3 APK without embedding stale bytes',
   assert.match(apkRoute, /res\.sendFile\(APK_PATH/);
   assert.match(apkRoute, /Cache-Control': 'no-store'/);
   assert.doesNotMatch(apkRoute, /Buffer\.from/);
+  assert.match(signagePage, /href="\/api\/player-download\/android"/);
+  assert.match(signagePage, /Générer un nouveau jeton d’association/);
 });
 
 test('signage page reports non-JSON responses without exposing parser errors', () => {
