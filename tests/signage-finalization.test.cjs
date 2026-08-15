@@ -10,6 +10,8 @@ const signage = fs.readFileSync(path.join(root, 'src', 'pages', 'DigitalSignage.
 const surveillance = fs.readFileSync(path.join(root, 'src', 'pages', 'VideoSurveillance.jsx'), 'utf8');
 const gateway = fs.readFileSync(path.join(root, 'camera-gateway', 'gateway.mjs'), 'utf8');
 const migration = fs.readFileSync(path.join(root, 'migrations', '005_signage_camera_finalization.sql'), 'utf8');
+const commerce = fs.readFileSync(path.join(root, 'server-commerce.cjs'), 'utf8');
+const onboarding = fs.readFileSync(path.join(root, 'server-client-onboarding.cjs'), 'utf8');
 
 test('scheduled and recurring publications are only delivered when due', () => {
   assert.match(migration, /scheduled_at timestamptz/);
@@ -63,5 +65,23 @@ test('local camera gateway supports heartbeat, snapshots and optional recordings
   assert.match(gateway, /captureRecording/);
   assert.match(gateway, /RECORDING_ENABLED/);
   assert.doesNotMatch(gateway, /console\.log\([^\n]*(GATEWAY_TOKEN|rtspUrl)/);
+});
+
+test('Stripe events are retryable until provisioning is actually complete', () => {
+  assert.match(migration, /processing_status/);
+  assert.match(migration, /processing_attempts/);
+  assert.match(commerce, /processing_status === 'processed'/);
+  assert.match(commerce, /processing_status: 'failed'/);
+  assert.match(commerce, /checkout\.session\.async_payment_succeeded/);
+  assert.match(commerce, /checkout\.session\.async_payment_failed/);
+});
+
+test('paid orders create a single-use hashed invitation without emailing active clients', () => {
+  assert.match(commerce, /ensureClientInvitation/);
+  assert.match(onboarding, /randomBytes\(48\)\.toString\('base64url'\)/);
+  assert.match(onboarding, /inviteHash\(rawToken\)/);
+  assert.match(onboarding, /if \(user\?\.is_active\) return/);
+  assert.match(onboarding, /EMAIL_STORE_PASSWORD/);
+  assert.doesNotMatch(onboarding, /console\.[a-z]+\([^\n]*rawToken/);
 });
 
