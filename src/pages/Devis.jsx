@@ -55,9 +55,14 @@ const columns = [
   { key: "montant_ttc",   label: "Total TTC", render: v => v ? formatCurrency(v) : "—" },
   { key: "statut",        label: "Statut",    render: v => <StatusBadge status={v} /> },
   { key: "date_validite", label: "Validité",  render: v => v ? new Date(v).toLocaleDateString("fr-BE") : "—" },
-  { key: "pdf_genere_at", label: "PDF archivé", render: (v, row) => v
-    ? <span title={row.pdf_version || "Modèle officiel"}>{formatTrackingDate(v)} · {row.nombre_telechargements || 0} téléchargement(s)</span>
-    : <span className="text-amber-400">À générer</span> },
+  { key: "pdf_genere_at", label: "PDF archivé", render: (v, row) => {
+    if (v && row.pdf_conformite_statut === "incomplet") {
+      return <span className="text-red-400" title="Ancienne version conservée pour audit">Non conforme — données légales à compléter</span>;
+    }
+    return v
+      ? <span title={row.pdf_version || "Modèle officiel"}>{formatTrackingDate(v)} · {row.nombre_telechargements || 0} téléchargement(s)</span>
+      : <span className="text-amber-400">À générer</span>;
+  } },
   { key: "date_dernier_envoi", label: "Dernier envoi", render: (v, row) => v
     ? <span>{formatTrackingDate(v)} · {row.nombre_envois || 1} envoi(s)</span>
     : "—" },
@@ -198,7 +203,7 @@ export default function Devis() {
         <Pencil className="w-4 h-4" />
       </Button>
       <Button size="icon" variant="ghost"
-        title={row.pdf_document_id ? "Retélécharger le PDF archivé" : "Générer et archiver le PDF"}
+        title={row.pdf_conformite_statut === "incomplet" ? "Compléter les données légales avant régénération" : row.pdf_document_id ? "Retélécharger le PDF archivé" : "Générer et archiver le PDF"}
         aria-label={row.pdf_document_id ? "Retélécharger le PDF archivé" : "Générer et archiver le PDF"}
         disabled={pdfLoading === row.id}
         onClick={() => handlePDF(row)}>
