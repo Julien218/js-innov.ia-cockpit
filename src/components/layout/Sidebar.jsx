@@ -6,7 +6,7 @@ import {
   CheckSquare, MessageSquare, Shield,
   Bot, Network, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
-  PlayCircle, GalleryHorizontalEnd, Send, Server, Gauge,
+  PlayCircle, GalleryHorizontalEnd, Send, Server, Gauge, Workflow,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -78,6 +78,7 @@ const allNavGroups = [
     label: "Pilotage",
     items: [
       { label: "Accueil", icon: LayoutDashboard, path: "/" },
+      { label: "HainoFlow", icon: Workflow, path: "/hainoflow" },
       { label: "Assurances-Dour", icon: Shield, path: "/assurances", insuranceOnly: true },
     ]
   },
