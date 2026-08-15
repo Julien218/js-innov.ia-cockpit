@@ -31,6 +31,7 @@ import Services from "@/pages/Services";
 import Commercants from "@/pages/Commercants";
 import Devis from "@/pages/Devis";
 import Factures from "@/pages/Factures";
+import HainoFlow from "@/pages/HainoFlow";
 import Commissions from "@/pages/Commissions";
 import Validations from "@/pages/Validations";
 import Logs from "@/pages/Logs";
@@ -93,6 +94,7 @@ const AppRoutes = () => {
           <Route path="/devis" element={<PageBoundary><Devis /></PageBoundary>} />
           <Route path="/mes-devis" element={<PageBoundary><Devis /></PageBoundary>} />
           <Route path="/factures" element={<PageBoundary><Factures /></PageBoundary>} />
+          <Route path="/hainoflow" element={<PageBoundary><HainoFlow /></PageBoundary>} />
           <Route path="/mes-factures" element={<PageBoundary><Factures /></PageBoundary>} />
           <Route path="/commissions" element={<PageBoundary><Commissions /></PageBoundary>} />
 
