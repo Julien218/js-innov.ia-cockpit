@@ -12,8 +12,7 @@ import { formatCurrency, normalizeBillingPayload, generateDocumentNumber } from 
 
 const formFields = [
   { name: "numero",        label: "N° Facture",      type: "text",   required: true },
-  { name: "client_nom",    label: "Client",          type: "text",   required: true },
-  { name: "client_email",  label: "Email client",    type: "email" },
+  { name: "client_id",     label: "Client du Cockpit", type: "select", required: true, options: [] },
   { name: "objet",         label: "Objet",            type: "text",   required: true },
   { name: "montant_ht",    label: "Montant HT (€)",  type: "number" },
   { name: "tva",           label: "TVA (%)",         type: "number", placeholder: "21" },
@@ -27,6 +26,29 @@ const formFields = [
 const formatTrackingDate = value => value
   ? new Date(value).toLocaleString("fr-BE", { dateStyle: "short", timeStyle: "short" })
   : "—";
+
+async function handleComplianceError(data) {
+  if (data?.code !== "CLIENT_INFORMATION_INCOMPLETE" || !data?.canRequestByEmail || !data?.clientId) {
+    return false;
+  }
+  const missing = Array.isArray(data.missingLabels) ? data.missingLabels.join(", ") : "informations légales";
+  const approved = confirm(
+    `Facturation bloquée : ${missing}.\n\nEnvoyer une demande à ${data.clientEmail} ?`
+  );
+  if (!approved) return false;
+  const response = await fetch(`/api/billing/clients/${data.clientId}/request-information`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({}),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `HTTP ${response.status}`);
+  }
+  alert(`Demande d’informations envoyée à ${result.sentTo}. La facture reste bloquée jusqu’à validation des données.`);
+  return true;
+}
 
 const columns = [
   { key: "numero",        label: "N° Facture" },
@@ -54,19 +76,37 @@ export default function Factures() {
     queryKey: ["Facture"],
     queryFn: () => base44.entities.Facture.list("-created_at"),
   });
+  const { data: clients = [] } = useQuery({
+    queryKey: ["Client"],
+    queryFn: () => base44.entities.Client.list("entreprise"),
+  });
 
   const safeFactures = Array.isArray(factures) ? factures : [];
+  const safeClients = Array.isArray(clients) ? clients : [];
+  const resolvedFormFields = formFields.map((field) => field.name === "client_id"
+    ? {
+        ...field,
+        options: safeClients.map((client) => ({
+          value: client.id,
+          label: client.denomination_legale || client.entreprise || [client.prenom, client.nom].filter(Boolean).join(" ") || client.email,
+        })),
+      }
+    : field);
 
   const save = useMutation({
     mutationFn: (data) => {
       // Ne transmettre que les champs éditables. Les lignes chargées contiennent
       // aussi id/created_at et d'autres champs serveur qui ne doivent jamais
       // repartir dans une requête PATCH.
-      const editableFields = new Set(formFields.map(field => field.name));
+      const editableFields = new Set(resolvedFormFields.map(field => field.name));
       const editableData = Object.fromEntries(
         Object.entries(data || {}).filter(([key]) => editableFields.has(key))
       );
       const payload = normalizeBillingPayload(editableData);
+      const selectedClient = safeClients.find((client) => client.id === payload.client_id);
+      if (!selectedClient) throw new Error("Sélectionnez un client existant dans le Cockpit.");
+      payload.client_nom = selectedClient.denomination_legale || selectedClient.entreprise || [selectedClient.prenom, selectedClient.nom].filter(Boolean).join(" ");
+      payload.client_email = selectedClient.email_facturation || selectedClient.email || "";
       if (!payload.numero) {
         payload.numero = generateDocumentNumber("FAC", safeFactures);
       }
@@ -102,6 +142,7 @@ export default function Factures() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
+        if (await handleComplianceError(err)) return;
         throw new Error(err.error || `HTTP ${res.status}`);
       }
       const blob = await res.blob();
@@ -143,6 +184,7 @@ export default function Factures() {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
+        if (await handleComplianceError(data)) return;
         throw new Error(data.error || `HTTP ${res.status}`);
       }
       setSendMsg({ type: "success", text: `Facture envoyée à ${data.sentTo || to}` });
@@ -214,7 +256,7 @@ export default function Factures() {
         open={open}
         onClose={() => { setOpen(false); setEditing(null); }}
         title={editing ? "Modifier la facture" : "Nouvelle facture"}
-        fields={formFields}
+        fields={resolvedFormFields}
         initialData={editing}
         onSubmit={(data) => save.mutate(data)}
         loading={save.isPending}
