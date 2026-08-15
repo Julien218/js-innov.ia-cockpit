@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { crmClient } from "@/api/crmClient";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
 import ErrorState from "@/components/shared/ErrorState";
@@ -38,19 +38,19 @@ export default function Clients() {
   const [editing, setEditing] = useState(null);
 
   const { data: clients = [], isLoading, isError, error, refetch } = useQuery({
-    queryKey: ["Client"],
-    queryFn: () => base44.entities.Client.list("-created_at"),
+    queryKey: ["crm-clients"],
+    queryFn: () => crmClient.list(),
   });
 
   const save = useMutation({
     mutationFn: (data) =>
-      editing ? base44.entities.Client.update(editing.id, data) : base44.entities.Client.create(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["Client"] }); setOpen(false); setEditing(null); },
+      editing ? crmClient.update(editing.id, data) : crmClient.create(data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["crm-clients"] }); setOpen(false); setEditing(null); },
   });
 
   const del = useMutation({
-    mutationFn: (id) => base44.entities.Client.delete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["Client"] }),
+    mutationFn: (id) => crmClient.delete(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["crm-clients"] }),
   });
 
   const actions = (row) => (
@@ -70,7 +70,7 @@ export default function Clients() {
       <div className="space-y-4">
         <ErrorState
           title="Impossible de charger les données"
-          message={error?.message || "Erreur de connexion au serveur backend. Vérifiez que le service jsinnovia-agent est disponible."}
+          message={error?.message || "Erreur de connexion au CRM Supabase du cockpit."}
           onRetry={refetch}
         />
       </div>

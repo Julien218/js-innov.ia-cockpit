@@ -2,6 +2,7 @@ const express = require('express');
 const { requireSession } = require('./server-security.cjs');
 const { postgresRest } = require('./server-postgres.cjs');
 const { ensureClientInvitation } = require('./server-client-onboarding.cjs');
+const { ensureCrmClient } = require('./server-crm.cjs');
 
 const router = express.Router();
 
@@ -148,6 +149,7 @@ async function createOnboarding(order) {
 async function provisionPaidOrder(order) {
   await setOrderEntitlements(order, true);
   await createOnboarding(order);
+  await ensureCrmClient(order);
   await ensureClientInvitation({ email: order.email, fullName: order.contact_name, organisation: order.company });
 }
 
@@ -297,6 +299,12 @@ router.post('/pilot-grant', requireSession('admin'), async (req, res) => {
     for (const moduleCode of ['digital_signage', 'videosurveillance']) {
       await upsertPilotEntitlement({ email, moduleCode, billingAccount });
     }
+    await ensureCrmClient({
+      email,
+      contact_name: req.body?.fullName,
+      company: req.body?.organisation || billingAccount,
+      crm_notes: 'Pilote Digital Signage + Vidéosurveillance : abonnement offert, frais LLM et tiers facturables au compte indiqué.',
+    });
     res.status(201).json({
       success: true,
       email,

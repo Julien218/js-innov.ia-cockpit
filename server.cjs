@@ -77,6 +77,14 @@ try {
 }
 
 try {
+  const crmRouter = require('./server-crm.cjs');
+  app.use('/api/crm', requireSession('collaborateur'), crmRouter);
+  console.log('✅ Route /api/crm activée (clients Supabase)');
+} catch (e) {
+  console.warn('⚠️ Route CRM indisponible:', e.message);
+}
+
+try {
   const signageRouter = require('./server-signage.cjs');
   app.use('/api/signage', signageRouter);
   console.log('Digital Signage runtime active');

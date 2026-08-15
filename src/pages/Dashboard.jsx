@@ -1,5 +1,6 @@
 import React from "react";
 import { base44 } from "@/api/base44Client";
+import { crmClient } from "@/api/crmClient";
 import { useQuery } from "@tanstack/react-query";
 import {
   Users, Target, FolderKanban, FileText, Receipt,
@@ -25,7 +26,7 @@ export default function Dashboard() {
   const isClient = user?.role === "client";
   const { hasModule, isLoading: modulesLoading } = useCommerceEntitlements();
   const crmQuery = (key, queryFn) => ({ queryKey: [key], queryFn, enabled: !isClient });
-  const { data: clients = [], isError: clientsErr } = useQuery(crmQuery("clients", () => base44.entities.Client.list()));
+  const { data: clients = [], isError: clientsErr } = useQuery(crmQuery("crm-clients", () => crmClient.list()));
   const { data: leads = [], isError: leadsErr } = useQuery(crmQuery("leads", () => base44.entities.Lead.list()));
   const { data: projets = [], isError: projetsErr } = useQuery(crmQuery("projets", () => base44.entities.Projet.list()));
   const { data: taches = [], isError: tachesErr } = useQuery(crmQuery("taches", () => base44.entities.Tache.list()));
