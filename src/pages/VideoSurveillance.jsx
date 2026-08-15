@@ -4,6 +4,13 @@ import PageHeader from "@/components/shared/PageHeader";
 import { Camera, Video, Wifi, HardDrive, ShieldCheck, Clock3, Maximize2, Download, Plus, KeyRound, X } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 
+const managedClientKey = "jsinnovia-managed-client";
+const preferredManagedClient = clients => {
+  const stored = window.localStorage.getItem(managedClientKey);
+  if (stored && clients.some(client => client.email === stored)) return stored;
+  return clients.find(client => !String(client.email).endsWith(".invalid"))?.email || clients[0]?.email || "";
+};
+
 const api = async (path, options = {}, clientEmail = "") => {
   const response = await fetch(`/api/signage${path}`, { credentials: "same-origin", ...options, headers: { "Content-Type": "application/json", ...(clientEmail ? { "X-Client-Email": clientEmail } : {}), ...(options.headers || {}) } });
   const type = response.headers.get("content-type") || "";
@@ -52,7 +59,7 @@ export default function VideoSurveillance() {
   const [cameraForm, setCameraForm] = React.useState({ name: "Caméra Pixelium", model: "CTRONICS", localStreamKey: "camera-1", retentionDays: 14 });
   const clientsQuery = useQuery({ queryKey: ["camera-managed-clients"], queryFn: () => api("/manage/clients?module=videosurveillance"), enabled: isAdmin, staleTime: 60000 });
   const managedClients = clientsQuery.data?.clients || [];
-  React.useEffect(() => { if (isAdmin && !managedClient && managedClients.length) setManagedClient(managedClients[0].email); }, [isAdmin, managedClient, managedClients]);
+  React.useEffect(() => { if (isAdmin && !managedClient && managedClients.length) setManagedClient(preferredManagedClient(managedClients)); }, [isAdmin, managedClient, managedClients]);
   const enabled = !isAdmin || Boolean(managedClient);
   const { data = { gateways: [], cameras: [], recordings: [] }, error, isLoading } = useQuery({ queryKey: ["camera-dashboard", managedClient || "self"], queryFn: () => api("/manage/camera-dashboard", {}, managedClient), enabled, refetchInterval: 15000 });
   const gateways = data.gateways || [], cameras = data.cameras || [], recordings = data.recordings || [];
@@ -69,7 +76,7 @@ export default function VideoSurveillance() {
 
   return <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
     <PageHeader title="Vidéosurveillance" subtitle="Vue sécurisée des caméras autorisées. Les identifiants RTSP restent sur la passerelle locale." />
-    {isAdmin && <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 flex flex-col sm:flex-row sm:items-center gap-3"><div className="flex-1"><p className="text-sm font-semibold">Client géré</p><p className="text-xs text-muted-foreground">Les caméras du client sélectionné uniquement.</p></div><select value={managedClient} onChange={event => { setManagedClient(event.target.value); setGatewayToken(""); setMessage(""); }} className="rounded-xl border bg-background px-3 py-2 text-sm min-w-[260px]">{!managedClients.length && <option value="">Aucun client Vidéosurveillance actif</option>}{managedClients.map(client => <option key={client.email} value={client.email}>{client.name} — {client.email}</option>)}</select></div>}
+    {isAdmin && <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 flex flex-col sm:flex-row sm:items-center gap-3"><div className="flex-1"><p className="text-sm font-semibold">Client géré</p><p className="text-xs text-muted-foreground">Les caméras du client sélectionné uniquement.</p></div><select value={managedClient} onChange={event => { const email = event.target.value; setManagedClient(email); window.localStorage.setItem(managedClientKey, email); setGatewayToken(""); setMessage(""); }} className="rounded-xl border bg-background px-3 py-2 text-sm min-w-[260px]">{!managedClients.length && <option value="">Aucun client Vidéosurveillance actif</option>}{managedClients.map(client => <option key={client.email} value={client.email}>{client.name} — {client.email}</option>)}</select></div>}
     {error && <div className="rounded-xl bg-red-500/10 p-3 text-sm text-red-700">{error.message}</div>}
     {message && <div className="rounded-xl border border-primary/20 bg-primary/10 p-3 text-sm">{message}</div>}
     {gatewayToken && <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2"><p className="font-semibold flex items-center gap-2"><KeyRound className="w-4 h-4"/>Jeton de passerelle — affiché une seule fois</p><div className="flex gap-2"><input readOnly value={gatewayToken} className="flex-1 rounded-lg border bg-background px-3 py-2 font-mono text-sm"/><button onClick={() => navigator.clipboard.writeText(gatewayToken)} className="rounded-lg border px-4 py-2 text-sm">Copier</button></div></div>}
@@ -85,4 +92,5 @@ export default function VideoSurveillance() {
     {selectedCamera && <div className="fixed inset-0 z-50 bg-black/90 p-4 flex flex-col"><div className="flex items-center justify-between text-white pb-3"><p className="font-semibold">{selectedCamera.name}</p><button onClick={() => setSelectedCamera(null)} className="rounded-lg border border-white/20 p-2"><X className="w-5 h-5"/></button></div><CameraSnapshot camera={selectedCamera} clientEmail={managedClient} large/></div>}
   </div>;
 }
+
 
