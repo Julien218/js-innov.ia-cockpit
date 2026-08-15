@@ -186,19 +186,23 @@ async function sendPDF(req, res, type) {
   });
 
   const sentAt = new Date().toISOString();
-  await updateDocument(type, req.params.id, {
-    statut: type === 'facture' ? 'envoyee' : 'envoye',
-    date_premier_envoi: doc.date_premier_envoi || sentAt,
-    date_dernier_envoi: sentAt,
-    nombre_envois: Number(doc.nombre_envois || 0) + 1,
-    dernier_destinataire: to,
-    dernier_message_id: info.messageId,
-    historique_documents: appendEvent(doc, auditEvent(req, 'envoi', {
-      destinataire: to,
-      message_id: info.messageId,
-      document_id: archived.documentId,
-    })),
-  });
+  try {
+    await updateDocument(type, req.params.id, {
+      statut: type === 'facture' ? 'envoyee' : 'envoye',
+      date_premier_envoi: doc.date_premier_envoi || sentAt,
+      date_dernier_envoi: sentAt,
+      nombre_envois: Number(doc.nombre_envois || 0) + 1,
+      dernier_destinataire: to,
+      dernier_message_id: info.messageId,
+      historique_documents: appendEvent(doc, auditEvent(req, 'envoi', {
+        destinataire: to,
+        message_id: info.messageId,
+        document_id: archived.documentId,
+      })),
+    });
+  } catch (error) {
+    console.warn(`[BILLING] Email envoyé, suivi non mis à jour: ${error.message}`);
+  }
   return res.json({ success: true, messageId: info.messageId, sentTo: to, filename });
 }
 
