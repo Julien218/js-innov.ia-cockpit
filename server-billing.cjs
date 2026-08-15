@@ -49,7 +49,7 @@ async function updateDocument(type, id, payload, tenant) {
   const table = type === 'facture' ? 'Facture' : 'Devis';
   const response = await fetch(`${AGENT_URL}/data/${table}/${id}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', 'x-agent-key': AGENT_KEY },
+    headers: agentHeaders(tenant),
     body: JSON.stringify(payload),
   });
   if (!response.ok) throw new Error(`Document update ${response.status}: ${await response.text()}`);
@@ -65,7 +65,7 @@ async function fetchClient(clientId, tenant) {
     throw error;
   }
   const response = await fetch(`${AGENT_URL}/data/Client/${encodeURIComponent(clientId)}`, {
-    headers: { 'Content-Type': 'application/json', 'x-agent-key': AGENT_KEY },
+    headers: agentHeaders(tenant),
   });
   if (!response.ok) {
     const error = new Error('Anomalie : le client rattaché à ce document n’existe plus dans le Cockpit.');
