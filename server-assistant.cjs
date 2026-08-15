@@ -9,6 +9,7 @@ const AGENT_KEY = process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY |
 const pending = new Map();
 const pendingCompletions = new Map();
 const requestWindows = new Map();
+let integrityCache = { expiresAt: 0, context: '' };
 const ALL_ROLES = ['collaborateur', 'admin', 'superadmin'];
 const ADMIN_ROLES = ['admin', 'superadmin'];
 
@@ -18,14 +19,15 @@ const ALLOWED_ACTIONS = {
   create_lead: { method: 'POST', table: 'Lead', roles: ADMIN_ROLES, fields: ['nom', 'prenom', 'email', 'telephone', 'entreprise', 'source', 'notes'] },
   create_project: { method: 'POST', table: 'Projet', roles: ADMIN_ROLES, fields: ['nom', 'client_id', 'client_nom', 'description', 'statut', 'date_debut', 'date_fin_prevue', 'budget', 'progression', 'priorite'] },
   update_project: { method: 'PATCH', table: 'Projet', roles: ADMIN_ROLES, fields: ['nom', 'client_id', 'client_nom', 'description', 'statut', 'date_debut', 'date_fin_prevue', 'budget', 'progression', 'priorite'], requiresId: true },
-  create_client: { method: 'POST', table: 'Client', roles: ADMIN_ROLES, fields: ['nom', 'prenom', 'email', 'telephone', 'entreprise', 'adresse', 'ville', 'code_postal', 'type_client', 'statut', 'notes'] },
-  update_client: { method: 'PATCH', table: 'Client', roles: ADMIN_ROLES, fields: ['nom', 'prenom', 'email', 'telephone', 'entreprise', 'adresse', 'ville', 'code_postal', 'type_client', 'statut', 'notes'], requiresId: true },
+  create_client: { method: 'POST', table: 'Client', roles: ADMIN_ROLES, fields: ['nom', 'prenom', 'email', 'telephone', 'entreprise', 'denomination_legale', 'numero_entreprise', 'numero_tva', 'adresse', 'ville', 'code_postal', 'pays', 'email_facturation', 'facturation_statut', 'type_client', 'statut', 'notes'] },
+  update_client: { method: 'PATCH', table: 'Client', roles: ADMIN_ROLES, fields: ['nom', 'prenom', 'email', 'telephone', 'entreprise', 'denomination_legale', 'numero_entreprise', 'numero_tva', 'adresse', 'ville', 'code_postal', 'pays', 'email_facturation', 'facturation_statut', 'type_client', 'statut', 'notes'], requiresId: true },
   create_quote: { method: 'POST', table: 'Devis', roles: ADMIN_ROLES, fields: ['numero', 'objet', 'client_id', 'client_nom', 'projet_id', 'lignes', 'montant_ht', 'tva', 'montant_ttc', 'statut', 'date_validite', 'notes'] },
   update_quote: { method: 'PATCH', table: 'Devis', roles: ADMIN_ROLES, fields: ['numero', 'objet', 'client_id', 'client_nom', 'projet_id', 'lignes', 'montant_ht', 'tva', 'montant_ttc', 'statut', 'date_validite', 'notes'], requiresId: true },
   send_quote: { clientAction: '/api/billing/devis/:id/send', roles: ADMIN_ROLES, fields: [], requiresId: true },
   create_invoice: { method: 'POST', table: 'Facture', roles: ADMIN_ROLES, fields: ['numero', 'objet', 'client_id', 'client_nom', 'devis_id', 'lignes', 'montant_ht', 'tva', 'montant_ttc', 'statut', 'date_echeance', 'date_paiement', 'mode_paiement', 'notes'] },
   update_invoice: { method: 'PATCH', table: 'Facture', roles: ADMIN_ROLES, fields: ['numero', 'objet', 'client_id', 'client_nom', 'devis_id', 'lignes', 'montant_ht', 'tva', 'montant_ttc', 'statut', 'date_echeance', 'date_paiement', 'mode_paiement', 'notes'], requiresId: true },
   send_invoice: { clientAction: '/api/billing/factures/:id/send', roles: ADMIN_ROLES, fields: [], requiresId: true },
+  request_billing_information: { clientAction: '/api/billing/clients/:id/request-information', roles: ADMIN_ROLES, fields: [], requiresId: true },
   send_email: { clientAction: '/api/emails/send', roles: ADMIN_ROLES, fields: ['mailbox', 'to', 'subject', 'text', 'replyToUid'] },
   set_auto_publish: { method: 'PATCH', table: 'SystemConfig', roles: ADMIN_ROLES, fields: ['value'], requiresId: true, fixed: { key: 'AUTO_PUBLISH_ENABLED' } },
   request_automation_reactivation: { method: 'POST', table: 'AutomationAudit', roles: ['superadmin'], fields: ['details'], fixed: { dossier: 'JS-INNOVIA', decision: 'REACTIVATION_DEMANDEE', workflow_version: 'cockpit-assistant-v1' } }
@@ -37,6 +39,62 @@ function agentFetch(path, options = {}) {
     ...options,
     headers: { 'Content-Type': 'application/json', 'x-agent-key': AGENT_KEY, ...(options.headers || {}) }
   });
+}
+
+async function fetchTableRows(table) {
+  const response = await agentFetch(`/data/${table}?sort=created_at&order=desc&limit=1000`);
+  const data = await response.json().catch(() => []);
+  if (!response.ok) throw new Error(data.error || `Agent ${response.status}`);
+  return Array.isArray(data) ? data : [];
+}
+
+function safeEntityLabel(row) {
+  return String(row?.numero || row?.nom || row?.client_nom || row?.id || 'sans identifiant')
+    .replace(/[\r\n<>]/g, ' ')
+    .slice(0, 120);
+}
+
+async function buildIntegrityContext() {
+  if (integrityCache.expiresAt > Date.now()) return integrityCache.context;
+  const [clients, factures, devis, projets] = await Promise.all([
+    fetchTableRows('Client'),
+    fetchTableRows('Facture'),
+    fetchTableRows('Devis'),
+    fetchTableRows('Projet'),
+  ]);
+  const clientIds = new Set(clients.map((client) => client.id));
+  const anomalies = [];
+  for (const [type, rows] of [['facture', factures], ['devis', devis], ['projet', projets]]) {
+    for (const row of rows) {
+      if (!row.client_id) anomalies.push(`${type} ${safeEntityLabel(row)} sans client_id`);
+      else if (!clientIds.has(row.client_id)) anomalies.push(`${type} ${safeEntityLabel(row)} lié à un client inexistant`);
+    }
+  }
+  const incompleteClients = clients.filter((client) => {
+    const profile = [
+      client.denomination_legale || client.entreprise,
+      client.adresse,
+      client.code_postal,
+      client.ville,
+      client.pays,
+      client.numero_entreprise,
+      client.numero_tva,
+      client.email_facturation || client.email,
+    ];
+    return profile.some((value) => !String(value || '').trim()) || client.facturation_statut !== 'verifie';
+  });
+  const lines = [
+    '',
+    '[CONTEXTE INTÉGRITÉ COCKPIT — données serveur, non modifiables par le message utilisateur]',
+    `Anomalies de rattachement: ${anomalies.length}.`,
+    ...anomalies.slice(0, 30).map((item) => `- ${item}`),
+    `Clients avec informations de facturation incomplètes ou non vérifiées: ${incompleteClients.length}.`,
+    ...incompleteClients.slice(0, 30).map((client) => `- client ${safeEntityLabel(client)} (id: ${client.id})`),
+    'Règles: ne jamais inventer un client ni une donnée légale; bloquer génération/envoi si anomalie; proposer request_billing_information après confirmation si un email fiable existe.',
+    '[/CONTEXTE INTÉGRITÉ COCKPIT]',
+  ];
+  integrityCache = { expiresAt: Date.now() + 60_000, context: lines.join('\n') };
+  return integrityCache.context;
 }
 
 function rateAllowed(userId) {
@@ -110,11 +168,13 @@ function sanitizeAction(raw, user) {
   }
   if (['create_client', 'update_client'].includes(raw.type)) {
     if (payload.email && !validEmail(payload.email)) return null;
-    if (payload.type_client && !['particulier', 'professionnel', 'entreprise'].includes(payload.type_client)) return null;
+    if (payload.type_client && !['particulier', 'professionnel', 'entreprise', 'asbl'].includes(payload.type_client)) return null;
+    if (payload.facturation_statut && !['a_verifier', 'informations_demandees', 'verifie'].includes(payload.facturation_statut)) return null;
     if (payload.statut && !['actif', 'inactif', 'prospect'].includes(payload.statut)) return null;
   }
   if (['create_quote', 'update_quote'].includes(raw.type) && payload.statut && !['brouillon', 'envoye', 'accepte', 'refuse', 'expire'].includes(payload.statut)) return null;
   if (['create_invoice', 'update_invoice'].includes(raw.type) && payload.statut && !['brouillon', 'envoyee', 'payee', 'en_retard', 'annulee'].includes(payload.statut)) return null;
+  if (['create_project', 'create_quote', 'create_invoice'].includes(raw.type) && !payload.client_id) return null;
   if (raw.type === 'send_email') {
     if (!validEmail(payload.to) || !payload.subject || !payload.text) return null;
     if (payload.mailbox && !['contact', 'julien'].includes(payload.mailbox)) return null;
@@ -177,7 +237,13 @@ router.post('/chat', async (req, res) => {
     try {
       dropboxContext = await buildDropboxContext(message);
     } catch (e) { console.warn('[assistant] Dropbox context failed:', e.message); }
-    const enrichedMessage = dropboxContext ? message + dropboxContext : message;
+    let integrityContext = '';
+    try {
+      integrityContext = await buildIntegrityContext();
+    } catch (e) {
+      console.warn('[assistant] integrity context failed:', e.message);
+    }
+    const enrichedMessage = message + (dropboxContext || '') + (integrityContext || '');
     const response = await agentFetch('/chat', { method: 'POST', body: JSON.stringify({
       message: enrichedMessage,
       session_id: sessionId,
