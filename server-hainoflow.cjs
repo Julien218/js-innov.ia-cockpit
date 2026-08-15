@@ -3,6 +3,8 @@ const router = express.Router();
 
 const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://rzvvwcwyaddzsaattwqt.supabase.co';
+const SUPABASE_SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 function tenantFor(user) {
   return String(user?.organisation || 'jsinnovia').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
@@ -20,8 +22,26 @@ async function list(entity, tenant) {
   return Array.isArray(data) ? data : [];
 }
 
+async function hasEntitlement(user) {
+  if (user?.role === 'superadmin') return true;
+  if (!SUPABASE_SECRET || !user?.email) return false;
+  const query = new URL('/rest/v1/client_module_entitlements', SUPABASE_URL);
+  query.searchParams.set('select', 'id');
+  query.searchParams.set('email', `eq.${String(user.email).toLowerCase()}`);
+  query.searchParams.set('module_code', 'eq.hainoflow');
+  query.searchParams.set('enabled', 'eq.true');
+  query.searchParams.set('limit', '1');
+  const response = await fetch(query, { headers: { apikey: SUPABASE_SECRET, Authorization: `Bearer ${SUPABASE_SECRET}` } });
+  if (!response.ok) return false;
+  const rows = await response.json();
+  return Array.isArray(rows) && rows.length > 0;
+}
+
 router.get('/summary', async (req, res) => {
   try {
+    if (!await hasEntitlement(req.user)) {
+      return res.status(403).json({ error: 'Le module HainoFlow n’est pas activé pour ce compte.' });
+    }
     if (!AGENT_KEY) return res.status(503).json({ error: 'Connexion HainoFlow non configurée.' });
     const tenant = tenantFor(req.user);
     const [clients, quotes, invoices] = await Promise.all([
@@ -57,4 +77,3 @@ router.get('/summary', async (req, res) => {
 });
 
 module.exports = router;
-
