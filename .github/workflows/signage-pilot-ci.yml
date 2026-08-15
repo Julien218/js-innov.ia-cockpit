@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'server-signage.cjs'
+      - 'server-postgres.cjs'
       - 'server-player-apk.cjs'
       - 'Dockerfile'
       - 'server-commerce.cjs'
@@ -11,6 +12,7 @@ on:
       - 'src/pages/VideoSurveillance.jsx'
       - 'src/components/layout/Sidebar.jsx'
       - 'tests/signage*.test.cjs'
+      - 'camera-gateway/**'
   workflow_dispatch:
 jobs:
   verify:
@@ -22,5 +24,8 @@ jobs:
       - run: npm ci
       - run: node --check server-signage.cjs
       - run: node --check server-commerce.cjs
+      - run: node --check server-postgres.cjs
+      - run: node --check camera-gateway/gateway.mjs
       - run: npm test
       - run: npm run build
+
