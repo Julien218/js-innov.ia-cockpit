@@ -79,6 +79,7 @@ export default function DigitalSignage() {
   const [previewError, setPreviewError] = React.useState("");
   const fileInput = React.useRef(null);
   const clientsQuery = useQuery({ queryKey: ["signage-managed-clients"], queryFn: () => api("/manage/clients"), enabled: isAdmin, staleTime: 60000 });
+  const diagnosticsQuery = useQuery({ queryKey: ["signage-player-diagnostics"], queryFn: () => api("/manage/player-diagnostics"), enabled: isAdmin, refetchInterval: 30000 });
   const managedClients = clientsQuery.data?.clients || [];
   React.useEffect(() => {
     if (isAdmin && !managedClient && managedClients.length) setManagedClient(preferredManagedClient(managedClients));
@@ -88,6 +89,7 @@ export default function DigitalSignage() {
   const players = data.players || [], media = data.media || [], playlists = data.playlists || [], publications = data.publications || [], auditEvents = data.auditEvents || [];
   React.useEffect(() => { if (media.length && !selectedMediaIds.length) setSelectedMediaIds([media[0].id]); }, [media, selectedMediaIds.length]);
   const player = [...players].sort((a, b) => new Date(b.last_seen_at || 0).getTime() - new Date(a.last_seen_at || 0).getTime())[0];
+  const diagnosticPlayers = diagnosticsQuery.data?.players || [];
   const latestPublication = publications[0];
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["signage-dashboard", managedClient || "self"] });
   const run = async (task, success) => { setBusy(true); setMessage(""); try { await task(); setMessage(success); await refresh(); } catch (e) { setMessage(e.message); } finally { setBusy(false); } };
@@ -141,6 +143,11 @@ export default function DigitalSignage() {
         {!managedClients.length && <option value="">Aucun client Signage actif</option>}
         {managedClients.map(client => <option key={client.email} value={client.email}>{client.name} — {client.email}</option>)}
       </select>
+    </div>}
+    {isAdmin && diagnosticPlayers.length > 0 && <div className="rounded-2xl border bg-card p-4">
+      <p className="text-sm font-semibold">Diagnostic des Players</p>
+      <p className="mt-1 text-xs text-muted-foreground">Vue administrateur sans jeton ni secret. Le signal le plus récent apparaît en premier.</p>
+      <div className="mt-3 space-y-2">{diagnosticPlayers.map(item => <div key={item.id} className="rounded-xl bg-muted/30 p-3 text-xs"><p className="font-medium">{item.name} · {item.owner_email}</p><p className="text-muted-foreground">{item.status} · {item.last_seen_at ? new Date(item.last_seen_at).toLocaleString("fr-BE") : "jamais connecté"} · {item.app_version || "version inconnue"}</p></div>)}</div>
     </div>}
     {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-700">{error.message}</div>}
     {message && <div className="rounded-xl border border-primary/20 bg-primary/10 p-3 text-sm">{message}</div>}
