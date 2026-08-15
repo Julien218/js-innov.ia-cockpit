@@ -71,14 +71,20 @@ test('signage page reports non-JSON responses without exposing parser errors', (
   assert.doesNotMatch(signagePage, /await response\.json\(\)/);
 });
 
-test('Dropbox media upload handles non-JSON failures and uses the temporary link contract', () => {
+test('Dropbox media upload handles non-JSON failures and proxies binary through the cockpit', () => {
   assert.match(signage, /async function dropboxJson/);
   assert.match(signage, /const raw = await response\.text\(\)/);
   assert.match(signage, /réponse non JSON/);
   assert.match(signage, /La connexion Dropbox du cockpit doit être renouvelée/);
   assert.match(signage, /api\.dropboxapi\.com\/2\/files\/get_temporary_upload_link/);
   assert.doesNotMatch(signage, /content\.dropboxapi\.com\/2\/files\/get_temporary_upload_link/);
+  assert.match(signage, /content\.dropboxapi\.com\/2\/files\/upload/);
+  assert.match(signage, /express\.raw\(\{type:'application\/octet-stream',limit:MAX_MEDIA_BYTES\}\)/);
+  assert.match(signage, /Le média dépasse la limite de 150 Mo/);
+  assert.match(signagePage, /\/manage\/media\/upload\?name=/);
+  assert.doesNotMatch(signagePage, /session\.uploadUrl/);
   assert.match(signagePage, /"Content-Type": "application\/octet-stream"/);
   assert.doesNotMatch(signagePage, /Dropbox-API-Arg/);
+  assert.match(dockerfile, /client_max_body_size 150m/);
 });
 

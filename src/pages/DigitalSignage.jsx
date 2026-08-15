@@ -44,20 +44,7 @@ export default function DigitalSignage() {
   }, "Nouveau jeton généré. L’ancien jeton est maintenant désactivé.");
 
   const upload = file => run(async () => {
-    const session = await api("/manage/media/upload-session", { method: "POST", body: JSON.stringify({ name: file.name, sizeBytes: file.size }) });
-    let put;
-    try {
-      put = await fetch(session.uploadUrl, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file });
-    } catch {
-      throw new Error("Connexion directe à Dropbox impossible. Réessayez dans quelques secondes.");
-    }
-    const uploadText = await put.text();
-    if (!put.ok) {
-      let uploadError = {};
-      try { uploadError = JSON.parse(uploadText); } catch { uploadError = {}; }
-      throw new Error(uploadError.error_summary || `Dropbox a refusé le fichier (HTTP ${put.status}).`);
-    }
-    await api("/manage/media", { method: "POST", body: JSON.stringify({ name: file.name, mimeType: file.type, dropboxPath: session.dropboxPath, sizeBytes: file.size }) });
+    await api(`/manage/media/upload?name=${encodeURIComponent(file.name)}`, { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-Media-Content-Type": file.type || "application/octet-stream" }, body: file });
   }, "Média envoyé et indexé.");
 
   const createPlaylist = () => run(async () => {

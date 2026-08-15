@@ -11,8 +11,9 @@ const DROPBOX_APP_KEY = process.env.DROPBOX_APP_KEY || '';
 const DROPBOX_APP_SECRET = process.env.DROPBOX_APP_SECRET || '';
 const DROPBOX_REFRESH_TOKEN = process.env.DROPBOX_REFRESH_TOKEN || '';
 const DROPBOX_ROOT_PATH = String(process.env.DROPBOX_ROOT_PATH || '/Clients').replace(/\/$/, '');
+const MAX_MEDIA_BYTES = 150 * 1024 * 1024;
 const FFmpeg_PROFILE = { video_codec: 'h264', pixel_format: 'yuv420p', audio_codec: 'aac', container: 'mp4', faststart: true };
-const hash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
+const hash = value => crypto.createHash('sha256').update(Buffer.isBuffer(value) ? value : String(value)).digest('hex');
 // 96 bits, uppercase hexadecimal only: secure while remaining practical to
 // enter with an Android TV remote (no ambiguous upper/lower-case characters).
 const token = () => crypto.randomBytes(12).toString('hex').toUpperCase();
@@ -37,13 +38,13 @@ function dropboxMessage(data, operation, status) {
   return detail || `Dropbox a refusé ${operation} (HTTP ${status}).`;
 }
 
-async function dropboxJson(url, options, operation) {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+async function dropboxJson(url, options, operation, maxAttempts = 2) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     let response;
     try {
       response = await fetch(url, options);
     } catch {
-      if (attempt === 0) { await wait(300); continue; }
+      if (attempt + 1 < maxAttempts) { await wait(300); continue; }
       throw new Error(`Dropbox est injoignable pendant ${operation}. Réessayez dans quelques secondes.`);
     }
 
@@ -58,7 +59,7 @@ async function dropboxJson(url, options, operation) {
     if (data) throw new Error(dropboxMessage(data, operation, response.status));
 
     console.error(`[signage][dropbox] ${operation}: réponse non JSON (HTTP ${response.status}, ${contentType || 'type inconnu'})`);
-    if (attempt === 0) { await wait(300); continue; }
+    if (attempt + 1 < maxAttempts) { await wait(300); continue; }
     throw new Error(`Dropbox a renvoyé une réponse invalide pendant ${operation} (HTTP ${response.status}). Réessayez dans quelques secondes.`);
   }
   throw new Error(`Dropbox est indisponible pendant ${operation}.`);
@@ -150,6 +151,29 @@ router.post('/manage/media/upload-session', async (req,res) => {
     const path=`${mediaRoot(req)}/${Date.now()}-${name}`;
     const data=await dropboxJson('https://api.dropboxapi.com/2/files/get_temporary_upload_link',{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:JSON.stringify({commit_info:{path,mode:'add',autorename:true,mute:false},duration:14400})}, 'la préparation de l’envoi');
     res.json({uploadUrl:data.link,dropboxPath:path,expiresIn:14400});
+  } catch(e){res.status(502).json({error:e.message});}
+});
+const mediaBody = express.raw({type:'application/octet-stream',limit:MAX_MEDIA_BYTES});
+router.post('/manage/media/upload', (req,res,next) => mediaBody(req,res,error => {
+  if (!error) return next();
+  if (error.type === 'entity.too.large') return res.status(413).json({error:'Le média dépasse la limite de 150 Mo.'});
+  return res.status(400).json({error:'Le fichier envoyé est illisible.'});
+}), async (req,res) => {
+  try {
+    const accessToken = await getDropboxToken();
+    if (!accessToken) return res.status(503).json({error:'Dropbox non configuré'});
+    const name=String(req.query.name||'').replace(/[^a-zA-Z0-9._ -]/g,'_').slice(0,180);
+    if(!name) return res.status(400).json({error:'Nom requis'});
+    if(!Buffer.isBuffer(req.body)||!req.body.length) return res.status(400).json({error:'Fichier vide ou illisible'});
+    const mimeType=String(req.headers['x-media-content-type']||'application/octet-stream').slice(0,120);
+    const path=`${mediaRoot(req)}/${Date.now()}-${name}`;
+    await dropboxJson('https://content.dropboxapi.com/2/files/upload',{
+      method:'POST',
+      headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/octet-stream','Dropbox-API-Arg':JSON.stringify({path,mode:'add',autorename:true,mute:false,strict_conflict:false})},
+      body:req.body
+    }, 'l’envoi du fichier', 1);
+    const rows=await db('signage_media',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({owner_email:owner(req),name,mime_type:mimeType,dropbox_path:path,size_bytes:req.body.length,checksum_sha256:hash(req.body),status:'uploaded',rendition:{profile:FFmpeg_PROFILE,state:'queued'}})});
+    res.status(201).json({media:rows[0]});
   } catch(e){res.status(502).json({error:e.message});}
 });
 router.post('/manage/media', async (req,res) => {
