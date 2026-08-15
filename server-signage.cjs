@@ -109,9 +109,9 @@ function dropboxMessage(data, operation, status) {
     (typeof data.error === 'string' ? data.error : '')
   );
   if (/invalid_grant|expired_access_token|invalid_access_token/i.test(detail || '')) {
-    return 'La connexion Dropbox du cockpit doit Ãªtre renouvelÃ©e.';
+    return 'La connexion Dropbox du cockpit doit être renouvelée.';
   }
-  return detail || `Dropbox a refusÃ© ${operation} (HTTP ${status}).`;
+  return detail || `Dropbox a refusé ${operation} (HTTP ${status}).`;
 }
 
 async function dropboxJson(url, options, operation, maxAttempts = 2) {
@@ -121,7 +121,7 @@ async function dropboxJson(url, options, operation, maxAttempts = 2) {
       response = await fetch(url, options);
     } catch {
       if (attempt + 1 < maxAttempts) { await wait(300); continue; }
-      throw new Error(`Dropbox est injoignable pendant ${operation}. RÃ©essayez dans quelques secondes.`);
+      throw new Error(`Dropbox est injoignable pendant ${operation}. Réessayez dans quelques secondes.`);
     }
 
     const contentType = response.headers.get('content-type') || '';
@@ -134,9 +134,9 @@ async function dropboxJson(url, options, operation, maxAttempts = 2) {
     if (data && response.ok) return data;
     if (data) throw new Error(dropboxMessage(data, operation, response.status));
 
-    console.error(`[signage][dropbox] ${operation}: rÃ©ponse non JSON (HTTP ${response.status}, ${contentType || 'type inconnu'})`);
+    console.error(`[signage][dropbox] ${operation}: réponse non JSON (HTTP ${response.status}, ${contentType || 'type inconnu'})`);
     if (attempt + 1 < maxAttempts) { await wait(300); continue; }
-    throw new Error(`Dropbox a renvoyÃ© une rÃ©ponse invalide pendant ${operation} (HTTP ${response.status}). RÃ©essayez dans quelques secondes.`);
+    throw new Error(`Dropbox a renvoyé une réponse invalide pendant ${operation} (HTTP ${response.status}). Réessayez dans quelques secondes.`);
   }
   throw new Error(`Dropbox est indisponible pendant ${operation}.`);
 }
@@ -150,7 +150,7 @@ async function getDropboxToken() {
     headers: { Authorization: `Basic ${credentials}`, 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: DROPBOX_REFRESH_TOKEN })
   }, "l'authentification");
-  if (!data.access_token) throw new Error('Dropbox nâ€™a pas fourni de jeton dâ€™accÃ¨s.');
+  if (!data.access_token) throw new Error('Dropbox n’a pas fourni de jeton d’accès.');
   dropboxTokenCache = { value: data.access_token, expiresAt: Date.now() + Number(data.expires_in || 14400) * 1000 };
   return dropboxTokenCache.value;
 }
@@ -162,7 +162,7 @@ async function temporaryDropboxLink(path) {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ path })
-  }, 'la crÃ©ation du lien de lecture');
+  }, 'la création du lien de lecture');
   return data.link;
 }
 
@@ -225,19 +225,19 @@ router.post('/manage/media/upload-session', async (req,res) => {
     const name=String(req.body.name||'').replace(/[^a-zA-Z0-9._ -]/g,'_').slice(0,180);
     if(!name) return res.status(400).json({error:'Nom requis'});
     const path=`${mediaRoot(req)}/${Date.now()}-${name}`;
-    const data=await dropboxJson('https://api.dropboxapi.com/2/files/get_temporary_upload_link',{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:JSON.stringify({commit_info:{path,mode:'add',autorename:true,mute:false},duration:14400})}, 'la prÃ©paration de lâ€™envoi');
+    const data=await dropboxJson('https://api.dropboxapi.com/2/files/get_temporary_upload_link',{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:JSON.stringify({commit_info:{path,mode:'add',autorename:true,mute:false},duration:14400})}, 'la préparation de l’envoi');
     res.json({uploadUrl:data.link,dropboxPath:path,expiresIn:14400});
   } catch(e){res.status(502).json({error:e.message});}
 });
 const mediaBody = express.raw({type:'application/octet-stream',limit:MAX_MEDIA_BYTES});
 router.post('/manage/media/upload', (req,res,next) => mediaBody(req,res,error => {
   if (!error) return next();
-  if (error.type === 'entity.too.large') return res.status(413).json({error:'Le mÃ©dia dÃ©passe la limite de 150 Mo.'});
-  return res.status(400).json({error:'Le fichier envoyÃ© est illisible.'});
+  if (error.type === 'entity.too.large') return res.status(413).json({error:'Le média dépasse la limite de 150 Mo.'});
+  return res.status(400).json({error:'Le fichier envoyé est illisible.'});
 }), async (req,res) => {
   try {
     const accessToken = await getDropboxToken();
-    if (!accessToken) return res.status(503).json({error:'Dropbox non configurÃ©'});
+    if (!accessToken) return res.status(503).json({error:'Dropbox non configuré'});
     const name=String(req.query.name||'').replace(/[^a-zA-Z0-9._ -]/g,'_').slice(0,180);
     if(!name) return res.status(400).json({error:'Nom requis'});
     if(!Buffer.isBuffer(req.body)||!req.body.length) return res.status(400).json({error:'Fichier vide ou illisible'});
@@ -249,7 +249,7 @@ router.post('/manage/media/upload', (req,res,next) => mediaBody(req,res,error =>
       method:'POST',
       headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/octet-stream','Dropbox-API-Arg':JSON.stringify({path:dropboxPath,mode:'add',autorename:true,mute:false,strict_conflict:false})},
       body:prepared.body
-    }, 'lâ€™envoi du fichier', 1);
+    }, 'l’envoi du fichier', 1);
     const rows=await db('signage_media',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({owner_email:owner(req),name:finalName,mime_type:prepared.mimeType,dropbox_path:dropboxPath,size_bytes:prepared.body.length,checksum_sha256:hash(prepared.body),status:'ready',rendition:prepared.rendition})});
     res.status(201).json({media:rows[0]});
   } catch(e){res.status(502).json({error:e.message});}
@@ -307,5 +307,4 @@ router.get('/manage/cameras', async(req,res)=>{try{const rows=await db(filterOwn
 router.post('/gateway/heartbeat', async(req,res)=>{try{const g=await device(req,'camera_gateways');if(!g)return res.status(401).json({error:'Passerelle non autorisee'});await db(`camera_gateways?id=eq.${g.id}`,{method:'PATCH',body:JSON.stringify({status:'online',last_seen_at:new Date().toISOString(),diagnostics:req.body.diagnostics||{},updated_at:new Date().toISOString()})});const cameras=await db(`cameras?select=id,name,model,local_stream_key,enabled&gateway_id=eq.${g.id}&enabled=eq.true`);res.json({gatewayId:g.id,cameras:cameras||[],nextHeartbeatSeconds:30});}catch(e){res.status(503).json({error:e.message});}});
 
 module.exports=router;
-
 
