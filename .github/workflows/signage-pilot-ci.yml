@@ -1,0 +1,53 @@
+name: Signage pilot CI
+on:
+  pull_request:
+    paths:
+      - 'server-signage.cjs'
+      - 'server-postgres.cjs'
+      - 'server-player-apk.cjs'
+      - 'Dockerfile'
+      - 'server-commerce.cjs'
+      - 'server-client-onboarding.cjs'
+      - 'migrations/**'
+      - 'src/pages/DigitalSignage.jsx'
+      - 'src/pages/VideoSurveillance.jsx'
+      - 'src/components/layout/Sidebar.jsx'
+      - 'tests/signage*.test.cjs'
+      - 'camera-gateway/**'
+  push:
+    branches:
+      - 'feature/olivier-signage-surveillance'
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/signage-pilot-ci.yml'
+      - 'server-signage.cjs'
+      - 'server-postgres.cjs'
+      - 'server-player-apk.cjs'
+      - 'Dockerfile'
+      - 'server-commerce.cjs'
+      - 'server-client-onboarding.cjs'
+      - 'server-agents.cjs'
+      - 'migrations/**'
+      - 'src/pages/DigitalSignage.jsx'
+      - 'src/pages/VideoSurveillance.jsx'
+      - 'src/components/layout/Sidebar.jsx'
+      - 'tests/signage*.test.cjs'
+      - 'camera-gateway/**'
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: node --check server-signage.cjs
+      - run: node --check server-commerce.cjs
+      - run: node --check server-client-onboarding.cjs
+      - run: node --check server-postgres.cjs
+      - run: node --check camera-gateway/gateway.mjs
+      - run: npm test
+      - run: npm run build
+

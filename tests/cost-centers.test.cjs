@@ -4,6 +4,28 @@
 
 const path = require('path');
 const fs = require('fs');
+const { describe, test } = require('node:test');
+const assert = require('node:assert/strict');
+
+// Matchers minimaux pour conserver la lisibilite de cette suite sous node:test.
+function expect(actual) {
+  const matchers = (negated = false) => {
+    const check = (condition, message) => negated ? assert.ok(!condition, message) : assert.ok(condition, message);
+    return {
+      toBe(expected) { negated ? assert.notStrictEqual(actual, expected) : assert.strictEqual(actual, expected); },
+      toEqual(expected) { negated ? assert.notDeepStrictEqual(actual, expected) : assert.deepStrictEqual(actual, expected); },
+      toContain(expected) { check(actual?.includes?.(expected), `Expected value ${negated ? 'not ' : ''}to contain ${expected}`); },
+      toMatch(expected) { check(expected.test(String(actual)), `Expected value ${negated ? 'not ' : ''}to match ${expected}`); },
+      toHaveLength(expected) { negated ? assert.notStrictEqual(actual?.length, expected) : assert.strictEqual(actual?.length, expected); },
+      toBeDefined() { check(actual !== undefined, `Expected value ${negated ? 'not ' : ''}to be defined`); },
+      toBeUndefined() { check(actual === undefined, `Expected value ${negated ? 'not ' : ''}to be undefined`); },
+      toBeGreaterThan(expected) { check(actual > expected, `Expected ${actual} ${negated ? 'not ' : ''}to be greater than ${expected}`); },
+    };
+  };
+  const positive = matchers(false);
+  positive.not = matchers(true);
+  return positive;
+}
 
 // server-cost-centers exports: router (default) + named functions as properties
 const ccModule = require('../server-cost-centers.cjs');

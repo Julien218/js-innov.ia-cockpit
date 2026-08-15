@@ -3,7 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import {
   Users, Target, FolderKanban, FileText, Receipt,
-  Shield, TrendingUp, ArrowRight, CheckSquare, MessageSquare, Clock, AlertCircle
+  Shield, TrendingUp, ArrowRight, CheckSquare, MessageSquare, Clock, AlertCircle, MonitorPlay
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
@@ -15,18 +15,33 @@ import {
   PieChart, Pie, Cell, CartesianGrid
 } from "recharts";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/AuthContext";
+import { useCommerceEntitlements } from "@/lib/useCommerceEntitlements";
 
 const COLORS = ["hsl(217,91%,50%)", "hsl(258,90%,62%)", "hsl(142,71%,45%)", "hsl(38,92%,50%)", "hsl(0,84%,60%)"];
 
 export default function Dashboard() {
-  const { data: clients = [], isError: clientsErr } = useQuery({ queryKey: ["clients"], queryFn: () => base44.entities.Client.list() });
-  const { data: leads = [], isError: leadsErr } = useQuery({ queryKey: ["leads"], queryFn: () => base44.entities.Lead.list() });
-  const { data: projets = [], isError: projetsErr } = useQuery({ queryKey: ["projets"], queryFn: () => base44.entities.Projet.list() });
-  const { data: taches = [], isError: tachesErr } = useQuery({ queryKey: ["taches"], queryFn: () => base44.entities.Tache.list() });
-  const { data: demandes = [], isError: demandesErr } = useQuery({ queryKey: ["demandes"], queryFn: () => base44.entities.Demande.list() });
-  const { data: devis = [], isError: devisErr } = useQuery({ queryKey: ["devis"], queryFn: () => base44.entities.Devis.list() });
-  const { data: factures = [], isError: facturesErr } = useQuery({ queryKey: ["factures"], queryFn: () => base44.entities.Facture.list() });
-  const { data: commissions = [], isError: commissionsErr } = useQuery({ queryKey: ["commissions"], queryFn: () => base44.entities.Commission.list() });
+  const { user } = useAuth();
+  const isClient = user?.role === "client";
+  const { hasModule, isLoading: modulesLoading } = useCommerceEntitlements();
+  const crmQuery = (key, queryFn) => ({ queryKey: [key], queryFn, enabled: !isClient });
+  const { data: clients = [], isError: clientsErr } = useQuery(crmQuery("clients", () => base44.entities.Client.list()));
+  const { data: leads = [], isError: leadsErr } = useQuery(crmQuery("leads", () => base44.entities.Lead.list()));
+  const { data: projets = [], isError: projetsErr } = useQuery(crmQuery("projets", () => base44.entities.Projet.list()));
+  const { data: taches = [], isError: tachesErr } = useQuery(crmQuery("taches", () => base44.entities.Tache.list()));
+  const { data: demandes = [], isError: demandesErr } = useQuery(crmQuery("demandes", () => base44.entities.Demande.list()));
+  const { data: devis = [], isError: devisErr } = useQuery(crmQuery("devis", () => base44.entities.Devis.list()));
+  const { data: factures = [], isError: facturesErr } = useQuery(crmQuery("factures", () => base44.entities.Facture.list()));
+  const { data: commissions = [], isError: commissionsErr } = useQuery(crmQuery("commissions", () => base44.entities.Commission.list()));
+  const { data: signage = {}, isError: signageError } = useQuery({
+    queryKey: ["signage-dashboard", user?.email],
+    enabled: isClient && !modulesLoading && hasModule("digital_signage"),
+    queryFn: async () => {
+      const response = await fetch('/api/signage/manage/dashboard', { credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Tableau Digital Signage indisponible');
+      return response.json();
+    },
+  });
 
 
   const hasAnyError = clientsErr || leadsErr || projetsErr || tachesErr || demandesErr || devisErr || facturesErr || commissionsErr;
@@ -60,6 +75,47 @@ export default function Dashboard() {
   const tachesUrgentes = taches.filter(t => (t.priorite === "urgente" || t.priorite === "haute") && t.statut !== "terminee").slice(0, 4);
   const heure = new Date().getHours();
   const salut = heure < 12 ? "Bonjour" : heure < 18 ? "Bon après-midi" : "Bonsoir";
+
+  if (isClient) {
+    const players = signage.players || [];
+    const onlinePlayers = players.filter(player => player.status === 'online').length;
+    const activePublications = (signage.publications || []).filter(publication => publication.status === 'active').length;
+    const displayName = user?.full_name || user?.name || user?.email?.split('@')[0] || 'client';
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">{salut}, {displayName}</h1>
+          <p className="text-sm text-muted-foreground mt-1">Votre espace Pixelium</p>
+        </div>
+        {signageError && (
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 text-sm text-amber-700">
+            Le suivi Digital Signage est momentanément indisponible.
+          </div>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {hasModule("digital_signage") && <>
+            <StatCard title="Players connectés" value={`${onlinePlayers}/${players.length}`} icon={MonitorPlay} color="primary" />
+            <StatCard title="Médias" value={(signage.media || []).length} icon={FileText} color="accent" />
+            <StatCard title="Publications actives" value={activePublications} icon={CheckSquare} color="success" />
+          </>}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {hasModule("digital_signage") && (
+            <Link to="/ecran-geant" className="bg-card border border-border rounded-2xl p-5 hover:border-primary transition-colors">
+              <h2 className="font-semibold">Digital Signage</h2>
+              <p className="text-sm text-muted-foreground mt-1">Gérer les écrans, médias et playlists.</p>
+            </Link>
+          )}
+          {hasModule("videosurveillance") && (
+            <Link to="/videosurveillance" className="bg-card border border-border rounded-2xl p-5 hover:border-primary transition-colors">
+              <h2 className="font-semibold">Vidéosurveillance</h2>
+              <p className="text-sm text-muted-foreground mt-1">Consulter les caméras autorisées.</p>
+            </Link>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -245,3 +301,4 @@ export default function Dashboard() {
     </div>
   );
 }
+

@@ -5,16 +5,10 @@ COPY package*.json ./
 RUN npm ci --legacy-peer-deps
 COPY . .
 
-ARG VITE_AGENT_KEY
-ARG VITE_AGENT_URL
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY
-ARG VITE_BASE44_API_KEY
-ENV VITE_AGENT_KEY=$VITE_AGENT_KEY
-ENV VITE_AGENT_URL=$VITE_AGENT_URL
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
-ENV VITE_BASE44_API_KEY=$VITE_BASE44_API_KEY
 
 RUN npm run build
 
@@ -22,7 +16,7 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 
-RUN apk add --no-cache nginx
+RUN apk add --no-cache nginx ffmpeg
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
@@ -42,6 +36,13 @@ COPY --from=builder /app/server-insurance.cjs ./server-insurance.cjs
 COPY --from=builder /app/server-insurance-mailbox.cjs ./server-insurance-mailbox.cjs
 COPY --from=builder /app/server-documents.cjs ./server-documents.cjs
 COPY --from=builder /app/server-governance.cjs ./server-governance.cjs
+COPY --from=builder /app/server-commerce.cjs ./server-commerce.cjs
+COPY --from=builder /app/server-client-onboarding.cjs ./server-client-onboarding.cjs
+COPY --from=builder /app/server-agents.cjs ./server-agents.cjs
+COPY --from=builder /app/server-signage.cjs ./server-signage.cjs
+COPY --from=builder /app/server-player-apk.cjs ./server-player-apk.cjs
+COPY --from=builder /app/server-postgres.cjs ./server-postgres.cjs
+COPY --from=builder /app/migrations ./migrations
 COPY assets ./assets
 COPY public ./public
 
@@ -53,21 +54,22 @@ server {
     listen __PORT__;
     root /app/dist;
     index index.html;
+    client_max_body_size 150m;
 
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.railway.app https://app.base44.com https://api.base44.com wss://*.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787 https://*.supabase.co https://*.railway.app https://app.base44.com https://api.base44.com wss://*.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "DENY" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 
-    # Adresse produit dédiée. On conserve l'authentification sur cockpit.jsinnovia.com
-    # plutôt que d'élargir le cookie de session à tous les sous-domaines.
     if ($host = documents.jsinnovia.com) {
         return 302 https://cockpit.jsinnovia.com/documents;
     }
 
     location /api/ {
         proxy_pass http://127.0.0.1:3001;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
