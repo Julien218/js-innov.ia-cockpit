@@ -18,6 +18,9 @@ on:
     branches:
       - 'feature/olivier-signage-surveillance'
     paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/signage-pilot-ci.yml'
       - 'server-signage.cjs'
       - 'server-postgres.cjs'
       - 'server-player-apk.cjs'
