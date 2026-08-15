@@ -283,9 +283,15 @@ async function storeBuffer({ user, organisation, brand, clientId, category, file
   }
 }
 
+function firstDocumentRecord(result) {
+  if (Array.isArray(result)) return result[0] || null;
+  if (result && typeof result === 'object' && !result.deleted_at && !result.error) return result;
+  return null;
+}
+
 async function getDocumentRecord(id) {
-  const rows = await supabaseRequest(`DocumentIndex?select=*&id=eq.${encodeURIComponent(id)}&deleted_at=is.null&limit=1`);
-  return Array.isArray(rows) ? rows[0] || null : null;
+  const result = await supabaseRequest(`DocumentIndex?select=*&id=eq.${encodeURIComponent(id)}&deleted_at=is.null&limit=1`);
+  return firstDocumentRecord(result);
 }
 
 function assertDocumentAccess(user, record) {
@@ -380,3 +386,4 @@ module.exports.storeBuffer = storeBuffer;
 module.exports.getDocumentBufferForUser = getDocumentBufferForUser;
 module.exports.isDropboxConfigured = isDropboxConfigured;
 module.exports.MAX_FILE_BYTES = MAX_FILE_BYTES;
+module.exports.firstDocumentRecord = firstDocumentRecord;

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { cleanTenant, resolveTenant } = require('./server-tenant.cjs');
+const { cleanTenant, resolveTenant } = require('../server-tenant.cjs');
 
 test('normalise un identifiant organisation', () => {
   assert.equal(cleanTenant('Olivier Trevis SRL'), 'olivier-trevis-srl');
