@@ -2,9 +2,10 @@ import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
 import { MonitorPlay, Upload, Download, ListVideo, CalendarClock, Wifi, HardDrive, RotateCcw } from "lucide-react";
+import { useAuth } from "@/lib/AuthContext";
 
-const api = async (path, options = {}) => {
-  const response = await fetch(`/api/signage${path}`, { credentials: "same-origin", ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}) } });
+const api = async (path, options = {}, clientEmail = "") => {
+  const response = await fetch(`/api/signage${path}`, { credentials: "same-origin", ...options, headers: { "Content-Type": "application/json", ...(clientEmail ? { "X-Client-Email": clientEmail } : {}), ...(options.headers || {}) } });
   const contentType = response.headers.get("content-type") || "";
   const text = await response.text();
   let body = {};
@@ -24,13 +25,14 @@ const formatBytes = bytes => {
   return `${(bytes / (1024 ** index)).toFixed(index ? 1 : 0)} ${units[index]}`;
 };
 
-const uploadMedia = (file, onProgress) => new Promise((resolve, reject) => {
+const uploadMedia = (file, onProgress, clientEmail = "") => new Promise((resolve, reject) => {
   const xhr = new XMLHttpRequest();
   xhr.open("POST", `/api/signage/manage/media/upload?name=${encodeURIComponent(file.name)}`);
   xhr.withCredentials = true;
   xhr.timeout = 300000;
   xhr.setRequestHeader("Content-Type", "application/octet-stream");
   xhr.setRequestHeader("X-Media-Content-Type", file.type || "application/octet-stream");
+  if (clientEmail) xhr.setRequestHeader("X-Client-Email", clientEmail);
   xhr.upload.onprogress = event => {
     if (!event.lengthComputable) return;
     const percent = Math.min(80, Math.round((event.loaded / event.total) * 80));
@@ -55,34 +57,43 @@ const uploadMedia = (file, onProgress) => new Promise((resolve, reject) => {
 const StatusCard = ({ icon: Icon, label, value, detail }) => <div className="rounded-2xl border border-border bg-card p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center"><Icon className="w-5 h-5" /></div><div><p className="text-xs text-muted-foreground">{label}</p><p className="text-sm font-semibold">{value}</p>{detail && <p className="text-xs text-muted-foreground mt-0.5">{detail}</p>}</div></div></div>;
 
 export default function DigitalSignage() {
+  const { user } = useAuth();
+  const isAdmin = ['admin', 'superadmin'].includes(user?.role);
   const queryClient = useQueryClient();
   const [message, setMessage] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [enrollmentToken, setEnrollmentToken] = React.useState("");
   const [transfer, setTransfer] = React.useState(null);
+  const [managedClient, setManagedClient] = React.useState("");
   const fileInput = React.useRef(null);
-  const { data = {}, isLoading, error } = useQuery({ queryKey: ["signage-dashboard"], queryFn: () => api("/manage/dashboard"), refetchInterval: 30000 });
+  const clientsQuery = useQuery({ queryKey: ["signage-managed-clients"], queryFn: () => api("/manage/clients"), enabled: isAdmin, staleTime: 60000 });
+  const managedClients = clientsQuery.data?.clients || [];
+  React.useEffect(() => {
+    if (isAdmin && !managedClient && managedClients.length) setManagedClient(managedClients[0].email);
+  }, [isAdmin, managedClient, managedClients]);
+  const dashboardEnabled = !isAdmin || Boolean(managedClient);
+  const { data = {}, isLoading, error } = useQuery({ queryKey: ["signage-dashboard", managedClient || "self"], queryFn: () => api("/manage/dashboard", {}, managedClient), enabled: dashboardEnabled, refetchInterval: 30000 });
   const players = data.players || [], media = data.media || [], playlists = data.playlists || [], publications = data.publications || [];
   const player = [...players].sort((a, b) => new Date(b.last_seen_at || 0).getTime() - new Date(a.last_seen_at || 0).getTime())[0];
   const latestPublication = publications[0];
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["signage-dashboard"] });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["signage-dashboard", managedClient || "self"] });
   const run = async (task, success) => { setBusy(true); setMessage(""); try { await task(); setMessage(success); await refresh(); } catch (e) { setMessage(e.message); } finally { setBusy(false); } };
 
   const createPlayer = () => run(async () => {
-    const result = await api("/manage/players", { method: "POST", body: JSON.stringify({ name: "Player Pixelium Olivier", resolution: "1920x1080" }) });
+    const result = await api("/manage/players", { method: "POST", body: JSON.stringify({ name: "Player Pixelium Olivier", resolution: "1920x1080" }) }, managedClient);
     setEnrollmentToken(result.enrollmentToken);
   }, "Player créé. Le jeton d’installation est conservé dans cette session uniquement.");
 
   const rotatePlayerToken = () => run(async () => {
     if (!player) throw new Error("Créez d’abord le Player");
-    const result = await api(`/manage/players/${player.id}/rotate-token`, { method: "POST", body: "{}" });
+    const result = await api(`/manage/players/${player.id}/rotate-token`, { method: "POST", body: "{}" }, managedClient);
     setEnrollmentToken(result.enrollmentToken);
   }, "Nouveau jeton généré. L’ancien jeton est maintenant désactivé.");
 
   const upload = file => run(async () => {
     setTransfer({ name: file.name, size: file.size, percent: 0, state: "uploading", label: "Préparation du fichier…" });
     try {
-      await uploadMedia(file, progress => setTransfer(current => ({ ...current, ...progress })));
+      await uploadMedia(file, progress => setTransfer(current => ({ ...current, ...progress })), managedClient);
     } catch (error) {
       setTransfer(current => ({ ...current, state: "error", label: error.message }));
       throw error;
@@ -91,17 +102,24 @@ export default function DigitalSignage() {
 
   const createPlaylist = () => run(async () => {
     if (!media[0]) throw new Error("Ajoutez d’abord un média");
-    await api("/manage/playlists", { method: "POST", body: JSON.stringify({ name: `Playlist ${new Date().toLocaleDateString("fr-BE")}`, items: [{ mediaId: media[0].id, durationSeconds: 15 }] }) });
+    await api("/manage/playlists", { method: "POST", body: JSON.stringify({ name: `Playlist ${new Date().toLocaleDateString("fr-BE")}`, items: [{ mediaId: media[0].id, durationSeconds: 15 }] }) }, managedClient);
   }, "Playlist créée avec le média le plus récent.");
 
   const publish = () => run(async () => {
     if (!player) throw new Error("Créez d’abord le Player");
     if (!playlists[0]) throw new Error("Créez d’abord une playlist");
-    await api("/manage/publications", { method: "POST", body: JSON.stringify({ playerId: player.id, playlistId: playlists[0].id }) });
+    await api("/manage/publications", { method: "POST", body: JSON.stringify({ playerId: player.id, playlistId: playlists[0].id }) }, managedClient);
   }, "Diffusion programmée. Elle sera récupérée au prochain heartbeat du Player.");
 
   return <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
     <PageHeader title="Écran géant" subtitle="Pilotage du Player HDMI relié au contrôleur Colorlight X2M." />
+    {isAdmin && <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+      <div className="flex-1"><p className="text-sm font-semibold">Client géré</p><p className="text-xs text-muted-foreground">Vous pilotez uniquement les écrans du client sélectionné.</p></div>
+      <select value={managedClient} onChange={event => { setManagedClient(event.target.value); setEnrollmentToken(""); setTransfer(null); setMessage(""); }} className="rounded-xl border border-border bg-background px-3 py-2 text-sm min-w-[260px]">
+        {!managedClients.length && <option value="">Aucun client Signage actif</option>}
+        {managedClients.map(client => <option key={client.email} value={client.email}>{client.name} — {client.email}</option>)}
+      </select>
+    </div>}
     {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-700">{error.message}</div>}
     {message && <div className="rounded-xl border border-primary/20 bg-primary/10 p-3 text-sm">{message}</div>}
     {transfer && <div className={`rounded-2xl border p-4 space-y-3 ${transfer.state === "error" ? "border-red-500/30 bg-red-500/5" : transfer.state === "done" ? "border-emerald-500/30 bg-emerald-500/5" : "border-primary/20 bg-primary/5"}`}>
@@ -134,4 +152,5 @@ export default function DigitalSignage() {
     </div>
   </div>;
 }
+
 
