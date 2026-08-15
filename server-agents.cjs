@@ -4,7 +4,7 @@ const { postgresRest } = require('./server-postgres.cjs');
 
 const router = express.Router();
 const BASE44_URL = 'https://app.base44.com/api/agents';
-const BASE44_API_KEY = process.env.BASE44_API_KEY || process.env.VITE_BASE44_API_KEY || '';
+const BASE44_API_KEY = process.env.BASE44_API_KEY || '';
 const ALLOWED_AGENT_IDS = new Set([
   '6a1845e17cc526d1e44965bc',
   '6a0208edd1e235b62b4bda38',

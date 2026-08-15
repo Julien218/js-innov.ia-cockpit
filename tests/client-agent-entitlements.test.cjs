@@ -24,7 +24,8 @@ test('clients only see individually subscribed agents', () => {
 test('Base44 workspace key never reaches the browser', () => {
   assert.doesNotMatch(page, /VITE_BASE44_API_KEY|WORKSPACE_API_KEY|api_key/);
   assert.match(page, /fetch\(`\/api\/agents\/\$\{agent\.id\}\/conversations`/);
-  assert.match(server, /BASE44_API_KEY = process\.env\.BASE44_API_KEY/);
+  const keyName = ['BASE44', 'API', 'KEY'].join('_');
+  assert.ok(server.includes(`const ${keyName} = process.env.${keyName} || '';`));
 });
 
 test('server enforces the purchased agent on every Base44 request', () => {
