@@ -7,6 +7,17 @@ const ALLOWED_TABLES = new Set([
   'commerce_orders','commerce_events','client_module_entitlements','commerce_onboarding_tasks',
   'signage_players','signage_media','signage_playlists','signage_publications','camera_gateways','cameras'
 ]);
+const JSON_COLUMNS = new Map([
+  ['signage_players', new Set(['diagnostics'])],
+  ['signage_media', new Set(['rendition'])],
+  ['signage_playlists', new Set(['items'])],
+  ['signage_publications', new Set(['manifest'])],
+  ['camera_gateways', new Set(['diagnostics'])]
+]);
+const postgresValue = (table, column, value) => {
+  if (!JSON_COLUMNS.get(table)?.has(column) || value === null || value === undefined) return value;
+  return typeof value === 'string' ? value : JSON.stringify(value);
+};
 const ident = value => {
   const name = String(value || '');
   if (!/^[a-z_][a-z0-9_]*$/i.test(name)) throw new Error('Identifiant SQL invalide');
@@ -98,7 +109,7 @@ async function postgresRest(resource, options={}) {
   if (method === 'POST') {
     const rows=Array.isArray(payload)?payload:[payload]; if(!rows.length)return [];
     const columns=Object.keys(rows[0]); const values=[];
-    const groups=rows.map(row=>`(${columns.map(c=>{values.push(row[c]);return `$${values.length}`;}).join(',')})`);
+    const groups=rows.map(row=>`(${columns.map(c=>{values.push(postgresValue(table,c,row[c]));return `$${values.length}`;}).join(',')})`);
     let sql=`insert into ${ident(table)} (${columns.map(ident).join(',')}) values ${groups.join(',')}`;
     const conflict=params.get('on_conflict');
     if(conflict){const cols=conflict.split(',').map(ident).join(',');if(prefer.includes('ignore-duplicates'))sql+=` on conflict (${cols}) do nothing`;else sql+=` on conflict (${cols}) do update set ${columns.map(c=>`${ident(c)}=excluded.${ident(c)}`).join(',')}`;}
@@ -106,7 +117,7 @@ async function postgresRest(resource, options={}) {
     return (await pool.query(sql,values)).rows;
   }
   if (method === 'PATCH') {
-    const values=[]; const sets=Object.entries(payload||{}).map(([k,v])=>{values.push(v);return `${ident(k)}=$${values.length}`;});
+    const values=[]; const sets=Object.entries(payload||{}).map(([k,v])=>{values.push(postgresValue(table,k,v));return `${ident(k)}=$${values.length}`;});
     if(!sets.length) return [];
     const where=whereFrom(params,values); if(!where)throw new Error('PATCH sans filtre refuse');
     let sql=`update ${ident(table)} set ${sets.join(',')}${where}`;

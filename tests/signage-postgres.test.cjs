@@ -33,6 +33,16 @@ test('only pilot tables are accepted by the REST compatibility adapter', () => {
   assert.match(adapter, /PATCH sans filtre refuse/);
 });
 
+test('PostgreSQL adapter serializes every Signage JSONB column explicitly', () => {
+  assert.match(adapter, /const JSON_COLUMNS = new Map/);
+  for (const column of ['diagnostics', 'rendition', 'items', 'manifest']) {
+    assert.match(adapter, new RegExp(`['"]${column}['"]`));
+  }
+  assert.match(adapter, /JSON\.stringify\(value\)/);
+  assert.match(adapter, /postgresValue\(table,c,row\[c\]\)/);
+  assert.match(adapter, /postgresValue\(table,k,v\)/);
+});
+
 test('commerce and signage prefer Railway PostgreSQL when configured', () => {
   assert.match(commerce, /if \(process\.env\.DATABASE_URL\) return postgresRest/);
   assert.match(signage, /if \(process\.env\.DATABASE_URL\) return postgresRest/);
