@@ -75,53 +75,23 @@ try {
   console.warn('⚠️ Route assurances indisponible:', e.message);
 }
 
-// ── Proxy /api/data/* → jsinnovia-agent /data/* ─────────────
-// Server-to-server: pas de restrictions CORS
-// Le frontend appelle /api/data/Devis → Express → jsinnovia-agent
-const AGENT_PROXY_URL = process.env.JSINNOVIA_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
-const AGENT_PROXY_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
+// ── Proxy de données multi-tenant HainoFlow ─────────────────
+try {
+  const dataProxyRouter = require('./server-data-proxy.cjs');
+  app.use('/api/data', requireSession('client'), dataProxyRouter);
+  console.log('✅ Route /api/data activée (cloisonnement HainoFlow par organisation)');
+} catch (e) {
+  console.warn('⚠️ Route data multi-tenant indisponible:', e.message);
+}
 
-app.use('/api/data', requireSession('client'), async (req, res) => {
-  const table = req.path.split('/').filter(Boolean)[0];
-  const role = req.user.role;
-  const clientReadTables = new Set(['Projet', 'Devis', 'Facture', 'Demande']);
-  if (role === 'client' && (req.method !== 'GET' || !clientReadTables.has(table))) {
-    return res.status(403).json({ error: 'Cette opération nécessite un collaborateur' });
-  }
-  const adminTables = new Set(['LogAction', 'Validation', 'Commission']);
-  if (adminTables.has(table) && (ROLE_LEVEL[role] || 0) < ROLE_LEVEL.admin) {
-    return res.status(403).json({ error: 'Cette ressource nécessite un administrateur' });
-  }
-  const targetUrl = `${AGENT_PROXY_URL}/data${req.url}`;
-  const method = req.method;
-
-  const fetchOptions = {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      'x-agent-key': AGENT_PROXY_KEY,
-    },
-  };
-
-  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && req.body) {
-    fetchOptions.body = JSON.stringify(req.body);
-  }
-
-  try {
-    const response = await fetch(targetUrl, fetchOptions);
-    const contentType = response.headers.get('content-type') || 'application/json';
-    const body = await response.text();
-
-    if (response.status === 204 || !body) {
-      return res.status(response.status).end();
-    }
-
-    res.status(response.status).set('Content-Type', contentType).send(body);
-  } catch (err) {
-    console.error('[Proxy /api/data] Error:', err.message);
-    res.status(502).json({ error: 'Proxy error: ' + err.message });
-  }
-});
+// ── Centre HainoFlow by JS-Innov.IA ────────────────────────
+try {
+  const hainoFlowRouter = require('./server-hainoflow.cjs');
+  app.use('/api/hainoflow', requireSession('client'), hainoFlowRouter);
+  console.log('✅ Route /api/hainoflow activée (résumé et état des modules)');
+} catch (e) {
+  console.warn('⚠️ Route HainoFlow indisponible:', e.message);
+}
 
 // ── AI Cost Control ─────────────────────────────────────────
 // Lecture/configuration : session admin. Ingestion inter-services : clé serveur dédiée.
