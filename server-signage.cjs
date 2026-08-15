@@ -176,7 +176,8 @@ async function db(resource, options = {}) {
   if (!response.ok) throw new Error(`Supabase ${response.status}: ${body.slice(0, 240)}`);
   return body ? JSON.parse(body) : null;
 }
-const owner = req => String(req.user.email).trim().toLowerCase();
+const sessionOwner = req => String(req.user.email).trim().toLowerCase();
+const owner = req => String(req.signageOwner || sessionOwner(req)).trim().toLowerCase();
 const filterOwner = (req, path='') => `${path}${path.includes('?')?'&':'?'}owner_email=eq.${encodeURIComponent(owner(req))}`;
 
 async function requireEntitlement(req, res, next) {
@@ -188,7 +189,39 @@ async function requireEntitlement(req, res, next) {
   } catch (e) { res.status(503).json({ error: e.message }); }
 }
 
-router.use('/manage', requireSession('client'), requireEntitlement);
+async function resolveManagedOwner(req, res, next) {
+  try {
+    req.signageOwner = sessionOwner(req);
+    if (!['admin', 'superadmin'].includes(req.user.role)) return next();
+    const requested = String(req.headers['x-client-email'] || '').trim().toLowerCase();
+    if (!requested) return next();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requested)) return res.status(400).json({ error: 'Client sélectionné invalide' });
+    const rows = await db(`client_module_entitlements?select=id&email=eq.${encodeURIComponent(requested)}&module_code=eq.digital_signage&enabled=eq.true&limit=1`);
+    if (!rows?.length) return res.status(403).json({ error: 'Ce client ne possède pas le module Digital Signage' });
+    req.signageOwner = requested;
+    next();
+  } catch (e) { res.status(503).json({ error: e.message }); }
+}
+
+router.use('/manage', requireSession('client'), requireEntitlement, resolveManagedOwner);
+router.get('/manage/clients', requireSession('admin'), async (req, res) => {
+  try {
+    const entitlements = await db('client_module_entitlements?select=email,updated_at&module_code=eq.digital_signage&enabled=eq.true&order=email.asc');
+    const orders = await db('commerce_orders?select=email,company&order=created_at.desc&limit=500');
+    const companyByEmail = new Map((orders || []).map(row => [String(row.email || '').toLowerCase(), row.company]));
+    const seen = new Set();
+    const clients = (entitlements || []).filter(row => {
+      const email = String(row.email || '').toLowerCase();
+      if (!email || seen.has(email)) return false;
+      seen.add(email);
+      return true;
+    }).map(row => ({
+      email: String(row.email).toLowerCase(),
+      name: companyByEmail.get(String(row.email).toLowerCase()) || String(row.email).toLowerCase(),
+    }));
+    res.json({ clients });
+  } catch (e) { res.status(503).json({ error: e.message }); }
+});
 router.get('/manage/dashboard', async (req,res) => {
   try {
     const email = encodeURIComponent(owner(req));
@@ -307,4 +340,5 @@ router.get('/manage/cameras', async(req,res)=>{try{const rows=await db(filterOwn
 router.post('/gateway/heartbeat', async(req,res)=>{try{const g=await device(req,'camera_gateways');if(!g)return res.status(401).json({error:'Passerelle non autorisee'});await db(`camera_gateways?id=eq.${g.id}`,{method:'PATCH',body:JSON.stringify({status:'online',last_seen_at:new Date().toISOString(),diagnostics:req.body.diagnostics||{},updated_at:new Date().toISOString()})});const cameras=await db(`cameras?select=id,name,model,local_stream_key,enabled&gateway_id=eq.${g.id}&enabled=eq.true`);res.json({gatewayId:g.id,cameras:cameras||[],nextHeartbeatSeconds:30});}catch(e){res.status(503).json({error:e.message});}});
 
 module.exports=router;
+
 
