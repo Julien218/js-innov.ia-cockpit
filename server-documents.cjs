@@ -9,6 +9,8 @@ const MAX_LIST_LIMIT = 200;
 
 const SUPABASE_URL = process.env.SUPABASE_CRM_URL || process.env.SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.SUPABASE_CRM_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const AGENT_URL = process.env.VITE_AGENT_URL || process.env.JSINNOVIA_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
+const AGENT_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
 
 const ALLOWED_EXTENSIONS = new Set([
   '.pdf', '.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif',
@@ -63,7 +65,56 @@ function resolveOrganisation(user, requested) {
   return sanitizeSegment(user?.organisation || 'jsinnovia', 'jsinnovia');
 }
 
+async function agentDocumentRequest(resource, options = {}) {
+  if (!AGENT_KEY) throw new Error('Clé Agent API manquante pour l’index documentaire');
+  const method = options.method || 'GET';
+  const [table, rawQuery = ''] = resource.split('?');
+  if (table !== 'DocumentIndex') throw new Error('Ressource documentaire non autorisée');
+
+  let target = `${AGENT_URL.replace(/\/$/, '')}/data/DocumentIndex`;
+  if (method === 'GET') {
+    const params = new URLSearchParams(rawQuery);
+    const idFilter = params.get('id');
+    if (idFilter?.startsWith('eq.')) {
+      target += `/${encodeURIComponent(idFilter.slice(3))}`;
+    } else {
+      const query = new URLSearchParams();
+      const mappings = [
+        ['organisation', 'organisation'],
+        ['brand', 'brand'],
+        ['client_id', 'client_id'],
+        ['category', 'category'],
+      ];
+      for (const [source, destination] of mappings) {
+        const value = params.get(source);
+        if (value?.startsWith('eq.')) query.set(destination, value.slice(3));
+      }
+      query.set('sort', 'created_at');
+      query.set('order', 'desc');
+      query.set('limit', params.get('limit') || '200');
+      target += `?${query.toString()}`;
+    }
+  }
+
+  const response = await fetch(target, {
+    ...options,
+    headers: {
+      'x-agent-key': AGENT_KEY,
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`Agent DocumentIndex HTTP ${response.status}${text ? `: ${text.slice(0, 240)}` : ''}`);
+  }
+  if (!text) return null;
+  const data = JSON.parse(text);
+  return Array.isArray(data) ? data.filter((row) => !row.deleted_at) : data;
+}
+
 async function supabaseRequest(resource, options = {}) {
+  if (AGENT_KEY) return agentDocumentRequest(resource, options);
   assertSupabaseConfigured();
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${resource}`, {
     ...options,
@@ -144,6 +195,19 @@ async function uploadToDropbox(buffer, dropboxPath) {
   return data;
 }
 
+async function deleteFromDropbox(reference) {
+  const token = await getDropboxAccessToken();
+  const response = await fetch('https://api.dropboxapi.com/2/files/delete_v2', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ path: reference }),
+  });
+  if (!response.ok) throw new Error(`Dropbox rollback HTTP ${response.status}`);
+}
+
 async function downloadFromDropbox(reference) {
   const token = await getDropboxAccessToken();
   const response = await fetch('https://content.dropboxapi.com/2/files/download', {
@@ -195,19 +259,28 @@ async function storeBuffer({ user, organisation, brand, clientId, category, file
     filename: safeFilename,
   });
   const dropboxMeta = await uploadToDropbox(buffer, dropboxPath);
-  return indexDocument({
-    user,
-    organisation: resolvedOrganisation,
-    brand,
-    clientId,
-    category,
-    filename: safeFilename,
-    mimeType,
-    sizeBytes: buffer.length,
-    dropboxMeta,
-    source,
-    emailMessageId,
-  });
+  try {
+    return await indexDocument({
+      user,
+      organisation: resolvedOrganisation,
+      brand,
+      clientId,
+      category,
+      filename: safeFilename,
+      mimeType,
+      sizeBytes: buffer.length,
+      dropboxMeta,
+      source,
+      emailMessageId,
+    });
+  } catch (error) {
+    try {
+      await deleteFromDropbox(dropboxMeta.id || dropboxMeta.path_lower || dropboxMeta.path_display);
+    } catch (rollbackError) {
+      console.error('[documents] rollback Dropbox:', rollbackError.message);
+    }
+    throw error;
+  }
 }
 
 async function getDocumentRecord(id) {
@@ -235,7 +308,7 @@ router.get('/status', (req, res) => {
   res.json({
     success: true,
     dropboxConfigured: isDropboxConfigured(),
-    indexConfigured: Boolean(SUPABASE_URL && SUPABASE_KEY),
+    indexConfigured: Boolean(AGENT_KEY || (SUPABASE_URL && SUPABASE_KEY)),
     maxFileBytes: MAX_FILE_BYTES,
     storage: 'dropbox',
     publicLinks: false,
