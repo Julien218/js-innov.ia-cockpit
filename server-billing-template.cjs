@@ -180,7 +180,12 @@ function drawClientAndTerms(pdf, doc, type) {
   text(pdf, doc.client_nom || '—', M, y + 28, { size: 9.2, font: 'Helvetica-Bold', width: 280 });
   text(pdf, doc.client_adresse || '', M, y + 48, { size: 8, width: 260 });
   text(pdf, doc.client_ville || '', M, y + 65, { size: 8, width: 260 });
-  if (doc.client_tva) text(pdf, `N° TVA : ${doc.client_tva}`, M, y + 85, { size: 8, width: 260 });
+  if (doc.client_numero_entreprise) {
+    text(pdf, `N° ENTREPRISE : ${doc.client_numero_entreprise}`, M, y + 82, { size: 7.6, width: 260 });
+  }
+  if (doc.client_tva) {
+    text(pdf, `N° TVA : ${doc.client_tva}`, M, y + 96, { size: 7.6, width: 260 });
+  }
 
   const bx = 389;
   rounded(pdf, bx, y - 2, 174, 124, 3, C.gold, 0.6);
