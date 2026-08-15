@@ -72,12 +72,10 @@ create table if not exists public.project_cost_entries (
   cost_eur_minor integer not null default 0 check (cost_eur_minor >= 0),
   external_ref text,
   metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  unique (scope_id, external_ref)
 );
 
-create unique index if not exists project_cost_entries_external_unique
-  on public.project_cost_entries(scope_id, external_ref)
-  where external_ref is not null;
 create index if not exists project_cost_entries_period_idx
   on public.project_cost_entries(period_month, scope_id);
 
