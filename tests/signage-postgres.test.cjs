@@ -9,6 +9,7 @@ const commerce = fs.readFileSync(path.join(root, 'server-commerce.cjs'), 'utf8')
 const signage = fs.readFileSync(path.join(root, 'server-signage.cjs'), 'utf8');
 const signagePage = fs.readFileSync(path.join(root, 'src', 'pages', 'DigitalSignage.jsx'), 'utf8');
 const androidPlayer = fs.readFileSync(path.join(root, 'player-android', 'app', 'src', 'main', 'java', 'ia', 'jsinnov', 'pixeliumplayer', 'MainActivity.java'), 'utf8');
+const apkRoute = fs.readFileSync(path.join(root, 'server-player-apk.cjs'), 'utf8');
 const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
 
 test('PostgreSQL staging uses DATABASE_URL and an advisory migration lock', () => {
@@ -96,6 +97,13 @@ test('Android only acknowledges after decoding and restores cached playback afte
   assert.match(androidPlayer, /ImageView/);
   assert.match(androidPlayer, /checksum_sha256/);
   assert.match(androidPlayer, /0\.3\.0-pilot/);
+});
+
+test('cockpit serves the compiled Player 0.3 APK without embedding stale bytes', () => {
+  assert.match(apkRoute, /Pixelium-Player-Olivier-0\.3\.0-pilot\.apk/);
+  assert.match(apkRoute, /res\.sendFile\(APK_PATH/);
+  assert.match(apkRoute, /Cache-Control': 'no-store'/);
+  assert.doesNotMatch(apkRoute, /Buffer\.from/);
 });
 
 test('signage page reports non-JSON responses without exposing parser errors', () => {
