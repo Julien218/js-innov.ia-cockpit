@@ -76,6 +76,8 @@ test('Dropbox media upload handles non-JSON failures and uses the temporary link
   assert.match(signage, /const raw = await response\.text\(\)/);
   assert.match(signage, /réponse non JSON/);
   assert.match(signage, /La connexion Dropbox du cockpit doit être renouvelée/);
+  assert.match(signage, /api\.dropboxapi\.com\/2\/files\/get_temporary_upload_link/);
+  assert.doesNotMatch(signage, /content\.dropboxapi\.com\/2\/files\/get_temporary_upload_link/);
   assert.match(signagePage, /"Content-Type": "application\/octet-stream"/);
   assert.doesNotMatch(signagePage, /Dropbox-API-Arg/);
 });
