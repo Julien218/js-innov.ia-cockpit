@@ -6,6 +6,8 @@ const adminGuard = requireSession('admin');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
 const SUPABASE_SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || process.env.VITE_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
+const AGENT_KEY = process.env.AGENT_API_KEY || '';
 const RAILWAY_API_TOKEN = process.env.RAILWAY_API_TOKEN || '';
 const RAILWAY_COSTS_ENDPOINT = process.env.RAILWAY_COSTS_ENDPOINT || '';
 const BILLING_EUR_PER_USD = Number(process.env.BILLING_EUR_PER_USD || 0.92);
@@ -26,6 +28,21 @@ function monthWindow(month) {
 
 function normalizeProvider(value) {
   return String(value || 'other').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').slice(0, 50) || 'other';
+}
+
+function secretSegment(value, fallback = 'NON_NOMME') {
+  const normalized = String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 50);
+  return normalized || fallback;
+}
+
+function projectCostCenterCode(projectId, projectName) {
+  return `PROJECT_${secretSegment(projectName).slice(0, 28)}_${secretSegment(projectId).slice(0, 8)}`;
 }
 
 function eurMinorFromUsd(value) {
@@ -57,6 +74,68 @@ async function upsert(tableAndConflict, body) {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
     body: JSON.stringify(body),
+  });
+}
+
+async function agentRequest(table, method = 'GET', body = null, id = null, filters = null) {
+  if (!AGENT_KEY) throw new Error('AGENT_API_KEY not configured');
+  const params = filters ? `?${new URLSearchParams(Object.entries(filters).map(([key, value]) => [key, String(value)]))}` : '';
+  const url = id ? `${AGENT_URL}/data/${table}/${id}` : `${AGENT_URL}/data/${table}${params}`;
+  const response = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json', 'x-agent-key': AGENT_KEY },
+    body: body && ['POST', 'PUT', 'PATCH'].includes(method) ? JSON.stringify(body) : undefined,
+  });
+  const text = await response.text();
+  if (!response.ok) throw new Error(`Agent API ${response.status}${text ? `: ${text.slice(0, 240)}` : ''}`);
+  return text ? JSON.parse(text) : null;
+}
+
+async function ensureClientCostCenter({ existingScope, clientId, clientName, projectId, projectName, metadata = {} }) {
+  if (existingScope?.cost_center_id) return existingScope.cost_center_id;
+  const productCode = projectCostCenterCode(projectId, projectName);
+  const existing = await agentRequest('client_cost_centers', 'GET', null, null, { product_code: productCode });
+  if (Array.isArray(existing) && existing[0]?.id) return existing[0].id;
+
+  let client = null;
+  if (clientId) client = await agentRequest('Client', 'GET', null, clientId).catch(() => null);
+  const displayName = client?.entreprise || clientName || [client?.nom, client?.prenom].filter(Boolean).join(' ') || 'Client';
+  const created = await agentRequest('client_cost_centers', 'POST', {
+    product_code: productCode,
+    client_name: displayName,
+    client_email: client?.email || null,
+    client_address: client?.adresse || null,
+    client_vat_number: client?.tva || client?.numero_tva || null,
+    monthly_fee_minor: Math.max(0, Number(metadata.monthly_fee_minor || 0)),
+    currency: 'EUR',
+    is_active: true,
+    metadata: {
+      owner_type: 'client',
+      project_id: projectId,
+      project_name: projectName,
+      billing_mode: 'draft_for_approval',
+      managed_by: 'project-costs',
+    },
+  });
+  return created?.id;
+}
+
+async function mirrorBillingMapping(scope, provider, externalId, externalLabel) {
+  if (!scope?.cost_center_id || !externalId || !['openai', 'railway'].includes(provider)) return;
+  const serviceType = `${provider}_project`;
+  const existing = await agentRequest('client_external_mappings', 'GET', null, null, {
+    service_type: serviceType,
+    external_id: externalId,
+    is_active: 'true',
+  }).catch(() => []);
+  if (Array.isArray(existing) && existing.length) return;
+  await agentRequest('client_external_mappings', 'POST', {
+    cost_center_id: scope.cost_center_id,
+    service_type: serviceType,
+    external_id: externalId,
+    external_label: externalLabel || scope.project_name,
+    is_active: true,
+    metadata: { project_id: scope.project_id, managed_by: 'project-costs' },
   });
 }
 
@@ -135,23 +214,33 @@ router.post('/scopes', adminGuard, async (req, res) => {
     const ownerType = req.body?.owner_type === 'client' ? 'client' : 'internal';
     const projectId = String(req.body?.project_id || '').trim().slice(0, 120);
     const projectName = String(req.body?.project_name || '').trim().slice(0, 180);
+    const clientId = ownerType === 'client' && req.body?.client_id ? String(req.body.client_id).slice(0, 120) : null;
+    const clientName = ownerType === 'client' && req.body?.client_name ? String(req.body.client_name).slice(0, 180) : null;
+    const metadata = req.body?.metadata && typeof req.body.metadata === 'object' ? req.body.metadata : {};
     if (!projectId || !projectName) return res.status(400).json({ error: 'project_id et project_name requis' });
 
     const billingMode = ownerType === 'internal'
       ? 'track_only'
       : (req.body?.billing_mode === 'draft_for_approval' ? 'draft_for_approval' : 'track_only');
 
+    const existingRows = await select(`project_cost_scopes?select=*&owner_type=eq.${ownerType}&project_id=eq.${encodeURIComponent(projectId)}&limit=1`);
+    const existingScope = existingRows[0] || null;
+    let costCenterId = existingScope?.cost_center_id || req.body?.cost_center_id || null;
+    if (ownerType === 'client' && billingMode === 'draft_for_approval' && !costCenterId) {
+      costCenterId = await ensureClientCostCenter({ existingScope, clientId, clientName, projectId, projectName, metadata });
+    }
+
     const rows = await upsert('project_cost_scopes?on_conflict=owner_type,project_id', {
       owner_type: ownerType,
-      client_id: ownerType === 'client' && req.body?.client_id ? String(req.body.client_id).slice(0, 120) : null,
-      client_name: ownerType === 'client' && req.body?.client_name ? String(req.body.client_name).slice(0, 180) : null,
+      client_id: clientId,
+      client_name: clientName,
       project_id: projectId,
       project_name: projectName,
       billing_mode: billingMode,
-      cost_center_id: req.body?.cost_center_id || null,
+      cost_center_id: costCenterId,
       currency: 'EUR',
       is_active: true,
-      metadata: req.body?.metadata && typeof req.body.metadata === 'object' ? req.body.metadata : {},
+      metadata,
     });
     res.status(201).json({ success: true, scope: rows[0] });
   } catch (error) {
@@ -167,6 +256,10 @@ router.post('/scopes/:id/mappings', adminGuard, async (req, res) => {
     if (!externalId && !secretRef) return res.status(400).json({ error: 'external_id ou secret_ref requis' });
     if (secretRef && !/^[A-Z][A-Z0-9_]{5,179}$/.test(secretRef)) return res.status(400).json({ error: 'secret_ref invalide' });
 
+    const scopes = await select(`project_cost_scopes?select=*&id=eq.${encodeURIComponent(req.params.id)}&limit=1`);
+    const scope = scopes[0];
+    if (!scope) return res.status(404).json({ error: 'Projet suivi introuvable' });
+
     const rows = await supabaseRequest('project_cost_mappings', {
       method: 'POST',
       headers: { Prefer: 'return=representation' },
@@ -181,6 +274,7 @@ router.post('/scopes/:id/mappings', adminGuard, async (req, res) => {
         metadata: req.body?.metadata && typeof req.body.metadata === 'object' ? req.body.metadata : {},
       }),
     });
+    await mirrorBillingMapping(scope, provider, externalId, req.body?.external_label);
     res.status(201).json({ success: true, mapping: rows[0] });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -193,11 +287,8 @@ router.post('/scopes/:id/costs', adminGuard, async (req, res) => {
     const provider = normalizeProvider(req.body?.provider);
     const costUsd = Math.max(0, Number(req.body?.cost_usd || 0));
     const explicitEurMinor = Number(req.body?.cost_eur_minor);
-    const costEurMinor = Number.isFinite(explicitEurMinor) && explicitEurMinor >= 0
-      ? Math.round(explicitEurMinor)
-      : eurMinorFromUsd(costUsd);
+    const costEurMinor = Number.isFinite(explicitEurMinor) && explicitEurMinor >= 0 ? Math.round(explicitEurMinor) : eurMinorFromUsd(costUsd);
     const externalRef = req.body?.external_ref ? String(req.body.external_ref).slice(0, 240) : null;
-
     const target = externalRef ? 'project_cost_entries?on_conflict=scope_id,external_ref' : 'project_cost_entries';
     const rows = await upsert(target, {
       scope_id: req.params.id,
@@ -218,9 +309,7 @@ router.post('/scopes/:id/costs', adminGuard, async (req, res) => {
 
 router.post('/scopes/:id/sync-railway', adminGuard, async (req, res) => {
   try {
-    if (!RAILWAY_API_TOKEN || !RAILWAY_COSTS_ENDPOINT) {
-      return res.status(409).json({ error: 'Railway costs adapter non configuré' });
-    }
+    if (!RAILWAY_API_TOKEN || !RAILWAY_COSTS_ENDPOINT) return res.status(409).json({ error: 'Railway costs adapter non configuré' });
     const month = monthValue(req.body?.month || req.query.month);
     const [year, monthNumber] = month.split('-');
     const mappings = await select(`project_cost_mappings?select=*&scope_id=eq.${encodeURIComponent(req.params.id)}&provider=eq.railway&is_active=eq.true`);
@@ -261,4 +350,4 @@ router.post('/scopes/:id/sync-railway', adminGuard, async (req, res) => {
   }
 });
 
-module.exports = { router, loadSummary, monthValue, eurMinorFromUsd };
+module.exports = { router, loadSummary, monthValue, eurMinorFromUsd, projectCostCenterCode };
