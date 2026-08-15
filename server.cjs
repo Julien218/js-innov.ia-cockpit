@@ -141,6 +141,14 @@ try {
 }
 
 try {
+  const agentsRouter = require('./server-agents.cjs');
+  app.use('/api/agents', agentsRouter);
+  console.log('Agents IA sécurisés par abonnements activés');
+} catch (e) {
+  console.warn('Route Agents IA indisponible:', e.message);
+}
+
+try {
   const emailCoreRouter = require('./server-email-core.cjs');
   app.use('/api/emails', emailCoreRouter);
   console.log('✅ Route /api/emails (core framework) activée');
@@ -156,3 +164,4 @@ app.listen(PORT, () => {
   console.log(`✅ JS-Innov.IA Cockpit API — port ${PORT}`);
   console.log(`   Proxy /api/data → ${AGENT_PROXY_URL}/data`);
 });
+

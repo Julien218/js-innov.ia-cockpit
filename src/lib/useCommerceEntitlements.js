@@ -24,6 +24,10 @@ export function useCommerceEntitlements() {
 
   const hasModule = (moduleCode) => {
     if (!isClient) return true;
+    if (moduleCode === 'ai_agents') {
+      return enabledModules.has('ai_agents')
+        || [...enabledModules].some((code) => code.startsWith('ai_agent:'));
+    }
     return enabledModules.has(moduleCode);
   };
 
@@ -34,3 +38,4 @@ export function useCommerceEntitlements() {
     orders: query.data?.orders || [],
   };
 }
+
