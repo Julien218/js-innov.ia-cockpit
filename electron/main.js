@@ -1,88 +1,90 @@
 const { app, BrowserWindow, shell, ipcMain, Notification, Tray, Menu, nativeImage } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const os = require("os");
-const https = require("https");
 
 let mainWindow = null;
 let tray = null;
 let splashTimer = null;
 let updateAvailable = null;
-
-// ── Version actuelle de l'app ────────────────────────────────────────────────
-const APP_VERSION = "1.0.16";
+let updateDownloaded = false;
 
 // ── Helper: vérifier qu'une fenêtre est toujours vivante ────────────────────
 function isAlive(win) {
   return win && !win.isDestroyed();
 }
 
-// ── Vérifier les mises à jour via l'API cockpit ──────────────────────────────
+// ── Mise à jour automatique depuis les releases GitHub ──────────────────────
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.allowPrerelease = false;
+
+function notify(title, body) {
+  if (Notification.isSupported()) new Notification({ title, body }).show();
+}
+
+function sendUpdateEvent(channel, payload) {
+  if (isAlive(mainWindow)) mainWindow.webContents.send(channel, payload);
+}
+
+function refreshTrayMenu() {
+  if (!tray) return;
+  const updateLabel = updateDownloaded
+    ? `Installer la mise à jour ${updateAvailable?.version || ""}`.trim()
+    : updateAvailable
+      ? `Téléchargement de ${updateAvailable.version}…`
+      : "Vérifier les mises à jour";
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Ouvrir le Cockpit", click: () => { if (isAlive(mainWindow)) mainWindow.show(); else createWindow().show(); } },
+    { type: "separator" },
+    { label: updateLabel, click: installOrCheckForUpdate },
+    { type: "separator" },
+    { label: "Quitter", click: () => app.quit() },
+  ]));
+}
+
 function checkForUpdates(silent = true) {
-  const options = {
-    hostname: "cockpit.jsinnovia.com",
-    path: "/api/version",
-    method: "GET",
-    headers: { "User-Agent": "jsinnovia-cockpit-electron" },
-  };
-
-  const req = https.request(options, (res) => {
-    let data = "";
-    res.on("data", (c) => (data += c));
-    res.on("end", () => {
-      try {
-        const result = JSON.parse(data);
-        if (result.success && result.latest) {
-          const latestVersion = result.latest.version.replace(/^v/, "");
-          if (isNewerVersion(latestVersion, APP_VERSION)) {
-            updateAvailable = result.latest;
-            if (Notification.isSupported()) {
-              new Notification({
-                title: "Mise à jour disponible — JS-Innov.IA Cockpit",
-                body: `Version ${latestVersion} disponible. Cliquez pour télécharger.`,
-              }).show();
-            }
-            if (!silent && isAlive(mainWindow)) {
-              mainWindow.webContents.send("update-available", updateAvailable);
-            }
-          } else if (!silent) {
-            if (Notification.isSupported()) {
-              new Notification({
-                title: "JS-Innov.IA Cockpit",
-                body: "Votre application est à jour.",
-              }).show();
-            }
-          }
-        }
-      } catch (e) {
-        console.log("Update check error:", e.message);
-      }
-    });
+  if (!app.isPackaged) {
+    if (!silent) notify("JS-Innov.IA Cockpit", "Les mises à jour automatiques sont actives dans la version installée.");
+    return Promise.resolve();
+  }
+  return autoUpdater.checkForUpdates().then((result) => {
+    if (!result?.updateInfo && !silent) notify("JS-Innov.IA Cockpit", "Votre application est à jour.");
+  }).catch((error) => {
+    console.log("Update check error:", error.message);
+    if (!silent) notify("Mise à jour indisponible", "Le cockpit réessaiera automatiquement au prochain démarrage.");
   });
-  req.on("error", (e) => console.log("Update check error:", e.message));
-  req.end();
 }
 
-// ── Comparer les versions (semver simple) ───────────────────────────────────
-function isNewerVersion(latest, current) {
-  const l = latest.split(".").map(Number);
-  const c = current.split(".").map(Number);
-  for (let i = 0; i < Math.max(l.length, c.length); i++) {
-    const lv = l[i] || 0;
-    const cv = c[i] || 0;
-    if (lv > cv) return true;
-    if (lv < cv) return false;
-  }
-  return false;
+function installOrCheckForUpdate() {
+  if (updateDownloaded) return autoUpdater.quitAndInstall(false, true);
+  return checkForUpdates(false);
 }
 
-// ── Ouvrir le lien de téléchargement ─────────────────────────────────────────
-function downloadUpdate() {
-  if (updateAvailable && updateAvailable.downloadUrl) {
-    shell.openExternal(updateAvailable.downloadUrl);
-  } else {
-    shell.openExternal("https://github.com/Julien218/js-innov.ia-cockpit/releases/latest");
-  }
-}
+autoUpdater.on("update-available", (info) => {
+  updateAvailable = info;
+  updateDownloaded = false;
+  refreshTrayMenu();
+  notify("Mise à jour JS-Innov.IA", `La version ${info.version} se télécharge en arrière-plan.`);
+  sendUpdateEvent("update-available", info);
+});
+
+autoUpdater.on("download-progress", (progress) => {
+  sendUpdateEvent("update-progress", { percent: Math.round(progress.percent || 0) });
+});
+
+autoUpdater.on("update-downloaded", (info) => {
+  updateAvailable = info;
+  updateDownloaded = true;
+  refreshTrayMenu();
+  notify("Mise à jour prête", `La version ${info.version} sera installée automatiquement à la fermeture du cockpit.`);
+  sendUpdateEvent("update-downloaded", info);
+});
+
+autoUpdater.on("error", (error) => {
+  console.log("Auto update error:", error.message);
+  sendUpdateEvent("update-error", { message: "La mise à jour sera retentée au prochain démarrage." });
+});
 
 // ── Splash screen ───────────────────────────────────────────────────────────
 function createSplash() {
@@ -143,24 +145,8 @@ function createWindow() {
 function createTray() {
   try {
     tray = new Tray(path.join(__dirname, "icon.png"));
-    const menu = Menu.buildFromTemplate([
-      { label: "Ouvrir le Cockpit", click: () => { if (isAlive(mainWindow)) mainWindow.show(); else createWindow().show(); } },
-      { type: "separator" },
-      { 
-        label: updateAvailable ? `Mise à jour ${updateAvailable.version} disponible` : "Vérifier les mises à jour",
-        click: () => {
-          if (updateAvailable) {
-            downloadUpdate();
-          } else {
-            checkForUpdates(false);
-          }
-        }
-      },
-      { type: "separator" },
-      { label: "Quitter", click: () => app.quit() },
-    ]);
     tray.setToolTip("JS-Innov.IA Cockpit");
-    tray.setContextMenu(menu);
+    refreshTrayMenu();
     tray.on("double-click", () => { if (isAlive(mainWindow)) mainWindow.show(); else createWindow().show(); });
   } catch(e) { console.log("Tray non disponible:", e.message); }
 }
@@ -178,7 +164,11 @@ ipcMain.on("check-for-updates", () => {
 });
 
 ipcMain.on("download-update", () => {
-  downloadUpdate();
+  installOrCheckForUpdate();
+});
+
+ipcMain.on("install-update", () => {
+  if (updateDownloaded) autoUpdater.quitAndInstall(false, true);
 });
 
 // ── Boot ────────────────────────────────────────────────────────────────────

@@ -11,6 +11,9 @@ Application Electron qui charge le cockpit web `cockpit.jsinnovia.com` dans une 
 - ✅ Fenêtre sans menu bar (propre)
 - ✅ Liens externes → navigateur par défaut
 - ✅ Installation silencieuse NSIS
+- ✅ Cockpit web toujours à jour, sans reconstruire le `.exe`
+- ✅ Téléchargement automatique des nouvelles versions du programme à l'ouverture
+- ✅ Installation automatique à la fermeture, sans retéléchargement manuel
 
 ## Installation (développement)
 
@@ -29,6 +32,10 @@ npm run build:win
 ```
 
 Le fichier `.exe` sera dans `electron/dist/`.
+
+La version `1.1.0` doit être installée une seule fois manuellement. À partir de
+cette version, `electron-updater` télécharge les releases GitHub en arrière-plan
+et les installe à la fermeture du cockpit.
 
 ## Prérequis
 
