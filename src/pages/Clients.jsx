@@ -10,23 +10,41 @@ import { Button } from "@/components/ui/button";
 import { Pencil, Trash2 } from "lucide-react";
 
 const formFields = [
-  { name: "nom",          label: "Nom",         type: "text",  required: true },
-  { name: "prenom",       label: "Prénom",       type: "text" },
-  { name: "email",        label: "Email",        type: "email", required: true },
-  { name: "telephone",    label: "Téléphone",    type: "text" },
-  { name: "entreprise",   label: "Entreprise",   type: "text" },
-  { name: "adresse",      label: "Adresse",      type: "text" },
-  { name: "ville",        label: "Ville",        type: "text" },
-  { name: "code_postal",  label: "Code postal",  type: "text" },
-  { name: "statut",       label: "Statut",       type: "select",
-    options: ["actif","inactif","prospect","archive"] },
-  { name: "notes",        label: "Notes",        type: "textarea" },
+  { name: "nom",                   label: "Nom du contact",                 type: "text", required: true },
+  { name: "prenom",                label: "Prénom du contact",              type: "text" },
+  { name: "email",                 label: "Email principal",                type: "email", required: true },
+  { name: "telephone",             label: "Téléphone",                      type: "text" },
+  { name: "type_client",           label: "Type de client",                 type: "select",
+    options: ["particulier", "professionnel", "entreprise", "asbl"] },
+  { name: "entreprise",            label: "Nom commercial",                 type: "text" },
+  { name: "denomination_legale",   label: "Dénomination légale exacte",     type: "text" },
+  { name: "numero_entreprise",     label: "N° d’entreprise",                type: "text" },
+  { name: "numero_tva",            label: "N° de TVA",                      type: "text" },
+  { name: "adresse",               label: "Adresse officielle",             type: "text" },
+  { name: "code_postal",           label: "Code postal",                    type: "text" },
+  { name: "ville",                 label: "Ville",                          type: "text" },
+  { name: "pays",                  label: "Pays",                           type: "text" },
+  { name: "email_facturation",     label: "Email de facturation",           type: "email" },
+  { name: "facturation_statut",    label: "Vérification facturation",       type: "select",
+    options: [
+      { value: "a_verifier", label: "À vérifier" },
+      { value: "informations_demandees", label: "Informations demandées" },
+      { value: "verifie", label: "Vérifié — données officielles confirmées" },
+    ] },
+  { name: "statut",                label: "Statut client",                  type: "select",
+    options: ["actif", "inactif", "prospect", "archive"] },
+  { name: "notes",                 label: "Notes",                          type: "textarea" },
 ];
 
 const columns = [
   { key: "nom",        label: "Nom",         render: (v, row) => `${v || ""} ${row.prenom || ""}`.trim() },
   { key: "email",      label: "Email" },
   { key: "entreprise", label: "Entreprise" },
+  { key: "numero_tva", label: "N° TVA", render: v => v || <span className="text-amber-400">Manquant</span> },
+  { key: "facturation_statut", label: "Données légales", render: v =>
+    v === "verifie"
+      ? <span className="text-emerald-400">Vérifiées</span>
+      : <span className="text-amber-400">{v === "informations_demandees" ? "Demandées" : "À vérifier"}</span> },
   { key: "ville",      label: "Ville" },
   { key: "statut",     label: "Statut",  render: v => <StatusBadge status={v} /> },
   { key: "created_at", label: "Créé le", render: v => v ? new Date(v).toLocaleDateString("fr-BE") : "—" },
@@ -43,9 +61,27 @@ export default function Clients() {
   });
 
   const save = useMutation({
-    mutationFn: (data) =>
-      editing ? base44.entities.Client.update(editing.id, data) : base44.entities.Client.create(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["Client"] }); setOpen(false); setEditing(null); },
+    mutationFn: (data) => {
+      const editableFields = new Set(formFields.map((field) => field.name));
+      const payload = Object.fromEntries(
+        Object.entries(data || {}).filter(([key]) => editableFields.has(key))
+      );
+      if (payload.facturation_statut === "verifie") {
+        payload.facturation_verifiee_at = new Date().toISOString();
+        payload.facturation_source = "validation-cockpit";
+      }
+      return editing
+        ? base44.entities.Client.update(editing.id, payload)
+        : base44.entities.Client.create(payload);
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["Client"] });
+      setOpen(false);
+      setEditing(null);
+    },
+    onError: (saveError) => {
+      alert("Erreur d’enregistrement : " + (saveError?.message || "Erreur inconnue"));
+    },
   });
 
   const del = useMutation({
