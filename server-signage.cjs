@@ -1,5 +1,9 @@
 const express = require('express');
 const crypto = require('crypto');
+const fs = require('fs/promises');
+const os = require('os');
+const path = require('path');
+const { spawn } = require('child_process');
 const { requireSession } = require('./server-security.cjs');
 const { postgresRest } = require('./server-postgres.cjs');
 const router = express.Router();
@@ -25,6 +29,78 @@ const mediaRoot = req => DROPBOX_ROOT_PATH === '/Clients'
 let dropboxTokenCache = { value: DROPBOX_ACCESS_TOKEN, expiresAt: DROPBOX_ACCESS_TOKEN ? Number.MAX_SAFE_INTEGER : 0 };
 
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+const isVideo = (name, mimeType) => String(mimeType || '').startsWith('video/') || /\.(mp4|mov|m4v|avi|mkv|webm)$/i.test(String(name || ''));
+
+function runFfmpeg(args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error('La conversion video a depasse 4 minutes.'));
+    }, 240000);
+    child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-12000); });
+    child.once('error', error => {
+      clearTimeout(timer);
+      reject(new Error(`FFmpeg indisponible: ${error.message}`));
+    });
+    child.once('close', code => {
+      clearTimeout(timer);
+      if (code === 0) return resolve();
+      reject(new Error(`Conversion video impossible (FFmpeg ${code}): ${stderr.slice(-1200)}`));
+    });
+  });
+}
+
+async function preparePlayerMedia(input, name, mimeType) {
+  if (!isVideo(name, mimeType)) {
+    return {
+      body: input,
+      name,
+      mimeType,
+      rendition: { profile: FFmpeg_PROFILE, state: 'ready', transcoded: false }
+    };
+  }
+
+  const work = await fs.mkdtemp(path.join(os.tmpdir(), 'pixelium-signage-'));
+  const source = path.join(work, 'source.bin');
+  const output = path.join(work, 'player.mp4');
+  try {
+    await fs.writeFile(source, input);
+    await runFfmpeg([
+      '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
+      '-i', source,
+      '-map', '0:v:0', '-map', '0:a:0?',
+      '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1',
+      '-r', '30',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+      '-profile:v', 'main', '-level:v', '4.1', '-pix_fmt', 'yuv420p',
+      '-maxrate', '8M', '-bufsize', '16M', '-g', '60',
+      '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-ac', '2',
+      '-movflags', '+faststart',
+      output
+    ]);
+    const body = await fs.readFile(output);
+    const base = String(name || 'media').replace(/\.[^.]+$/, '');
+    return {
+      body,
+      name: `${base}-player.mp4`,
+      mimeType: 'video/mp4',
+      rendition: {
+        profile: FFmpeg_PROFILE,
+        state: 'ready',
+        transcoded: true,
+        sourceBytes: input.length,
+        outputBytes: body.length,
+        resolution: '1920x1080',
+        frameRate: 30
+      }
+    };
+  } finally {
+    await fs.rm(work, { recursive: true, force: true }).catch(() => {});
+  }
+}
 
 function dropboxMessage(data, operation, status) {
   const detail = data && (
@@ -165,14 +241,16 @@ router.post('/manage/media/upload', (req,res,next) => mediaBody(req,res,error =>
     const name=String(req.query.name||'').replace(/[^a-zA-Z0-9._ -]/g,'_').slice(0,180);
     if(!name) return res.status(400).json({error:'Nom requis'});
     if(!Buffer.isBuffer(req.body)||!req.body.length) return res.status(400).json({error:'Fichier vide ou illisible'});
-    const mimeType=String(req.headers['x-media-content-type']||'application/octet-stream').slice(0,120);
-    const path=`${mediaRoot(req)}/${Date.now()}-${name}`;
+    const sourceMimeType=String(req.headers['x-media-content-type']||'application/octet-stream').slice(0,120);
+    const prepared=await preparePlayerMedia(req.body,name,sourceMimeType);
+    const finalName=cleanDropboxSegment(prepared.name);
+    const dropboxPath=`${mediaRoot(req)}/${Date.now()}-${finalName}`;
     await dropboxJson('https://content.dropboxapi.com/2/files/upload',{
       method:'POST',
-      headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/octet-stream','Dropbox-API-Arg':JSON.stringify({path,mode:'add',autorename:true,mute:false,strict_conflict:false})},
-      body:req.body
+      headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/octet-stream','Dropbox-API-Arg':JSON.stringify({path:dropboxPath,mode:'add',autorename:true,mute:false,strict_conflict:false})},
+      body:prepared.body
     }, 'l’envoi du fichier', 1);
-    const rows=await db('signage_media',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({owner_email:owner(req),name,mime_type:mimeType,dropbox_path:path,size_bytes:req.body.length,checksum_sha256:hash(req.body),status:'uploaded',rendition:{profile:FFmpeg_PROFILE,state:'queued'}})});
+    const rows=await db('signage_media',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({owner_email:owner(req),name:finalName,mime_type:prepared.mimeType,dropbox_path:dropboxPath,size_bytes:prepared.body.length,checksum_sha256:hash(prepared.body),status:'ready',rendition:prepared.rendition})});
     res.status(201).json({media:rows[0]});
   } catch(e){res.status(502).json({error:e.message});}
 });
@@ -197,6 +275,13 @@ router.post('/manage/publications', async (req,res) => {
     const email=owner(req), playerId=String(req.body.playerId||''), playlistId=String(req.body.playlistId||'');
     const [players,lists]=await Promise.all([db(`signage_players?select=*&id=eq.${encodeURIComponent(playerId)}&owner_email=eq.${encodeURIComponent(email)}&limit=1`),db(`signage_playlists?select=*&id=eq.${encodeURIComponent(playlistId)}&owner_email=eq.${encodeURIComponent(email)}&limit=1`)]);
     if(!players?.[0]||!lists?.[0]) return res.status(404).json({error:'Player ou playlist introuvable'});
+    const playlistItems=Array.isArray(lists[0].items)?lists[0].items:[];
+    for (const item of playlistItems) {
+      const mediaId=String(item.mediaId||item.media_id||'');
+      const rows=mediaId?await db(`signage_media?select=id,status,rendition&id=eq.${encodeURIComponent(mediaId)}&owner_email=eq.${encodeURIComponent(email)}&limit=1`):[];
+      if(!rows?.[0]) return res.status(409).json({error:'Un media de la playlist est introuvable.'});
+      if(rows[0].status!=='ready'||rows[0].rendition?.state!=='ready') return res.status(409).json({error:'Le media doit etre converti pour le Player avant sa diffusion.'});
+    }
     const manifest={version:1,revision:lists[0].revision,playlistId,items:lists[0].items,profile:FFmpeg_PROFILE,createdAt:new Date().toISOString()};
     const rows=await db('signage_publications',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({owner_email:email,player_id:playerId,playlist_id:playlistId,status:'pending',manifest,previous_publication_id:players[0].current_publication_id})});
     res.status(201).json(rows[0]);

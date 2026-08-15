@@ -22,7 +22,7 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 
-RUN apk add --no-cache nginx
+RUN apk add --no-cache nginx ffmpeg
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
