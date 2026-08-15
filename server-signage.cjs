@@ -148,7 +148,7 @@ router.post('/manage/media/upload-session', async (req,res) => {
     const name=String(req.body.name||'').replace(/[^a-zA-Z0-9._ -]/g,'_').slice(0,180);
     if(!name) return res.status(400).json({error:'Nom requis'});
     const path=`${mediaRoot(req)}/${Date.now()}-${name}`;
-    const data=await dropboxJson('https://content.dropboxapi.com/2/files/get_temporary_upload_link',{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:JSON.stringify({commit_info:{path,mode:'add',autorename:true,mute:false},duration:14400})}, 'la préparation de l’envoi');
+    const data=await dropboxJson('https://api.dropboxapi.com/2/files/get_temporary_upload_link',{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:JSON.stringify({commit_info:{path,mode:'add',autorename:true,mute:false},duration:14400})}, 'la préparation de l’envoi');
     res.json({uploadUrl:data.link,dropboxPath:path,expiresIn:14400});
   } catch(e){res.status(502).json({error:e.message});}
 });
