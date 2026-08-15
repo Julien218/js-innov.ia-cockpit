@@ -116,32 +116,6 @@ function bankIcon(pdf, x, y) {
   pdf.stroke().moveTo(x - 9, y + 6).lineTo(x + 9, y + 6).stroke().restore();
 }
 
-function serviceIcon(pdf, cx, cy, kind) {
-  pdf.save().strokeColor(C.gold).lineWidth(1).circle(cx, cy, 14).stroke();
-  if (kind === 0) {
-    pdf.moveTo(cx - 8, cy + 4).bezierCurveTo(cx - 3, cy - 10, cx + 3, cy - 10, cx + 8, cy + 4).stroke();
-    pdf.circle(cx, cy - 1, 3).stroke();
-  } else if (kind === 1) {
-    pdf.rect(cx - 7, cy - 7, 14, 14).stroke();
-    text(pdf, 'IA', cx - 6, cy - 4, { width: 12, align: 'center', size: 7, color: C.gold, font: 'Helvetica-Bold' });
-  } else if (kind === 2) {
-    pdf.circle(cx, cy - 2, 5).stroke().moveTo(cx - 4, cy + 5).lineTo(cx + 4, cy + 5).stroke();
-    for (let i = 0; i < 6; i += 1) {
-      const a = (Math.PI * 2 * i) / 6;
-      pdf.moveTo(cx + Math.cos(a) * 7, cy - 2 + Math.sin(a) * 7)
-        .lineTo(cx + Math.cos(a) * 10, cy - 2 + Math.sin(a) * 10).stroke();
-    }
-  } else if (kind === 3) {
-    pdf.rect(cx - 8, cy - 6, 16, 11).stroke().moveTo(cx - 4, cy + 8).lineTo(cx + 4, cy + 8).stroke();
-    pdf.moveTo(cx, cy + 5).lineTo(cx, cy + 8).stroke();
-  } else {
-    pdf.moveTo(cx - 6, cy - 3).bezierCurveTo(cx - 6, cy - 9, cx + 6, cy - 9, cx + 6, cy - 3)
-      .lineTo(cx + 6, cy + 7).lineTo(cx - 6, cy + 7).closePath().stroke();
-    pdf.circle(cx, cy + 1, 1.5).stroke();
-  }
-  pdf.restore();
-}
-
 function drawHeader(pdf, doc, type) {
   // Subtle geometric background, faithful to the white/grey official template.
   pdf.save().fillColor('#fafafa').rect(0, 0, A4.width, 205).fill();
