@@ -142,7 +142,10 @@ export default function Factures() {
 
   const actions = (row) => (
     <div className="flex gap-1">
-      <Button size="icon" variant="ghost" title="Modifier" onClick={() => { setEditing(row); setOpen(true); }}>
+      <Button size="icon" variant="ghost"
+        title={row.pdf_document_id ? "Facture archivée — modification bloquée" : "Modifier"}
+        disabled={Boolean(row.pdf_document_id)}
+        onClick={() => { setEditing(row); setOpen(true); }}>
         <Pencil className="w-4 h-4" />
       </Button>
       <Button size="icon" variant="ghost"
@@ -156,7 +159,9 @@ export default function Factures() {
         onClick={() => handleSend(row)}>
         <Send className={`w-4 h-4 ${sendLoading === row.id ? "animate-pulse" : ""}`} />
       </Button>
-      <Button size="icon" variant="ghost" className="text-red-400" title="Supprimer"
+      <Button size="icon" variant="ghost" className="text-red-400"
+        title={row.pdf_document_id ? "Facture archivée — suppression bloquée" : "Supprimer"}
+        disabled={Boolean(row.pdf_document_id)}
         onClick={() => { if (confirm("Supprimer cette facture ?")) del.mutate(row.id); }}>
         <Trash2 className="w-4 h-4" />
       </Button>
