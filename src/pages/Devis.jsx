@@ -12,8 +12,7 @@ import { formatCurrency, normalizeBillingPayload, generateDocumentNumber } from 
 
 const formFields = [
   { name: "numero",        label: "N° Devis",        type: "text",   required: true },
-  { name: "client_nom",    label: "Client",          type: "text",   required: true },
-  { name: "client_email",  label: "Email client",    type: "email" },
+  { name: "client_id",     label: "Client du Cockpit", type: "select", required: true, options: [] },
   { name: "objet",         label: "Objet",            type: "text" },
   { name: "montant_ht",    label: "Montant HT (€)",   type: "number" },
   { name: "tva",           label: "TVA (%)",         type: "number", placeholder: "21" },
@@ -27,6 +26,27 @@ const formFields = [
 const formatTrackingDate = value => value
   ? new Date(value).toLocaleString("fr-BE", { dateStyle: "short", timeStyle: "short" })
   : "—";
+
+async function handleComplianceError(data) {
+  if (data?.code !== "CLIENT_INFORMATION_INCOMPLETE" || !data?.canRequestByEmail || !data?.clientId) {
+    return false;
+  }
+  const missing = Array.isArray(data.missingLabels) ? data.missingLabels.join(", ") : "informations légales";
+  const approved = confirm(
+    `Facturation bloquée : ${missing}.\n\nEnvoyer une demande à ${data.clientEmail} ?`
+  );
+  if (!approved) return false;
+  const response = await fetch(`/api/billing/clients/${data.clientId}/request-information`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({}),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
+  alert(`Demande d’informations envoyée à ${result.sentTo}. Le devis reste bloqué jusqu’à validation des données.`);
+  return true;
+}
 
 const columns = [
   { key: "numero",        label: "N° Devis" },
@@ -55,12 +75,34 @@ export default function Devis() {
     queryKey: ["Devis"],
     queryFn: () => base44.entities.Devis.list("-created_at"),
   });
+  const { data: clients = [] } = useQuery({
+    queryKey: ["Client"],
+    queryFn: () => base44.entities.Client.list("entreprise"),
+  });
 
   const safeDevis = Array.isArray(devis) ? devis : [];
+  const safeClients = Array.isArray(clients) ? clients : [];
+  const resolvedFormFields = formFields.map((field) => field.name === "client_id"
+    ? {
+        ...field,
+        options: safeClients.map((client) => ({
+          value: client.id,
+          label: client.denomination_legale || client.entreprise || [client.prenom, client.nom].filter(Boolean).join(" ") || client.email,
+        })),
+      }
+    : field);
 
   const save = useMutation({
     mutationFn: (data) => {
-      const payload = normalizeBillingPayload(data);
+      const editableFields = new Set(resolvedFormFields.map((field) => field.name));
+      const editableData = Object.fromEntries(
+        Object.entries(data || {}).filter(([key]) => editableFields.has(key))
+      );
+      const payload = normalizeBillingPayload(editableData);
+      const selectedClient = safeClients.find((client) => client.id === payload.client_id);
+      if (!selectedClient) throw new Error("Sélectionnez un client existant dans le Cockpit.");
+      payload.client_nom = selectedClient.denomination_legale || selectedClient.entreprise || [selectedClient.prenom, selectedClient.nom].filter(Boolean).join(" ");
+      payload.client_email = selectedClient.email_facturation || selectedClient.email || "";
       // Auto-générer le numéro si vide
       if (!payload.numero) {
         payload.numero = generateDocumentNumber("DEV", safeDevis);
@@ -69,7 +111,12 @@ export default function Devis() {
         ? base44.entities.Devis.update(editing.id, payload)
         : base44.entities.Devis.create(payload);
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["Devis"] }); setOpen(false); setEditing(null); },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["Devis"] });
+      setOpen(false);
+      setEditing(null);
+    },
+    onError: (saveError) => alert("Erreur d’enregistrement : " + (saveError?.message || "Erreur inconnue")),
   });
 
   const del = useMutation({
@@ -90,6 +137,7 @@ export default function Devis() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
+        if (await handleComplianceError(err)) return;
         throw new Error(err.error || `HTTP ${res.status}`);
       }
       const blob = await res.blob();
@@ -131,6 +179,7 @@ export default function Devis() {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
+        if (await handleComplianceError(data)) return;
         throw new Error(data.error || `HTTP ${res.status}`);
       }
       setSendMsg({ type: "success", text: `Devis envoyé à ${data.sentTo || to}` });
@@ -197,7 +246,7 @@ export default function Devis() {
         open={open}
         onClose={() => { setOpen(false); setEditing(null); }}
         title={editing ? "Modifier le devis" : "Nouveau devis"}
-        fields={formFields}
+        fields={resolvedFormFields}
         initialData={editing}
         onSubmit={(data) => save.mutate(data)}
         loading={save.isPending}
