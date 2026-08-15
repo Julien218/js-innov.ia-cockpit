@@ -11,7 +11,7 @@ import { Pencil, Trash2 } from "lucide-react";
 
 const formFields = [
   { name: "nom",             label: "Nom du projet",     type: "text",   required: true },
-  { name: "client_nom",      label: "Client",            type: "text",   required: true },
+  { name: "client_id",       label: "Client du Cockpit", type: "select", required: true, options: [] },
   { name: "description",     label: "Description",       type: "textarea" },
   { name: "statut",          label: "Statut",            type: "select",
     options: ["en_attente","en_cours","pause","termine","annule"] },
@@ -23,7 +23,9 @@ const formFields = [
 
 const columns = [
   { key: "nom",             label: "Projet" },
-  { key: "client_nom",      label: "Client" },
+  { key: "client_nom",      label: "Client", render: (v, row) => row.client_id
+    ? (v || "Client rattaché")
+    : <span className="text-red-400">Anomalie — aucun client</span> },
   { key: "statut",          label: "Statut",   render: v => <StatusBadge status={v} /> },
   { key: "budget",          label: "Budget",   render: v => v ? `${v.toLocaleString("fr-BE")} €` : "—" },
   { key: "date_fin_prevue", label: "Fin prévue", render: v => v ? new Date(v).toLocaleDateString("fr-BE") : "—" },
@@ -38,11 +40,40 @@ export default function Projets() {
     queryKey: ["Projet"],
     queryFn: () => base44.entities.Projet.list("-created_at"),
   });
+  const { data: clients = [] } = useQuery({
+    queryKey: ["Client"],
+    queryFn: () => base44.entities.Client.list("entreprise"),
+  });
+  const safeClients = Array.isArray(clients) ? clients : [];
+  const resolvedFormFields = formFields.map((field) => field.name === "client_id"
+    ? {
+        ...field,
+        options: safeClients.map((client) => ({
+          value: client.id,
+          label: client.denomination_legale || client.entreprise || [client.prenom, client.nom].filter(Boolean).join(" ") || client.email,
+        })),
+      }
+    : field);
 
   const save = useMutation({
-    mutationFn: (data) =>
-      editing ? base44.entities.Projet.update(editing.id, data) : base44.entities.Projet.create(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["Projet"] }); setOpen(false); setEditing(null); },
+    mutationFn: (data) => {
+      const editableFields = new Set(resolvedFormFields.map((field) => field.name));
+      const payload = Object.fromEntries(
+        Object.entries(data || {}).filter(([key]) => editableFields.has(key))
+      );
+      const selectedClient = safeClients.find((client) => client.id === payload.client_id);
+      if (!selectedClient) throw new Error("Sélectionnez un client existant dans le Cockpit.");
+      payload.client_nom = selectedClient.denomination_legale || selectedClient.entreprise || [selectedClient.prenom, selectedClient.nom].filter(Boolean).join(" ");
+      return editing
+        ? base44.entities.Projet.update(editing.id, payload)
+        : base44.entities.Projet.create(payload);
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["Projet"] });
+      setOpen(false);
+      setEditing(null);
+    },
+    onError: (saveError) => alert("Erreur d’enregistrement : " + (saveError?.message || "Erreur inconnue")),
   });
 
   const del = useMutation({
@@ -81,7 +112,7 @@ export default function Projets() {
       <DataTable columns={columns} data={Array.isArray(projets) ? projets : []} loading={isLoading} actions={actions} />
       <FormModal open={open} onClose={() => { setOpen(false); setEditing(null); }}
         title={editing ? "Modifier le projet" : "Nouveau projet"}
-        fields={formFields} initialData={editing}
+        fields={resolvedFormFields} initialData={editing}
         onSubmit={(data) => save.mutate(data)} loading={save.isPending} />
     </div>
   );
