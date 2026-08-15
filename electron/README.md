@@ -37,6 +37,17 @@ La version `1.1.0` doit être installée une seule fois manuellement. À partir 
 cette version, `electron-updater` télécharge les releases GitHub en arrière-plan
 et les installe à la fermeture du cockpit.
 
+## IA locale au démarrage
+
+Le Cockpit vérifie automatiquement `http://127.0.0.1:8787/health` à son ouverture.
+Si l’agent n’est pas déjà actif, il lance silencieusement `server.mjs`, attend sa
+disponibilité sans bloquer l’interface, puis transmet son état à l’application.
+
+L’emplacement peut être défini avec `JSINNOVIA_LOCAL_AGENT_FILE`. Sans cette
+variable, l’application vérifie le dossier stable `Documents/JS-Innov.IA/local-agent`
+puis l’emplacement historique du poste pilote. Le chemin de Node peut être défini
+avec `JSINNOVIA_NODE_EXE`.
+
 ## Prérequis
 
 - Node.js 18+
@@ -63,4 +74,5 @@ Le cockpit charge **cockpit.jsinnovia.com** et se connecte directement à :
 ---
 *JS-Innov.IA · Julien Pagin · Dour, Belgique*  
 *"When Vision meets Intelligence."*
+
 
