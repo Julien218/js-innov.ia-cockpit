@@ -12,6 +12,7 @@ const gateway = fs.readFileSync(path.join(root, 'camera-gateway', 'gateway.mjs')
 const migration = fs.readFileSync(path.join(root, 'migrations', '005_signage_camera_finalization.sql'), 'utf8');
 const commerce = fs.readFileSync(path.join(root, 'server-commerce.cjs'), 'utf8');
 const onboarding = fs.readFileSync(path.join(root, 'server-client-onboarding.cjs'), 'utf8');
+const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
 
 test('scheduled and recurring publications are only delivered when due', () => {
   assert.match(migration, /scheduled_at timestamptz/);
@@ -85,3 +86,8 @@ test('paid orders create a single-use hashed invitation without emailing active 
   assert.doesNotMatch(onboarding, /console\.[a-z]+\([^\n]*rawToken/);
 });
 
+
+test('the runtime image includes every server module required by commerce and client agents', () => {
+  assert.match(dockerfile, /server-client-onboarding\.cjs/);
+  assert.match(dockerfile, /server-agents\.cjs/);
+});
