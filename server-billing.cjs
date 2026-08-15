@@ -99,8 +99,16 @@ function buildBillingProfile(client, doc = {}) {
   };
 }
 
+function hasCompleteRegisteredAddress(profile) {
+  const addressWithoutPostalCode = profile.adresse.replace(profile.code_postal, ' ');
+  return /[a-zA-ZÀ-ÿ]/.test(addressWithoutPostalCode) && /\d/.test(addressWithoutPostalCode);
+}
+
 function missingBillingFields(profile) {
-  return Object.keys(BILLING_FIELD_LABELS).filter((field) => !profile[field]);
+  return Object.keys(BILLING_FIELD_LABELS).filter((field) => {
+    if (field === 'adresse') return !profile.adresse || !hasCompleteRegisteredAddress(profile);
+    return !profile[field];
+  });
 }
 
 async function prepareDocumentForBilling(doc) {
