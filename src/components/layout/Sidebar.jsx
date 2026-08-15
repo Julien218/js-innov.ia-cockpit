@@ -7,6 +7,7 @@ import {
   Bot, Network, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
   PlayCircle, GalleryHorizontalEnd, Send, Server, Gauge,
+  CircleDollarSign, FileCheck2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -104,6 +105,8 @@ const allNavGroups = [
     items: [
       { label: "Devis", icon: FileText, path: "/devis" },
       { label: "Factures", icon: Receipt, path: "/factures" },
+      { label: "Factures à valider", icon: FileCheck2, path: "/factures-a-valider", minRole: "admin" },
+      { label: "Coûts par projet", icon: CircleDollarSign, path: "/couts-projets", minRole: "admin" },
     ]
   },
   {
