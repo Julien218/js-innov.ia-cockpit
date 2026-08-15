@@ -102,7 +102,7 @@ app.use('/api/data', requireSession('client'), (req, res, next) => {
   if (role === 'client' && (req.method !== 'GET' || !clientReadTables.has(table))) {
     return res.status(403).json({ error: 'Cette opération nécessite un collaborateur' });
   }
-  const adminTables = new Set(['LogAction', 'Validation', 'Commission']);
+  const adminTables = new Set(['LogAction', 'Validation', 'validations', 'Commission']);
   if (adminTables.has(table) && (ROLE_LEVEL[role] || 0) < ROLE_LEVEL.admin) {
     return res.status(403).json({ error: 'Cette ressource nécessite un administrateur' });
   }
