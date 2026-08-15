@@ -5,14 +5,16 @@ const { Pool } = require('pg');
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const ALLOWED_TABLES = new Set([
   'commerce_orders','commerce_events','client_module_entitlements','commerce_onboarding_tasks',
-  'signage_players','signage_media','signage_playlists','signage_publications','camera_gateways','cameras'
+  'signage_players','signage_media','signage_playlists','signage_publications','camera_gateways','cameras',
+  'camera_recordings','signage_audit_events'
 ]);
 const JSON_COLUMNS = new Map([
   ['signage_players', new Set(['diagnostics'])],
   ['signage_media', new Set(['rendition'])],
   ['signage_playlists', new Set(['items'])],
-  ['signage_publications', new Set(['manifest'])],
-  ['camera_gateways', new Set(['diagnostics'])]
+  ['signage_publications', new Set(['manifest','recurrence'])],
+  ['camera_gateways', new Set(['diagnostics'])],
+  ['signage_audit_events', new Set(['details'])]
 ]);
 const postgresValue = (table, column, value) => {
   if (!JSON_COLUMNS.get(table)?.has(column) || value === null || value === undefined) return value;
@@ -37,7 +39,7 @@ async function migrate() {
   try {
     await client.query('select pg_advisory_lock($1)', [2182026]);
     await client.query('create table if not exists pilot_schema_migrations (name text primary key, applied_at timestamptz not null default now())');
-    for (const file of ['002_commerce_signage.sql', '003_signage_runtime.sql', '004_pilot_sponsorship.sql']) {
+    for (const file of ['002_commerce_signage.sql', '003_signage_runtime.sql', '004_pilot_sponsorship.sql', '005_signage_camera_finalization.sql']) {
       const exists = await client.query('select 1 from pilot_schema_migrations where name=$1', [file]);
       if (exists.rowCount) continue;
       await client.query('begin');
@@ -124,7 +126,14 @@ async function postgresRest(resource, options={}) {
     if(prefer.includes('return=representation'))sql+=' returning *';
     return (await pool.query(sql,values)).rows;
   }
+  if (method === 'DELETE') {
+    const values=[]; const where=whereFrom(params,values); if(!where)throw new Error('DELETE sans filtre refuse');
+    let sql=`delete from ${ident(table)}${where}`;
+    if(prefer.includes('return=representation'))sql+=' returning *';
+    return (await pool.query(sql,values)).rows;
+  }
   throw new Error('Methode non supportee');
 }
 
 module.exports = { postgresRest, ensureReady, getPool };
+
