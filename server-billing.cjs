@@ -28,16 +28,24 @@ const AGENT_URL = process.env.VITE_AGENT_URL
   || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
 
-async function fetchDocument(type, id) {
+function tenantForRequest(req) {
+  return String(req.user?.organisation || 'jsinnovia').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+}
+
+function agentHeaders(tenant) {
+  return { 'Content-Type': 'application/json', 'x-agent-key': AGENT_KEY, 'x-organisation-id': tenant || 'jsinnovia' };
+}
+
+async function fetchDocument(type, id, tenant) {
   const table = type === 'facture' ? 'Facture' : 'Devis';
   const response = await fetch(`${AGENT_URL}/data/${table}/${id}`, {
-    headers: { 'Content-Type': 'application/json', 'x-agent-key': AGENT_KEY },
+    headers: agentHeaders(tenant),
   });
   if (!response.ok) throw new Error(`Agent API ${response.status}: ${await response.text()}`);
   return response.json();
 }
 
-async function updateDocument(type, id, payload) {
+async function updateDocument(type, id, payload, tenant) {
   const table = type === 'facture' ? 'Facture' : 'Devis';
   const response = await fetch(`${AGENT_URL}/data/${table}/${id}`, {
     method: 'PATCH',
@@ -48,7 +56,7 @@ async function updateDocument(type, id, payload) {
   return response.json();
 }
 
-async function fetchClient(clientId) {
+async function fetchClient(clientId, tenant) {
   if (!clientId) {
     const error = new Error('Anomalie : ce document n’est rattaché à aucun client du Cockpit.');
     error.status = 422;
@@ -111,8 +119,8 @@ function missingBillingFields(profile) {
   });
 }
 
-async function prepareDocumentForBilling(doc) {
-  const client = await fetchClient(doc.client_id);
+async function prepareDocumentForBilling(doc, tenant) {
+  const client = await fetchClient(doc.client_id, tenant);
   const profile = buildBillingProfile(client, doc);
   const missingFields = missingBillingFields(profile);
   if (missingFields.length) {
@@ -193,7 +201,8 @@ function appendEvent(doc, event) {
 
 const archiveLocks = new Map();
 async function getOrCreateArchivedPDF(req, doc, type) {
-  const prepared = await prepareDocumentForBilling(doc);
+  const tenant = tenantForRequest(req);
+  const prepared = await prepareDocumentForBilling(doc, tenant);
   Object.assign(doc, prepared.document);
 
   if (doc.pdf_document_id && doc.pdf_version === 'official-v3-legal' && doc.pdf_conformite_statut === 'conforme') {
@@ -248,7 +257,7 @@ async function getOrCreateArchivedPDF(req, doc, type) {
       client_email: doc.client_email,
       client_nom: doc.client_nom,
       historique_documents: generatedHistory,
-    });
+    }, tenant);
     Object.assign(doc, {
       pdf_document_id: archived.id,
       pdf_genere_at: now,
@@ -262,7 +271,8 @@ async function getOrCreateArchivedPDF(req, doc, type) {
 }
 
 async function servePDF(req, res, type) {
-  const doc = await fetchDocument(type, req.params.id);
+  const tenant = tenantForRequest(req);
+  const doc = await fetchDocument(type, req.params.id, tenant);
   const archived = await getOrCreateArchivedPDF(req, doc, type);
   const downloadedAt = new Date().toISOString();
   try {
@@ -272,7 +282,7 @@ async function servePDF(req, res, type) {
       historique_documents: appendEvent(doc, auditEvent(req, 'telechargement', {
         document_id: archived.documentId,
       })),
-    });
+    }, tenant);
   } catch (error) {
     console.warn(`[BILLING] PDF téléchargé, suivi non mis à jour: ${error.message}`);
   }
@@ -283,7 +293,8 @@ async function servePDF(req, res, type) {
 }
 
 async function sendPDF(req, res, type) {
-  const doc = await fetchDocument(type, req.params.id);
+  const tenant = tenantForRequest(req);
+  const doc = await fetchDocument(type, req.params.id, tenant);
   const to = req.body?.to || doc.client_email;
   if (!to) return res.status(400).json({ success: false, error: 'Email client manquant.' });
 
@@ -324,7 +335,7 @@ async function sendPDF(req, res, type) {
         message_id: info.messageId,
         document_id: archived.documentId,
       })),
-    });
+    }, tenant);
   } catch (error) {
     console.warn(`[BILLING] Email envoyé, suivi non mis à jour: ${error.message}`);
   }
@@ -333,7 +344,8 @@ async function sendPDF(req, res, type) {
 
 router.post('/clients/:id/request-information', async (req, res) => {
   try {
-    const client = await fetchClient(req.params.id);
+    const tenant = tenantForRequest(req);
+    const client = await fetchClient(req.params.id, tenant);
     const profile = buildBillingProfile(client);
     const missingFields = missingBillingFields(profile);
     if (!missingFields.length) {
@@ -377,7 +389,7 @@ router.post('/clients/:id/request-information', async (req, res) => {
     const now = new Date().toISOString();
     const response = await fetch(`${AGENT_URL}/data/Client/${encodeURIComponent(client.id)}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'x-agent-key': AGENT_KEY },
+      headers: agentHeaders(tenant),
       body: JSON.stringify({
         facturation_statut: 'informations_demandees',
         facturation_demande_at: now,
