@@ -28,6 +28,8 @@ test('admin cockpit provides a client selector and scopes every operation', () =
   assert.match(page, /preferredManagedClient/);
   assert.match(page, /\.endsWith\("\.invalid"\)/);
   assert.match(page, /localStorage\.setItem\(managedClientKey, email\)/);
+  assert.match(page, /Diagnostic des Players/);
+  assert.match(page, /queryKey: \["signage-player-diagnostics"\]/);
 });
 
 test('admin player diagnostics expose operational fields only behind admin auth', () => {
