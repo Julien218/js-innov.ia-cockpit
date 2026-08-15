@@ -4,7 +4,9 @@
  */
 const express = require('express');
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 const { generateInvoicePDF, money } = require('./server-billing-template.cjs');
+const { storeBuffer, getDocumentBufferForUser } = require('./server-documents.cjs');
 
 const router = express.Router();
 
@@ -35,14 +37,14 @@ async function fetchDocument(type, id) {
   return response.json();
 }
 
-async function updateDocumentStatus(type, id, statut) {
+async function updateDocument(type, id, payload) {
   const table = type === 'facture' ? 'Facture' : 'Devis';
   const response = await fetch(`${AGENT_URL}/data/${table}/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', 'x-agent-key': AGENT_KEY },
-    body: JSON.stringify({ statut }),
+    body: JSON.stringify(payload),
   });
-  if (!response.ok) throw new Error(`Status update ${response.status}`);
+  if (!response.ok) throw new Error(`Document update ${response.status}: ${await response.text()}`);
   return response.json();
 }
 
@@ -64,12 +66,95 @@ function filenameFor(doc, type) {
   return `${String(doc.numero || type).toUpperCase()}.pdf`;
 }
 
+function auditEvent(req, type, extra = {}) {
+  return {
+    type,
+    date: new Date().toISOString(),
+    utilisateur: req.user?.email || req.user?.id || 'system',
+    ...extra,
+  };
+}
+
+function appendEvent(doc, event) {
+  const history = Array.isArray(doc.historique_documents) ? doc.historique_documents : [];
+  return [...history, event].slice(-200);
+}
+
+const archiveLocks = new Map();
+async function getOrCreateArchivedPDF(req, doc, type) {
+  if (doc.pdf_document_id) {
+    const stored = await getDocumentBufferForUser(req.user, doc.pdf_document_id);
+    return {
+      pdf: stored.buffer,
+      filename: stored.record.filename || filenameFor(doc, type),
+      documentId: doc.pdf_document_id,
+      generated: false,
+    };
+  }
+
+  const lockKey = `${type}:${doc.id}`;
+  if (archiveLocks.has(lockKey)) return archiveLocks.get(lockKey);
+
+  const task = (async () => {
+    const pdf = await generateInvoicePDF(doc, type);
+    const filename = filenameFor(doc, type);
+    const now = new Date().toISOString();
+    const archived = await storeBuffer({
+      user: req.user,
+      organisation: req.user?.organisation || 'jsinnovia',
+      brand: 'jsinnovia',
+      clientId: doc.client_id || doc.client_nom || '_general',
+      category: type === 'facture' ? 'factures' : 'devis',
+      filename,
+      mimeType: 'application/pdf',
+      buffer: pdf,
+      source: 'billing-official-v2',
+    });
+    const generatedHistory = appendEvent(doc, auditEvent(req, 'generation', {
+      version: 'official-v2',
+      document_id: archived.id,
+    }));
+    await updateDocument(type, doc.id, {
+      pdf_document_id: archived.id,
+      pdf_dropbox_path: archived.dropbox_path,
+      pdf_dropbox_file_id: archived.dropbox_file_id,
+      pdf_sha256: crypto.createHash('sha256').update(pdf).digest('hex'),
+      pdf_version: 'official-v2',
+      pdf_genere_at: now,
+      pdf_genere_par: req.user?.email || req.user?.id || 'system',
+      historique_documents: generatedHistory,
+    });
+    Object.assign(doc, {
+      pdf_document_id: archived.id,
+      pdf_genere_at: now,
+      historique_documents: generatedHistory,
+    });
+    return { pdf, filename, documentId: archived.id, generated: true };
+  })().finally(() => archiveLocks.delete(lockKey));
+
+  archiveLocks.set(lockKey, task);
+  return task;
+}
+
 async function servePDF(req, res, type) {
   const doc = await fetchDocument(type, req.params.id);
-  const pdf = await generateInvoicePDF(doc, type);
+  const archived = await getOrCreateArchivedPDF(req, doc, type);
+  const downloadedAt = new Date().toISOString();
+  try {
+    await updateDocument(type, doc.id, {
+      date_dernier_telechargement: downloadedAt,
+      nombre_telechargements: Number(doc.nombre_telechargements || 0) + 1,
+      historique_documents: appendEvent(doc, auditEvent(req, 'telechargement', {
+        document_id: archived.documentId,
+      })),
+    });
+  } catch (error) {
+    console.warn(`[BILLING] PDF téléchargé, suivi non mis à jour: ${error.message}`);
+  }
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${filenameFor(doc, type)}"`);
-  res.send(pdf);
+  res.setHeader('Content-Disposition', `attachment; filename="${archived.filename}"`);
+  res.setHeader('X-PDF-Source', archived.generated ? 'generated-and-archived' : 'dropbox-archive');
+  res.send(archived.pdf);
 }
 
 async function sendPDF(req, res, type) {
@@ -80,8 +165,8 @@ async function sendPDF(req, res, type) {
   const transport = getSmtpTransport();
   if (!transport) return res.status(500).json({ success: false, error: 'SMTP non configuré.' });
 
-  const pdf = await generateInvoicePDF(doc, type);
-  const filename = filenameFor(doc, type);
+  const archived = await getOrCreateArchivedPDF(req, doc, type);
+  const { pdf, filename } = archived;
   const label = type === 'facture' ? 'facture' : 'devis';
   const customMessage = req.body?.message || '';
   const greeting = `Bonjour ${doc.client_nom || ''},`;
@@ -100,10 +185,23 @@ async function sendPDF(req, res, type) {
     attachments: [{ filename, content: pdf, contentType: 'application/pdf' }],
   });
 
+  const sentAt = new Date().toISOString();
   try {
-    await updateDocumentStatus(type, req.params.id, type === 'facture' ? 'envoyee' : 'envoye');
+    await updateDocument(type, req.params.id, {
+      statut: type === 'facture' ? 'envoyee' : 'envoye',
+      date_premier_envoi: doc.date_premier_envoi || sentAt,
+      date_dernier_envoi: sentAt,
+      nombre_envois: Number(doc.nombre_envois || 0) + 1,
+      dernier_destinataire: to,
+      dernier_message_id: info.messageId,
+      historique_documents: appendEvent(doc, auditEvent(req, 'envoi', {
+        destinataire: to,
+        message_id: info.messageId,
+        document_id: archived.documentId,
+      })),
+    });
   } catch (error) {
-    console.warn(`[BILLING] PDF envoyé, statut non mis à jour: ${error.message}`);
+    console.warn(`[BILLING] Email envoyé, suivi non mis à jour: ${error.message}`);
   }
   return res.json({ success: true, messageId: info.messageId, sentTo: to, filename });
 }

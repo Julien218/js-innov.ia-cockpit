@@ -4,7 +4,7 @@
   "properties": {
     "numero": {
       "type": "string",
-      "description": "Num\u00e9ro de facture"
+      "description": "Numéro de facture"
     },
     "client_id": {
       "type": "string"
@@ -77,6 +77,96 @@
         "prelevement"
       ],
       "default": "virement"
+    },
+    "client_email": {
+      "type": "string"
+    },
+    "date_emission": {
+      "type": "string",
+      "format": "date"
+    },
+    "pdf_document_id": {
+      "type": "string",
+      "description": "Identifiant du PDF immuable dans DocumentIndex"
+    },
+    "pdf_dropbox_path": {
+      "type": "string",
+      "description": "Chemin Dropbox du PDF archivé"
+    },
+    "pdf_dropbox_file_id": {
+      "type": "string",
+      "description": "Identifiant Dropbox stable"
+    },
+    "pdf_sha256": {
+      "type": "string",
+      "description": "Empreinte SHA-256 du PDF archivé"
+    },
+    "pdf_version": {
+      "type": "string",
+      "description": "Version du modèle PDF"
+    },
+    "pdf_genere_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "pdf_genere_par": {
+      "type": "string"
+    },
+    "date_premier_envoi": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "date_dernier_envoi": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "nombre_envois": {
+      "type": "number",
+      "default": 0
+    },
+    "dernier_destinataire": {
+      "type": "string"
+    },
+    "dernier_message_id": {
+      "type": "string"
+    },
+    "date_dernier_telechargement": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "nombre_telechargements": {
+      "type": "number",
+      "default": 0
+    },
+    "historique_documents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "utilisateur": {
+            "type": "string"
+          },
+          "destinataire": {
+            "type": "string"
+          },
+          "message_id": {
+            "type": "string"
+          },
+          "document_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      }
     }
   },
   "required": [
