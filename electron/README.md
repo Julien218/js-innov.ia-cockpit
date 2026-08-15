@@ -33,7 +33,7 @@ npm run build:win
 
 Le fichier `.exe` sera dans `electron/dist/`.
 
-La version `1.1.0` doit être installée une seule fois manuellement. À partir de
+La version pilote `1.1.1` doit être installée une seule fois manuellement. À partir de
 cette version, `electron-updater` télécharge les releases GitHub en arrière-plan
 et les installe à la fermeture du cockpit.
 
