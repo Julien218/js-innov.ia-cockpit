@@ -59,7 +59,7 @@ const StatusCard = ({ icon: Icon, label, value, detail }) => <div className="rou
 const managedClientKey = "jsinnovia-managed-client";
 const preferredManagedClient = clients => {
   const stored = window.localStorage.getItem(managedClientKey);
-  if (stored && clients.some(client => client.email === stored)) return stored;
+  if (stored && !stored.endsWith(".invalid") && clients.some(client => client.email === stored)) return stored;
   return clients.find(client => !String(client.email).endsWith(".invalid"))?.email || clients[0]?.email || "";
 };
 
@@ -90,6 +90,7 @@ export default function DigitalSignage() {
   React.useEffect(() => { if (media.length && !selectedMediaIds.length) setSelectedMediaIds([media[0].id]); }, [media, selectedMediaIds.length]);
   const player = [...players].sort((a, b) => new Date(b.last_seen_at || 0).getTime() - new Date(a.last_seen_at || 0).getTime())[0];
   const diagnosticPlayers = diagnosticsQuery.data?.players || [];
+  const connectedElsewhere = diagnosticPlayers.find(item => item.owner_email !== managedClient && item.status === "online" && item.last_seen_at && Date.now() - new Date(item.last_seen_at).getTime() < 120000);
   const latestPublication = publications[0];
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["signage-dashboard", managedClient || "self"] });
   const run = async (task, success) => { setBusy(true); setMessage(""); try { await task(); setMessage(success); await refresh(); } catch (e) { setMessage(e.message); } finally { setBusy(false); } };
@@ -104,6 +105,12 @@ export default function DigitalSignage() {
     const result = await api(`/manage/players/${player.id}/rotate-token`, { method: "POST", body: "{}" }, managedClient);
     setEnrollmentToken(result.enrollmentToken);
   }, "Nouveau jeton généré. L’ancien jeton est maintenant désactivé.");
+
+  const reassignConnectedPlayer = () => run(async () => {
+    if (!connectedElsewhere || !player) throw new Error("Player à rattacher introuvable");
+    await api("/manage/players/reassign-connected", { method: "POST", body: JSON.stringify({ sourcePlayerId: connectedElsewhere.id, targetPlayerId: player.id }) }, managedClient);
+    await diagnosticsQuery.refetch();
+  }, "Player connecté rattaché au client. La MXQ conserve son jeton et récupérera les diffusions au prochain heartbeat.");
 
   const upload = file => run(async () => {
     setTransfer({ name: file.name, size: file.size, percent: 0, state: "uploading", label: "Préparation du fichier…" });
@@ -149,6 +156,7 @@ export default function DigitalSignage() {
       <p className="mt-1 text-xs text-muted-foreground">Vue administrateur sans jeton ni secret. Le signal le plus récent apparaît en premier.</p>
       <div className="mt-3 space-y-2">{diagnosticPlayers.map(item => <div key={item.id} className="rounded-xl bg-muted/30 p-3 text-xs"><p className="font-medium">{item.name} · {item.owner_email}</p><p className="text-muted-foreground">{item.status} · {item.last_seen_at ? new Date(item.last_seen_at).toLocaleString("fr-BE") : "jamais connecté"} · {item.app_version || "version inconnue"}</p></div>)}</div>
     </div>}
+    {isAdmin && connectedElsewhere && player && <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 flex flex-col sm:flex-row sm:items-center gap-3"><div className="flex-1"><p className="text-sm font-semibold">Player connecté dans un autre dossier</p><p className="text-xs text-muted-foreground">La MXQ active peut être rattachée à {managedClient} sans réinstaller l’application.</p></div><button disabled={busy} onClick={reassignConnectedPlayer} className="rounded-xl bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50">Rattacher ce Player</button></div>}
     {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-700">{error.message}</div>}
     {message && <div className="rounded-xl border border-primary/20 bg-primary/10 p-3 text-sm">{message}</div>}
     {transfer && <div className={`rounded-2xl border p-4 space-y-3 ${transfer.state === "error" ? "border-red-500/30 bg-red-500/5" : transfer.state === "done" ? "border-emerald-500/30 bg-emerald-500/5" : "border-primary/20 bg-primary/5"}`}>
