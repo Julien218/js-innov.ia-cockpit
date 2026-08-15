@@ -31,16 +31,32 @@ async function agentQuery(table, filters = {}) {
   return response.json();
 }
 
+async function loadDraftInvoices() {
+  const invoices = await agentQuery('client_invoices', { status: 'draft' });
+  const items = [];
+  for (const invoice of invoices || []) {
+    const center = await agentFetch('client_cost_centers', 'GET', null, invoice.cost_center_id).catch(() => null);
+    items.push({
+      ...invoice,
+      approval_status: invoice.approval_status || 'pending',
+      cost_center: center,
+    });
+  }
+  return items;
+}
+
+router.get('/drafts', adminGuard, async (req, res) => {
+  try {
+    res.json({ items: await loadDraftInvoices() });
+  } catch (error) {
+    res.status(503).json({ error: 'Brouillons de facturation indisponibles', details: error.message });
+  }
+});
+
 router.get('/pending', adminGuard, async (req, res) => {
   try {
-    const invoices = await agentQuery('client_invoices', { status: 'draft' });
-    const pending = [];
-    for (const invoice of invoices || []) {
-      if ((invoice.approval_status || 'pending') !== 'pending') continue;
-      const center = await agentFetch('client_cost_centers', 'GET', null, invoice.cost_center_id).catch(() => null);
-      pending.push({ ...invoice, cost_center: center });
-    }
-    res.json({ items: pending });
+    const items = (await loadDraftInvoices()).filter((invoice) => invoice.approval_status === 'pending');
+    res.json({ items });
   } catch (error) {
     res.status(503).json({ error: 'Factures à valider indisponibles', details: error.message });
   }
@@ -104,4 +120,4 @@ async function requireApprovedSend(req, res, next) {
   }
 }
 
-module.exports = { router, requireApprovedSend, agentFetch, agentQuery };
+module.exports = { router, requireApprovedSend, agentFetch, agentQuery, loadDraftInvoices };
