@@ -45,8 +45,18 @@ export default function DigitalSignage() {
 
   const upload = file => run(async () => {
     const session = await api("/manage/media/upload-session", { method: "POST", body: JSON.stringify({ name: file.name, sizeBytes: file.size }) });
-    const put = await fetch(session.uploadUrl, { method: "POST", headers: { "Content-Type": "application/octet-stream", "Dropbox-API-Arg": JSON.stringify({ path: session.dropboxPath, mode: "add", autorename: true, mute: false, strict_conflict: false }) }, body: file });
-    if (!put.ok) throw new Error("Envoi Dropbox refusé");
+    let put;
+    try {
+      put = await fetch(session.uploadUrl, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file });
+    } catch {
+      throw new Error("Connexion directe à Dropbox impossible. Réessayez dans quelques secondes.");
+    }
+    const uploadText = await put.text();
+    if (!put.ok) {
+      let uploadError = {};
+      try { uploadError = JSON.parse(uploadText); } catch { uploadError = {}; }
+      throw new Error(uploadError.error_summary || `Dropbox a refusé le fichier (HTTP ${put.status}).`);
+    }
     await api("/manage/media", { method: "POST", body: JSON.stringify({ name: file.name, mimeType: file.type, dropboxPath: session.dropboxPath, sizeBytes: file.size }) });
   }, "Média envoyé et indexé.");
 

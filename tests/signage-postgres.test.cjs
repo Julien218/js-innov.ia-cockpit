@@ -71,3 +71,12 @@ test('signage page reports non-JSON responses without exposing parser errors', (
   assert.doesNotMatch(signagePage, /await response\.json\(\)/);
 });
 
+test('Dropbox media upload handles non-JSON failures and uses the temporary link contract', () => {
+  assert.match(signage, /async function dropboxJson/);
+  assert.match(signage, /const raw = await response\.text\(\)/);
+  assert.match(signage, /réponse non JSON/);
+  assert.match(signage, /La connexion Dropbox du cockpit doit être renouvelée/);
+  assert.match(signagePage, /"Content-Type": "application\/octet-stream"/);
+  assert.doesNotMatch(signagePage, /Dropbox-API-Arg/);
+});
+
