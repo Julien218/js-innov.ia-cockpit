@@ -1,7 +1,7 @@
 import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
-import { MonitorPlay, Upload, Download, ListVideo, CalendarClock, Wifi, HardDrive, RotateCcw } from "lucide-react";
+import { MonitorPlay, Upload, Download, ListVideo, CalendarClock, Wifi, HardDrive, RotateCcw, Eye, ArrowUp, ArrowDown } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 
 const api = async (path, options = {}, clientEmail = "") => {
@@ -65,6 +65,10 @@ export default function DigitalSignage() {
   const [enrollmentToken, setEnrollmentToken] = React.useState("");
   const [transfer, setTransfer] = React.useState(null);
   const [managedClient, setManagedClient] = React.useState("");
+  const [selectedMediaIds, setSelectedMediaIds] = React.useState([]);
+  const [scheduledAt, setScheduledAt] = React.useState("");
+  const [recurrence, setRecurrence] = React.useState("none");
+  const [preview, setPreview] = React.useState(null);
   const fileInput = React.useRef(null);
   const clientsQuery = useQuery({ queryKey: ["signage-managed-clients"], queryFn: () => api("/manage/clients"), enabled: isAdmin, staleTime: 60000 });
   const managedClients = clientsQuery.data?.clients || [];
@@ -73,7 +77,8 @@ export default function DigitalSignage() {
   }, [isAdmin, managedClient, managedClients]);
   const dashboardEnabled = !isAdmin || Boolean(managedClient);
   const { data = {}, isLoading, error } = useQuery({ queryKey: ["signage-dashboard", managedClient || "self"], queryFn: () => api("/manage/dashboard", {}, managedClient), enabled: dashboardEnabled, refetchInterval: 30000 });
-  const players = data.players || [], media = data.media || [], playlists = data.playlists || [], publications = data.publications || [];
+  const players = data.players || [], media = data.media || [], playlists = data.playlists || [], publications = data.publications || [], auditEvents = data.auditEvents || [];
+  React.useEffect(() => { if (media.length && !selectedMediaIds.length) setSelectedMediaIds([media[0].id]); }, [media, selectedMediaIds.length]);
   const player = [...players].sort((a, b) => new Date(b.last_seen_at || 0).getTime() - new Date(a.last_seen_at || 0).getTime())[0];
   const latestPublication = publications[0];
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["signage-dashboard", managedClient || "self"] });
@@ -101,21 +106,26 @@ export default function DigitalSignage() {
   }, "Média converti, envoyé et prêt pour la diffusion.");
 
   const createPlaylist = () => run(async () => {
-    if (!media[0]) throw new Error("Ajoutez d’abord un média");
-    await api("/manage/playlists", { method: "POST", body: JSON.stringify({ name: `Playlist ${new Date().toLocaleDateString("fr-BE")}`, items: [{ mediaId: media[0].id, durationSeconds: 15 }] }) }, managedClient);
-  }, "Playlist créée avec le média le plus récent.");
+    if (!selectedMediaIds.length) throw new Error("Sélectionnez au moins un média");
+    await api("/manage/playlists", { method: "POST", body: JSON.stringify({ name: `Playlist ${new Date().toLocaleDateString("fr-BE")}`, items: selectedMediaIds.map(mediaId => ({ mediaId, durationSeconds: 15 })) }) }, managedClient);
+  }, "Playlist créée dans l’ordre affiché.");
 
   const publish = () => run(async () => {
     if (!player) throw new Error("Créez d’abord le Player");
     if (!playlists[0]) throw new Error("Créez d’abord une playlist");
-    await api("/manage/publications", { method: "POST", body: JSON.stringify({ playerId: player.id, playlistId: playlists[0].id }) }, managedClient);
-  }, "Diffusion programmée. Elle sera récupérée au prochain heartbeat du Player.");
+    await api("/manage/publications", { method: "POST", body: JSON.stringify({ playerId: player.id, playlistId: playlists[0].id, scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : new Date().toISOString(), recurrence: { type: recurrence } }) }, managedClient);
+  }, scheduledAt ? "Diffusion programmée à la date choisie." : "Diffusion immédiate programmée. Elle sera récupérée au prochain heartbeat du Player.");
+
+  const rollback = publication => run(() => api(`/manage/publications/${publication.id}/rollback`, { method: "POST", body: "{}" }, managedClient), "Retour à la dernière diffusion valide effectué.");
+  const toggleMedia = id => setSelectedMediaIds(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]);
+  const moveMedia = (id, offset) => setSelectedMediaIds(current => { const index = current.indexOf(id); const target = index + offset; if (index < 0 || target < 0 || target >= current.length) return current; const copy = [...current]; [copy[index], copy[target]] = [copy[target], copy[index]]; return copy; });
+  const previewMedia = mediaItem => run(async () => { const result = await api(`/manage/media/${mediaItem.id}/download`, {}, managedClient); setPreview({ ...mediaItem, url: result.url }); }, "Prévisualisation chargée.");
 
   return <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
     <PageHeader title="Écran géant" subtitle="Pilotage du Player HDMI relié au contrôleur Colorlight X2M." />
     {isAdmin && <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
       <div className="flex-1"><p className="text-sm font-semibold">Client géré</p><p className="text-xs text-muted-foreground">Vous pilotez uniquement les écrans du client sélectionné.</p></div>
-      <select value={managedClient} onChange={event => { setManagedClient(event.target.value); setEnrollmentToken(""); setTransfer(null); setMessage(""); }} className="rounded-xl border border-border bg-background px-3 py-2 text-sm min-w-[260px]">
+      <select value={managedClient} onChange={event => { setManagedClient(event.target.value); setEnrollmentToken(""); setTransfer(null); setMessage(""); setSelectedMediaIds([]); setPreview(null); }} className="rounded-xl border border-border bg-background px-3 py-2 text-sm min-w-[260px]">
         {!managedClients.length && <option value="">Aucun client Signage actif</option>}
         {managedClients.map(client => <option key={client.email} value={client.email}>{client.name} — {client.email}</option>)}
       </select>
@@ -135,6 +145,10 @@ export default function DigitalSignage() {
       <StatusCard icon={RotateCcw} label="Publications" value={`${publications.length}`} detail={latestPublication?.status || "Aucune"} />
     </div>
     {latestPublication?.status === "failed" && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-700"><p className="font-semibold">La dernière diffusion a échoué sur le Player.</p><p className="mt-1">{latestPublication.error || "Le Player n’a pas pu lire le média."}</p></div>}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="rounded-2xl border bg-card p-5"><h2 className="text-sm font-semibold">Médiathèque et ordre de lecture</h2><p className="text-xs text-muted-foreground mt-1">Cochez les médias puis utilisez les flèches pour définir la playlist.</p><div className="mt-3 space-y-2">{media.map(item => { const selected = selectedMediaIds.includes(item.id); const position = selectedMediaIds.indexOf(item.id); return <div key={item.id} className={`rounded-xl border p-3 flex items-center gap-2 ${selected ? "border-primary/40 bg-primary/5" : ""}`}><input type="checkbox" checked={selected} onChange={() => toggleMedia(item.id)} aria-label={`Sélectionner ${item.name}`}/><div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{item.name}</p><p className="text-xs text-muted-foreground">{formatBytes(Number(item.size_bytes || 0))} · {item.status}</p></div><button onClick={() => previewMedia(item)} className="rounded-lg border p-2" aria-label={`Prévisualiser ${item.name}`}><Eye className="w-4 h-4"/></button>{selected && <><button disabled={position <= 0} onClick={() => moveMedia(item.id, -1)} className="rounded-lg border p-2 disabled:opacity-30" aria-label="Monter"><ArrowUp className="w-4 h-4"/></button><button disabled={position === selectedMediaIds.length - 1} onClick={() => moveMedia(item.id, 1)} className="rounded-lg border p-2 disabled:opacity-30" aria-label="Descendre"><ArrowDown className="w-4 h-4"/></button><span className="w-6 text-center text-xs font-semibold">{position + 1}</span></>}</div>})}{!media.length && <p className="text-xs text-muted-foreground">Ajoutez un média pour commencer.</p>}</div></div>
+      <div className="rounded-2xl border bg-card p-5"><h2 className="text-sm font-semibold">Prévisualisation</h2><div className="mt-3 aspect-video rounded-xl bg-black flex items-center justify-center overflow-hidden">{preview ? (String(preview.mime_type).startsWith("image/") ? <img src={preview.url} alt={preview.name} className="h-full w-full object-contain"/> : <video key={preview.url} src={preview.url} controls autoPlay muted className="h-full w-full object-contain"/>) : <p className="text-xs text-white/50">Choisissez un média</p>}</div>{preview && <p className="mt-2 text-xs text-muted-foreground truncate">{preview.name}</p>}</div>
+    </div>
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div className="lg:col-span-2 rounded-2xl border border-border bg-card p-5">
         <h2 className="text-sm font-semibold">État réel</h2>
@@ -147,8 +161,14 @@ export default function DigitalSignage() {
         <input ref={fileInput} type="file" accept="video/*,image/*" className="hidden" onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) upload(file); }} />
         <button disabled={busy || isLoading} onClick={() => fileInput.current?.click()} className="w-full rounded-xl bg-primary text-primary-foreground px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"><Upload className="w-4 h-4" /> Ajouter un média</button>
         <button disabled={busy || !media.length} onClick={createPlaylist} className="w-full rounded-xl border border-border px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"><ListVideo className="w-4 h-4" /> Créer une playlist</button>
+        <label className="block text-xs text-muted-foreground">Date et heure (vide = immédiat)<input type="datetime-local" value={scheduledAt} onChange={event => setScheduledAt(event.target.value)} className="mt-1 w-full rounded-xl border bg-background px-3 py-2 text-sm text-foreground"/></label>
+        <label className="block text-xs text-muted-foreground">Récurrence<select value={recurrence} onChange={event => setRecurrence(event.target.value)} className="mt-1 w-full rounded-xl border bg-background px-3 py-2 text-sm text-foreground"><option value="none">Une seule fois</option><option value="daily">Chaque jour</option><option value="weekly">Chaque semaine</option></select></label>
         <button disabled={busy || !player || !playlists.length} onClick={publish} className="w-full rounded-xl border border-border px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"><CalendarClock className="w-4 h-4" /> Programmer la diffusion</button>
       </div>
+    </div>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="rounded-2xl border bg-card p-5"><h2 className="text-sm font-semibold">Historique des diffusions</h2><div className="mt-3 divide-y">{publications.map(publication => <div key={publication.id} className="py-3 flex items-center gap-3"><div className="flex-1"><p className="text-sm font-medium">{publication.status}</p><p className="text-xs text-muted-foreground">Prévue : {new Date(publication.scheduled_at || publication.created_at).toLocaleString("fr-BE")}{publication.recurrence?.type && publication.recurrence.type !== "none" ? ` · ${publication.recurrence.type}` : ""}</p>{publication.error && <p className="text-xs text-red-700">{publication.error}</p>}</div>{publication.previous_publication_id && <button disabled={busy} onClick={() => rollback(publication)} className="rounded-lg border px-3 py-2 text-xs">Rollback</button>}</div>)}{!publications.length && <p className="text-xs text-muted-foreground">Aucune diffusion.</p>}</div></div>
+      <div className="rounded-2xl border bg-card p-5"><h2 className="text-sm font-semibold">Journal d’activité</h2><div className="mt-3 divide-y">{auditEvents.slice(0, 12).map(event => <div key={event.id} className="py-2"><p className="text-sm">{event.action}</p><p className="text-xs text-muted-foreground">{event.actor_email || "Player"} · {new Date(event.created_at).toLocaleString("fr-BE")}</p></div>)}{!auditEvents.length && <p className="text-xs text-muted-foreground">Le journal commencera à la prochaine action.</p>}</div></div>
     </div>
   </div>;
 }
