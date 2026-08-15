@@ -349,4 +349,3 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
   );
 }
 
-
