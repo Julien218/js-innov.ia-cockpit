@@ -140,3 +140,11 @@ test('signage cockpit exposes upload progress and a durable completion state', (
   assert.match(signagePage, /aria-valuenow=\{transfer\.percent\}/);
 });
 
+
+test('publications always target the most recently connected Player', () => {
+  assert.match(signage, /Date\.now\(\)-new Date\(player\.last_seen_at\)\.getTime\(\)<120000/);
+  assert.match(signage, /const targetPlayer=recentPlayers\[0\]\|\|requestedPlayer/);
+  assert.match(signage, /player_id:targetPlayer\.id/);
+  assert.match(signagePage, /new Date\(b\.last_seen_at \|\| 0\).*new Date\(a\.last_seen_at \|\| 0\)/);
+  assert.doesNotMatch(signagePage, /const player = players\[0\]/);
+});

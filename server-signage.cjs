@@ -273,8 +273,13 @@ router.post('/manage/playlists', async (req,res) => {
 router.post('/manage/publications', async (req,res) => {
   try {
     const email=owner(req), playerId=String(req.body.playerId||''), playlistId=String(req.body.playlistId||'');
-    const [players,lists]=await Promise.all([db(`signage_players?select=*&id=eq.${encodeURIComponent(playerId)}&owner_email=eq.${encodeURIComponent(email)}&limit=1`),db(`signage_playlists?select=*&id=eq.${encodeURIComponent(playlistId)}&owner_email=eq.${encodeURIComponent(email)}&limit=1`)]);
-    if(!players?.[0]||!lists?.[0]) return res.status(404).json({error:'Player ou playlist introuvable'});
+    const [players,lists]=await Promise.all([db(`signage_players?select=*&owner_email=eq.${encodeURIComponent(email)}`),db(`signage_playlists?select=*&id=eq.${encodeURIComponent(playlistId)}&owner_email=eq.${encodeURIComponent(email)}&limit=1`)]);
+    const requestedPlayer=players?.find(player=>player.id===playerId);
+    const recentPlayers=(players||[])
+      .filter(player=>player.status==='online'&&player.last_seen_at&&Date.now()-new Date(player.last_seen_at).getTime()<120000)
+      .sort((a,b)=>new Date(b.last_seen_at).getTime()-new Date(a.last_seen_at).getTime());
+    const targetPlayer=recentPlayers[0]||requestedPlayer;
+    if(!targetPlayer||!lists?.[0]) return res.status(404).json({error:'Player ou playlist introuvable'});
     const playlistItems=Array.isArray(lists[0].items)?lists[0].items:[];
     for (const item of playlistItems) {
       const mediaId=String(item.mediaId||item.media_id||'');
@@ -283,7 +288,7 @@ router.post('/manage/publications', async (req,res) => {
       if(rows[0].status!=='ready'||rows[0].rendition?.state!=='ready') return res.status(409).json({error:'Le media doit etre converti pour le Player avant sa diffusion.'});
     }
     const manifest={version:1,revision:lists[0].revision,playlistId,items:lists[0].items,profile:FFmpeg_PROFILE,createdAt:new Date().toISOString()};
-    const rows=await db('signage_publications',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({owner_email:email,player_id:playerId,playlist_id:playlistId,status:'pending',manifest,previous_publication_id:players[0].current_publication_id})});
+    const rows=await db('signage_publications',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({owner_email:email,player_id:targetPlayer.id,playlist_id:playlistId,status:'pending',manifest,previous_publication_id:targetPlayer.current_publication_id})});
     res.status(201).json(rows[0]);
   } catch(e){res.status(400).json({error:e.message});}
 });

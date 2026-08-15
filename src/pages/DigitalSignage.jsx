@@ -63,7 +63,7 @@ export default function DigitalSignage() {
   const fileInput = React.useRef(null);
   const { data = {}, isLoading, error } = useQuery({ queryKey: ["signage-dashboard"], queryFn: () => api("/manage/dashboard"), refetchInterval: 30000 });
   const players = data.players || [], media = data.media || [], playlists = data.playlists || [], publications = data.publications || [];
-  const player = players[0];
+  const player = [...players].sort((a, b) => new Date(b.last_seen_at || 0).getTime() - new Date(a.last_seen_at || 0).getTime())[0];
   const latestPublication = publications[0];
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["signage-dashboard"] });
   const run = async (task, success) => { setBusy(true); setMessage(""); try { await task(); setMessage(success); await refresh(); } catch (e) { setMessage(e.message); } finally { setBusy(false); } };
