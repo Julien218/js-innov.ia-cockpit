@@ -23,12 +23,22 @@ const formFields = [
   { name: "notes",         label: "Notes",            type: "textarea" },
 ];
 
+const formatTrackingDate = value => value
+  ? new Date(value).toLocaleString("fr-BE", { dateStyle: "short", timeStyle: "short" })
+  : "—";
+
 const columns = [
   { key: "numero",        label: "N° Facture" },
   { key: "client_nom",    label: "Client" },
   { key: "montant_ttc",   label: "Total TTC",  render: v => v ? formatCurrency(v) : "—" },
   { key: "statut",        label: "Statut",     render: v => <StatusBadge status={v} /> },
   { key: "date_echeance", label: "Échéance",   render: v => v ? new Date(v).toLocaleDateString("fr-BE") : "—" },
+  { key: "pdf_genere_at", label: "PDF archivé", render: (v, row) => v
+    ? <span title={row.pdf_version || "Modèle officiel"}>{formatTrackingDate(v)} · {row.nombre_telechargements || 0} téléchargement(s)</span>
+    : <span className="text-amber-400">À générer</span> },
+  { key: "date_dernier_envoi", label: "Dernier envoi", render: (v, row) => v
+    ? <span>{formatTrackingDate(v)} · {row.nombre_envois || 1} envoi(s)</span>
+    : "—" },
 ];
 
 export default function Factures() {
@@ -88,6 +98,7 @@ export default function Factures() {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+      qc.invalidateQueries({ queryKey: ["Facture"] });
     } catch (err) {
       alert("Erreur génération PDF: " + err.message);
     } finally {
@@ -134,7 +145,10 @@ export default function Factures() {
       <Button size="icon" variant="ghost" title="Modifier" onClick={() => { setEditing(row); setOpen(true); }}>
         <Pencil className="w-4 h-4" />
       </Button>
-      <Button size="icon" variant="ghost" title="PDF" disabled={pdfLoading === row.id}
+      <Button size="icon" variant="ghost"
+        title={row.pdf_document_id ? "Retélécharger le PDF archivé" : "Générer et archiver le PDF"}
+        aria-label={row.pdf_document_id ? "Retélécharger le PDF archivé" : "Générer et archiver le PDF"}
+        disabled={pdfLoading === row.id}
         onClick={() => handlePDF(row)}>
         <FileText className={`w-4 h-4 ${pdfLoading === row.id ? "animate-pulse" : ""}`} />
       </Button>
