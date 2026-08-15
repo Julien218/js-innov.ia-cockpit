@@ -21,5 +21,7 @@ test('native business API keeps a strict table allowlist and server-only service
   assert.doesNotMatch(data, /VITE_SUPABASE/);
   assert.match(data, /if \(!table\) return next\(\)/);
   assert.match(data, /cleanIdentifier/);
+  assert.match(data, /\['validations', 'validations'\]/);
+  assert.match(server, /'Validation', 'validations', 'Commission'/);
 });
 
