@@ -93,8 +93,17 @@ test('Dropbox media upload handles non-JSON failures and proxies binary through 
   assert.match(signage, /Le média dépasse la limite de 150 Mo/);
   assert.match(signagePage, /\/manage\/media\/upload\?name=/);
   assert.doesNotMatch(signagePage, /session\.uploadUrl/);
-  assert.match(signagePage, /"Content-Type": "application\/octet-stream"/);
+  assert.match(signagePage, /setRequestHeader\("Content-Type", "application\/octet-stream"\)/);
   assert.doesNotMatch(signagePage, /Dropbox-API-Arg/);
   assert.match(dockerfile, /client_max_body_size 150m/);
+});
+
+test('signage cockpit exposes upload progress and a durable completion state', () => {
+  assert.match(signagePage, /new XMLHttpRequest\(\)/);
+  assert.match(signagePage, /xhr\.upload\.onprogress/);
+  assert.match(signagePage, /role="progressbar"/);
+  assert.match(signagePage, /Transfert vers Dropbox et indexation/);
+  assert.match(signagePage, /Téléchargement terminé et média indexé/);
+  assert.match(signagePage, /aria-valuenow=\{transfer\.percent\}/);
 });
 
