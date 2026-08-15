@@ -1,16 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
   Bot, Send, ChevronLeft, Loader2, Sparkles, User,
-  MessageSquare, Zap, RefreshCw, Lock, AlertCircle, CheckCircle2,
+  MessageSquare, Zap, RefreshCw, Lock, CheckCircle2,
   Server, Cpu, FileText, Wrench, Brain, FolderOpen
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-
-// ─── CLÉ API UNIQUE (workspace Base44 Js-Innov.IA) ───────────────────────────
-// Une seule clé fonctionne pour tous les agents du workspace
-const WORKSPACE_API_KEY = import.meta.env.VITE_BASE44_API_KEY || "";
+import { useAuth } from "@/lib/AuthContext";
+import { useCommerceEntitlements } from "@/lib/useCommerceEntitlements";
 
 // ─── TOUS LES AGENTS JS-INNOV.IA ─────────────────────────────────────────────
 const AGENTS_CONFIG = [
@@ -106,8 +104,6 @@ const AGENTS_CONFIG = [
   },
 ];
 
-const BASE44_BASE = "https://app.base44.com/api/agents";
-
 // ─── Message bubble ───────────────────────────────────────────────────────────
 function Message({ msg, agentColor }) {
   const isUser = msg.role === "user";
@@ -153,11 +149,13 @@ function AgentChat({ agent, onBack }) {
 
   const getOrCreateConv = async () => {
     if (convId) return convId;
-    const res = await fetch(`${BASE44_BASE}/${agent.id}/conversations`, {
+    const res = await fetch(`/api/agents/${agent.id}/conversations`, {
       method: "POST",
-      headers: { "api_key": WORKSPACE_API_KEY, "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({}),
     });
+    if (!res.ok) throw new Error(res.status === 403 ? "Agent non inclus dans votre abonnement" : `Erreur ${res.status}`);
     const data = await res.json();
     setConvId(data.id);
     return data.id;
@@ -171,9 +169,10 @@ function AgentChat({ agent, onBack }) {
     setLoading(true);
     try {
       const cid = await getOrCreateConv();
-      const res = await fetch(`${BASE44_BASE}/${agent.id}/conversations/${cid}/messages`, {
+      const res = await fetch(`/api/agents/${agent.id}/conversations/${cid}/messages`, {
         method: "POST",
-        headers: { "api_key": WORKSPACE_API_KEY, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ role: "user", content: msg }),
       });
       if (!res.ok) throw new Error(`Erreur ${res.status}`);
@@ -267,7 +266,7 @@ function AgentChat({ agent, onBack }) {
 
 // ─── Card agent ────────────────────────────────────────────────────────────────
 function AgentCard({ agent, onClick }) {
-  const isActive = !!WORKSPACE_API_KEY && !!agent.id;
+  const isActive = !!agent.id;
 
   return (
     <div onClick={() => isActive && onClick(agent)}
@@ -298,11 +297,6 @@ function AgentCard({ agent, onClick }) {
           {!agent.id && (
             <p className="text-[10px] text-amber-600 mt-1 font-medium">
               ID manquant — Développeur → URL de base → copier l'ID
-            </p>
-          )}
-          {!WORKSPACE_API_KEY && agent.id && (
-            <p className="text-[10px] text-amber-600 mt-1 font-medium">
-              Clé manquante — ajouter VITE_BASE44_API_KEY dans Railway
             </p>
           )}
         </div>
@@ -343,9 +337,19 @@ function AgentLocalBadge() {
 // ─── Page principale ──────────────────────────────────────────────────────────
 export default function AgentsIA() {
   const [selected, setSelected] = useState(null);
+  const { user } = useAuth();
+  const { enabledModules, isLoading: entitlementsLoading } = useCommerceEntitlements();
+  const isClient = user?.role === 'client';
+  const visibleAgents = isClient
+    ? AGENTS_CONFIG.filter((agent) => agent.id && enabledModules.has(`ai_agent:${agent.id}`))
+    : AGENTS_CONFIG;
 
-  const active  = AGENTS_CONFIG.filter(a => WORKSPACE_API_KEY && a.id);
-  const pending = AGENTS_CONFIG.filter(a => !WORKSPACE_API_KEY || !a.id);
+  const active  = visibleAgents.filter(a => a.id);
+  const pending = isClient ? [] : visibleAgents.filter(a => !a.id);
+
+  useEffect(() => {
+    if (selected && !visibleAgents.some((agent) => agent.id === selected.id)) setSelected(null);
+  }, [selected, visibleAgents]);
 
   if (selected) {
     return (
@@ -373,7 +377,7 @@ export default function AgentsIA() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3 mb-5">
         {[
-          { label: "Total", value: AGENTS_CONFIG.length, color: "#1a56db" },
+          { label: "Total", value: visibleAgents.length, color: "#1a56db" },
           { label: "Actifs", value: active.length, color: "#16a34a" },
           { label: "En attente", value: pending.length, color: "#f59e0b" },
         ].map(({ label, value, color }) => (
@@ -386,7 +390,7 @@ export default function AgentsIA() {
 
 
       {/* ── Agent Local 8787 ─────────────────────────────────────────────── */}
-      <div className="mb-5 rounded-xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4">
+      {!isClient && <div className="mb-5 rounded-xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-11 h-11 rounded-xl bg-emerald-600 flex items-center justify-center flex-shrink-0">
             <Server className="w-5 h-5 text-white" />
@@ -439,16 +443,11 @@ export default function AgentsIA() {
         <a href="/agent" className="mt-3 block text-center text-xs font-medium text-emerald-700 hover:text-emerald-800 transition-colors py-2 rounded-lg bg-emerald-100 hover:bg-emerald-200">
           Ouvrir Julien AI →
         </a>
-      </div>
+      </div>}
 
-      {/* Alerte clé manquante */}
-      {!WORKSPACE_API_KEY && (
-        <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 flex items-start gap-2">
-          <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-          <div className="text-xs text-red-800">
-            <strong>Clé API manquante.</strong> Ajouter dans Railway :<br/>
-            <code className="bg-red-100 px-1 rounded">VITE_BASE44_API_KEY</code> = ta clé workspace Base44
-          </div>
+      {isClient && !entitlementsLoading && active.length === 0 && (
+        <div className="mb-4 p-4 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900">
+          Aucun agent IA n’est actuellement inclus dans votre abonnement.
         </div>
       )}
 
@@ -477,7 +476,7 @@ export default function AgentsIA() {
       )}
 
       {/* Guide */}
-      <div className="mt-5 p-4 rounded-xl border border-dashed border-gray-200 bg-gray-50">
+      {!isClient && <div className="mt-5 p-4 rounded-xl border border-dashed border-gray-200 bg-gray-50">
         <p className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
           <Zap className="w-3.5 h-3.5 text-[#D4AF37]" /> Activer un agent
         </p>
@@ -485,9 +484,10 @@ export default function AgentsIA() {
           <li>Ouvre l'agent → <strong>Personnaliser → Développeur</strong></li>
           <li>Copie l'<strong>ID</strong> depuis l'URL de base</li>
           <li>Ajoute-le dans <code className="bg-gray-200 px-1 rounded">AgentsIA.jsx</code></li>
-          <li>Une seule variable Railway suffit : <code className="bg-gray-200 px-1 rounded">VITE_BASE44_API_KEY</code></li>
+          <li>Attribue ensuite l’agent au client depuis les droits d’abonnement du cockpit</li>
         </ol>
-      </div>
+      </div>}
     </div>
   );
 }
+
