@@ -149,7 +149,7 @@ const allNavGroups = [
     items: [
       { label: "Julien AI", icon: Bot, path: "/agent", minRole: "collaborateur", agentStatus: true },
       { label: "Agent Local", icon: Server, path: "/agent", minRole: "admin", agentLocal: true },
-      { label: "Agents IA", icon: Network, path: "/agents-ia" },
+      { label: "Agents IA", icon: Network, path: "/agents-ia", module: "ai_agents" },
       { label: "AI Cost Control", icon: Gauge, path: "/ai-cost-control", minRole: "admin" },
       { label: "Paramètres", icon: Settings, path: "/parametres", minRole: "admin" },
     ]
@@ -348,4 +348,5 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
     </>
   );
 }
+
 
