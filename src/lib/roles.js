@@ -30,7 +30,7 @@ export const ROLE_COLORS = {
 
 export const ROLE_ROUTES = {
   superadmin: [
-    "/", "/assurances", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
+    "/", "/hainoflow", "/assurances", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
     "/devis", "/factures", "/emails", "/emails-core", "/cost-centers", "/ai-cost",
     "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
     "/devis", "/factures", "/emails", "/cost-centers", "/ai-cost",
@@ -39,7 +39,7 @@ export const ROLE_ROUTES = {
     "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations", "/gouvernance", "/confidentialite"
   ],
   admin: [
-    "/", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
+    "/", "/hainoflow", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
     "/devis", "/factures", "/emails", "/emails-core", "/cost-centers", "/ai-cost",
     "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
     "/devis", "/factures", "/emails", "/cost-centers", "/ai-cost",
@@ -48,10 +48,10 @@ export const ROLE_ROUTES = {
     "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations", "/gouvernance", "/confidentialite"
   ],
   collaborateur: [
-    "/", "/documents", "/projets", "/taches", "/demandes", "/agent", "/agents-ia"
+    "/", "/hainoflow", "/documents", "/projets", "/taches", "/demandes", "/agent", "/agents-ia"
   ],
   client: [
-    "/", "/mes-projets", "/mes-devis", "/mes-factures", "/demandes", "/agents-ia", "/confidentialite"
+    "/", "/hainoflow", "/mes-projets", "/mes-devis", "/mes-factures", "/demandes", "/agents-ia", "/confidentialite"
   ],
 };
 
