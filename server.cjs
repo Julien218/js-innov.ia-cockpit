@@ -95,7 +95,7 @@ try {
 const AGENT_PROXY_URL = process.env.JSINNOVIA_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_PROXY_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
 
-app.use('/api/data', requireSession('client'), async (req, res) => {
+app.use('/api/data', requireSession('client'), (req, res, next) => {
   const table = req.path.split('/').filter(Boolean)[0];
   const role = req.user.role;
   const clientReadTables = new Set(['Projet', 'Devis', 'Facture', 'Demande']);
@@ -106,6 +106,18 @@ app.use('/api/data', requireSession('client'), async (req, res) => {
   if (adminTables.has(table) && (ROLE_LEVEL[role] || 0) < ROLE_LEVEL.admin) {
     return res.status(403).json({ error: 'Cette ressource nécessite un administrateur' });
   }
+  next();
+});
+
+try {
+  const businessDataRouter = require('./server-business-data.cjs');
+  app.use('/api/data', businessDataRouter);
+  console.log('✅ Route /api/data locale activée (Supabase métier)');
+} catch (e) {
+  console.warn('⚠️ Route données métier locale indisponible:', e.message);
+}
+
+app.use('/api/data', async (req, res) => {
   const targetUrl = `${AGENT_PROXY_URL}/data${req.url}`;
   const method = req.method;
   const fetchOptions = {
@@ -182,4 +194,5 @@ app.listen(PORT, () => {
   console.log(`✅ JS-Innov.IA Cockpit API — port ${PORT}`);
   console.log(`   Proxy /api/data → ${AGENT_PROXY_URL}/data`);
 });
+
 
