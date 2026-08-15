@@ -15,6 +15,7 @@ let localAgentStartPromise = null;
 let localAgentStatus = { status: "checking", message: "Démarrage de l’IA locale…" };
 
 const LOCAL_AGENT_HEALTH_URL = "http://127.0.0.1:8787/health";
+const COCKPIT_URL = process.env.JSINNOVIA_COCKPIT_URL || "https://olivier-signage-cockpit-production.up.railway.app";
 
 // ── Helper: vérifier qu'une fenêtre est toujours vivante ────────────────────
 function isAlive(win) {
@@ -221,7 +222,7 @@ function createWindow() {
 
   mainWindow.setMenuBarVisibility(false);
   mainWindow.removeMenu();
-  mainWindow.loadURL("https://cockpit.jsinnovia.com");
+  mainWindow.loadURL(COCKPIT_URL);
 
   mainWindow.on("closed", () => {
     mainWindow = null;
