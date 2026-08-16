@@ -31,6 +31,9 @@ const FloatingAgent = () => {
   const [isListening, setIsListening] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('agent_tts_enabled') === 'true');
   const [speaking, setSpeaking] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null);
+  const fileInputRef = useRef(null);
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -186,6 +189,70 @@ const FloatingAgent = () => {
       await fetch('/api/assistant/history?conversation_id=floating', { method: 'DELETE', credentials: 'include' });
     } catch {}
   }, [stopSpeaking]);
+
+  // === File Upload → Classify → Dropbox ===
+  const handleFileUpload = useCallback(async (file) => {
+    if (!file || uploading) return;
+    // Max 20MB
+    if (file.size > 20 * 1024 * 1024) {
+      setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ Fichier trop volumineux (max 20 Mo).', ts: Date.now(), isError: true }]);
+      return;
+    }
+
+    setUploading(true);
+    setMessages(prev => [...prev, { role: 'user', content: `📎 ${file.name} (${(file.size / 1024).toFixed(0)} Ko)`, ts: Date.now(), isFile: true }]);
+    setMessages(prev => [...prev, { role: 'assistant', content: '🔄 Analyse et classification du document...', ts: Date.now(), isSystem: true }]);
+
+    try {
+      // Convert to base64
+      const reader = new FileReader();
+      const base64 = await new Promise((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result;
+          resolve(result.split(',')[1]); // strip data:mime;base64, prefix
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const resp = await fetch('/api/assistant/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          fileName: file.name,
+          mimeType: file.type || 'application/octet-stream',
+          fileData: base64,
+          message: input || '',
+        }),
+      });
+
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Erreur upload');
+
+      // Remove the "analysis" system message
+      setMessages(prev => prev.filter(m => !m.isSystem));
+
+      const cl = data.classification || {};
+      const clientInfo = cl.matchedClient ? `\n👤 Client: ${cl.matchedClient.name}` : '\n👤 Client: non identifié (A_Classer)';
+      const typeInfo = `\n📁 Type: ${cl.docType}`;
+      const pathInfo = `\n📂 Chemin Dropbox: ${data.dropboxPath}`;
+
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `✅ Document sauvegardé !\n\n📄 ${data.fileName}${typeInfo}${clientInfo}${pathInfo}`,
+        ts: Date.now(),
+      }]);
+
+      speak(`Document ${data.fileName} classé et sauvegardé dans Dropbox`);
+    } catch (err) {
+      setMessages(prev => prev.filter(m => !m.isSystem));
+      setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ ' + err.message, ts: Date.now(), isError: true }]);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }, [uploading, input, speak]);
 
   const toggleVoice = useCallback(() => {
     if (isListening) stopListening();
