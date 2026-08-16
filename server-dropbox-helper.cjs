@@ -1,8 +1,11 @@
 /**
  * server-dropbox-helper.cjs — Intégration Dropbox pour l'assistant local
- * 
- * Permet à l'assistant IA de vérifier l'état des factures/fichiers sur Dropbox
- * sans dépendre de Base44. Tourne entièrement sur Railway.
+ *
+ * Permet à l'assistant IA de:
+ * - Lister et parcourir les fichiers Dropbox
+ * - Vérifier l'état des factures/fichiers
+ * - UPLOADER et CLASSIFIER des documents reçus depuis le cockpit
+ * Tourne entièrement sur Railway, zéro dépendance Base44.
  */
 
 const APP_KEY = process.env.DROPBOX_APP_KEY || '';
@@ -54,13 +57,91 @@ async function listFolder(path) {
   }
 }
 
+// === Upload a file to Dropbox ===
+async function uploadFile(dropboxPath, buffer) {
+  const token = await getAccessToken();
+  if (!token) return { error: 'Dropbox non configuré' };
+
+  try {
+    const resp = await fetch('https://content.dropboxapi.com/2/files/upload', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/octet-stream',
+        'Dropbox-API-Arg': JSON.stringify({
+          path: dropboxPath,
+          mode: 'overwrite',
+          autorename: false,
+          mute: true,
+        }),
+      },
+      body: buffer,
+    });
+    const data = await resp.json();
+    if (!resp.ok) return { error: data.error_summary || 'Upload failed' };
+    return {
+      success: true,
+      path: data.path_display,
+      id: data.id,
+      size: data.size,
+      name: data.name,
+    };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+// === Create a folder if it does not exist ===
+async function ensureFolder(folderPath) {
+  const token = await getAccessToken();
+  if (!token) return { error: 'Dropbox non configuré' };
+
+  try {
+    const resp = await fetch('https://api.dropboxapi.com/2/files/create_folder_v2', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: folderPath }),
+    });
+    const data = await resp.json();
+    if (resp.ok || (data.error && data.error[.tag] === 'path_conflict')) {
+      return { success: true, path: folderPath };
+    }
+    return { error: data.error_summary || 'Create folder failed' };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+// === Get file metadata (download for text extraction) ===
+async function downloadFile(dropboxPath) {
+  const token = await getAccessToken();
+  if (!token) return { error: 'Dropbox non configuré' };
+
+  try {
+    const resp = await fetch('https://content.dropboxapi.com/2/files/download', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Dropbox-API-Arg': JSON.stringify({ path: dropboxPath }),
+      },
+    });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      return { error: data.error_summary || 'Download failed' };
+    }
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    return { success: true, buffer };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
 // === Get all invoice PDFs from Dropbox ===
 async function getInvoiceFiles() {
   const token = await getAccessToken();
   if (!token) return { error: 'Dropbox non configuré', pdfs: [] };
 
   try {
-    // List client folders
     const clientsResp = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -72,7 +153,6 @@ async function getInvoiceFiles() {
     const clientFolders = clientsData.entries.filter(e => e['.tag'] === 'folder');
     const allPdfs = [];
 
-    // For each client folder, list Factures subfolder
     for (const client of clientFolders) {
       const facturesResp = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
         method: 'POST',
@@ -108,7 +188,7 @@ async function getInvoiceSyncStatus(supabaseInvoices) {
 
   const dropboxNumbers = new Set(dropboxResult.pdfs.map(p => p.name.split('_')[0]));
   const supabaseNumbers = new Set(supabaseInvoices.map(f => f.numero));
-  
+
   const onlyDropbox = [...dropboxNumbers].filter(n => !supabaseNumbers.has(n));
   const onlySupabase = [...supabaseNumbers].filter(n => !dropboxNumbers.has(n));
   const synced = [...dropboxNumbers].filter(n => supabaseNumbers.has(n));
@@ -143,11 +223,75 @@ async function buildDropboxContext(message) {
   return `\n[Contexte Dropbox — ${invoices.count} PDFs de factures trouvés:\n${fileList}\n]`;
 }
 
+// === Classify a document and determine its Dropbox path ===
+// Uses AI to determine: client, document type, project
+async function classifyDocument(fileName, mimeType, fileSize, clients, message) {
+  const clientNames = clients.map(c => `"${c.nom || c.entreprise || c.name || ''}"`).filter(Boolean).join(', ');
+
+  // Determine document type from filename
+  const lowerName = fileName.toLowerCase();
+  let docType = 'document';
+  if (lowerName.includes('facture') || lowerName.includes('invoice')) docType = 'Factures';
+  else if (lowerName.includes('devis') || lowerName.includes('quote')) docType = 'Devis';
+  else if (lowerName.includes('contrat') || lowerName.includes('contract')) docType = 'Contrats';
+  else if (lowerName.includes('projet') || lowerName.includes('project')) docType = 'Projets';
+  else if (lowerName.includes('logo') || lowerName.includes('brand')) docType = 'Branding';
+  else if (lowerName.includes('video') || lowerName.includes('spot')) docType = 'Videos';
+  else if (lowerName.includes('rapport') || lowerName.includes('report')) docType = 'Rapports';
+
+  // Try to match a client from filename
+  let matchedClient = null;
+  for (const c of clients) {
+    const cname = (c.nom || c.entreprise || c.name || '').toLowerCase();
+    if (cname && lowerName.includes(cname.split(' ')[0].toLowerCase())) {
+      matchedClient = c;
+      break;
+    }
+  }
+
+  // If message contains context, try to match client from message
+  if (!matchedClient && message) {
+    const lowerMsg = message.toLowerCase();
+    for (const c of clients) {
+      const cname = (c.nom || c.entreprise || c.name || '').toLowerCase();
+      if (cname && lowerMsg.includes(cname)) {
+        matchedClient = c;
+        break;
+      }
+    }
+  }
+
+  // Build the suggested path
+  let folderPath;
+  if (matchedClient) {
+    const clientFolder = (matchedClient.nom || matchedClient.entreprise || matchedClient.name || 'Inconnu').replace(/[^a-zA-Z0-9_-]/g, '_');
+    folderPath = `${ROOT_PATH}/Clients/${clientFolder}/${docType}`;
+  } else {
+    folderPath = `${ROOT_PATH}/A_Classer`;
+  }
+
+  return {
+    docType,
+    matchedClient: matchedClient ? {
+      id: matchedClient.id,
+      name: matchedClient.nom || matchedClient.entreprise || matchedClient.name,
+    } : null,
+    suggestedPath: `${folderPath}/${fileName}`,
+    folderPath,
+    fileSize,
+    mimeType,
+  };
+}
+
 module.exports = {
   getAccessToken,
   listFolder,
+  uploadFile,
+  ensureFolder,
+  downloadFile,
   getInvoiceFiles,
   getInvoiceSyncStatus,
   isDropboxRelated,
   buildDropboxContext,
+  classifyDocument,
 };
