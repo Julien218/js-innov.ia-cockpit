@@ -103,7 +103,7 @@ async function ensureFolder(folderPath) {
       body: JSON.stringify({ path: folderPath }),
     });
     const data = await resp.json();
-    if (resp.ok || (data.error && data.error[.tag] === 'path_conflict')) {
+    if (resp.ok || (data.error && data.error['.tag'] === 'path_conflict')) {
       return { success: true, path: folderPath };
     }
     return { error: data.error_summary || 'Create folder failed' };
