@@ -283,6 +283,33 @@ async function classifyDocument(fileName, mimeType, fileSize, clients, message) 
   };
 }
 
+
+// === Extract text from PDF buffer ===
+async function extractTextFromPDF(buffer) {
+  try {
+    const pdfParse = require('pdf-parse');
+    const data = await pdfParse(buffer);
+    return {
+      text: (data.text || '').slice(0, 5000), // limit to 5000 chars for AI
+      pages: data.numpages || 0,
+      info: data.info || {},
+    };
+  } catch (err) {
+    console.warn('[dropbox] PDF extraction failed:', err.message);
+    return { text: '', pages: 0, info: {} };
+  }
+}
+
+// === Extract text from plain text / CSV ===
+function extractTextFromBuffer(buffer, mimeType) {
+  if (!buffer) return '';
+  if (mimeType === 'text/plain' || mimeType === 'text/csv' || mimeType === 'application/json') {
+    return buffer.toString('utf-8').slice(0, 5000);
+  }
+  return '';
+}
+
+
 module.exports = {
   getAccessToken,
   listFolder,
@@ -294,4 +321,6 @@ module.exports = {
   isDropboxRelated,
   buildDropboxContext,
   classifyDocument,
+  extractTextFromPDF,
+  extractTextFromBuffer,
 };
