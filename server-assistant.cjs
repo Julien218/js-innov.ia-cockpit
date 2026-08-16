@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { recordUsage } = require('./server-ai-cost.cjs');
 
-const { buildDropboxContext, isDropboxRelated, uploadFile, ensureFolder, classifyDocument } = require("./server-dropbox-helper.cjs");
+const { buildDropboxContext, isDropboxRelated, uploadFile, ensureFolder, classifyDocument, extractTextFromPDF, extractTextFromBuffer } = require("./server-dropbox-helper.cjs");
 const router = express.Router();
 const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_KEY = process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '';
@@ -343,8 +343,19 @@ router.post('/upload', async (req, res) => {
       console.warn('[assistant] Client fetch failed:', e.message);
     }
 
-    // Classify the document
-    const classification = await classifyDocument(fileName, mimeType, buffer.length, clients, message);
+    // Extract text from the file for better classification
+    let extractedText = '';
+    let pdfInfo = {};
+    if (mimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf')) {
+      const pdfData = await extractTextFromPDF(buffer);
+      extractedText = pdfData.text;
+      pdfInfo = { pages: pdfData.pages, info: pdfData.info };
+    } else {
+      extractedText = extractTextFromBuffer(buffer, mimeType);
+    }
+
+    // Classify the document (with extracted text for better matching)
+    const classification = await classifyDocument(fileName, mimeType, buffer.length, clients, message + (extractedText ? '\n[Contenu extrait]: ' + extractedText.slice(0, 2000) : ''));
 
     // Ensure the target folder exists
     const rootPath = process.env.DROPBOX_ROOT_PATH || '/Cockpit';
@@ -374,6 +385,8 @@ router.post('/upload', async (req, res) => {
         docType: classification.docType,
         matchedClient: classification.matchedClient,
         folderPath: classification.folderPath,
+        extractedText: extractedText.slice(0, 500),
+        pdfPages: pdfInfo.pages || 0,
       },
       message: 'Document "' + fileName + '" classé et sauvegardé dans Dropbox: ' + classification.folderPath,
     });
