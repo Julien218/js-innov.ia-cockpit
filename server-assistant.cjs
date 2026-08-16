@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { recordUsage } = require('./server-ai-cost.cjs');
 
-const { buildDropboxContext, isDropboxRelated } = require("./server-dropbox-helper.cjs");
+const { buildDropboxContext, isDropboxRelated, uploadFile, ensureFolder, classifyDocument } = require("./server-dropbox-helper.cjs");
 const router = express.Router();
 const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_KEY = process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '';
@@ -315,5 +315,74 @@ router.post('/complete', async (req, res) => {
   await logAction(req.user, `action assistant: ${item.actionType}`, success ? 'succes' : 'erreur', String(req.body?.details || '').slice(0, 500));
   res.json({ success: true });
 });
+
+
+// === Upload de document → classification IA → Dropbox ===
+router.post('/upload', async (req, res) => {
+  try {
+    const fileName = String(req.body?.fileName || '').trim().slice(0, 200);
+    const mimeType = String(req.body?.mimeType || 'application/octet-stream').slice(0, 100);
+    const fileData = req.body?.fileData; // base64 string
+    const message = String(req.body?.message || '').slice(0, 500); // optional context
+
+    if (!fileName || !fileData) {
+      return res.status(400).json({ error: 'fileName et fileData (base64) requis' });
+    }
+
+    // Decode base64 → buffer (max 20MB)
+    const buffer = Buffer.from(fileData, 'base64');
+    if (buffer.length > 20 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Fichier trop volumineux (max 20 Mo)' });
+    }
+
+    // Fetch clients from CRM for matching
+    let clients = [];
+    try {
+      clients = await fetchTableRows('Client');
+    } catch (e) {
+      console.warn('[assistant] Client fetch failed:', e.message);
+    }
+
+    // Classify the document
+    const classification = await classifyDocument(fileName, mimeType, buffer.length, clients, message);
+
+    // Ensure the target folder exists
+    const rootPath = process.env.DROPBOX_ROOT_PATH || '/Cockpit';
+    if (classification.folderPath && classification.folderPath !== rootPath + '/A_Classer') {
+      await ensureFolder(classification.folderPath);
+    } else {
+      await ensureFolder(rootPath + '/A_Classer');
+    }
+
+    // Upload the file to Dropbox
+    const uploadResult = await uploadFile(classification.suggestedPath, buffer);
+
+    if (uploadResult.error) {
+      await logAction(req.user, 'upload document', 'erreur', 'Dropbox: ' + uploadResult.error);
+      return res.status(502).json({ error: 'Upload Dropbox échoué: ' + uploadResult.error });
+    }
+
+    await logAction(req.user, 'upload document', 'succes', fileName + ' → ' + classification.suggestedPath);
+
+    res.json({
+      success: true,
+      fileName,
+      dropboxPath: uploadResult.path,
+      dropboxId: uploadResult.id,
+      size: uploadResult.size,
+      classification: {
+        docType: classification.docType,
+        matchedClient: classification.matchedClient,
+        folderPath: classification.folderPath,
+      },
+      message: 'Document "' + fileName + '" classé et sauvegardé dans Dropbox: ' + classification.folderPath,
+    });
+  } catch (error) {
+    console.error('[assistant] Upload error:', error.message);
+    await logAction(req.user, 'upload document', 'erreur', error.message);
+    res.status(500).json({ error: 'Erreur lors du traitement du document' });
+  }
+});
+
 
 module.exports = router;
