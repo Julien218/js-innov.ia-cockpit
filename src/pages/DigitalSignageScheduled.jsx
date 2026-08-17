@@ -1,6 +1,7 @@
 import React from "react";
 import DigitalSignage from "@/pages/DigitalSignage";
 import SignageSchedulePanel from "@/components/signage/SignageSchedulePanel";
+import SignageMediaManager from "@/components/signage/SignageMediaManager";
 import { useAuth } from "@/lib/AuthContext";
 
 const MANAGED_CLIENT_KEY = "jsinnovia-managed-client";
@@ -57,8 +58,9 @@ export default function DigitalSignageScheduled() {
 
   return <>
     <DigitalSignage />
-    <div className="px-4 md:px-6 pb-6 max-w-7xl mx-auto">
+    <div className="px-4 md:px-6 pb-6 max-w-7xl mx-auto space-y-4">
       {error && <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-700">{error}</div>}
+      <SignageMediaManager managedClient={managedClient} />
       {player ? <SignageSchedulePanel player={player} managedClient={managedClient} /> : <div className="rounded-2xl border bg-card p-5 text-sm text-muted-foreground">Le calendrier sera disponible dès qu’un Player est associé à ce client.</div>}
     </div>
   </>;
