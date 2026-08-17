@@ -109,16 +109,10 @@ router.post('/player/heartbeat', async (req, res, next) => {
     const player = rows?.[0];
     if (!player) return next();
 
-    const previousRows = await db(`signage_schedule_audit?select=ads_allowed,reason,next_change_at&evaluated_at=eq.${encode('')}&player_id=eq.${encode(player.id)}&limit=1`).catch(() => []);
-    let previousDecision = null;
-    try {
-      const recent = await db(`signage_schedule_audit?select=ads_allowed,reason,next_change_at&player_id=eq.${encode(player.id)}&order=evaluated_at.desc&limit=1`);
-      previousDecision = recent?.[0] || null;
-    } catch {
-      previousDecision = previousRows?.[0] || null;
-    }
-
+    const recent = await db(`signage_schedule_audit?select=ads_allowed,reason,next_change_at&player_id=eq.${encode(player.id)}&order=evaluated_at.desc&limit=1`);
+    const previousDecision = recent?.[0] || null;
     const decision = await evaluatePlayerAdSchedule({ db, playerId: player.id, ownerEmail: player.owner_email, now: new Date() });
+
     if (decision.adsAllowed) await restoreCurrentPublicationIfNeeded(player, previousDecision);
     await auditDecision(player, decision);
 
