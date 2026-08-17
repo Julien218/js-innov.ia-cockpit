@@ -1,2 +1,3 @@
 Scheduling compatibility release marker.
-Revision: 4f857500bfde1b5d869f6103d1601db158fbcad6
+Verification trigger: 2026-08-17T16:54:03+02:00
+Scope: calendar, Belgian holidays, exceptions, adsAllowed, cockpit panel, legacy Player 0.3 compatibility, tests, CI.
