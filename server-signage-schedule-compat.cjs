@@ -49,7 +49,15 @@ async function restoreCurrentPublicationIfNeeded(player, previousDecision) {
   });
 }
 
-async function auditDecision(player, decision) {
+function sameDecision(previousDecision, decision) {
+  if (!previousDecision) return false;
+  return Boolean(previousDecision.ads_allowed) === Boolean(decision.adsAllowed)
+    && String(previousDecision.reason || '') === String(decision.reason || '')
+    && String(previousDecision.next_change_at || '') === String(decision.nextChangeAt || '');
+}
+
+async function auditDecision(player, decision, previousDecision) {
+  if (sameDecision(previousDecision, decision)) return;
   await db('signage_schedule_audit', {
     method: 'POST',
     body: JSON.stringify({
@@ -114,7 +122,7 @@ router.post('/player/heartbeat', async (req, res, next) => {
     const decision = await evaluatePlayerAdSchedule({ db, playerId: player.id, ownerEmail: player.owner_email, now: new Date() });
 
     if (decision.adsAllowed) await restoreCurrentPublicationIfNeeded(player, previousDecision);
-    await auditDecision(player, decision);
+    await auditDecision(player, decision, previousDecision);
 
     const originalJson = res.json.bind(res);
     res.json = body => {
