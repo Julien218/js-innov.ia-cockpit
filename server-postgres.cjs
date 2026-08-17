@@ -7,7 +7,7 @@ const ALLOWED_TABLES = new Set([
   'commerce_orders','commerce_events','client_module_entitlements','commerce_onboarding_tasks',
   'signage_players','signage_media','signage_playlists','signage_publications','camera_gateways','cameras',
   'camera_recordings','signage_audit_events','signage_player_schedule_settings','signage_player_schedule_ranges',
-  'signage_player_schedule_exceptions','signage_schedule_audit'
+  'signage_player_schedule_exceptions','signage_schedule_audit','signage_sites','signage_display_profiles'
 ]);
 const JSON_COLUMNS = new Map([
   ['signage_players', new Set(['diagnostics'])],
@@ -17,7 +17,8 @@ const JSON_COLUMNS = new Map([
   ['camera_gateways', new Set(['diagnostics'])],
   ['signage_audit_events', new Set(['details'])],
   ['signage_player_schedule_exceptions', new Set(['ranges'])],
-  ['signage_schedule_audit', new Set(['details'])]
+  ['signage_schedule_audit', new Set(['details'])],
+  ['signage_display_profiles', new Set(['fallback_modes','last_stable_mode'])]
 ]);
 const postgresValue = (table, column, value) => {
   if (!JSON_COLUMNS.get(table)?.has(column) || value === null || value === undefined) return value;
@@ -42,7 +43,7 @@ async function migrate() {
   try {
     await client.query('select pg_advisory_lock($1)', [2182026]);
     await client.query('create table if not exists pilot_schema_migrations (name text primary key, applied_at timestamptz not null default now())');
-    for (const file of ['002_commerce_signage.sql', '003_signage_runtime.sql', '004_pilot_sponsorship.sql', '005_signage_camera_finalization.sql', '006_signage_scheduling.sql']) {
+    for (const file of ['002_commerce_signage.sql', '003_signage_runtime.sql', '004_pilot_sponsorship.sql', '005_signage_camera_finalization.sql', '006_signage_scheduling.sql', '007_signage_display_manager.sql']) {
       const exists = await client.query('select 1 from pilot_schema_migrations where name=$1', [file]);
       if (exists.rowCount) continue;
       await client.query('begin');
