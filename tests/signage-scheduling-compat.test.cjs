@@ -14,7 +14,10 @@ test('legacy installed Player receives a black publication outside allowed hours
   assert.match(compat, /if \(!decision\.adsAllowed\) outgoing\.publication = blackoutPublication/);
   assert.match(compat, /restoreCurrentPublicationIfNeeded/);
   assert.match(compat, /current_publication_id/);
-  assert.doesNotMatch(compat, /rotate-token|token_hash\s*=|enrollmentToken/);
+  // Reading token_hash is required to authenticate the already-provisioned Player.
+  // The compatibility layer must never rotate, return or overwrite that token.
+  assert.match(compat, /token_hash=eq\.\$\{hash\(bearer\)\}/);
+  assert.doesNotMatch(compat, /rotate-token|enrollmentToken|token_hash\s*:\s*hash|update\s+signage_players[\s\S]*token_hash/i);
 });
 
 test('compatibility middleware is mounted before the schedule guard and legacy runtime', () => {
