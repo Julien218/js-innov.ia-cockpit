@@ -27,13 +27,13 @@ router.get('/player/schedule-black.png', (req, res) => {
 async function restoreCurrentPublicationIfNeeded(player, previousDecision) {
   if (!previousDecision || previousDecision.ads_allowed !== false || !player.current_publication_id) return;
 
-  const pending = await db(`signage_publications?select=id&player_id=eq.${encode(player.id)}&status=eq.pending&limit=1`);
-  if (pending?.length) return;
-
   const current = await db(`signage_publications?select=*&id=eq.${encode(player.current_publication_id)}&player_id=eq.${encode(player.id)}&limit=1`);
   const publication = current?.[0];
   if (!publication?.manifest) return;
 
+  // Re-queue the last real publication exactly once on the blocked -> allowed
+  // transition. This intentionally does not depend on other future pending jobs:
+  // the legacy 0.3 Player must leave the black compatibility screen immediately.
   await db('signage_publications', {
     method: 'POST',
     body: JSON.stringify({
