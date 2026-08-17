@@ -86,15 +86,18 @@ try {
 
 try {
   const signageMediaDeleteRouter = require('./server-signage-media-delete.cjs');
+  const signageDisplayRouter = require('./server-signage-display.cjs');
   const signageScheduleCompat = require('./server-signage-schedule-compat.cjs');
   const signageScheduleRouter = require('./server-signage-schedule-router.cjs');
   const signageRouter = require('./server-signage.cjs');
   app.use('/api/signage', signageMediaDeleteRouter);
+  app.use('/api/signage', signageDisplayRouter);
   app.use('/api/signage', signageScheduleCompat);
   app.use('/api/signage', signageScheduleRouter);
   app.use('/api/signage', signageRouter);
   console.log('Digital Signage runtime active');
   console.log('Digital Signage media deletion active');
+  console.log('Digital Signage display manager active');
   console.log('Digital Signage scheduling active');
   console.log('Digital Signage legacy schedule compatibility active');
 } catch (e) {
