@@ -40,7 +40,7 @@ import AICostControl from "@/pages/AICostControl";
 import Invitations from "@/pages/Invitations";
 import Gouvernance from "@/pages/Gouvernance";
 import FloatingAgent from "@/components/FloatingAgent";
-import DigitalSignage from "@/pages/DigitalSignage";
+import DigitalSignage from "@/pages/DigitalSignageScheduled";
 import VideoSurveillance from "@/pages/VideoSurveillance";
 
 // ── Studio Vidéo
