@@ -6,6 +6,11 @@ import android.view.View;
 
 import org.json.JSONObject;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
+
 public class ScheduledMainActivity extends MainActivity {
   static final String SCHEDULED_APP_VERSION = "0.4.0-pilot";
   static final String PREF_ADS_BLOCKED = "adsBlocked";
@@ -146,7 +151,10 @@ public class ScheduledMainActivity extends MainActivity {
     String next = prefs.getString(PREF_NEXT_CHANGE_AT, "");
     if (next == null || next.isEmpty()) return true;
     try {
-      return java.time.Instant.parse(next).toEpochMilli() > System.currentTimeMillis();
+      SimpleDateFormat parser = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSX", Locale.US);
+      parser.setTimeZone(TimeZone.getTimeZone("UTC"));
+      Date parsed = parser.parse(next);
+      return parsed == null || parsed.getTime() > System.currentTimeMillis();
     } catch (Exception ignored) {
       return true;
     }
