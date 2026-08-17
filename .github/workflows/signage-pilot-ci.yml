@@ -75,3 +75,44 @@ jobs:
         with:
           gradle-version: '8.7'
       - run: gradle -p player-android :app:assembleDebug --no-daemon
+      - name: Compare installed-package signing lineage
+        id: apk-signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          OLD_APK="assets/Pixelium-Player-Olivier-0.3.0-pilot.apk"
+          NEW_APK="player-android/app/build/outputs/apk/debug/app-debug.apk"
+          test -n "$APKSIGNER"
+          test -f "$OLD_APK"
+          test -f "$NEW_APK"
+          "$APKSIGNER" verify --print-certs "$OLD_APK" | tee old-apk-cert.txt
+          "$APKSIGNER" verify --print-certs "$NEW_APK" | tee new-apk-cert.txt
+          OLD_SHA="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' old-apk-cert.txt | head -1)"
+          NEW_SHA="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' new-apk-cert.txt | head -1)"
+          test -n "$OLD_SHA"
+          test -n "$NEW_SHA"
+          if [ "$OLD_SHA" = "$NEW_SHA" ]; then
+            COMPATIBLE=true
+            echo "APK update signature is compatible with the existing 0.3 package."
+          else
+            COMPATIBLE=false
+            echo "::warning title=APK signature mismatch::The existing 0.3 APK and the 0.5 debug APK use different signing certificates. Do not install the 0.5 APK over the provisioned Player."
+          fi
+          {
+            echo "existing_sha256=$OLD_SHA"
+            echo "candidate_sha256=$NEW_SHA"
+            echo "compatible=$COMPATIBLE"
+          } | tee apk-signature-compatibility.txt
+          echo "compatible=$COMPATIBLE" >> "$GITHUB_OUTPUT"
+      - name: Upload Player debug APK and signature report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixelium-player-0.5.0-pilot-debug
+          path: |
+            player-android/app/build/outputs/apk/debug/app-debug.apk
+            old-apk-cert.txt
+            new-apk-cert.txt
+            apk-signature-compatibility.txt
+          retention-days: 14
+          if-no-files-found: error
