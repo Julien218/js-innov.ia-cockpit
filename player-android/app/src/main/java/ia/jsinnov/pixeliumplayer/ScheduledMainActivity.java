@@ -12,7 +12,7 @@ import java.util.Locale;
 import java.util.TimeZone;
 
 public class ScheduledMainActivity extends MainActivity {
-  static final String SCHEDULED_APP_VERSION = "0.4.0-pilot";
+  static final String SCHEDULED_APP_VERSION = "0.5.0-pilot";
   static final String PREF_ADS_BLOCKED = "adsBlocked";
   static final String PREF_BLOCK_REASON = "adsBlockReason";
   static final String PREF_NEXT_CHANGE_AT = "adsNextChangeAt";
@@ -25,17 +25,38 @@ public class ScheduledMainActivity extends MainActivity {
     if (adsBlocked) blockAdvertising(cachedBlockReason(), cachedNextChangeAt());
   }
 
+  JSONObject playbackTelemetry() {
+    JSONObject playback = new JSONObject();
+    try {
+      boolean videoPlaying = video != null && video.isPlaying();
+      boolean imageVisible = image != null && image.getVisibility() == View.VISIBLE;
+      playback.put("videoPlaying", videoPlaying);
+      playback.put("imageVisible", imageVisible);
+      playback.put("contentPlaying", videoPlaying || imageVisible);
+      playback.put("cachedItems", items == null ? 0 : items.length());
+      playback.put("preparingPublication", preparingCandidate);
+      playback.put("candidatePublicationId", candidatePublicationId == null ? JSONObject.NULL : candidatePublicationId);
+      playback.put("scheduleBlocked", adsBlocked || cachedBlockStillActive());
+    } catch (Exception ignored) {}
+    return playback;
+  }
+
   @Override void heartbeat() {
     new Thread(() -> {
       boolean retry = true;
       try {
+        JSONObject diagnostics = new JSONObject()
+          .put("android", Build.VERSION.RELEASE)
+          .put("model", Build.MODEL)
+          .put("freeBytes", mediaCache.getFreeSpace())
+          .put("scheduleAware", true)
+          .put("displayTelemetryVersion", 1)
+          .put("device", DisplayTelemetry.device())
+          .put("display", DisplayTelemetry.display(this))
+          .put("playback", playbackTelemetry());
         JSONObject request = new JSONObject()
           .put("appVersion", SCHEDULED_APP_VERSION)
-          .put("diagnostics", new JSONObject()
-            .put("android", Build.VERSION.RELEASE)
-            .put("model", Build.MODEL)
-            .put("freeBytes", mediaCache.getFreeSpace())
-            .put("scheduleAware", true));
+          .put("diagnostics", diagnostics);
 
         JSONObject response = jsonRequest(server + "/api/signage/player/heartbeat", "POST", request);
         boolean allowed = response.optBoolean("adsAllowed", true);
