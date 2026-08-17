@@ -1,4 +1,5 @@
 name: Signage pilot CI
+# Retriggered after GitHub Actions billing restoration on 2026-08-17.
 on:
   pull_request:
     paths:
