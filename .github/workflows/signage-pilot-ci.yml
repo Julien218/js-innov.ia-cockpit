@@ -50,6 +50,7 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: node --check server-signage.cjs
+      - run: node --check server-signage-display.cjs
       - run: node --check server-signage-schedule.cjs
       - run: node --check server-signage-schedule-router.cjs
       - run: node --check server-signage-schedule-compat.cjs
