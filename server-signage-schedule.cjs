@@ -148,3 +148,5 @@ module.exports = {
   inRanges,
   evaluatePlayerAdSchedule
 };
+
+// Final Railway verification trigger; no runtime behavior change.
