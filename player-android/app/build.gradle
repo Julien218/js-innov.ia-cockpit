@@ -3,6 +3,7 @@ plugins { id 'com.android.application' }
 android {
     namespace 'ia.jsinnov.pixeliumplayer'
     compileSdk 35
+
     defaultConfig {
         applicationId 'ia.jsinnov.pixeliumplayer'
         minSdk 23
@@ -10,5 +11,23 @@ android {
         versionCode 4
         versionName '0.5.0-pilot'
     }
-}
 
+    signingConfigs {
+        release {
+            def keystorePath = System.getenv('PIXELIUM_KEYSTORE_PATH')
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storePassword System.getenv('PIXELIUM_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('PIXELIUM_KEY_ALIAS') ?: 'pixelium-release'
+                keyPassword System.getenv('PIXELIUM_KEY_PASSWORD') ?: System.getenv('PIXELIUM_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+}
