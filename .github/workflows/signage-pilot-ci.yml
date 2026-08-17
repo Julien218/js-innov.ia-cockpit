@@ -88,8 +88,8 @@ jobs:
           test -f "$NEW_APK"
           "$APKSIGNER" verify --print-certs "$OLD_APK" | tee old-apk-cert.txt
           "$APKSIGNER" verify --print-certs "$NEW_APK" | tee new-apk-cert.txt
-          OLD_SHA="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' old-apk-cert.txt | head -1)"
-          NEW_SHA="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' new-apk-cert.txt | head -1)"
+          OLD_SHA="$(sed -n 's/^.*certificate SHA-256 digest: //p' old-apk-cert.txt | head -1)"
+          NEW_SHA="$(sed -n 's/^.*certificate SHA-256 digest: //p' new-apk-cert.txt | head -1)"
           test -n "$OLD_SHA"
           test -n "$NEW_SHA"
           if [ "$OLD_SHA" = "$NEW_SHA" ]; then
