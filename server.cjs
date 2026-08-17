@@ -85,9 +85,12 @@ try {
 }
 
 try {
+  const signageScheduleRouter = require('./server-signage-schedule-router.cjs');
   const signageRouter = require('./server-signage.cjs');
+  app.use('/api/signage', signageScheduleRouter);
   app.use('/api/signage', signageRouter);
   console.log('Digital Signage runtime active');
+  console.log('Digital Signage scheduling active');
 } catch (e) {
   console.warn('Signage runtime unavailable:', e.message);
 }
@@ -194,5 +197,3 @@ app.listen(PORT, () => {
   console.log(`✅ JS-Innov.IA Cockpit API — port ${PORT}`);
   console.log(`   Proxy /api/data → ${AGENT_PROXY_URL}/data`);
 });
-
-
