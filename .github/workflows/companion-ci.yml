@@ -6,13 +6,17 @@ on:
       - 'server-assistant.cjs'
       - 'server-companion-audience.cjs'
       - 'server-companion-memory.cjs'
+      - 'server-data-proxy.cjs'
       - 'server-dropbox-helper.cjs'
       - 'server.cjs'
       - 'Dockerfile'
       - 'src/App.jsx'
+      - 'src/lib/roles.js'
       - 'src/components/ClientCompanion.jsx'
       - 'src/components/RoleAwareFloatingAgent.jsx'
       - 'src/pages/Agent.jsx'
+      - 'src/pages/ClientDashboard.jsx'
+      - 'src/pages/ClientRecords.jsx'
       - 'tests/companion-contract.test.cjs'
       - 'migrations/002_client_assistant_profiles.sql'
       - 'package.json'
@@ -44,6 +48,7 @@ jobs:
           node --check server-assistant.cjs
           node --check server-companion-audience.cjs
           node --check server-companion-memory.cjs
+          node --check server-data-proxy.cjs
       - name: Companion contract tests
         run: node --require ./tests/node-test-globals.cjs --test tests/companion-contract.test.cjs
       - name: Build web application
@@ -53,4 +58,6 @@ jobs:
           grep -q "audience.mode !== 'client'" server-assistant.cjs
           grep -q "user?.role !== 'superadmin'" server-companion-memory.cjs
           grep -q "create_client_request" server-assistant.cjs
+          grep -q "CLIENT_VISIBLE_FIELDS" server-data-proxy.cjs
           grep -q "RoleAwareFloatingAgent" src/App.jsx
+          grep -q "ClientDashboard" src/App.jsx
