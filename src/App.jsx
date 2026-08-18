@@ -15,6 +15,8 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 
 // Pages
 import Dashboard from "@/pages/Dashboard";
+import ClientDashboard from "@/pages/ClientDashboard";
+import ClientRecords from "@/pages/ClientRecords";
 import Assurances from "@/pages/Assurances";
 import Documents from "@/pages/Documents";
 import AppsAgents from "@/pages/AppsAgents";
@@ -62,6 +64,7 @@ const PageBoundary = ({ children }) => <AppErrorBoundary>{children}</AppErrorBou
 
 const AppRoutes = () => {
   const { user, isAuthenticated, isLoadingAuth, authChecked } = useAuth();
+  const isClient = user?.role === 'client';
 
   if (!authChecked || isLoadingAuth) {
     return (
@@ -78,7 +81,7 @@ const AppRoutes = () => {
 
       <Route element={<ProtectedRoute />}>
         <Route element={<AppErrorBoundary><AppLayout /></AppErrorBoundary>}>
-          <Route path="/" element={<PageBoundary><Dashboard /></PageBoundary>} />
+          <Route path="/" element={<PageBoundary>{isClient ? <ClientDashboard /> : <Dashboard />}</PageBoundary>} />
           <Route path="/assurances" element={<PageBoundary><Assurances /></PageBoundary>} />
           <Route path="/documents" element={<PageBoundary><Documents /></PageBoundary>} />
 
@@ -86,19 +89,19 @@ const AppRoutes = () => {
           <Route path="/leads" element={<PageBoundary><Leads /></PageBoundary>} />
 
           <Route path="/projets" element={<PageBoundary><Projets /></PageBoundary>} />
-          <Route path="/mes-projets" element={<PageBoundary><Projets /></PageBoundary>} />
+          <Route path="/mes-projets" element={<PageBoundary><ClientRecords kind="projects" /></PageBoundary>} />
           <Route path="/taches" element={<PageBoundary><Taches /></PageBoundary>} />
           <Route path="/demandes" element={<PageBoundary><Demandes /></PageBoundary>} />
 
           <Route path="/devis" element={<PageBoundary><Devis /></PageBoundary>} />
-          <Route path="/mes-devis" element={<PageBoundary><Devis /></PageBoundary>} />
+          <Route path="/mes-devis" element={<PageBoundary><ClientRecords kind="quotes" /></PageBoundary>} />
           <Route path="/factures" element={<PageBoundary><Factures /></PageBoundary>} />
           <Route path="/hainoflow" element={<PageBoundary><HainoFlow /></PageBoundary>} />
-          <Route path="/mes-factures" element={<PageBoundary><Factures /></PageBoundary>} />
+          <Route path="/mes-factures" element={<PageBoundary><ClientRecords kind="invoices" /></PageBoundary>} />
           <Route path="/commissions" element={<PageBoundary><Commissions /></PageBoundary>} />
 
-          <Route path="/agent" element={user?.role === 'client' ? <Navigate to="/" replace /> : <PageBoundary><Agent /></PageBoundary>} />
-          <Route path="/agents-ia" element={<PageBoundary><AgentsIA /></PageBoundary>} />
+          <Route path="/agent" element={isClient ? <Navigate to="/" replace /> : <PageBoundary><Agent /></PageBoundary>} />
+          <Route path="/agents-ia" element={isClient ? <Navigate to="/" replace /> : <PageBoundary><AgentsIA /></PageBoundary>} />
           <Route path="/ai-cost-control" element={<PageBoundary><AICostControl /></PageBoundary>} />
           <Route path="/validations" element={<PageBoundary><Validations /></PageBoundary>} />
           <Route path="/logs" element={<PageBoundary><Logs /></PageBoundary>} />
