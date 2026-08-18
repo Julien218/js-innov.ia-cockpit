@@ -69,7 +69,8 @@ test('le client dispose uniquement de son action de demande dédiée', () => {
 });
 
 test('un client ne peut pas ouvrir la page owner et reçoit une UI dédiée', () => {
-  assert.match(appSource, /user\?\.role === 'client' \? <Navigate to="\/" replace\/>/);
+  assert.ok(appSource.includes("user?.role === 'client'"));
+  assert.match(appSource, /<Navigate to="\/" replace \/>/);
   assert.match(appSource, /RoleAwareFloatingAgent/);
   assert.match(clientCompanion, /\/api\/assistant\/profile/);
   assert.match(clientCompanion, /Réponses limitées aux informations et services autorisés/);
@@ -78,7 +79,8 @@ test('un client ne peut pas ouvrir la page owner et reçoit une UI dédiée', ()
 test('la mémoire historique Dropbox utilise l’index existant sans modifier le ZIP source', () => {
   assert.match(memoryServer, /conversations\.index\.jsonl/);
   assert.match(memoryServer, /manifest\.json/);
-  assert.match(memoryServer, /downloadFile\(INDEX_PATH\)/);
+  assert.match(memoryServer, /readDropboxText\(INDEX_PATH\)/);
+  assert.match(memoryServer, /downloadFile\(path\)/);
   assert.doesNotMatch(memoryServer, /uploadFile|deleteFile|moveFile/);
 });
 
