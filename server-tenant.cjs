@@ -9,7 +9,7 @@ function cleanTenant(value) {
 
   // Identifiant canonique unique pour la société, quelle que soit la façon
   // dont son nom est écrit dans le profil utilisateur ou dans les anciennes données.
-  if (['jsinnovia', 'js-innovia', 'js-innov-ia'].includes(normalized)) return 'jsinnovia';
+  if (['jsinnovia', 'js-innovia', 'js-innov-ia', 'js_innov-ia'].includes(normalized)) return 'jsinnovia';
   return normalized;
 }
 
