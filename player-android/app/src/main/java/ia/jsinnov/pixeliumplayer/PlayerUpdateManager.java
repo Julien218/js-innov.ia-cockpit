@@ -74,7 +74,7 @@ final class PlayerUpdateManager {
       String targetVersion = release.optString("version", "");
       String apkSha256 = normalizeDigest(release.optString("apkSha256", ""));
       String certificateSha256 = normalizeDigest(release.optString("certificateSha256", ""));
-      if (targetVersion.isEmpty() || targetVersion.equals(currentVersion)) {
+      if (targetVersion.isEmpty() || compareVersions(targetVersion, currentVersion) <= 0) {
         setState(activity, "up_to_date", currentVersion, "");
         return;
       }
@@ -116,6 +116,29 @@ final class PlayerUpdateManager {
     } catch (Exception error) {
       setState(activity, "failed", prefs.getString(PREF_VERSION, ""), String.valueOf(error.getMessage()));
     }
+  }
+
+  private static int compareVersions(String left, String right) {
+    String[] a = numericVersion(left).split("\\.");
+    String[] b = numericVersion(right).split("\\.");
+    int length = Math.max(a.length, b.length);
+    for (int index = 0; index < length; index++) {
+      int av = index < a.length ? safeInt(a[index]) : 0;
+      int bv = index < b.length ? safeInt(b[index]) : 0;
+      if (av != bv) return av < bv ? -1 : 1;
+    }
+    return 0;
+  }
+
+  private static String numericVersion(String value) {
+    String clean = String.valueOf(value == null ? "" : value).trim();
+    int dash = clean.indexOf('-');
+    if (dash >= 0) clean = clean.substring(0, dash);
+    return clean.matches("[0-9]+(\\.[0-9]+)*") ? clean : "0";
+  }
+
+  private static int safeInt(String value) {
+    try { return Integer.parseInt(value); } catch (Exception ignored) { return 0; }
   }
 
   private static void install(Context context, File apk, String targetVersion) throws Exception {
