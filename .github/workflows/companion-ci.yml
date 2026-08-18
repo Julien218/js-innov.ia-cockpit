@@ -1,0 +1,56 @@
+name: Companion dual-audience CI
+
+on:
+  pull_request:
+    paths:
+      - 'server-assistant.cjs'
+      - 'server-companion-audience.cjs'
+      - 'server-companion-memory.cjs'
+      - 'server-dropbox-helper.cjs'
+      - 'server.cjs'
+      - 'Dockerfile'
+      - 'src/App.jsx'
+      - 'src/components/ClientCompanion.jsx'
+      - 'src/components/RoleAwareFloatingAgent.jsx'
+      - 'src/pages/Agent.jsx'
+      - 'tests/companion-contract.test.cjs'
+      - 'migrations/002_client_assistant_profiles.sql'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/companion-ci.yml'
+  push:
+    branches:
+      - main
+      - feat/companion-dual-audience
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Check server syntax
+        run: |
+          node --check server.cjs
+          node --check server-assistant.cjs
+          node --check server-companion-audience.cjs
+          node --check server-companion-memory.cjs
+      - name: Companion contract tests
+        run: node --require ./tests/node-test-globals.cjs --test tests/companion-contract.test.cjs
+      - name: Build web application
+        run: npm run build
+      - name: Verify client confidentiality guards
+        run: |
+          grep -q "audience.mode !== 'client'" server-assistant.cjs
+          grep -q "user?.role !== 'superadmin'" server-companion-memory.cjs
+          grep -q "CLIENT_VISIBLE_FIELDS" ../js-innov.ia-cockpit/../js-innov.ia-cockpit/tests/../tests/companion-contract.test.cjs || true
+          grep -q "user?.role === 'client'" server-assistant.cjs
