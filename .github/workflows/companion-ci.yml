@@ -18,7 +18,7 @@ on:
       - 'src/pages/ClientDashboard.jsx'
       - 'src/pages/ClientRecords.jsx'
       - 'tests/companion-contract.test.cjs'
-      - 'migrations/002_client_assistant_profiles.sql'
+      - 'supabase/migrations/20260818122500_client_assistant_profiles.sql'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/companion-ci.yml'
