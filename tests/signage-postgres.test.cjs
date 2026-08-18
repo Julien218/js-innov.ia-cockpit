@@ -99,10 +99,13 @@ test('Android only acknowledges after decoding and restores cached playback afte
   assert.match(androidPlayer, /0\.3\.0-pilot/);
 });
 
-test('cockpit serves the compiled Player 0.3 APK without embedding stale bytes', () => {
+test('cockpit serves the signed Player release with a safe legacy fallback', () => {
+  assert.match(apkRoute, /Pixelium-Player-Olivier-0\.5\.0-pilot\.apk/);
   assert.match(apkRoute, /Pixelium-Player-Olivier-0\.3\.0-pilot\.apk/);
-  assert.match(apkRoute, /res\.sendFile\(APK_PATH/);
+  assert.match(apkRoute, /res\.sendFile\(apk\.path/);
   assert.match(apkRoute, /Cache-Control': 'no-store'/);
+  assert.match(apkRoute, /signed-release/);
+  assert.match(apkRoute, /legacy-fallback/);
   assert.doesNotMatch(apkRoute, /Buffer\.from/);
   assert.match(signagePage, /href="\/api\/player-download\/android"/);
   assert.match(signagePage, /Générer un nouveau jeton d’association/);

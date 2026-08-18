@@ -49,6 +49,16 @@ server {
         return 302 https://cockpit.jsinnovia.com/documents;
     }
 
+    # Short, stable TVBOX download URLs. The Node route selects the latest
+    # signed release and keeps the legacy APK only as a temporary fallback.
+    location = /player {
+        return 302 /api/player-download/android;
+    }
+
+    location = /player.apk {
+        return 302 /api/player-download/android;
+    }
+
     location /api/ {
         proxy_pass http://127.0.0.1:3001;
         proxy_read_timeout 300s;
