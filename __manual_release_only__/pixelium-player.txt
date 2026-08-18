@@ -1,0 +1,4 @@
+Manual Railway release marker for Pixelium Player 0.5.0-pilot
+Source branch: feature/olivier-signage-pilot-release
+Target short URL: /p
+APK: assets/Pixelium-Player-Olivier-0.5.0-pilot.apk
