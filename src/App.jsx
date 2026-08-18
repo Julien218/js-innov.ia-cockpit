@@ -17,7 +17,6 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import Dashboard from "@/pages/Dashboard";
 import Assurances from "@/pages/Assurances";
 import Documents from "@/pages/Documents";
-// ── Nouvelles pages v2
 import AppsAgents from "@/pages/AppsAgents";
 import Production from "@/pages/Production";
 import Domaines from "@/pages/Domaines";
@@ -40,7 +39,7 @@ import AgentsIA from "@/pages/AgentsIA";
 import AICostControl from "@/pages/AICostControl";
 import Invitations from "@/pages/Invitations";
 import Gouvernance from "@/pages/Gouvernance";
-import FloatingAgent from "@/components/FloatingAgent";
+import RoleAwareFloatingAgent from "@/components/RoleAwareFloatingAgent";
 
 // ── Studio Vidéo
 import VideoStudio from "@/pages/VideoStudio";
@@ -62,7 +61,7 @@ import AppErrorBoundary from "@/components/shared/AppErrorBoundary";
 const PageBoundary = ({ children }) => <AppErrorBoundary>{children}</AppErrorBoundary>;
 
 const AppRoutes = () => {
-  const { isAuthenticated, isLoadingAuth, authChecked } = useAuth();
+  const { user, isAuthenticated, isLoadingAuth, authChecked } = useAuth();
 
   if (!authChecked || isLoadingAuth) {
     return (
@@ -98,7 +97,7 @@ const AppRoutes = () => {
           <Route path="/mes-factures" element={<PageBoundary><Factures /></PageBoundary>} />
           <Route path="/commissions" element={<PageBoundary><Commissions /></PageBoundary>} />
 
-          <Route path="/agent" element={<PageBoundary><Agent /></PageBoundary>} />
+          <Route path="/agent" element={user?.role === 'client' ? <Navigate to="/" replace /> : <PageBoundary><Agent /></PageBoundary>} />
           <Route path="/agents-ia" element={<PageBoundary><AgentsIA /></PageBoundary>} />
           <Route path="/ai-cost-control" element={<PageBoundary><AICostControl /></PageBoundary>} />
           <Route path="/validations" element={<PageBoundary><Validations /></PageBoundary>} />
@@ -147,7 +146,7 @@ function App() {
         <Router>
           <AppRoutes />
         </Router>
-        <FloatingAgent />
+        <RoleAwareFloatingAgent />
         <Toaster />
       </QueryClientProvider>
     </AuthProvider>
