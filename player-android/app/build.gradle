@@ -7,15 +7,9 @@ android {
     defaultConfig {
         applicationId 'ia.jsinnov.pixeliumplayer'
         minSdk 23
-        targetSdk 28
-        versionCode 4
-        versionName '0.5.0-pilot'
-    }
-
-    lint {
-        // Private sideloaded TVBOX player: keep Android 9 compatibility behavior for the pilot.
-        // This APK is not being submitted to Google Play, so the Play target-SDK expiry check is not applicable here.
-        disable 'ExpiredTargetSdkVersion'
+        targetSdk 33
+        versionCode 5
+        versionName '0.5.1-pilot'
     }
 
     signingConfigs {
