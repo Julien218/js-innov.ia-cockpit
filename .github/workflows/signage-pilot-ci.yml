@@ -1,5 +1,6 @@
 name: Signage pilot CI
 # Validate every PR, then sign and publish the Player only from a trusted branch event.
+# Release retrigger after repository signing secrets validation: 2026-08-18.
 on:
   pull_request:
     paths:
