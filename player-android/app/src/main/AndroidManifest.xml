@@ -3,7 +3,12 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application android:theme="@style/AppTheme" android:label="Pixelium Player" android:usesCleartextTraffic="false">
-        <activity android:name=".ScheduledMainActivity" android:screenOrientation="landscape" android:configChanges="keyboardHidden|orientation|screenSize" android:exported="true">
+        <activity
+            android:name=".ScheduledMainActivity"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboardHidden|orientation|screenSize"
+            android:launchMode="singleTask"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -11,7 +16,11 @@
             </intent-filter>
         </activity>
         <receiver android:name=".BootReceiver" android:enabled="true" android:exported="true">
-            <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.USER_UNLOCKED" />
+            </intent-filter>
         </receiver>
     </application>
 </manifest>
