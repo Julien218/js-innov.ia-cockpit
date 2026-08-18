@@ -1,4 +1,5 @@
 name: Pixelium release recovery
+# Retrigger after private sideload lint fix on 2026-08-18.
 
 on:
   push:
