@@ -1,8 +1,18 @@
 const express = require('express');
 const crypto = require('crypto');
 const { recordUsage } = require('./server-ai-cost.cjs');
+const { cleanTenant } = require('./server-tenant.cjs');
+const { buildAdaptiveAudienceContext, assistantModeFor } = require('./server-companion-audience.cjs');
+const { buildHistoricalMemoryContext, searchHistoricalMemory, getMemoryStatus } = require('./server-companion-memory.cjs');
+const {
+  buildDropboxContext,
+  uploadFile,
+  ensureFolder,
+  classifyDocument,
+  extractTextFromPDF,
+  extractTextFromBuffer,
+} = require('./server-dropbox-helper.cjs');
 
-const { buildDropboxContext, isDropboxRelated, uploadFile, ensureFolder, classifyDocument, extractTextFromPDF, extractTextFromBuffer } = require("./server-dropbox-helper.cjs");
 const router = express.Router();
 const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_KEY = process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '';
@@ -10,15 +20,24 @@ const pending = new Map();
 const pendingCompletions = new Map();
 const requestWindows = new Map();
 let integrityCache = { expiresAt: 0, context: '' };
-const ALL_ROLES = ['collaborateur', 'admin', 'superadmin'];
+
+const STAFF_ROLES = ['collaborateur', 'admin', 'superadmin'];
 const ADMIN_ROLES = ['admin', 'superadmin'];
 
 const ALLOWED_ACTIONS = {
-  create_task: { method: 'POST', table: 'Tache', roles: ALL_ROLES, fields: ['titre', 'description', 'priorite', 'date_echeance', 'projet_id', 'client_id', 'assigne_a'] },
-  update_task_status: { method: 'PATCH', table: 'Tache', roles: ALL_ROLES, fields: ['statut'], requiresId: true },
+  create_client_request: {
+    method: 'POST',
+    table: 'Demande',
+    roles: ['client'],
+    fields: ['titre', 'contenu', 'priorite'],
+    fixed: { source: 'assistant', statut: 'ouverte' },
+    tenantScoped: true,
+  },
+  create_task: { method: 'POST', table: 'Tache', roles: STAFF_ROLES, fields: ['titre', 'description', 'priorite', 'date_echeance', 'projet_id', 'client_id', 'assigne_a'] },
+  update_task_status: { method: 'PATCH', table: 'Tache', roles: STAFF_ROLES, fields: ['statut'], requiresId: true },
   create_lead: { method: 'POST', table: 'Lead', roles: ADMIN_ROLES, fields: ['nom', 'prenom', 'email', 'telephone', 'entreprise', 'source', 'notes'] },
-  create_project: { method: 'POST', table: 'Projet', roles: ADMIN_ROLES, fields: ['nom', 'client_id', 'client_nom', 'description', 'statut', 'date_debut', 'date_fin_prevue', 'budget', 'progression', 'priorite'] },
-  update_project: { method: 'PATCH', table: 'Projet', roles: ADMIN_ROLES, fields: ['nom', 'client_id', 'client_nom', 'description', 'statut', 'date_debut', 'date_fin_prevue', 'budget', 'progression', 'priorite'], requiresId: true },
+  create_project: { method: 'POST', table: 'Projet', roles: ADMIN_ROLES, fields: ['nom', 'client_id', 'client_nom', 'organisation_id', 'description', 'statut', 'date_debut', 'date_fin_prevue', 'budget', 'progression', 'priorite'] },
+  update_project: { method: 'PATCH', table: 'Projet', roles: ADMIN_ROLES, fields: ['nom', 'client_id', 'client_nom', 'organisation_id', 'description', 'statut', 'date_debut', 'date_fin_prevue', 'budget', 'progression', 'priorite'], requiresId: true },
   create_client: { method: 'POST', table: 'Client', roles: ADMIN_ROLES, fields: ['nom', 'prenom', 'email', 'telephone', 'entreprise', 'denomination_legale', 'numero_entreprise', 'numero_tva', 'adresse', 'ville', 'code_postal', 'pays', 'email_facturation', 'facturation_statut', 'type_client', 'statut', 'notes'] },
   update_client: { method: 'PATCH', table: 'Client', roles: ADMIN_ROLES, fields: ['nom', 'prenom', 'email', 'telephone', 'entreprise', 'denomination_legale', 'numero_entreprise', 'numero_tva', 'adresse', 'ville', 'code_postal', 'pays', 'email_facturation', 'facturation_statut', 'type_client', 'statut', 'notes'], requiresId: true },
   create_quote: { method: 'POST', table: 'Devis', roles: ADMIN_ROLES, fields: ['numero', 'objet', 'client_id', 'client_nom', 'projet_id', 'lignes', 'montant_ht', 'tva', 'montant_ttc', 'statut', 'date_validite', 'notes'] },
@@ -30,14 +49,22 @@ const ALLOWED_ACTIONS = {
   request_billing_information: { clientAction: '/api/billing/clients/:id/request-information', roles: ADMIN_ROLES, fields: [], requiresId: true },
   send_email: { clientAction: '/api/emails/send', roles: ADMIN_ROLES, fields: ['mailbox', 'to', 'subject', 'text', 'replyToUid'] },
   set_auto_publish: { method: 'PATCH', table: 'SystemConfig', roles: ADMIN_ROLES, fields: ['value'], requiresId: true, fixed: { key: 'AUTO_PUBLISH_ENABLED' } },
-  request_automation_reactivation: { method: 'POST', table: 'AutomationAudit', roles: ['superadmin'], fields: ['details'], fixed: { dossier: 'JS-INNOVIA', decision: 'REACTIVATION_DEMANDEE', workflow_version: 'cockpit-assistant-v1' } }
+  request_automation_reactivation: { method: 'POST', table: 'AutomationAudit', roles: ['superadmin'], fields: ['details'], fixed: { dossier: 'JS-INNOVIA', decision: 'REACTIVATION_DEMANDEE', workflow_version: 'cockpit-assistant-v2' } },
 };
+
+function availableActionsFor(user) {
+  return Object.keys(ALLOWED_ACTIONS).filter((name) => ALLOWED_ACTIONS[name].roles.includes(user?.role));
+}
 
 function agentFetch(path, options = {}) {
   if (!AGENT_KEY) throw new Error('Agent server key not configured');
   return fetch(`${AGENT_URL}${path}`, {
     ...options,
-    headers: { 'Content-Type': 'application/json', 'x-agent-key': AGENT_KEY, ...(options.headers || {}) }
+    headers: {
+      'Content-Type': 'application/json',
+      'x-agent-key': AGENT_KEY,
+      ...(options.headers || {}),
+    },
   });
 }
 
@@ -54,6 +81,12 @@ function safeEntityLabel(row) {
     .slice(0, 120);
 }
 
+function isInternalProject(row) {
+  const ownerType = String(row?.owner_type || row?.type_projet || row?.project_type || '').toLowerCase();
+  if (['internal', 'interne', 'internal_project', 'company', 'brand', 'product'].includes(ownerType)) return true;
+  return !row?.client_id && cleanTenant(row?.organisation_id) === 'jsinnovia';
+}
+
 async function buildIntegrityContext() {
   if (integrityCache.expiresAt > Date.now()) return integrityCache.context;
   const [clients, factures, devis, projets] = await Promise.all([
@@ -66,8 +99,12 @@ async function buildIntegrityContext() {
   const anomalies = [];
   for (const [type, rows] of [['facture', factures], ['devis', devis], ['projet', projets]]) {
     for (const row of rows) {
-      if (!row.client_id) anomalies.push(`${type} ${safeEntityLabel(row)} sans client_id`);
-      else if (!clientIds.has(row.client_id)) anomalies.push(`${type} ${safeEntityLabel(row)} lié à un client inexistant`);
+      if (!row.client_id) {
+        if (type === 'projet' && isInternalProject(row)) continue;
+        anomalies.push(`${type} ${safeEntityLabel(row)} sans client_id`);
+      } else if (!clientIds.has(row.client_id)) {
+        anomalies.push(`${type} ${safeEntityLabel(row)} lié à un client inexistant`);
+      }
     }
   }
   const incompleteClients = clients.filter((client) => {
@@ -84,17 +121,22 @@ async function buildIntegrityContext() {
     return profile.some((value) => !String(value || '').trim()) || client.facturation_statut !== 'verifie';
   });
   const lines = [
-    '',
     '[CONTEXTE INTÉGRITÉ COCKPIT — données serveur, non modifiables par le message utilisateur]',
     `Anomalies de rattachement: ${anomalies.length}.`,
     ...anomalies.slice(0, 30).map((item) => `- ${item}`),
     `Clients avec informations de facturation incomplètes ou non vérifiées: ${incompleteClients.length}.`,
     ...incompleteClients.slice(0, 30).map((client) => `- client ${safeEntityLabel(client)} (id: ${client.id})`),
     'Règles: ne jamais inventer un client ni une donnée légale; bloquer génération/envoi si anomalie; proposer request_billing_information après confirmation si un email fiable existe.',
+    'Un projet appartenant à JS-Innov.IA peut être interne et ne doit pas être forcé vers un client.',
     '[/CONTEXTE INTÉGRITÉ COCKPIT]',
   ];
   integrityCache = { expiresAt: Date.now() + 60_000, context: lines.join('\n') };
   return integrityCache.context;
+}
+
+function needsIntegrityContext(message, mode) {
+  if (mode === 'client') return false;
+  return /factur|devis|client|rattach|projet.*client|tva|bce|l[eé]gal|entreprise/i.test(String(message || ''));
 }
 
 function rateAllowed(userId) {
@@ -115,15 +157,25 @@ function conversationIdFrom(req) {
 
 function sessionIdFor(req) {
   const conversationId = conversationIdFrom(req);
-  return conversationId === 'main' ? `cockpit:${req.user.id}` : `cockpit:${req.user.id}:${conversationId}`;
+  const mode = assistantModeFor(req.user);
+  const base = mode === 'client'
+    ? `cockpit:client:${cleanTenant(req.user?.organisation) || 'unknown'}:${req.user.id}`
+    : `cockpit:${req.user.id}`;
+  return conversationId === 'main' ? base : `${base}:${conversationId}`;
 }
 
 async function logAction(user, action, status, details = '') {
   try {
-    await agentFetch('/data/LogAction', { method: 'POST', body: JSON.stringify({
-      action, module: 'assistant_personnel', statut: status, effectue_par: user.email,
-      details: String(details).slice(0, 500)
-    }) });
+    await agentFetch('/data/LogAction', {
+      method: 'POST',
+      body: JSON.stringify({
+        action,
+        module: assistantModeFor(user) === 'client' ? 'assistant_client' : 'assistant_personnel',
+        statut: status,
+        effectue_par: user.email,
+        details: String(details).slice(0, 500),
+      }),
+    });
   } catch (error) {
     console.warn('[assistant] audit log failed:', error.message);
   }
@@ -135,7 +187,7 @@ function sanitizeLines(lines) {
     description: String(line?.description || '').slice(0, 500),
     quantite: Number(line?.quantite) || 0,
     prix_unitaire: Number(line?.prix_unitaire) || 0,
-    total: Number(line?.total) || 0
+    total: Number(line?.total) || 0,
   })).filter((line) => line.description);
 }
 
@@ -148,6 +200,7 @@ function sanitizeAction(raw, user) {
   const definition = ALLOWED_ACTIONS[raw.type];
   if (!definition || !definition.roles.includes(user.role)) return null;
   if (definition.requiresId && !/^[a-zA-Z0-9_-]{1,100}$/.test(String(raw.id || ''))) return null;
+
   const payload = { ...(definition.fixed || {}) };
   for (const field of definition.fields) {
     const value = raw.payload?.[field];
@@ -159,30 +212,61 @@ function sanitizeAction(raw, user) {
     }
   }
 
+  if (raw.type === 'create_client_request') {
+    const tenant = cleanTenant(user.organisation);
+    if (!tenant || !payload.titre || !payload.contenu) return null;
+    payload.organisation_id = tenant;
+    payload.client_nom = String(user.full_name || user.organisation || 'Client').slice(0, 160);
+    payload.client_email = String(user.email || '').slice(0, 200);
+    payload.priorite = ['basse', 'moyenne', 'haute', 'urgente'].includes(payload.priorite) ? payload.priorite : 'moyenne';
+  }
+
   if (raw.type === 'create_task') payload.statut = 'a_faire';
   if (raw.type === 'update_task_status' && !['a_faire', 'en_cours', 'terminee', 'bloquee'].includes(payload.statut)) return null;
+
   if (['create_project', 'update_project'].includes(raw.type)) {
     if (payload.statut && !['en_attente', 'en_cours', 'termine', 'annule'].includes(payload.statut)) return null;
     if (payload.priorite && !['basse', 'moyenne', 'haute', 'urgente'].includes(payload.priorite)) return null;
     if (payload.progression !== undefined && (payload.progression < 0 || payload.progression > 100)) return null;
+    if (!payload.client_id && user.role === 'superadmin') payload.organisation_id = cleanTenant(user.organisation) || 'jsinnovia';
   }
+
   if (['create_client', 'update_client'].includes(raw.type)) {
     if (payload.email && !validEmail(payload.email)) return null;
     if (payload.type_client && !['particulier', 'professionnel', 'entreprise', 'asbl'].includes(payload.type_client)) return null;
     if (payload.facturation_statut && !['a_verifier', 'informations_demandees', 'verifie'].includes(payload.facturation_statut)) return null;
     if (payload.statut && !['actif', 'inactif', 'prospect'].includes(payload.statut)) return null;
   }
+
   if (['create_quote', 'update_quote'].includes(raw.type) && payload.statut && !['brouillon', 'envoye', 'accepte', 'refuse', 'expire'].includes(payload.statut)) return null;
   if (['create_invoice', 'update_invoice'].includes(raw.type) && payload.statut && !['brouillon', 'envoyee', 'payee', 'en_retard', 'annulee'].includes(payload.statut)) return null;
-  if (['create_project', 'create_quote', 'create_invoice'].includes(raw.type) && !payload.client_id) return null;
+  if (['create_quote', 'create_invoice'].includes(raw.type) && !payload.client_id) return null;
+  if (raw.type === 'create_project' && !payload.client_id && user.role !== 'superadmin') return null;
+
   if (raw.type === 'send_email') {
     if (!validEmail(payload.to) || !payload.subject || !payload.text) return null;
     if (payload.mailbox && !['contact', 'julien'].includes(payload.mailbox)) return null;
     payload.mailbox = payload.mailbox || 'julien';
   }
   if (raw.type === 'set_auto_publish') payload.value = payload.value === true || payload.value === 'true' ? 'true' : 'false';
-  return { type: raw.type, id: raw.id, payload, definition };
+
+  return {
+    type: raw.type,
+    id: raw.id,
+    payload,
+    definition,
+    tenant: definition.tenantScoped ? cleanTenant(user.organisation) : null,
+  };
 }
+
+router.get('/profile', async (req, res) => {
+  try {
+    const audience = await buildAdaptiveAudienceContext(req.user);
+    res.json({ assistant_mode: audience.mode, display: audience.display });
+  } catch (error) {
+    res.status(502).json({ error: 'Profil Companion momentanément indisponible' });
+  }
+});
 
 router.get('/history', async (req, res) => {
   try {
@@ -204,7 +288,10 @@ router.post('/history/append', async (req, res) => {
   if (!messages.length) return res.status(400).json({ error: 'Messages requis' });
   try {
     const sessionId = sessionIdFor(req);
-    const response = await agentFetch(`/chat/session/${encodeURIComponent(sessionId)}/messages`, { method: 'POST', body: JSON.stringify({ messages }) });
+    const response = await agentFetch(`/chat/session/${encodeURIComponent(sessionId)}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ messages }),
+    });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `Agent ${response.status}`);
     res.status(201).json({ success: true, saved: data.saved || messages.length });
@@ -225,6 +312,27 @@ router.delete('/history', async (req, res) => {
   }
 });
 
+router.get('/memory/status', async (req, res) => {
+  if (req.user?.role !== 'superadmin') return res.status(403).json({ error: 'Réservé au superadministrateur' });
+  try {
+    res.json({ success: true, ...getMemoryStatus() });
+  } catch (error) {
+    res.status(502).json({ error: 'État mémoire indisponible' });
+  }
+});
+
+router.get('/memory/search', async (req, res) => {
+  if (req.user?.role !== 'superadmin') return res.status(403).json({ error: 'Réservé au superadministrateur' });
+  const query = String(req.query?.q || '').trim().slice(0, 500);
+  if (!query) return res.status(400).json({ error: 'Recherche requise' });
+  try {
+    const result = await searchHistoricalMemory(query, Math.min(10, Number(req.query?.limit) || 6));
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(502).json({ error: 'Recherche mémoire indisponible' });
+  }
+});
+
 router.post('/chat', async (req, res) => {
   const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 4000) : '';
   if (!message) return res.status(400).json({ error: 'Message requis' });
@@ -232,35 +340,76 @@ router.post('/chat', async (req, res) => {
 
   const sessionId = sessionIdFor(req);
   try {
-    // === Enrichissement contexte Dropbox ===
-    let dropboxContext = '';
-    try {
-      dropboxContext = await buildDropboxContext(message);
-    } catch (e) { console.warn('[assistant] Dropbox context failed:', e.message); }
-    let integrityContext = '';
-    try {
-      integrityContext = await buildIntegrityContext();
-    } catch (e) {
-      console.warn('[assistant] integrity context failed:', e.message);
+    const audience = await buildAdaptiveAudienceContext(req.user);
+    const contextBlocks = [audience.context].filter(Boolean);
+
+    if (audience.mode === 'owner') {
+      try {
+        const historicalContext = await buildHistoricalMemoryContext(message, req.user);
+        if (historicalContext) contextBlocks.push(historicalContext);
+      } catch (error) {
+        console.warn('[assistant] historical memory context failed:', error.message);
+      }
     }
-    const enrichedMessage = message + (dropboxContext || '') + (integrityContext || '');
-    const response = await agentFetch('/chat', { method: 'POST', body: JSON.stringify({
-      message: enrichedMessage,
-      session_id: sessionId,
-      user_context: { id: req.user.id, role: req.user.role, organisation: req.user.organisation },
-      security: { assistant: 'personal', require_confirmation_for_actions: true },
-      action_protocol: { proposed_action: { type: 'one available action', id: 'required for updates/sends', payload: {} }, action_summary: 'French confirmation summary' },
-      available_actions: Object.keys(ALLOWED_ACTIONS).filter((name) => ALLOWED_ACTIONS[name].roles.includes(req.user.role))
-    }) });
+
+    if (audience.mode !== 'client') {
+      try {
+        const dropboxContext = await buildDropboxContext(message);
+        if (dropboxContext) contextBlocks.push(dropboxContext);
+      } catch (error) {
+        console.warn('[assistant] Dropbox context failed:', error.message);
+      }
+
+      if (needsIntegrityContext(message, audience.mode)) {
+        try {
+          const integrityContext = await buildIntegrityContext();
+          if (integrityContext) contextBlocks.push(integrityContext);
+        } catch (error) {
+          console.warn('[assistant] integrity context failed:', error.message);
+        }
+      }
+    }
+
+    const response = await agentFetch('/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        message,
+        server_context: contextBlocks.join('\n\n'),
+        session_id: sessionId,
+        assistant_mode: audience.mode,
+        user_context: {
+          id: req.user.id,
+          full_name: req.user.full_name,
+          role: req.user.role,
+          organisation: req.user.organisation,
+        },
+        security: { assistant: audience.mode, require_confirmation_for_actions: true },
+        action_protocol: {
+          proposed_action: { type: 'one available action', id: 'required for updates/sends', payload: {} },
+          action_summary: 'French confirmation summary',
+          immutable_after_proposal: true,
+        },
+        available_actions: availableActionsFor(req.user),
+      }),
+    });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || `Agent ${response.status}`);
 
     if (data.usage || data.cost_usd !== undefined) {
       recordUsage({
-        usage: data.usage || {}, model: data.model_used || data.model || data.usage?.model,
-        cost_usd: data.cost_usd, request_id: data.request_id || data.id,
-        processing_mode: data.processing_mode || 'standard', source: 'cockpit-assistant',
-        metadata: { upstream: 'jsinnovia-agent', endpoint: '/chat', conversation_id: conversationIdFrom(req) },
+        usage: data.usage || {},
+        model: data.model_used || data.model || data.usage?.model,
+        cost_usd: data.cost_usd,
+        request_id: data.request_id || data.id,
+        processing_mode: data.processing_mode || 'standard',
+        source: 'cockpit-assistant',
+        metadata: {
+          upstream: 'jsinnovia-agent',
+          endpoint: '/chat',
+          conversation_id: conversationIdFrom(req),
+          assistant_mode: audience.mode,
+          organisation: req.user.organisation || null,
+        },
       }, req.user.email).catch((error) => console.warn('[assistant] AI cost logging failed:', error.message));
     }
 
@@ -268,11 +417,36 @@ router.post('/chat', async (req, res) => {
     let confirmation = null;
     if (action) {
       const token = crypto.randomBytes(24).toString('hex');
-      pending.set(token, { action, userId: req.user.id, expiresAt: Date.now() + 5 * 60_000 });
-      confirmation = { token, type: action.type, summary: String(data.action_summary || `Confirmer l’action ${action.type}`).slice(0, 300), expires_in: 300 };
+      const summary = String(data.action_summary || `Confirmer l’action ${action.type}`).slice(0, 300);
+      pending.set(token, {
+        action,
+        summary,
+        userId: req.user.id,
+        expiresAt: Date.now() + 5 * 60_000,
+      });
+      confirmation = {
+        token,
+        type: action.type,
+        summary,
+        expires_in: 300,
+      };
     }
-    await logAction(req.user, 'conversation assistant', 'succes', action ? `Action proposée: ${action.type}` : `Réponse sans action (${conversationIdFrom(req)})`);
-    res.json({ message: data.response || data.reply || data.message || 'Réponse vide', confirmation, conversation_id: conversationIdFrom(req), model_used: data.model_used || data.model });
+
+    await logAction(
+      req.user,
+      'conversation assistant',
+      'succes',
+      action ? `Action proposée: ${action.type}` : `Réponse sans action (${conversationIdFrom(req)})`,
+    );
+
+    res.json({
+      message: data.response || data.reply || data.message || 'Réponse vide',
+      confirmation,
+      conversation_id: conversationIdFrom(req),
+      model_used: data.model_used || data.model,
+      assistant_mode: audience.mode,
+      display: audience.display,
+    });
   } catch (error) {
     await logAction(req.user, 'conversation assistant', 'erreur', error.message);
     res.status(502).json({ error: 'Assistant momentanément indisponible' });
@@ -283,23 +457,53 @@ router.post('/confirm', async (req, res) => {
   const token = String(req.body?.token || '');
   const item = pending.get(token);
   pending.delete(token);
-  if (!item || item.userId !== req.user.id || item.expiresAt < Date.now()) return res.status(400).json({ error: 'Confirmation invalide ou expirée' });
+  if (!item || item.userId !== req.user.id || item.expiresAt < Date.now()) {
+    return res.status(400).json({ error: 'Confirmation invalide ou expirée' });
+  }
 
-  const { action } = item;
+  const { action, summary } = item;
   if (action.definition.clientAction) {
     const completionToken = crypto.randomBytes(24).toString('hex');
-    pendingCompletions.set(completionToken, { userId: req.user.id, actionType: action.type, expiresAt: Date.now() + 2 * 60_000 });
+    pendingCompletions.set(completionToken, {
+      userId: req.user.id,
+      actionType: action.type,
+      summary,
+      expiresAt: Date.now() + 2 * 60_000,
+    });
     await logAction(req.user, `action assistant autorisée: ${action.type}`, 'succes', 'En attente d’exécution par la route sécurisée');
-    return res.json({ success: true, client_action: { method: 'POST', url: action.definition.clientAction.replace(':id', action.id || ''), body: action.payload }, completion_token: completionToken });
+    return res.json({
+      success: true,
+      action_type: action.type,
+      action_summary: summary,
+      client_action: {
+        method: 'POST',
+        url: action.definition.clientAction.replace(':id', action.id || ''),
+        body: action.payload,
+      },
+      completion_token: completionToken,
+    });
   }
 
   const path = `/data/${action.definition.table}${action.definition.requiresId ? `/${action.id}` : ''}`;
   try {
-    const response = await agentFetch(path, { method: action.definition.method, body: JSON.stringify(action.payload), headers: { 'idempotency-key': token } });
+    const response = await agentFetch(path, {
+      method: action.definition.method,
+      body: JSON.stringify(action.payload),
+      headers: {
+        'idempotency-key': token,
+        ...(action.tenant ? { 'x-organisation-id': action.tenant } : {}),
+      },
+    });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `Agent ${response.status}`);
     await logAction(req.user, `action assistant: ${action.type}`, 'succes', `Cible: ${action.id || action.definition.table}`);
-    res.json({ success: true, result: data });
+    res.json({
+      success: true,
+      action_type: action.type,
+      action_summary: summary,
+      execution: { target: action.id || action.definition.table },
+      result: data,
+    });
   } catch (error) {
     await logAction(req.user, `action assistant: ${action.type}`, 'erreur', error.message);
     res.status(502).json({ error: 'Action non exécutée' });
@@ -310,40 +514,41 @@ router.post('/complete', async (req, res) => {
   const token = String(req.body?.token || '');
   const item = pendingCompletions.get(token);
   pendingCompletions.delete(token);
-  if (!item || item.userId !== req.user.id || item.expiresAt < Date.now()) return res.status(400).json({ error: 'Compte rendu invalide ou expiré' });
+  if (!item || item.userId !== req.user.id || item.expiresAt < Date.now()) {
+    return res.status(400).json({ error: 'Compte rendu invalide ou expiré' });
+  }
   const success = req.body?.success === true;
   await logAction(req.user, `action assistant: ${item.actionType}`, success ? 'succes' : 'erreur', String(req.body?.details || '').slice(0, 500));
-  res.json({ success: true });
+  res.json({ success: true, action_type: item.actionType, action_summary: item.summary });
 });
 
-
-// === Upload de document → classification IA → Dropbox ===
 router.post('/upload', async (req, res) => {
+  if (req.user?.role === 'client') {
+    return res.status(403).json({ error: 'Le dépôt documentaire interne n’est pas accessible depuis un espace client.' });
+  }
+
   try {
     const fileName = String(req.body?.fileName || '').trim().slice(0, 200);
     const mimeType = String(req.body?.mimeType || 'application/octet-stream').slice(0, 100);
-    const fileData = req.body?.fileData; // base64 string
-    const message = String(req.body?.message || '').slice(0, 500); // optional context
+    const fileData = req.body?.fileData;
+    const message = String(req.body?.message || '').slice(0, 500);
 
     if (!fileName || !fileData) {
       return res.status(400).json({ error: 'fileName et fileData (base64) requis' });
     }
 
-    // Decode base64 → buffer (max 20MB)
     const buffer = Buffer.from(fileData, 'base64');
     if (buffer.length > 20 * 1024 * 1024) {
       return res.status(413).json({ error: 'Fichier trop volumineux (max 20 Mo)' });
     }
 
-    // Fetch clients from CRM for matching
     let clients = [];
     try {
       clients = await fetchTableRows('Client');
-    } catch (e) {
-      console.warn('[assistant] Client fetch failed:', e.message);
+    } catch (error) {
+      console.warn('[assistant] Client fetch failed:', error.message);
     }
 
-    // Extract text from the file for better classification
     let extractedText = '';
     let pdfInfo = {};
     if (mimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf')) {
@@ -354,27 +559,28 @@ router.post('/upload', async (req, res) => {
       extractedText = extractTextFromBuffer(buffer, mimeType);
     }
 
-    // Classify the document (with extracted text for better matching)
-    const classification = await classifyDocument(fileName, mimeType, buffer.length, clients, message + (extractedText ? '\n[Contenu extrait]: ' + extractedText.slice(0, 2000) : ''));
+    const classification = await classifyDocument(
+      fileName,
+      mimeType,
+      buffer.length,
+      clients,
+      message + (extractedText ? `\n[Contenu extrait]: ${extractedText.slice(0, 2000)}` : ''),
+    );
 
-    // Ensure the target folder exists
     const rootPath = process.env.DROPBOX_ROOT_PATH || '/Cockpit';
-    if (classification.folderPath && classification.folderPath !== rootPath + '/A_Classer') {
+    if (classification.folderPath && classification.folderPath !== `${rootPath}/A_Classer`) {
       await ensureFolder(classification.folderPath);
     } else {
-      await ensureFolder(rootPath + '/A_Classer');
+      await ensureFolder(`${rootPath}/A_Classer`);
     }
 
-    // Upload the file to Dropbox
     const uploadResult = await uploadFile(classification.suggestedPath, buffer);
-
     if (uploadResult.error) {
-      await logAction(req.user, 'upload document', 'erreur', 'Dropbox: ' + uploadResult.error);
-      return res.status(502).json({ error: 'Upload Dropbox échoué: ' + uploadResult.error });
+      await logAction(req.user, 'upload document', 'erreur', `Dropbox: ${uploadResult.error}`);
+      return res.status(502).json({ error: `Upload Dropbox échoué: ${uploadResult.error}` });
     }
 
-    await logAction(req.user, 'upload document', 'succes', fileName + ' → ' + classification.suggestedPath);
-
+    await logAction(req.user, 'upload document', 'succes', `${fileName} → ${classification.suggestedPath}`);
     res.json({
       success: true,
       fileName,
@@ -388,7 +594,7 @@ router.post('/upload', async (req, res) => {
         extractedText: extractedText.slice(0, 500),
         pdfPages: pdfInfo.pages || 0,
       },
-      message: 'Document "' + fileName + '" classé et sauvegardé dans Dropbox: ' + classification.folderPath,
+      message: `Document "${fileName}" classé et sauvegardé dans Dropbox: ${classification.folderPath}`,
     });
   } catch (error) {
     console.error('[assistant] Upload error:', error.message);
@@ -396,6 +602,5 @@ router.post('/upload', async (req, res) => {
     res.status(500).json({ error: 'Erreur lors du traitement du document' });
   }
 });
-
 
 module.exports = router;
