@@ -1,0 +1,156 @@
+name: Pixelium release recovery
+
+on:
+  push:
+    branches:
+      - feature/olivier-signage-pilot-release
+    paths:
+      - '.github/workflows/pixelium-release-recovery.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_CERT: 8fed74014024629caa1d253264e894e627dc1b96ce1add75d4ee8dad87f89cf9
+      APK_NAME: Pixelium-Player-Olivier-0.5.0-pilot.apk
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mark recovery pending
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          curl --fail-with-body --silent --show-error --retry 3 \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -d '{"state":"pending","context":"Pixelium release recovery","description":"Validating signing key and building release","target_url":"'"${RUN_URL}"'"}'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Validate repository signing secrets and keystore
+        shell: bash
+        env:
+          PIXELIUM_KEYSTORE_B64: ${{ secrets.PIXELIUM_KEYSTORE_B64 }}
+          PIXELIUM_KEYSTORE_PASSWORD: ${{ secrets.PIXELIUM_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$PIXELIUM_KEYSTORE_B64"
+          test -n "$PIXELIUM_KEYSTORE_PASSWORD"
+          printf '%s' "$PIXELIUM_KEYSTORE_B64" | tr -d '\r\n ' | base64 --decode > "$RUNNER_TEMP/pixelium-release.jks"
+          chmod 600 "$RUNNER_TEMP/pixelium-release.jks"
+          keytool -list -keystore "$RUNNER_TEMP/pixelium-release.jks" \
+            -storepass "$PIXELIUM_KEYSTORE_PASSWORD" \
+            -alias pixelium-release >/dev/null
+
+      - name: Build signed release APK
+        env:
+          PIXELIUM_KEYSTORE_PATH: ${{ runner.temp }}/pixelium-release.jks
+          PIXELIUM_KEYSTORE_PASSWORD: ${{ secrets.PIXELIUM_KEYSTORE_PASSWORD }}
+          PIXELIUM_KEY_ALIAS: pixelium-release
+          PIXELIUM_KEY_PASSWORD: ${{ secrets.PIXELIUM_KEYSTORE_PASSWORD }}
+        run: gradle -p player-android :app:assembleRelease --no-daemon
+
+      - name: Verify signed release certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          APK="player-android/app/build/outputs/apk/release/app-release.apk"
+          test -n "$APKSIGNER"
+          test -f "$APK"
+          "$APKSIGNER" verify --print-certs "$APK" | tee release-apk-cert.txt
+          CERT="$(sed -n 's/^.*certificate SHA-256 digest: //p' release-apk-cert.txt | head -1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          test "$CERT" = "$EXPECTED_CERT"
+          echo "release_sha256=$CERT" > release-signature.txt
+
+      - name: Stage signed Player and metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="player-android/app/build/outputs/apk/release/app-release.apk"
+          DEST="assets/${APK_NAME}"
+          cp "$SRC" "$DEST"
+          APK_SHA="$(sha256sum "$DEST" | awk '{print $1}')"
+          cat > assets/pixelium-player-release.json <<EOF
+          {
+            "version": "0.5.0-pilot",
+            "certificateSha256": "8F:ED:74:01:40:24:62:9C:AA:1D:25:32:64:E8:94:E6:27:DC:1B:96:CE:1A:DD:75:D4:EE:8D:AD:87:F8:9C:F9",
+            "apkSha256": "${APK_SHA}",
+            "sourceCommit": "${GITHUB_SHA}"
+          }
+          EOF
+          echo "apk_sha256=${APK_SHA}" > release-apk-sha256.txt
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixelium-player-0.5.0-pilot-release-recovery
+          path: |
+            assets/Pixelium-Player-Olivier-0.5.0-pilot.apk
+            assets/pixelium-player-release.json
+            release-apk-cert.txt
+            release-signature.txt
+            release-apk-sha256.txt
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publish signed Player to pilot branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "assets/${APK_NAME}" assets/pixelium-player-release.json
+          if git diff --cached --quiet; then
+            echo "No release file changes to publish."
+          else
+            git commit -m "release: publish signed Pixelium Player 0.5.0-pilot [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Mark recovery successful
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          curl --fail-with-body --silent --show-error --retry 3 \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -d '{"state":"success","context":"Pixelium release recovery","description":"Signed Player verified and published","target_url":"'"${RUN_URL}"'"}'
+
+      - name: Mark recovery failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          curl --silent --show-error --retry 3 \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -d '{"state":"failure","context":"Pixelium release recovery","description":"Recovery build failed; inspect run logs","target_url":"'"${RUN_URL}"'"}' || true
