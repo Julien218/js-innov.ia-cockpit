@@ -12,7 +12,7 @@ import java.util.Locale;
 import java.util.TimeZone;
 
 public class ScheduledMainActivity extends MainActivity {
-  static final String SCHEDULED_APP_VERSION = "0.5.0-pilot";
+  static final String SCHEDULED_APP_VERSION = "0.5.1-pilot";
   static final String PREF_ADS_BLOCKED = "adsBlocked";
   static final String PREF_BLOCK_REASON = "adsBlockReason";
   static final String PREF_NEXT_CHANGE_AT = "adsNextChangeAt";
@@ -53,12 +53,15 @@ public class ScheduledMainActivity extends MainActivity {
           .put("displayTelemetryVersion", 1)
           .put("device", DisplayTelemetry.device())
           .put("display", DisplayTelemetry.display(this))
-          .put("playback", playbackTelemetry());
+          .put("playback", playbackTelemetry())
+          .put("updater", PlayerUpdateManager.telemetry(this));
         JSONObject request = new JSONObject()
           .put("appVersion", SCHEDULED_APP_VERSION)
           .put("diagnostics", diagnostics);
 
         JSONObject response = jsonRequest(server + "/api/signage/player/heartbeat", "POST", request);
+        PlayerUpdateManager.checkForUpdate(this, server, SCHEDULED_APP_VERSION);
+
         boolean allowed = response.optBoolean("adsAllowed", true);
         String reason = response.optString("reason", allowed ? "allowed" : "blocked");
         String nextChangeAt = response.optString("nextChangeAt", "");
