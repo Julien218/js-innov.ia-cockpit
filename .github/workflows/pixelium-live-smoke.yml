@@ -28,32 +28,42 @@ jobs:
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -d '{"state":"pending","context":"Pixelium live smoke","description":"Checking live Player download endpoints","target_url":"'"${RUN_URL}"'"}'
+            -d '{"state":"pending","context":"Pixelium live smoke","description":"Checking live Player short URL","target_url":"'"${RUN_URL}"'"}'
 
       - name: Check live Player endpoints
         shell: bash
         run: |
           set -u
-          BASE='https://olivier-signage-cockpit-production.up.railway.app'
-          for PATHNAME in /player /player.apk /api/player-download/status /api/player-download/android; do
-            echo "===== ${PATHNAME} ====="
-            rm -f /tmp/headers /tmp/body
-            curl -sS -L --max-time 30 \
-              -D /tmp/headers \
-              -o /tmp/body \
-              -w 'http=%{http_code}\nurl=%{url_effective}\ncontent_type=%{content_type}\nsize=%{size_download}\n' \
-              "${BASE}${PATHNAME}" || true
-            echo '--- headers ---'
-            grep -Ei '^(HTTP/|location:|content-type:|content-disposition:|x-pixelium-player-version:|x-pixelium-release:|content-length:)' /tmp/headers || true
-            echo '--- body probe ---'
-            if [ -s /tmp/body ]; then
+          for BASE in 'https://olivier-signage-cockpit-production.up.railway.app' 'https://cockpit.jsinnovia.com'; do
+            for PATHNAME in /p /player /player.apk /api/player-download/status; do
+              echo "===== ${BASE}${PATHNAME} ====="
+              rm -f /tmp/headers /tmp/body
+              curl -sS -L --max-time 30 \
+                -D /tmp/headers \
+                -o /tmp/body \
+                -w 'http=%{http_code}\nurl=%{url_effective}\ncontent_type=%{content_type}\nsize=%{size_download}\n' \
+                "${BASE}${PATHNAME}" || true
+              echo '--- headers ---'
+              grep -Ei '^(HTTP/|location:|content-type:|content-disposition:|x-pixelium-player-version:|x-pixelium-release:|content-length:)' /tmp/headers || true
+              echo '--- file ---'
               file /tmp/body || true
-              head -c 200 /tmp/body | xxd -g 1 || true
-            else
-              echo '<empty body>'
-            fi
-            echo
+              echo
+            done
           done
+
+      - name: Assert Railway ultra-short URL serves signed 0.5 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://olivier-signage-cockpit-production.up.railway.app/p'
+          rm -f /tmp/p.headers /tmp/p.apk
+          CODE="$(curl -sS --max-time 30 -D /tmp/p.headers -o /tmp/p.apk -w '%{http_code}' "$URL")"
+          test "$CODE" = '200'
+          grep -qi '^content-type: application/vnd.android.package-archive' /tmp/p.headers
+          grep -qi '^content-disposition: attachment; filename="Pixelium-Player-Olivier-0.5.0-pilot.apk"' /tmp/p.headers
+          grep -qi '^x-pixelium-player-version: 0.5.0-pilot' /tmp/p.headers
+          grep -qi '^x-pixelium-release: signed-release' /tmp/p.headers
+          file /tmp/p.apk | grep -q 'Android package (APK)'
 
       - name: Mark live smoke successful
         if: success()
@@ -68,4 +78,4 @@ jobs:
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -d '{"state":"success","context":"Pixelium live smoke","description":"Live endpoint probe completed","target_url":"'"${RUN_URL}"'"}'
+            -d '{"state":"success","context":"Pixelium live smoke","description":"/p serves signed Player 0.5 APK","target_url":"'"${RUN_URL}"'"}'
