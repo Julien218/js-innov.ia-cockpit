@@ -1,3 +1,4 @@
+# Railway rebuild trigger: publish signed Pixelium Player 0.5.0-pilot
 # ---- Build ----
 FROM node:20-alpine AS builder
 WORKDIR /app
