@@ -8,6 +8,7 @@ on:
       - 'server-companion-memory.cjs'
       - 'server-data-proxy.cjs'
       - 'server-dropbox-helper.cjs'
+      - 'server-tenant.cjs'
       - 'server.cjs'
       - 'Dockerfile'
       - 'src/App.jsx'
@@ -18,6 +19,8 @@ on:
       - 'src/pages/ClientDashboard.jsx'
       - 'src/pages/ClientRecords.jsx'
       - 'tests/companion-contract.test.cjs'
+      - 'tests/hainoflow-tenant.test.cjs'
+      - 'tests/billing-archive.test.cjs'
       - 'supabase/migrations/20260818122500_client_assistant_profiles.sql'
       - 'package.json'
       - 'package-lock.json'
@@ -33,7 +36,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -49,6 +52,9 @@ jobs:
           node --check server-companion-audience.cjs
           node --check server-companion-memory.cjs
           node --check server-data-proxy.cjs
+          node --check server-tenant.cjs
+      - name: Full Cockpit regression suite
+        run: npm test
       - name: Companion contract tests
         run: node --require ./tests/node-test-globals.cjs --test tests/companion-contract.test.cjs
       - name: Build web application
@@ -61,3 +67,4 @@ jobs:
           grep -q "CLIENT_VISIBLE_FIELDS" server-data-proxy.cjs
           grep -q "RoleAwareFloatingAgent" src/App.jsx
           grep -q "ClientDashboard" src/App.jsx
+          grep -q "return 'jsinnovia'" server-tenant.cjs
