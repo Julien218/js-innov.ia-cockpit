@@ -125,6 +125,8 @@ jobs:
             echo "No release file changes to publish."
           else
             git commit -m "release: publish signed Pixelium Player 0.5.1-pilot [skip ci]"
+            git fetch origin "${GITHUB_REF_NAME}"
+            git rebase "origin/${GITHUB_REF_NAME}"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
 
