@@ -52,5 +52,5 @@ jobs:
         run: |
           grep -q "audience.mode !== 'client'" server-assistant.cjs
           grep -q "user?.role !== 'superadmin'" server-companion-memory.cjs
-          grep -q "CLIENT_VISIBLE_FIELDS" ../js-innov.ia-cockpit/../js-innov.ia-cockpit/tests/../tests/companion-contract.test.cjs || true
-          grep -q "user?.role === 'client'" server-assistant.cjs
+          grep -q "create_client_request" server-assistant.cjs
+          grep -q "RoleAwareFloatingAgent" src/App.jsx
