@@ -13,6 +13,7 @@ const rolesSource = fs.readFileSync(path.join(root, 'src/lib/roles.js'), 'utf8')
 const assistantServer = fs.readFileSync(path.join(root, 'server-assistant.cjs'), 'utf8');
 const audienceServer = fs.readFileSync(path.join(root, 'server-companion-audience.cjs'), 'utf8');
 const memoryServer = fs.readFileSync(path.join(root, 'server-companion-memory.cjs'), 'utf8');
+const dataProxy = fs.readFileSync(path.join(root, 'server-data-proxy.cjs'), 'utf8');
 const mainServer = fs.readFileSync(path.join(root, 'server.cjs'), 'utf8');
 const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
 
@@ -88,6 +89,14 @@ test('le workspace client ne charge plus le dashboard ou les pages Base44 global
   assert.match(clientRecords, /\/api\/data\/\$\{table\}/);
   assert.doesNotMatch(clientDashboard, /base44/);
   assert.doesNotMatch(clientRecords, /base44/);
+});
+
+test('le proxy client supprime les colonnes internes avant réponse HTTP', () => {
+  assert.match(dataProxy, /CLIENT_VISIBLE_FIELDS/);
+  assert.match(dataProxy, /minimizeClientResponse\(table, result\.raw\)/);
+  assert.match(dataProxy, /role === 'client' && req\.method === 'GET'/);
+  const demandeFields = dataProxy.match(/Demande: new Set\(\[([^\]]+)\]\)/)?.[1] || '';
+  assert.doesNotMatch(demandeFields, /notes_internes|created_by|updated_by/);
 });
 
 test('les routes client excluent les agents internes et les demandes globales', () => {
