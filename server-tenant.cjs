@@ -1,5 +1,16 @@
 function cleanTenant(value) {
-  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').slice(0, 80);
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 80);
+
+  // Identifiant canonique unique pour la société, quelle que soit la façon
+  // dont son nom est écrit dans le profil utilisateur ou dans les anciennes données.
+  if (['jsinnovia', 'js-innovia', 'js-innov-ia'].includes(normalized)) return 'jsinnovia';
+  return normalized;
 }
 
 function resolveTenant(req) {
@@ -14,4 +25,3 @@ function resolveTenant(req) {
 }
 
 module.exports = { cleanTenant, resolveTenant };
-
