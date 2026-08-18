@@ -50,8 +50,10 @@ export const ROLE_ROUTES = {
   collaborateur: [
     "/", "/hainoflow", "/documents", "/projets", "/taches", "/demandes", "/agent", "/agents-ia"
   ],
+  // Le client ne reçoit que les vues tenant-scopées et les modules produit autorisés.
+  // Aucun accès aux agents internes, demandes globales, outils de production ou routes owner.
   client: [
-    "/", "/hainoflow", "/mes-projets", "/mes-devis", "/mes-factures", "/demandes", "/agents-ia", "/confidentialite"
+    "/", "/hainoflow", "/mes-projets", "/mes-devis", "/mes-factures", "/confidentialite"
   ],
 };
 

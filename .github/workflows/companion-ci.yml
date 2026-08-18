@@ -1,0 +1,70 @@
+name: Companion dual-audience CI
+
+on:
+  pull_request:
+    paths:
+      - 'server-assistant.cjs'
+      - 'server-companion-audience.cjs'
+      - 'server-companion-memory.cjs'
+      - 'server-data-proxy.cjs'
+      - 'server-dropbox-helper.cjs'
+      - 'server-tenant.cjs'
+      - 'server.cjs'
+      - 'Dockerfile'
+      - 'src/App.jsx'
+      - 'src/lib/roles.js'
+      - 'src/components/ClientCompanion.jsx'
+      - 'src/components/RoleAwareFloatingAgent.jsx'
+      - 'src/pages/Agent.jsx'
+      - 'src/pages/ClientDashboard.jsx'
+      - 'src/pages/ClientRecords.jsx'
+      - 'tests/companion-contract.test.cjs'
+      - 'tests/hainoflow-tenant.test.cjs'
+      - 'tests/billing-archive.test.cjs'
+      - 'supabase/migrations/20260818122500_client_assistant_profiles.sql'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/companion-ci.yml'
+  push:
+    branches:
+      - main
+      - feat/companion-dual-audience
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Check server syntax
+        run: |
+          node --check server.cjs
+          node --check server-assistant.cjs
+          node --check server-companion-audience.cjs
+          node --check server-companion-memory.cjs
+          node --check server-data-proxy.cjs
+          node --check server-tenant.cjs
+      - name: Full Cockpit regression suite
+        run: npm test
+      - name: Companion contract tests
+        run: node --require ./tests/node-test-globals.cjs --test tests/companion-contract.test.cjs
+      - name: Build web application
+        run: npm run build
+      - name: Verify client confidentiality guards
+        run: |
+          grep -q "audience.mode !== 'client'" server-assistant.cjs
+          grep -q "user?.role !== 'superadmin'" server-companion-memory.cjs
+          grep -q "create_client_request" server-assistant.cjs
+          grep -q "CLIENT_VISIBLE_FIELDS" server-data-proxy.cjs
+          grep -q "RoleAwareFloatingAgent" src/App.jsx
+          grep -q "ClientDashboard" src/App.jsx
+          grep -q "return 'jsinnovia'" server-tenant.cjs

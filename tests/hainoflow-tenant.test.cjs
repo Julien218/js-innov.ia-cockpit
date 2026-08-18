@@ -4,11 +4,14 @@ const { cleanTenant, resolveTenant } = require('../server-tenant.cjs');
 
 test('normalise un identifiant organisation', () => {
   assert.equal(cleanTenant('Olivier Trevis SRL'), 'olivier-trevis-srl');
-  assert.equal(cleanTenant('JS_Innov.IA'), 'js_innov-ia');
+  assert.equal(cleanTenant('JS-Innov.IA'), 'jsinnovia');
+  assert.equal(cleanTenant('JS_Innov.IA'), 'jsinnovia');
+  assert.equal(cleanTenant('jsinnovia'), 'jsinnovia');
 });
 
 test('utilise jsinnovia comme organisation interne par défaut', () => {
   assert.equal(resolveTenant({ user: { role: 'superadmin' }, headers: {} }), 'jsinnovia');
+  assert.equal(resolveTenant({ user: { role: 'superadmin', organisation: 'JS-Innov.IA' }, headers: {} }), 'jsinnovia');
 });
 
 test('refuse le changement d organisation hors superadmin', () => {

@@ -9,6 +9,13 @@ const ADMIN_TABLES = new Set(['LogAction', 'Validation', 'Commission']);
 const AGENT_PROXY_URL = process.env.JSINNOVIA_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_PROXY_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
 
+const CLIENT_VISIBLE_FIELDS = {
+  Projet: new Set(['id', 'nom', 'description', 'statut', 'date_debut', 'date_fin_prevue', 'progression', 'priorite', 'client_nom', 'created_at', 'updated_at']),
+  Devis: new Set(['id', 'numero', 'objet', 'client_nom', 'projet_id', 'lignes', 'montant_ht', 'tva', 'montant_ttc', 'statut', 'date_validite', 'created_at', 'updated_at']),
+  Facture: new Set(['id', 'numero', 'objet', 'client_nom', 'devis_id', 'lignes', 'montant_ht', 'tva', 'montant_ttc', 'statut', 'date_echeance', 'date_paiement', 'mode_paiement', 'created_at', 'updated_at']),
+  Demande: new Set(['id', 'titre', 'contenu', 'source', 'priorite', 'statut', 'created_at', 'updated_at']),
+};
+
 async function agentRequest(path, { method = 'GET', body, tenant } = {}) {
   if (!AGENT_PROXY_KEY) {
     const error = new Error('Clé du service jsinnovia-agent non configurée.');
@@ -27,6 +34,24 @@ async function agentRequest(path, { method = 'GET', body, tenant } = {}) {
   const contentType = response.headers.get('content-type') || 'application/json';
   const raw = await response.text();
   return { response, contentType, raw };
+}
+
+function publicClientRecord(table, record) {
+  const allowed = CLIENT_VISIBLE_FIELDS[table];
+  if (!allowed || !record || typeof record !== 'object' || Array.isArray(record)) return null;
+  return Object.fromEntries(Object.entries(record).filter(([key]) => allowed.has(key)));
+}
+
+function minimizeClientResponse(table, raw) {
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+  if (Array.isArray(data)) return JSON.stringify(data.map((row) => publicClientRecord(table, row)).filter(Boolean));
+  if (data && typeof data === 'object' && !data.error) return JSON.stringify(publicClientRecord(table, data) || {});
+  return raw;
 }
 
 router.use(async (req, res) => {
@@ -66,7 +91,11 @@ router.use(async (req, res) => {
       tenant,
     });
     if (result.response.status === 204 || !result.raw) return res.status(result.response.status).end();
-    return res.status(result.response.status).set('Content-Type', result.contentType).send(result.raw);
+
+    const body = role === 'client' && req.method === 'GET' && result.response.ok
+      ? minimizeClientResponse(table, result.raw)
+      : result.raw;
+    return res.status(result.response.status).set('Content-Type', result.contentType).send(body);
   } catch (error) {
     console.error('[HainoFlow data proxy]', error.message);
     return res.status(error.status || 502).json({ error: error.message });
