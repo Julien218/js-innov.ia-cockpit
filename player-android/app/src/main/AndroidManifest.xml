@@ -2,6 +2,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <application android:theme="@style/AppTheme" android:label="Pixelium Player" android:usesCleartextTraffic="false">
         <activity
             android:name=".ScheduledMainActivity"
@@ -22,5 +24,9 @@
                 <action android:name="android.intent.action.USER_UNLOCKED" />
             </intent-filter>
         </receiver>
+        <receiver
+            android:name=".UpdateInstallReceiver"
+            android:enabled="true"
+            android:exported="false" />
     </application>
 </manifest>
