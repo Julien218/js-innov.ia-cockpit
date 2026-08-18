@@ -1,0 +1,2 @@
+Manual staging release trigger for explicit Pixelium Dropbox target guard.
+Target: feature/olivier-signage-pilot-release only.
