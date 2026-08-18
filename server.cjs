@@ -6,8 +6,7 @@ const app = express();
 const PORT = process.env.API_PORT || 3001;
 const { requireSession, requireSameOrigin, ROLE_LEVEL } = require('./server-security.cjs');
 
-// Trust proxy — nécessaire pour détecter HTTPS (X-Forwarded-Proto) et l'IP réelle (X-Real-IP)
-// nginx reverse proxy est le premier hop
+// Trust proxy — nécessaire pour détecter HTTPS (X-Forwarded-Proto) et l'IP réelle
 app.set('trust proxy', 1);
 
 app.use(express.json({ limit: '25mb' }));
@@ -27,8 +26,6 @@ try {
   const emailRouter = require('./server-email.cjs');
   const emailSessionGuard = requireSession('admin');
   app.use('/api/emails', (req, res, next) => {
-    // HainoFlow utilise sa clé serveur dédiée sur cette unique route.
-    // Toutes les autres routes email restent protégées par la session admin.
     if (req.path === '/official') return next();
     return emailSessionGuard(req, res, next);
   }, emailRouter);
@@ -94,7 +91,6 @@ try {
 }
 
 // ── AI Cost Control ─────────────────────────────────────────
-// Lecture/configuration : session admin. Ingestion inter-services : clé serveur dédiée.
 try {
   const { router: aiCostRouter } = require('./server-ai-cost.cjs');
   app.use('/api/ai-cost', aiCostRouter);
@@ -103,12 +99,15 @@ try {
   console.warn('⚠️ Route AI Cost Control indisponible:', e.message);
 }
 
+// ── Companion adaptatif : owner / équipe / client ──────────
 try {
   const assistantRouter = require('./server-assistant.cjs');
-  app.use('/api/assistant', requireSession('collaborateur'), assistantRouter);
-  console.log('Assistant personnel sécurisé activé');
+  // La route accepte les clients, mais server-assistant.cjs impose ensuite
+  // la politique et les outils correspondant au rôle de la session.
+  app.use('/api/assistant', requireSession('client'), assistantRouter);
+  console.log('✅ Companion adaptatif activé (owner/staff/client cloisonnés)');
 } catch (e) {
-  console.warn('Route assistant indisponible:', e.message);
+  console.warn('⚠️ Route assistant indisponible:', e.message);
 }
 
 // ── Email Core Framework (queue + send + API) ──────────────
@@ -129,7 +128,6 @@ try {
   console.warn('⚠️ Route governance indisponible:', e.message);
 }
 
-// Health check API
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cockpit-api' }));
 
 app.listen(PORT, () => {
