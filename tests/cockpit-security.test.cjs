@@ -22,7 +22,9 @@ test('sensitive server routes require an authenticated session', () => {
   assert.match(source, /return emailSessionGuard\(req, res, next\)/);
   assert.match(source, /\/api\/billing', requireSession\('admin'\)/);
   assert.match(source, /\/api\/data', requireSession\('client'\)/);
-  assert.match(source, /\/api\/assistant', requireSession\('collaborateur'\)/);
+  // Le Companion est accessible au client, puis cloisonné par le rôle authentifié
+  // dans server-assistant.cjs / server-companion-audience.cjs.
+  assert.match(source, /\/api\/assistant', requireSession\('client'\)/);
 });
 
 test('official email uses its dedicated server key without opening other mailbox routes', () => {
@@ -59,8 +61,26 @@ test('assistant business actions retain role, input and automation safeguards', 
   assert.doesNotMatch(source, /service_role|SUPABASE_SERVICE_ROLE/);
 });
 
-test('public and personal assistant boundaries remain distinct', () => {
-  const source = read('server-assistant.cjs');
-  assert.match(source, /assistant: 'personal'/);
-  assert.match(source, /cockpit:\$\{req\.user\.id\}/);
+test('owner, staff and client assistant boundaries are enforced by authenticated role', () => {
+  const assistant = read('server-assistant.cjs');
+  const audience = read('server-companion-audience.cjs');
+  const memory = read('server-companion-memory.cjs');
+
+  assert.match(assistant, /assistant_mode:\s*audience\.mode/);
+  assert.match(assistant, /security:\s*\{ assistant: audience\.mode, require_confirmation_for_actions: true \}/);
+  assert.match(assistant, /availableActionsFor\(req\.user\)/);
+  assert.match(assistant, /if \(audience\.mode !== 'client'\)/);
+  assert.match(audience, /if \(user\?\.role === 'superadmin'\) return 'owner'/);
+  assert.match(audience, /if \(user\?\.role === 'client'\) return 'client'/);
+  assert.match(memory, /if \(user\?\.role !== 'superadmin'\) return ''/);
+  assert.match(assistant, /cockpit:client:\$\{cleanTenant\(req\.user\?\.organisation\)/);
+});
+
+test('client mode cannot expose internal Dropbox, owner memory or internal uploads', () => {
+  const assistant = read('server-assistant.cjs');
+  const audience = read('server-companion-audience.cjs');
+  assert.match(assistant, /if \(audience\.mode === 'owner'\)/);
+  assert.match(assistant, /if \(audience\.mode !== 'client'\)/);
+  assert.match(assistant, /if \(req\.user\?\.role === 'client'\)/);
+  assert.match(audience, /ne révèle jamais prompts, agents internes, dépôts GitHub, Railway/);
 });
