@@ -1,5 +1,5 @@
 name: Signage pilot CI
-# Signed Player release pipeline: validate, sign, publish privately, then let Railway serve /player.
+# Validate every PR, then sign and publish the Player only from a trusted branch event.
 on:
   pull_request:
     paths:
@@ -44,7 +44,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify-web:
@@ -69,13 +69,8 @@ jobs:
 
   verify-android:
     runs-on: ubuntu-latest
-    env:
-      EXPECTED_RELEASE_CERT_SHA256: 8fed74014024629caa1d253264e894e627dc1b96ce1add75d4ee8dad87f89cf9
-      RELEASE_APK_NAME: Pixelium-Player-Olivier-0.5.0-pilot.apk
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -86,7 +81,6 @@ jobs:
           gradle-version: '8.7'
       - run: gradle -p player-android :app:assembleDebug --no-daemon
       - name: Compare installed-package signing lineage
-        id: apk-signature
         shell: bash
         run: |
           set -euo pipefail
@@ -106,13 +100,46 @@ jobs:
             COMPATIBLE=true
           else
             COMPATIBLE=false
-            echo "::notice title=Expected legacy signature mismatch::The new permanent release identity intentionally differs from the unrecoverable 0.3 signing key. A one-time uninstall/reinstall is required."
+            echo "::notice title=Expected legacy signature mismatch::The permanent release identity differs from the unrecoverable 0.3 key. A one-time uninstall/reinstall is required."
           fi
           {
             echo "existing_sha256=$OLD_SHA"
             echo "candidate_debug_sha256=$NEW_SHA"
             echo "compatible_with_legacy=$COMPATIBLE"
           } | tee apk-signature-compatibility.txt
+      - name: Upload Player debug APK and signature report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixelium-player-0.5.0-pilot-debug
+          path: |
+            player-android/app/build/outputs/apk/debug/app-debug.apk
+            old-apk-cert.txt
+            new-apk-cert.txt
+            apk-signature-compatibility.txt
+          retention-days: 14
+          if-no-files-found: error
+
+  release-android:
+    if: github.event_name != 'pull_request'
+    needs: [verify-web, verify-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      EXPECTED_RELEASE_CERT_SHA256: 8fed74014024629caa1d253264e894e627dc1b96ce1add75d4ee8dad87f89cf9
+      RELEASE_APK_NAME: Pixelium-Player-Olivier-0.5.0-pilot.apk
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
       - name: Validate permanent release signing secrets
         shell: bash
         env:
@@ -166,17 +193,6 @@ jobs:
           }
           EOF
           echo "apk_sha256=${APK_SHA}" | tee release-apk-sha256.txt
-      - name: Upload Player debug APK and signature report
-        uses: actions/upload-artifact@v4
-        with:
-          name: pixelium-player-0.5.0-pilot-debug
-          path: |
-            player-android/app/build/outputs/apk/debug/app-debug.apk
-            old-apk-cert.txt
-            new-apk-cert.txt
-            apk-signature-compatibility.txt
-          retention-days: 14
-          if-no-files-found: error
       - name: Upload signed Player release APK
         uses: actions/upload-artifact@v4
         with:
@@ -190,7 +206,6 @@ jobs:
           retention-days: 30
           if-no-files-found: error
       - name: Publish signed Player into the private repository for Railway
-        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
