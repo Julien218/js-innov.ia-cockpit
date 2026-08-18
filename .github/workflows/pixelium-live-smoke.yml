@@ -8,10 +8,28 @@ on:
       - '.github/workflows/pixelium-live-smoke.yml'
   workflow_dispatch:
 
+permissions:
+  statuses: write
+  contents: read
+
 jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
+      - name: Mark live smoke pending
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -d '{"state":"pending","context":"Pixelium live smoke","description":"Checking live Player download endpoints","target_url":"'"${RUN_URL}"'"}'
+
       - name: Check live Player endpoints
         shell: bash
         run: |
@@ -36,3 +54,18 @@ jobs:
             fi
             echo
           done
+
+      - name: Mark live smoke successful
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -d '{"state":"success","context":"Pixelium live smoke","description":"Live endpoint probe completed","target_url":"'"${RUN_URL}"'"}'
