@@ -4,16 +4,21 @@ const path = require('path');
 const { getAccessToken } = require('./server-dropbox-helper.cjs');
 
 const router = express.Router();
-const RELEASE_APK_NAME = 'Pixelium-Player-Olivier-0.5.0-pilot.apk';
+const RELEASES = [
+  { name: 'Pixelium-Player-Olivier-0.5.1-pilot.apk', version: '0.5.1-pilot' },
+  { name: 'Pixelium-Player-Olivier-0.5.0-pilot.apk', version: '0.5.0-pilot' },
+];
 const LEGACY_APK_NAME = 'Pixelium-Player-Olivier-0.3.0-pilot.apk';
-const RELEASE_APK_PATH = path.join(__dirname, 'assets', RELEASE_APK_NAME);
 const LEGACY_APK_PATH = path.join(__dirname, 'assets', LEGACY_APK_NAME);
 const RELEASE_METADATA_PATH = path.join(__dirname, 'assets', 'pixelium-player-release.json');
 const DROPBOX_PLAYER_DIR = String(process.env.PIXELIUM_DROPBOX_PLAYER_DIR || '').trim().replace(/\/$/, '');
 
 function resolveApk() {
-  if (fs.existsSync(RELEASE_APK_PATH)) {
-    return { name: RELEASE_APK_NAME, path: RELEASE_APK_PATH, version: '0.5.0-pilot', release: true };
+  for (const release of RELEASES) {
+    const releasePath = path.join(__dirname, 'assets', release.name);
+    if (fs.existsSync(releasePath)) {
+      return { name: release.name, path: releasePath, version: release.version, release: true };
+    }
   }
   if (fs.existsSync(LEGACY_APK_PATH)) {
     return { name: LEGACY_APK_NAME, path: LEGACY_APK_PATH, version: '0.3.0-pilot', release: false };
@@ -70,7 +75,7 @@ async function syncSignedReleaseToDropbox() {
     : null;
   const apkBuffer = fs.readFileSync(apk.path);
 
-  const apkResult = await uploadDropboxFile(`${DROPBOX_PLAYER_DIR}/${RELEASE_APK_NAME}`, apkBuffer);
+  const apkResult = await uploadDropboxFile(`${DROPBOX_PLAYER_DIR}/${apk.name}`, apkBuffer);
   if (metadataBuffer) {
     await uploadDropboxFile(`${DROPBOX_PLAYER_DIR}/release.json`, metadataBuffer);
   }
@@ -105,9 +110,9 @@ router.get('/status', (req, res) => {
     available: Boolean(apk),
     version: apk?.version || null,
     channel: apk?.release ? 'release' : apk ? 'legacy-fallback' : 'unavailable',
-    certificateSha256: metadata?.certificateSha256 || null,
-    apkSha256: metadata?.apkSha256 || null,
-    sourceCommit: metadata?.sourceCommit || null,
+    certificateSha256: metadata?.version === apk?.version ? metadata?.certificateSha256 || null : null,
+    apkSha256: metadata?.version === apk?.version ? metadata?.apkSha256 || null : null,
+    sourceCommit: metadata?.version === apk?.version ? metadata?.sourceCommit || null : null,
     dropboxSyncTarget: apk?.release && DROPBOX_PLAYER_DIR ? DROPBOX_PLAYER_DIR : null
   });
 });
