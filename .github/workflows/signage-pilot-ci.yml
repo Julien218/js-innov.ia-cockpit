@@ -125,6 +125,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      statuses: write
     env:
       EXPECTED_RELEASE_CERT_SHA256: 8fed74014024629caa1d253264e894e627dc1b96ce1add75d4ee8dad87f89cf9
       RELEASE_APK_NAME: Pixelium-Player-Olivier-0.5.0-pilot.apk
@@ -132,6 +133,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Mark signed release as pending
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error --retry 3 \
+            -X POST \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -d '{"state":"pending","context":"Pixelium signed release","description":"Building and verifying signed Player 0.5","target_url":"https://github.com/'"${GITHUB_REPOSITORY}"'/actions"}'
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -141,14 +155,26 @@ jobs:
         with:
           gradle-version: '8.7'
       - name: Validate permanent release signing secrets
+        id: signing-secrets
         shell: bash
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PIXELIUM_KEYSTORE_B64: ${{ secrets.PIXELIUM_KEYSTORE_B64 }}
           PIXELIUM_KEYSTORE_PASSWORD: ${{ secrets.PIXELIUM_KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
-          test -n "$PIXELIUM_KEYSTORE_B64"
-          test -n "$PIXELIUM_KEYSTORE_PASSWORD"
+          if [ -z "$PIXELIUM_KEYSTORE_B64" ] || [ -z "$PIXELIUM_KEYSTORE_PASSWORD" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            curl --fail-with-body --silent --show-error --retry 3 \
+              -X POST \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+              -d '{"state":"failure","context":"Pixelium signed release","description":"Repository Actions signing secrets are missing","target_url":"https://github.com/'"${GITHUB_REPOSITORY}"'/settings/secrets/actions"}'
+            exit 1
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
       - name: Prepare permanent release signing key
         shell: bash
         env:
@@ -218,3 +244,29 @@ jobs:
           fi
           git commit -m "release: publish signed Pixelium Player 0.5.0-pilot [skip ci]"
           git push origin "HEAD:${GITHUB_REF_NAME}"
+      - name: Mark signed release as successful
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error --retry 3 \
+            -X POST \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -d '{"state":"success","context":"Pixelium signed release","description":"Signed Player 0.5 verified and published","target_url":"https://github.com/'"${GITHUB_REPOSITORY}"'/actions"}'
+      - name: Mark signed release as failed
+        if: failure() && steps.signing-secrets.outputs.ready == 'true'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl --fail-with-body --silent --show-error --retry 3 \
+            -X POST \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -d '{"state":"failure","context":"Pixelium signed release","description":"Signed Player release build or publication failed","target_url":"https://github.com/'"${GITHUB_REPOSITORY}"'/actions"}'
