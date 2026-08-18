@@ -1,0 +1,3 @@
+Manual staging release trigger for Pixelium Player Dropbox synchronization.
+Target: feature/olivier-signage-pilot-release only.
+No production/main promotion.
