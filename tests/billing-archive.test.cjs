@@ -5,11 +5,12 @@ const path = require('node:path');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'server-billing.cjs'), 'utf8');
 
-test('le PDF est archivé une seule fois puis relu depuis Dropbox', () => {
-  assert.match(source, /if \(doc\.pdf_document_id\)/);
+test('le PDF conforme est archivé une seule fois puis relu depuis Dropbox', () => {
+  assert.match(source, /if \(doc\.pdf_document_id && doc\.pdf_version === 'official-v3-legal' && doc\.pdf_conformite_statut === 'conforme'\)/);
   assert.match(source, /getDocumentBufferForUser/);
   assert.match(source, /storeBuffer/);
-  assert.match(source, /pdf_version: 'official-v2'/);
+  assert.match(source, /pdf_version: 'official-v3-legal'/);
+  assert.match(source, /pdf_conformite_statut: 'conforme'/);
 });
 
 test('les générations, téléchargements et envois sont tracés', () => {
