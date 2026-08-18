@@ -1,0 +1,38 @@
+name: Pixelium live smoke
+
+on:
+  push:
+    branches:
+      - feature/olivier-signage-pilot-release
+    paths:
+      - '.github/workflows/pixelium-live-smoke.yml'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check live Player endpoints
+        shell: bash
+        run: |
+          set -u
+          BASE='https://olivier-signage-cockpit-production.up.railway.app'
+          for PATHNAME in /player /player.apk /api/player-download/status /api/player-download/android; do
+            echo "===== ${PATHNAME} ====="
+            rm -f /tmp/headers /tmp/body
+            curl -sS -L --max-time 30 \
+              -D /tmp/headers \
+              -o /tmp/body \
+              -w 'http=%{http_code}\nurl=%{url_effective}\ncontent_type=%{content_type}\nsize=%{size_download}\n' \
+              "${BASE}${PATHNAME}" || true
+            echo '--- headers ---'
+            grep -Ei '^(HTTP/|location:|content-type:|content-disposition:|x-pixelium-player-version:|x-pixelium-release:|content-length:)' /tmp/headers || true
+            echo '--- body probe ---'
+            if [ -s /tmp/body ]; then
+              file /tmp/body || true
+              head -c 200 /tmp/body | xxd -g 1 || true
+            else
+              echo '<empty body>'
+            fi
+            echo
+          done
