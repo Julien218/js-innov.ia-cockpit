@@ -6,7 +6,10 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const agentPage = fs.readFileSync(path.join(root, 'src/pages/Agent.jsx'), 'utf8');
 const appSource = fs.readFileSync(path.join(root, 'src/App.jsx'), 'utf8');
+const clientDashboard = fs.readFileSync(path.join(root, 'src/pages/ClientDashboard.jsx'), 'utf8');
+const clientRecords = fs.readFileSync(path.join(root, 'src/pages/ClientRecords.jsx'), 'utf8');
 const clientCompanion = fs.readFileSync(path.join(root, 'src/components/ClientCompanion.jsx'), 'utf8');
+const rolesSource = fs.readFileSync(path.join(root, 'src/lib/roles.js'), 'utf8');
 const assistantServer = fs.readFileSync(path.join(root, 'server-assistant.cjs'), 'utf8');
 const audienceServer = fs.readFileSync(path.join(root, 'server-companion-audience.cjs'), 'utf8');
 const memoryServer = fs.readFileSync(path.join(root, 'server-companion-memory.cjs'), 'utf8');
@@ -74,6 +77,24 @@ test('un client ne peut pas ouvrir la page owner et reçoit une UI dédiée', ()
   assert.match(appSource, /RoleAwareFloatingAgent/);
   assert.match(clientCompanion, /\/api\/assistant\/profile/);
   assert.match(clientCompanion, /Réponses limitées aux informations et services autorisés/);
+});
+
+test('le workspace client ne charge plus le dashboard ou les pages Base44 globales', () => {
+  assert.match(appSource, /isClient \? <ClientDashboard \/> : <Dashboard \/>/);
+  assert.match(appSource, /<ClientRecords kind="projects" \/>/);
+  assert.match(appSource, /<ClientRecords kind="quotes" \/>/);
+  assert.match(appSource, /<ClientRecords kind="invoices" \/>/);
+  assert.match(clientDashboard, /\/api\/data\/\$\{table\}/);
+  assert.match(clientRecords, /\/api\/data\/\$\{table\}/);
+  assert.doesNotMatch(clientDashboard, /base44/);
+  assert.doesNotMatch(clientRecords, /base44/);
+});
+
+test('les routes client excluent les agents internes et les demandes globales', () => {
+  const clientBlock = rolesSource.split('client: [')[1]?.split(']')[0] || '';
+  assert.doesNotMatch(clientBlock, /agents-ia/);
+  assert.doesNotMatch(clientBlock, /demandes/);
+  assert.match(appSource, /path="\/agents-ia" element=\{isClient \? <Navigate/);
 });
 
 test('la mémoire historique Dropbox utilise l’index existant sans modifier le ZIP source', () => {
