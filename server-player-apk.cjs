@@ -9,8 +9,7 @@ const LEGACY_APK_NAME = 'Pixelium-Player-Olivier-0.3.0-pilot.apk';
 const RELEASE_APK_PATH = path.join(__dirname, 'assets', RELEASE_APK_NAME);
 const LEGACY_APK_PATH = path.join(__dirname, 'assets', LEGACY_APK_NAME);
 const RELEASE_METADATA_PATH = path.join(__dirname, 'assets', 'pixelium-player-release.json');
-const DROPBOX_ROOT_PATH = process.env.DROPBOX_ROOT_PATH || '/Cockpit';
-const DROPBOX_PLAYER_DIR = process.env.PIXELIUM_DROPBOX_PLAYER_DIR || `${DROPBOX_ROOT_PATH}/Olivier-Trevis/Players/MXQ`;
+const DROPBOX_PLAYER_DIR = String(process.env.PIXELIUM_DROPBOX_PLAYER_DIR || '').trim().replace(/\/$/, '');
 
 function resolveApk() {
   if (fs.existsSync(RELEASE_APK_PATH)) {
@@ -55,6 +54,11 @@ async function uploadDropboxFile(dropboxPath, buffer) {
 }
 
 async function syncSignedReleaseToDropbox() {
+  if (!DROPBOX_PLAYER_DIR) {
+    console.log('[player-dropbox] sync automatique désactivée: PIXELIUM_DROPBOX_PLAYER_DIR non défini');
+    return;
+  }
+
   const apk = resolveApk();
   if (!apk?.release) {
     console.log('[player-dropbox] sync ignorée: release signée absente');
@@ -104,7 +108,7 @@ router.get('/status', (req, res) => {
     certificateSha256: metadata?.certificateSha256 || null,
     apkSha256: metadata?.apkSha256 || null,
     sourceCommit: metadata?.sourceCommit || null,
-    dropboxSyncTarget: apk?.release ? DROPBOX_PLAYER_DIR : null
+    dropboxSyncTarget: apk?.release && DROPBOX_PLAYER_DIR ? DROPBOX_PLAYER_DIR : null
   });
 });
 
