@@ -31,6 +31,7 @@ public class UpdateInstallReceiver extends BroadcastReceiver {
       return;
     }
 
+    PlayerUpdateManager.clearInProgress(context);
     if (status == PackageInstaller.STATUS_SUCCESS) {
       PlayerUpdateManager.setState(context, "success", version, "");
       PixeliumGuardianService.start(context);
