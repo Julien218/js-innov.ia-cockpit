@@ -1,67 +1,9 @@
 // ─── CONFIGURATION DES RÔLES JS-INNOV.IA COCKPIT ─────────────────────────────
-
-export const ROLES = {
-  SUPERADMIN: "superadmin",
-  ADMIN: "admin",
-  COLLABORATEUR: "collaborateur",
-  CLIENT: "client",
-};
-
-export const ROLE_LEVEL = {
-  superadmin: 4,
-  admin: 3,
-  collaborateur: 2,
-  client: 1,
-};
-
-export const ROLE_LABELS = {
-  superadmin: "Super Admin",
-  admin: "Admin",
-  collaborateur: "Collaborateur",
-  client: "Client",
-};
-
-export const ROLE_COLORS = {
-  superadmin: { bg: "#1a0a2e", text: "#a855f7", badge: "#a855f7" },
-  admin:      { bg: "#001a3d", text: "#D4AF37", badge: "#D4AF37" },
-  collaborateur: { bg: "#001a14", text: "#10b981", badge: "#10b981" },
-  client:     { bg: "#1a0d00", text: "#f97316", badge: "#f97316" },
-};
-
-export const ROLE_ROUTES = {
-  superadmin: [
-    "/", "/hainoflow", "/assurances", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
-    "/devis", "/factures", "/emails", "/emails-core", "/cost-centers", "/ai-cost",
-    "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
-    "/devis", "/factures", "/emails", "/cost-centers", "/ai-cost",
-    "/production", "/portfolio", "/apps-agents",
-    "/automations", "/domaines", "/rangement", "/parametres",
-    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations", "/gouvernance", "/confidentialite"
-  ],
-  admin: [
-    "/", "/hainoflow", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
-    "/devis", "/factures", "/emails", "/emails-core", "/cost-centers", "/ai-cost",
-    "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
-    "/devis", "/factures", "/emails", "/cost-centers", "/ai-cost",
-    "/production", "/portfolio", "/apps-agents",
-    "/automations", "/domaines", "/rangement", "/parametres",
-    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations", "/gouvernance", "/confidentialite"
-  ],
-  collaborateur: [
-    "/", "/hainoflow", "/documents", "/projets", "/taches", "/demandes", "/agent", "/agents-ia"
-  ],
-  // Le client ne reçoit que les vues tenant-scopées et les modules produit autorisés.
-  // Aucun accès aux agents internes, demandes globales, outils de production ou routes owner.
-  client: [
-    "/", "/hainoflow", "/mes-projets", "/mes-devis", "/mes-factures", "/confidentialite"
-  ],
-};
-
-export const hasRouteAccess = (role, path) => {
-  const routes = ROLE_ROUTES[role] || [];
-  return routes.includes(path);
-};
-
-export const hasMinRole = (userRole, requiredRole) => {
-  return (ROLE_LEVEL[userRole] || 0) >= (ROLE_LEVEL[requiredRole] || 0);
-};
+export const ROLES={SUPERADMIN:'superadmin',ADMIN:'admin',COLLABORATEUR:'collaborateur',CLIENT:'client'};
+export const ROLE_LEVEL={superadmin:4,admin:3,collaborateur:2,client:1};
+export const ROLE_LABELS={superadmin:'Super Admin',admin:'Admin',collaborateur:'Collaborateur',client:'Client'};
+export const ROLE_COLORS={superadmin:{bg:'#1a0a2e',text:'#a855f7',badge:'#a855f7'},admin:{bg:'#001a3d',text:'#D4AF37',badge:'#D4AF37'},collaborateur:{bg:'#001a14',text:'#10b981',badge:'#10b981'},client:{bg:'#1a0d00',text:'#f97316',badge:'#f97316'}};
+const owner=['/','/hainoflow','/assurances','/documents','/clients','/leads','/demandes','/projets','/taches','/devis','/factures','/emails','/emails-core','/cost-centers','/ai-cost','/production','/portfolio','/apps-agents','/automations','/domaines','/rangement','/parametres','/services','/validations','/agent','/agents-ia','/ai-cost-control','/invitations','/gouvernance','/confidentialite','/signage'];
+export const ROLE_ROUTES={superadmin:owner,admin:owner.filter(x=>x!=='/assurances'),collaborateur:['/','/hainoflow','/documents','/projets','/taches','/demandes','/agent','/agents-ia'],client:['/','/hainoflow','/mes-projets','/mes-devis','/mes-factures','/confidentialite']};
+export const hasRouteAccess=(role,path)=>(ROLE_ROUTES[role]||[]).includes(path);
+export const hasMinRole=(userRole,requiredRole)=>(ROLE_LEVEL[userRole]||0)>=(ROLE_LEVEL[requiredRole]||0);
