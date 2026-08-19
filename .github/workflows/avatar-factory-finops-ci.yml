@@ -1,0 +1,38 @@
+name: Avatar Factory & FinOps CI
+
+on:
+  pull_request:
+    paths:
+      - 'src/pages/AvatarFactory.jsx'
+      - 'src/pages/FinOps.jsx'
+      - 'src/api/avatarFactoryClient.js'
+      - 'src/App.jsx'
+      - 'src/lib/roles.js'
+      - 'src/components/layout/Sidebar.jsx'
+      - 'server-finops.cjs'
+      - 'server.cjs'
+      - 'supabase/migrations/*finops*'
+      - '.github/workflows/avatar-factory-finops-ci.yml'
+  push:
+    branches: ['feature/avatar-factory-finops']
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Syntax check backend
+        run: |
+          node --check server-finops.cjs
+          node --check server.cjs
+      - name: Build cockpit
+        run: npm run build
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint changed application
+        run: npm run lint
