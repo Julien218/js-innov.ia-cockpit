@@ -1,9 +1,9 @@
 name: Signage pilot CI
-# Validate every PR, then sign and publish the Player only from a trusted branch event.
-# Release retrigger after repository signing secrets validation: 2026-08-18.
+
 on:
   pull_request:
     paths:
+      - 'server.cjs'
       - 'server-signage*.cjs'
       - 'server-postgres.cjs'
       - 'server-player-apk.cjs'
@@ -26,6 +26,7 @@ on:
     paths:
       - 'package.json'
       - 'package-lock.json'
+      - 'server.cjs'
       - '.github/workflows/signage-pilot-ci.yml'
       - 'server-signage*.cjs'
       - 'server-postgres.cjs'
@@ -44,6 +45,10 @@ on:
       - 'camera-gateway/**'
   workflow_dispatch:
 
+concurrency:
+  group: signage-pilot-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -54,8 +59,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
-      - run: npm ci
+      - run: npm ci --legacy-peer-deps
+      - run: node --check server.cjs
       - run: node --check server-signage.cjs
+      - run: node --check server-signage-runtime.cjs
       - run: node --check server-signage-display.cjs
       - run: node --check server-signage-schedule.cjs
       - run: node --check server-signage-schedule-router.cjs
@@ -80,194 +87,35 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
-      - run: gradle -p player-android :app:assembleDebug --no-daemon
-      - name: Compare installed-package signing lineage
+      - name: Assert resilient runtime contract
         shell: bash
         run: |
           set -euo pipefail
-          APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -1)"
-          OLD_APK="assets/Pixelium-Player-Olivier-0.3.0-pilot.apk"
-          NEW_APK="player-android/app/build/outputs/apk/debug/app-debug.apk"
-          test -n "$APKSIGNER"
-          test -f "$OLD_APK"
-          test -f "$NEW_APK"
-          "$APKSIGNER" verify --print-certs "$OLD_APK" | tee old-apk-cert.txt
-          "$APKSIGNER" verify --print-certs "$NEW_APK" | tee new-apk-cert.txt
-          OLD_SHA="$(sed -n 's/^.*certificate SHA-256 digest: //p' old-apk-cert.txt | head -1)"
-          NEW_SHA="$(sed -n 's/^.*certificate SHA-256 digest: //p' new-apk-cert.txt | head -1)"
-          test -n "$OLD_SHA"
-          test -n "$NEW_SHA"
-          if [ "$OLD_SHA" = "$NEW_SHA" ]; then
-            COMPATIBLE=true
-          else
-            COMPATIBLE=false
-            echo "::notice title=Expected legacy signature mismatch::The permanent release identity differs from the unrecoverable 0.3 key. A one-time uninstall/reinstall is required."
-          fi
-          {
-            echo "existing_sha256=$OLD_SHA"
-            echo "candidate_debug_sha256=$NEW_SHA"
-            echo "compatible_with_legacy=$COMPATIBLE"
-          } | tee apk-signature-compatibility.txt
-      - name: Upload Player debug APK and signature report
+          grep -q "versionName '0.5.3-pilot'" player-android/app/build.gradle
+          grep -q 'foregroundServiceType="specialUse"' player-android/app/src/main/AndroidManifest.xml
+          grep -q 'FOREGROUND_SERVICE_SPECIAL_USE' player-android/app/src/main/AndroidManifest.xml
+          grep -q '/api/signage/player/runtime-heartbeat' player-android/app/src/main/java/ia/jsinnov/pixeliumplayer/PixeliumGuardianService.java
+          grep -q 'PlayerRuntimeState.markPlaybackHeartbeat' player-android/app/src/main/java/ia/jsinnov/pixeliumplayer/ScheduledMainActivity.java
+      - run: gradle -p player-android :app:assembleDebug --no-daemon
+      - name: Inspect debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="player-android/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          AAPT="$(find "${ANDROID_HOME}/build-tools" -type f -name aapt | sort -V | tail -1)"
+          test -n "$AAPT"
+          "$AAPT" dump badging "$APK" | tee player-badging.txt
+          grep -q "versionName='0.5.3-pilot'" player-badging.txt
+      - name: Upload Player debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: pixelium-player-0.5.0-pilot-debug
+          name: pixelium-player-0.5.3-pilot-debug
           path: |
             player-android/app/build/outputs/apk/debug/app-debug.apk
-            old-apk-cert.txt
-            new-apk-cert.txt
-            apk-signature-compatibility.txt
+            player-badging.txt
           retention-days: 14
           if-no-files-found: error
 
-  release-android:
-    if: github.event_name != 'pull_request'
-    needs: [verify-web, verify-android]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      statuses: write
-    env:
-      EXPECTED_RELEASE_CERT_SHA256: 8fed74014024629caa1d253264e894e627dc1b96ce1add75d4ee8dad87f89cf9
-      RELEASE_APK_NAME: Pixelium-Player-Olivier-0.5.0-pilot.apk
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Mark signed release as pending
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          curl --fail-with-body --silent --show-error --retry 3 \
-            -X POST \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -d '{"state":"pending","context":"Pixelium signed release","description":"Building and verifying signed Player 0.5","target_url":"https://github.com/'"${GITHUB_REPOSITORY}"'/actions"}'
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.7'
-      - name: Validate permanent release signing secrets
-        id: signing-secrets
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PIXELIUM_KEYSTORE_B64: ${{ secrets.PIXELIUM_KEYSTORE_B64 }}
-          PIXELIUM_KEYSTORE_PASSWORD: ${{ secrets.PIXELIUM_KEYSTORE_PASSWORD }}
-        run: |
-          set -euo pipefail
-          if [ -z "$PIXELIUM_KEYSTORE_B64" ] || [ -z "$PIXELIUM_KEYSTORE_PASSWORD" ]; then
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            curl --fail-with-body --silent --show-error --retry 3 \
-              -X POST \
-              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-              -d '{"state":"failure","context":"Pixelium signed release","description":"Repository Actions signing secrets are missing","target_url":"https://github.com/'"${GITHUB_REPOSITORY}"'/settings/secrets/actions"}'
-            exit 1
-          fi
-          echo "ready=true" >> "$GITHUB_OUTPUT"
-      - name: Prepare permanent release signing key
-        shell: bash
-        env:
-          PIXELIUM_KEYSTORE_B64: ${{ secrets.PIXELIUM_KEYSTORE_B64 }}
-        run: |
-          set -euo pipefail
-          printf '%s' "$PIXELIUM_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/pixelium-release.jks"
-          chmod 600 "$RUNNER_TEMP/pixelium-release.jks"
-      - name: Build signed release APK
-        env:
-          PIXELIUM_KEYSTORE_PATH: ${{ runner.temp }}/pixelium-release.jks
-          PIXELIUM_KEYSTORE_PASSWORD: ${{ secrets.PIXELIUM_KEYSTORE_PASSWORD }}
-          PIXELIUM_KEY_ALIAS: ${{ secrets.PIXELIUM_KEY_ALIAS }}
-          PIXELIUM_KEY_PASSWORD: ${{ secrets.PIXELIUM_KEY_PASSWORD }}
-        run: gradle -p player-android :app:assembleRelease --no-daemon
-      - name: Verify permanent release certificate
-        shell: bash
-        run: |
-          set -euo pipefail
-          APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -1)"
-          RELEASE_APK="player-android/app/build/outputs/apk/release/app-release.apk"
-          test -n "$APKSIGNER"
-          test -f "$RELEASE_APK"
-          "$APKSIGNER" verify --print-certs "$RELEASE_APK" | tee release-apk-cert.txt
-          RELEASE_SHA="$(sed -n 's/^.*certificate SHA-256 digest: //p' release-apk-cert.txt | head -1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
-          test "$RELEASE_SHA" = "$EXPECTED_RELEASE_CERT_SHA256"
-          echo "release_sha256=$RELEASE_SHA" | tee release-signature.txt
-      - name: Stage signed Player for Railway
-        shell: bash
-        run: |
-          set -euo pipefail
-          RELEASE_APK="player-android/app/build/outputs/apk/release/app-release.apk"
-          PUBLISHED_APK="assets/${RELEASE_APK_NAME}"
-          cp "$RELEASE_APK" "$PUBLISHED_APK"
-          APK_SHA="$(sha256sum "$PUBLISHED_APK" | awk '{print $1}')"
-          cat > assets/pixelium-player-release.json <<EOF
-          {
-            "version": "0.5.0-pilot",
-            "certificateSha256": "8F:ED:74:01:40:24:62:9C:AA:1D:25:32:64:E8:94:E6:27:DC:1B:96:CE:1A:DD:75:D4:EE:8D:AD:87:F8:9C:F9",
-            "apkSha256": "${APK_SHA}",
-            "sourceCommit": "${GITHUB_SHA}"
-          }
-          EOF
-          echo "apk_sha256=${APK_SHA}" | tee release-apk-sha256.txt
-      - name: Upload signed Player release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: pixelium-player-0.5.0-pilot-release
-          path: |
-            assets/Pixelium-Player-Olivier-0.5.0-pilot.apk
-            assets/pixelium-player-release.json
-            release-apk-cert.txt
-            release-signature.txt
-            release-apk-sha256.txt
-          retention-days: 30
-          if-no-files-found: error
-      - name: Publish signed Player into the private repository for Railway
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "assets/${RELEASE_APK_NAME}" assets/pixelium-player-release.json
-          if git diff --cached --quiet; then
-            echo "Signed Player already published for this source."
-            exit 0
-          fi
-          git commit -m "release: publish signed Pixelium Player 0.5.0-pilot [skip ci]"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
-      - name: Mark signed release as successful
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          curl --fail-with-body --silent --show-error --retry 3 \
-            -X POST \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -d '{"state":"success","context":"Pixelium signed release","description":"Signed Player 0.5 verified and published","target_url":"https://github.com/'"${GITHUB_REPOSITORY}"'/actions"}'
-      - name: Mark signed release as failed
-        if: failure() && steps.signing-secrets.outputs.ready == 'true'
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          curl --fail-with-body --silent --show-error --retry 3 \
-            -X POST \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -d '{"state":"failure","context":"Pixelium signed release","description":"Signed Player release build or publication failed","target_url":"https://github.com/'"${GITHUB_REPOSITORY}"'/actions"}'
+# La publication signée est volontairement centralisée dans
+# pixelium-release-recovery.yml afin d'éviter deux pipelines concurrents.
