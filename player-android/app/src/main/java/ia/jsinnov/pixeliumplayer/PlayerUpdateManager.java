@@ -25,6 +25,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 final class PlayerUpdateManager {
   static final String PREF_STATUS = "updaterStatus";
@@ -33,8 +34,11 @@ final class PlayerUpdateManager {
   static final String PREF_LAST_CHECK = "updaterLastCheck";
   static final String PREF_IN_PROGRESS_AT = "updaterInProgressAt";
   static final long CHECK_INTERVAL_MS = 10 * 60 * 1000L;
+  static final long FAILURE_RETRY_MS = 2 * 60 * 1000L;
   static final long IN_PROGRESS_TIMEOUT_MS = 15 * 60 * 1000L;
   static final String PINNED_CERT_SHA256 = "8fed74014024629caa1d253264e894e627dc1b96ce1add75d4ee8dad87f89cf9";
+
+  private static final AtomicBoolean CHECK_IN_PROGRESS = new AtomicBoolean(false);
 
   private PlayerUpdateManager() {}
 
@@ -46,28 +50,35 @@ final class PlayerUpdateManager {
       result.put("targetVersion", prefs.getString(PREF_VERSION, ""));
       result.put("error", prefs.getString(PREF_ERROR, ""));
       result.put("lastCheckAt", prefs.getLong(PREF_LAST_CHECK, 0L));
+      result.put("inProgressAt", prefs.getLong(PREF_IN_PROGRESS_AT, 0L));
       result.put("canRequestPackageInstalls", Build.VERSION.SDK_INT < 26 || context.getPackageManager().canRequestPackageInstalls());
     } catch (Exception ignored) {}
     return result;
   }
 
-  static void checkForUpdate(Activity activity, String server, String currentVersion) {
-    SharedPreferences prefs = activity.getSharedPreferences("player", 0);
+  static void checkForUpdate(Context context, String server, String currentVersion) {
+    if (context == null || server == null || server.trim().isEmpty()) return;
+    Context appContext = context.getApplicationContext() == null ? context : context.getApplicationContext();
+    SharedPreferences prefs = appContext.getSharedPreferences("player", 0);
     long now = System.currentTimeMillis();
     long inProgressAt = prefs.getLong(PREF_IN_PROGRESS_AT, 0L);
     String status = prefs.getString(PREF_STATUS, "idle");
+
     if (("installing".equals(status) || "waiting_confirmation".equals(status))
         && now - inProgressAt < IN_PROGRESS_TIMEOUT_MS) return;
 
+    boolean interactivePermissionRetry = "waiting_permission".equals(status) && context instanceof Activity;
+    long retryInterval = "failed".equals(status) ? FAILURE_RETRY_MS : CHECK_INTERVAL_MS;
     long last = prefs.getLong(PREF_LAST_CHECK, 0L);
-    if (now - last < CHECK_INTERVAL_MS && !"waiting_permission".equals(status)) return;
+    if (!interactivePermissionRetry && now - last < retryInterval) return;
+    if (!CHECK_IN_PROGRESS.compareAndSet(false, true)) return;
 
     try {
-      setState(activity, "checking", "", "");
-      JSONObject release = getJson(server + "/api/player-download/status");
       prefs.edit().putLong(PREF_LAST_CHECK, now).apply();
+      setState(appContext, "checking", prefs.getString(PREF_VERSION, ""), "");
+      JSONObject release = getJson(server.replaceAll("/$", "") + "/api/player-download/status");
       if (!release.optBoolean("available", false)) {
-        setState(activity, "idle", "", "release unavailable");
+        setState(appContext, "idle", "", "release unavailable");
         return;
       }
 
@@ -75,46 +86,57 @@ final class PlayerUpdateManager {
       String apkSha256 = normalizeDigest(release.optString("apkSha256", ""));
       String certificateSha256 = normalizeDigest(release.optString("certificateSha256", ""));
       if (targetVersion.isEmpty() || compareVersions(targetVersion, currentVersion) <= 0) {
-        setState(activity, "up_to_date", currentVersion, "");
+        setState(appContext, "up_to_date", currentVersion, "");
+        clearInProgress(appContext);
         return;
       }
       if (apkSha256.length() != 64) throw new IOException("SHA-256 de release absent ou invalide");
       if (!PINNED_CERT_SHA256.equals(certificateSha256)) throw new IOException("Certificat de release non approuvé");
 
-      if (Build.VERSION.SDK_INT >= 26 && !activity.getPackageManager().canRequestPackageInstalls()) {
-        setState(activity, "waiting_permission", targetVersion, "Autorisation d’installation requise une seule fois");
-        prefs.edit().putLong(PREF_LAST_CHECK, 0L).apply();
-        Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-          Uri.parse("package:" + activity.getPackageName()))
-          .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        activity.runOnUiThread(() -> {
-          try { activity.startActivity(settings); } catch (Exception ignored) {}
-        });
+      if (Build.VERSION.SDK_INT >= 26 && !appContext.getPackageManager().canRequestPackageInstalls()) {
+        setState(appContext, "waiting_permission", targetVersion, "Autorisation d’installation requise une seule fois");
+        if (context instanceof Activity) {
+          Activity activity = (Activity) context;
+          Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+            Uri.parse("package:" + appContext.getPackageName()))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+          activity.runOnUiThread(() -> {
+            try { activity.startActivity(settings); }
+            catch (Exception error) {
+              setState(appContext, "waiting_permission", targetVersion,
+                "Ouvrez les réglages Pixelium et autorisez l’installation d’applications");
+            }
+          });
+        }
         return;
       }
 
-      File updateDir = new File(activity.getFilesDir(), "updates");
+      File updateDir = new File(appContext.getFilesDir(), "updates");
       if (!updateDir.exists() && !updateDir.mkdirs()) throw new IOException("Dossier de mise à jour indisponible");
       File apk = new File(updateDir, "Pixelium-Player-" + targetVersion + ".apk");
       File part = new File(updateDir, "Pixelium-Player-" + targetVersion + ".part");
+      if (part.exists() && !part.delete()) throw new IOException("Ancien téléchargement partiel impossible à supprimer");
 
-      setState(activity, "downloading", targetVersion, "");
-      download(server + "/api/player-download/latest", part);
+      setState(appContext, "downloading", targetVersion, "");
+      download(server.replaceAll("/$", "") + "/api/player-download/latest", part);
       if (!apkSha256.equals(normalizeDigest(sha256(part)))) {
         part.delete();
         throw new IOException("SHA-256 APK incorrect");
       }
-      if (!PINNED_CERT_SHA256.equals(apkCertificateSha256(activity, part))) {
+      if (!PINNED_CERT_SHA256.equals(apkCertificateSha256(appContext, part))) {
         part.delete();
         throw new IOException("Signature APK Pixelium incorrecte");
       }
-      if (apk.exists()) apk.delete();
+      if (apk.exists() && !apk.delete()) throw new IOException("Ancienne mise à jour impossible à remplacer");
       if (!part.renameTo(apk)) throw new IOException("Impossible de préparer l’APK vérifié");
 
-      setState(activity, "verified", targetVersion, "");
-      install(activity, apk, targetVersion);
+      setState(appContext, "verified", targetVersion, "");
+      install(appContext, apk, targetVersion);
     } catch (Exception error) {
-      setState(activity, "failed", prefs.getString(PREF_VERSION, ""), String.valueOf(error.getMessage()));
+      setState(appContext, "failed", prefs.getString(PREF_VERSION, ""), String.valueOf(error.getMessage()));
+      clearInProgress(appContext);
+    } finally {
+      CHECK_IN_PROGRESS.set(false);
     }
   }
 
@@ -178,33 +200,41 @@ final class PlayerUpdateManager {
       .apply();
   }
 
+  static void clearInProgress(Context context) {
+    context.getSharedPreferences("player", 0).edit().remove(PREF_IN_PROGRESS_AT).apply();
+  }
+
   private static JSONObject getJson(String target) throws Exception {
     HttpURLConnection connection = (HttpURLConnection) new URL(target).openConnection();
-    connection.setRequestMethod("GET");
-    connection.setConnectTimeout(10000);
-    connection.setReadTimeout(30000);
-    connection.setRequestProperty("Accept", "application/json");
-    int responseCode = connection.getResponseCode();
-    InputStream input = responseCode < 400 ? connection.getInputStream() : connection.getErrorStream();
-    String text = new String(readAll(input), StandardCharsets.UTF_8);
-    connection.disconnect();
-    if (responseCode >= 400) throw new IOException("Update status HTTP " + responseCode);
-    return new JSONObject(text);
+    try {
+      connection.setRequestMethod("GET");
+      connection.setConnectTimeout(10000);
+      connection.setReadTimeout(30000);
+      connection.setRequestProperty("Accept", "application/json");
+      int responseCode = connection.getResponseCode();
+      InputStream input = responseCode < 400 ? connection.getInputStream() : connection.getErrorStream();
+      String text = new String(readAll(input), StandardCharsets.UTF_8);
+      if (responseCode >= 400) throw new IOException("Update status HTTP " + responseCode);
+      return new JSONObject(text);
+    } finally {
+      connection.disconnect();
+    }
   }
 
   private static void download(String source, File target) throws Exception {
     HttpURLConnection connection = (HttpURLConnection) new URL(source).openConnection();
-    connection.setConnectTimeout(15000);
-    connection.setReadTimeout(90000);
-    int responseCode = connection.getResponseCode();
-    if (responseCode < 200 || responseCode >= 300) {
-      connection.disconnect();
-      throw new IOException("Téléchargement APK refusé (HTTP " + responseCode + ")");
-    }
-    try (InputStream input = connection.getInputStream(); FileOutputStream output = new FileOutputStream(target)) {
-      byte[] buffer = new byte[65536];
-      int count;
-      while ((count = input.read(buffer)) > 0) output.write(buffer, 0, count);
+    try {
+      connection.setConnectTimeout(15000);
+      connection.setReadTimeout(90000);
+      int responseCode = connection.getResponseCode();
+      if (responseCode < 200 || responseCode >= 300) {
+        throw new IOException("Téléchargement APK refusé (HTTP " + responseCode + ")");
+      }
+      try (InputStream input = connection.getInputStream(); FileOutputStream output = new FileOutputStream(target)) {
+        byte[] buffer = new byte[65536];
+        int count;
+        while ((count = input.read(buffer)) > 0) output.write(buffer, 0, count);
+      }
     } finally {
       connection.disconnect();
     }
