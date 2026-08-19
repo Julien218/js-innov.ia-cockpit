@@ -55,9 +55,10 @@ async function supabase(path, options = {}) {
 }
 
 async function loadPolicy(clientKey, entityKey) {
-  const query = `finops_policies?select=*&client_key=eq.${encodeURIComponent(clientKey)}&entity_key=eq.${encodeURIComponent(entityKey)}&limit=1`;
-  const rows = await supabase(query, { method: 'GET' });
-  return rows[0] || {
+  const exact = await supabase(`finops_policies?select=*&client_key=eq.${encodeURIComponent(clientKey)}&entity_key=eq.${encodeURIComponent(entityKey)}&limit=1`, { method: 'GET' });
+  if (exact[0]) return exact[0];
+  const fallback = await supabase(`finops_policies?select=*&client_key=eq.${encodeURIComponent(clientKey)}&entity_key=eq.__default__&limit=1`, { method: 'GET' });
+  return fallback[0] || {
     policy: 'standard_margin',
     markup_percent: 50,
     minimum_margin_percent: 30,
