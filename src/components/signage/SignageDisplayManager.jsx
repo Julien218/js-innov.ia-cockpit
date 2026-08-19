@@ -25,6 +25,7 @@ async function api(path, options = {}, clientEmail = "") {
 const statusClass = value => value === "OK" ? "text-emerald-600" : value === "ERROR" ? "text-red-600" : value === "WARNING" ? "text-amber-600" : "text-muted-foreground";
 const shown = value => value === null || value === undefined || value === "" ? "Unknown" : String(value);
 const hz = value => Number.isFinite(Number(value)) ? `${Number(value).toFixed(2).replace(/\.00$/, "")} Hz` : "Unknown";
+const dateTime = value => value ? new Date(value).toLocaleString("fr-BE") : "Unknown";
 
 function Metric({ label, value, status }) {
   return <div className="rounded-xl border bg-background/60 p-3"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p><p className={`mt-1 text-sm font-semibold ${status ? statusClass(status) : ""}`}>{shown(value)}</p></div>;
@@ -47,6 +48,8 @@ export default function SignageDisplayManager({ player, managedClient = "" }) {
     refetchInterval: 30000,
   });
   const data = query.data || {};
+  const observedPlayer = data.player || player || {};
+  const runtime = data.runtime || {};
   const device = data.device || {};
   const display = data.display || {};
   const playback = data.playback || {};
@@ -77,6 +80,7 @@ export default function SignageDisplayManager({ player, managedClient = "" }) {
   const displayConnected = display.connected === true ? "Détecté" : display.connected === false ? "Non détecté" : "Unknown";
   const scheduleLabel = data.schedule?.ads_allowed === false ? `Bloqué · ${data.schedule.reason || "planning"}` : data.schedule?.ads_allowed === true ? "Autorisé" : "Unknown";
   const publicationLabel = data.publication ? `${data.publication.status}${data.publication.acknowledged_at ? " · ACK" : " · sans ACK"}` : "Aucune";
+  const homeMode = runtime.defaultHome === true ? "Pixelium est l’accueil" : runtime.defaultHome === false ? `À configurer${runtime.homePackage ? ` · ${runtime.homePackage}` : ""}` : "Unknown";
 
   const saveProfile = async () => {
     setBusy(true); setMessage("");
@@ -103,16 +107,16 @@ export default function SignageDisplayManager({ player, managedClient = "" }) {
 
   return <div className="space-y-4">
     <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-      <div><p className="text-sm font-semibold">Display / HDMI Manager</p><p className="text-xs text-muted-foreground">Diagnostic générique du Player. Contrôle vidéo désactivé tant que le firmware réel n’est pas validé.</p></div>
+      <div><p className="text-sm font-semibold">Display / HDMI Manager</p><p className="text-xs text-muted-foreground">Le TVBOX, l’application de lecture, le réseau et l’affichage sont contrôlés séparément.</p></div>
       <div className="text-right"><p className="text-xs text-muted-foreground">GLOBAL HEALTH</p><p className={`text-sm font-bold ${health.state === "HEALTHY" ? "text-emerald-600" : health.state?.includes("ERROR") || health.state === "PLAYER_OFFLINE" ? "text-red-600" : "text-amber-600"}`}>{health.label || "Unknown"}</p></div>
     </div>
 
     <Section icon={Activity} title="Diagnostic global">
-      <Metric label="PLAYER" value={checks.player} status={checks.player}/><Metric label="NETWORK" value={checks.network} status={checks.network}/><Metric label="SCHEDULE" value={checks.schedule} status={checks.schedule}/><Metric label="PUBLICATION" value={checks.publication} status={checks.publication}/><Metric label="HDMI" value={checks.hdmi} status={checks.hdmi}/><Metric label="CONTENT" value={checks.content} status={checks.content}/>
+      <Metric label="TVBOX RUNTIME" value={checks.runtime} status={checks.runtime}/><Metric label="PLAYER APP" value={checks.player} status={checks.player}/><Metric label="NETWORK" value={checks.network} status={checks.network}/><Metric label="SCHEDULE" value={checks.schedule} status={checks.schedule}/><Metric label="PUBLICATION" value={checks.publication} status={checks.publication}/><Metric label="HDMI" value={checks.hdmi} status={checks.hdmi}/><Metric label="CONTENT" value={checks.content} status={checks.content}/>
     </Section>
 
     <Section icon={Cpu} title="Device">
-      <Metric label="Manufacturer" value={device.manufacturer}/><Metric label="Model" value={device.model || player?.diagnostics?.model}/><Metric label="Android" value={device.androidVersion || player?.diagnostics?.android}/><Metric label="API" value={device.apiLevel}/><Metric label="Hardware" value={device.hardware}/><Metric label="Board" value={device.board}/><Metric label="Device" value={device.device}/><Metric label="Product" value={device.product}/><Metric label="SoC" value={[device.socManufacturer, device.socModel].filter(Boolean).join(" ") || "Unknown"}/>
+      <Metric label="Manufacturer" value={device.manufacturer}/><Metric label="Model" value={device.model || observedPlayer?.diagnostics?.model}/><Metric label="Android" value={device.androidVersion || observedPlayer?.diagnostics?.android}/><Metric label="API" value={device.apiLevel}/><Metric label="Hardware" value={device.hardware}/><Metric label="Board" value={device.board}/><Metric label="Device" value={device.device}/><Metric label="Product" value={device.product}/><Metric label="SoC" value={[device.socManufacturer, device.socModel].filter(Boolean).join(" ") || "Unknown"}/><Metric label="Mode accueil / kiosk" value={homeMode}/>
     </Section>
 
     <Section icon={Monitor} title="Display">
@@ -120,7 +124,7 @@ export default function SignageDisplayManager({ player, managedClient = "" }) {
     </Section>
 
     <Section icon={Radio} title="Signage">
-      <Metric label="Planning" value={scheduleLabel} status={checks.schedule}/><Metric label="Publication" value={publicationLabel} status={checks.publication}/><Metric label="Contenu" value={playback.contentPlaying === true ? "PLAYING" : playback.scheduleBlocked === true ? "SUSPENDED" : "Unknown"} status={checks.content}/><Metric label="Dernier heartbeat" value={player?.last_seen_at ? new Date(player.last_seen_at).toLocaleString("fr-BE") : "Unknown"}/><Metric label="Player version" value={player?.app_version}/><Metric label="Mode contrôle" value={data.capabilities?.controlEnabled ? "Enabled" : "Observe only"}/>
+      <Metric label="Planning" value={scheduleLabel} status={checks.schedule}/><Metric label="Publication" value={publicationLabel} status={checks.publication}/><Metric label="Contenu" value={playback.contentPlaying === true ? "PLAYING" : playback.scheduleBlocked === true ? "SUSPENDED" : "Unknown"} status={checks.content}/><Metric label="Heartbeat TVBOX" value={dateTime(observedPlayer.runtime_last_seen_at)} status={checks.runtime}/><Metric label="Runtime version" value={observedPlayer.runtime_version}/><Metric label="Heartbeat lecture" value={dateTime(observedPlayer.last_seen_at)} status={checks.player}/><Metric label="Player version" value={observedPlayer.app_version}/><Metric label="Activity visible" value={runtime.activityVisible === true ? "Oui" : runtime.activityVisible === false ? "Non" : "Unknown"}/><Metric label="Mode contrôle HDMI" value={data.capabilities?.controlEnabled ? "Enabled" : "Observe only"}/>
     </Section>
 
     <div className="rounded-2xl border bg-card p-4 space-y-4">
