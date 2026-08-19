@@ -10,7 +10,7 @@ const ALLOWED_TABLES = new Set([
   'signage_player_schedule_exceptions','signage_schedule_audit','signage_sites','signage_display_profiles'
 ]);
 const JSON_COLUMNS = new Map([
-  ['signage_players', new Set(['diagnostics'])],
+  ['signage_players', new Set(['diagnostics','runtime_diagnostics'])],
   ['signage_media', new Set(['rendition'])],
   ['signage_playlists', new Set(['items'])],
   ['signage_publications', new Set(['manifest','recurrence'])],
@@ -43,7 +43,15 @@ async function migrate() {
   try {
     await client.query('select pg_advisory_lock($1)', [2182026]);
     await client.query('create table if not exists pilot_schema_migrations (name text primary key, applied_at timestamptz not null default now())');
-    for (const file of ['002_commerce_signage.sql', '003_signage_runtime.sql', '004_pilot_sponsorship.sql', '005_signage_camera_finalization.sql', '006_signage_scheduling.sql', '007_signage_display_manager.sql']) {
+    for (const file of [
+      '002_commerce_signage.sql',
+      '003_signage_runtime.sql',
+      '004_pilot_sponsorship.sql',
+      '005_signage_camera_finalization.sql',
+      '006_signage_scheduling.sql',
+      '007_signage_display_manager.sql',
+      '008_signage_player_runtime_health.sql'
+    ]) {
       const exists = await client.query('select 1 from pilot_schema_migrations where name=$1', [file]);
       if (exists.rowCount) continue;
       await client.query('begin');
