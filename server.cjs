@@ -51,7 +51,7 @@ try {
 try {
   const billingRouter = require('./server-billing.cjs');
   app.use('/api/billing', requireSession('admin'), billingRouter);
-  console.log('✅ Route /api/billing activée (PDF + email devis/factures)');
+  console.log('✅ Route /api/billing activée (PDF + envoi devis/factures)');
 } catch (e) {
   console.warn('⚠️ Route billing indisponible:', e.message);
 }
@@ -87,15 +87,18 @@ try {
 try {
   const signageMediaDeleteRouter = require('./server-signage-media-delete.cjs');
   const signageDisplayRouter = require('./server-signage-display.cjs');
+  const signageRuntimeRouter = require('./server-signage-runtime.cjs');
   const signageScheduleCompat = require('./server-signage-schedule-compat.cjs');
   const signageScheduleRouter = require('./server-signage-schedule-router.cjs');
   const signageRouter = require('./server-signage.cjs');
   app.use('/api/signage', signageMediaDeleteRouter);
   app.use('/api/signage', signageDisplayRouter);
+  app.use('/api/signage', signageRuntimeRouter);
   app.use('/api/signage', signageScheduleCompat);
   app.use('/api/signage', signageScheduleRouter);
   app.use('/api/signage', signageRouter);
   console.log('Digital Signage runtime active');
+  console.log('Digital Signage TVBOX runtime heartbeat active');
   console.log('Digital Signage media deletion active');
   console.log('Digital Signage display manager active');
   console.log('Digital Signage scheduling active');
