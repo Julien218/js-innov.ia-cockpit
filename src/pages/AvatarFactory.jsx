@@ -141,7 +141,7 @@ export default function AvatarFactory() {
         <div className="absolute -bottom-28 left-1/4 w-80 h-80 rounded-full bg-violet-500/15 blur-3xl" />
         <div className="relative flex flex-col xl:flex-row xl:items-end justify-between gap-5">
           <div className="flex items-start gap-4">
-            <div className="w-13 h-13 p-3 rounded-2xl bg-white/10 border border-white/10 backdrop-blur"><Factory className="w-7 h-7 text-cyan-300" /></div>
+            <div className="w-14 h-14 p-3 rounded-2xl bg-white/10 border border-white/10 backdrop-blur"><Factory className="w-7 h-7 text-cyan-300" /></div>
             <div><div className="flex items-center gap-2 mb-1"><span className="text-[10px] tracking-[0.22em] uppercase text-cyan-300 font-bold">JS-Innov.IA Studio</span><WandSparkles className="w-3.5 h-3.5 text-amber-300" /></div><h1 className="text-2xl sm:text-3xl font-bold">Avatar Factory</h1><p className="text-sm text-white/60 mt-1 max-w-2xl">Image → orchestration locale → 3D → QA → revue 360° → validation. Les coûts sont suivis automatiquement.</p></div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -183,7 +183,7 @@ export default function AvatarFactory() {
         <section className="premium-panel p-5 min-w-0">
           <div className="flex items-center justify-between mb-4"><div><h2 className="font-semibold">Productions</h2><p className="text-xs text-muted-foreground">Actualisation automatique</p></div><button onClick={() => jobs.refetch()} className="p-2 rounded-lg hover:bg-muted"><RefreshCw className="w-4 h-4" /></button></div>
           <div className="space-y-2 max-h-[760px] overflow-y-auto">
-            {(jobs.data?.jobs || []).map(job => <button key={job.id} onClick={() => setSelectedId(job.id)} className={`w-full text-left rounded-2xl border p-3 transition ${selectedId === job.id ? 'border-primary/40 bg-primary/8 shadow-md shadow-primary/5' : 'border-border/70 hover:bg-muted/40'}`}><div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold truncate">{job.character_id}</p><span className={`text-[10px] px-2 py-1 rounded-full border font-semibold ${STATUS_CLASS[job.status] || 'bg-muted border-border'}`}>{STATUS_LABELS[job.status] || job.status}</span></div><p className="text-xs text-muted-foreground mt-1 truncate">{job.entity_id} · {job.project_id}</p><p className="text-[11px] text-muted-foreground mt-1">Étape : {job.current_stage || '—'}</p></button>)}
+            {(jobs.data?.jobs || []).map(job => <button key={job.id} onClick={() => setSelectedId(job.id)} className={`w-full text-left rounded-2xl border p-3 transition ${selectedId === job.id ? 'border-primary/40 bg-primary/[0.08] shadow-md shadow-primary/5' : 'border-border/70 hover:bg-muted/40'}`}><div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold truncate">{job.character_id}</p><span className={`text-[10px] px-2 py-1 rounded-full border font-semibold ${STATUS_CLASS[job.status] || 'bg-muted border-border'}`}>{STATUS_LABELS[job.status] || job.status}</span></div><p className="text-xs text-muted-foreground mt-1 truncate">{job.entity_id} · {job.project_id}</p><p className="text-[11px] text-muted-foreground mt-1">Étape : {job.current_stage || '—'}</p></button>)}
             {!jobs.isLoading && !(jobs.data?.jobs || []).length && <p className="text-sm text-muted-foreground text-center py-10">Aucune production.</p>}
           </div>
         </section>
