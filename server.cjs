@@ -99,6 +99,15 @@ try {
   console.warn('⚠️ Route AI Cost Control indisponible:', e.message);
 }
 
+// ── Ledger coûts client / refacturation ─────────────────────
+try {
+  const { router: clientCostsRouter } = require('./server-client-costs.cjs');
+  app.use('/api/client-costs', requireSession('admin'), clientCostsRouter);
+  console.log('✅ Route /api/client-costs activée (client_id canonique, coûts réels, marge, refacturation)');
+} catch (e) {
+  console.warn('⚠️ Route client-costs indisponible:', e.message);
+}
+
 // ── Companion adaptatif : owner / équipe / client ──────────
 try {
   const assistantRouter = require('./server-assistant.cjs');
