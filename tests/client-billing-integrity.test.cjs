@@ -13,7 +13,7 @@ test('un oui/ok/confirme consomme la confirmation existante sans repasser par le
   assert.match(source, /pending && AFFIRMATIVE\.has\(intent\)/);
   assert.match(source, /\/api\/assistant\/confirm/);
   assert.match(source, /state\.delete\(key\)/);
-  assert.match(source, /Action exécutée une seule fois/);
+  assert.match(source, /action exécutée une seule fois/);
 });
 
 test('le bridge est installé avant le rendu du Cockpit', () => {
