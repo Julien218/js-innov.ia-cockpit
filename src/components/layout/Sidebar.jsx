@@ -6,7 +6,7 @@ import {
   CheckSquare, MessageSquare, Shield,
   Bot, Network, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
-  PlayCircle, GalleryHorizontalEnd, Send, Server, Gauge, Workflow,
+  PlayCircle, GalleryHorizontalEnd, Send, Server, Gauge, Workflow, Factory,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -120,6 +120,7 @@ const allNavGroups = [
     minRole: "admin",
     items: [
       { label: "Production", icon: Clapperboard, path: "/production", minRole: "admin" },
+      { label: "Avatar Factory", icon: Factory, path: "/avatar-factory", minRole: "admin" },
       { label: "Portfolio", icon: GalleryHorizontalEnd, path: "/portfolio", minRole: "admin" },
     ]
   },
@@ -191,142 +192,36 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
   return (
     <>
       {mobileOpen && (
-        <div
-          className="md:hidden fixed inset-0 bg-black/50 z-40 animate-in fade-in duration-200"
-          onClick={onCloseMobile}
-        />
+        <div className="md:hidden fixed inset-0 bg-black/50 z-40 animate-in fade-in duration-200" onClick={onCloseMobile} />
       )}
-
-      <aside
-        className={cn(
-          "relative flex flex-col h-screen bg-white border-r border-border transition-all duration-300 ease-in-out",
-          "md:relative md:translate-x-0 md:z-30",
-          collapsed ? "md:w-[68px]" : "md:w-[240px]",
-          "fixed md:static z-50 w-[260px] shrink-0",
-          mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-        )}
-      >
-        <div className={cn(
-          "flex items-center gap-3 px-4 py-4 border-b border-border",
-          collapsed && "md:justify-center md:px-2"
-        )}>
-          <div className="flex-shrink-0 w-9 h-9 rounded-xl overflow-hidden shadow-lg">
-            <img src="/logo.png" alt="JS-Innov.IA" className="w-full h-full object-cover" />
-          </div>
-          {!collapsed && (
-            <div className="overflow-hidden flex-1">
-              <p className="text-sm font-bold text-foreground leading-tight" style={{fontFamily: "'Space Grotesk', sans-serif"}}>JS-Innov.IA</p>
-              <p className="text-[10px] text-muted-foreground font-medium tracking-wide">COCKPIT</p>
-            </div>
-          )}
-          <button
-            onClick={onCloseMobile}
-            className="md:hidden p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
-            aria-label="Fermer le menu"
-          >
-            <X className="w-5 h-5" />
-          </button>
+      <aside className={cn(
+        "relative flex flex-col h-screen bg-white border-r border-border transition-all duration-300 ease-in-out",
+        "md:relative md:translate-x-0 md:z-30", collapsed ? "md:w-[68px]" : "md:w-[240px]",
+        "fixed md:static z-50 w-[260px] shrink-0", mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      )}>
+        <div className={cn("flex items-center gap-3 px-4 py-4 border-b border-border", collapsed && "md:justify-center md:px-2")}>
+          <div className="flex-shrink-0 w-9 h-9 rounded-xl overflow-hidden shadow-lg"><img src="/logo.png" alt="JS-Innov.IA" className="w-full h-full object-cover" /></div>
+          {!collapsed && <div className="overflow-hidden flex-1"><p className="text-sm font-bold text-foreground leading-tight" style={{fontFamily: "'Space Grotesk', sans-serif"}}>JS-Innov.IA</p><p className="text-[10px] text-muted-foreground font-medium tracking-wide">COCKPIT</p></div>}
+          <button onClick={onCloseMobile} className="md:hidden p-1.5 rounded-lg hover:bg-muted text-muted-foreground" aria-label="Fermer le menu"><X className="w-5 h-5" /></button>
         </div>
-
-        {!collapsed && (
-          <div className="mx-3 mt-3 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5"
-            style={{ backgroundColor: colors.badge + "15" }}>
-            <RoleIcon className="w-3 h-3 flex-shrink-0" style={{ color: colors.badge }} />
-            <span className="text-[10px] font-semibold" style={{ color: colors.badge }}>
-              {ROLE_LABELS[role]}
-            </span>
-          </div>
-        )}
-
+        {!collapsed && <div className="mx-3 mt-3 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5" style={{ backgroundColor: colors.badge + "15" }}><RoleIcon className="w-3 h-3 flex-shrink-0" style={{ color: colors.badge }} /><span className="text-[10px] font-semibold" style={{ color: colors.badge }}>{ROLE_LABELS[role]}</span></div>}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
-          {navGroups.map((group) => (
-            <div key={group.label} className="mb-3">
-              {!collapsed && (
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-3 mb-1.5">
-                  {group.label}
-                </p>
-              )}
-              {group.items.map((item) => {
-                const itemPath = getPath(item);
-                const active = location.pathname === itemPath ||
-                  (itemPath !== "/" && location.pathname.startsWith(itemPath));
-                const badge = item.badge ? badgeValues[item.badge] || 0 : 0;
-                return (
-                  <Link
-                    key={itemPath}
-                    to={itemPath}
-                    onClick={handleNavClick}
-                    title={collapsed ? item.label : undefined}
-                    className={cn(
-                      "sidebar-item mb-0.5 relative min-h-[44px]",
-                      collapsed ? "md:justify-center md:px-0 md:py-2.5" : "",
-                      active
-                        ? "bg-primary text-white shadow-lg shadow-primary/25"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    <item.icon className="w-[18px] h-[18px] flex-shrink-0" />
-                    {!collapsed && (
-                      <>
-                        <span className="text-sm font-medium flex-1 truncate">{item.label}</span>
-                        {badge > 0 && (
-                          <span className="text-[10px] font-bold bg-red-500 text-white rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center">
-                            {badge}
-                          </span>
-                        )}
-                        {item.agentStatus && !collapsed && (
-                          <span className={cn("w-2 h-2 rounded-full flex-shrink-0", agentStatus === "online" ? "bg-emerald-500" : agentStatus === "checking" ? "bg-amber-400 animate-pulse" : "bg-red-500")} title={agentStatus === "online" ? "Agent 8787 connecté" : "Agent 8787 hors ligne"} />
-                        )}
-                        {item.agentLocal && !collapsed && (
-                          <span className={cn("text-[9px] font-mono", agentStatus === "online" ? "text-emerald-500" : "text-red-400")}>8787</span>
-                        )}
-                      </>
-                    )}
-                    {collapsed && badge > 0 && (
-                      <span className="absolute top-1 right-1 text-[9px] font-bold bg-red-500 text-white rounded-full min-w-[16px] h-[16px] px-1 flex items-center justify-center">
-                        {badge}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
+          {navGroups.map(group => <div key={group.label} className="mb-3">
+            {!collapsed && <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-3 mb-1.5">{group.label}</p>}
+            {group.items.map(item => {
+              const itemPath = getPath(item);
+              const active = location.pathname === itemPath || (itemPath !== "/" && location.pathname.startsWith(itemPath));
+              const badge = item.badge ? badgeValues[item.badge] || 0 : 0;
+              return <Link key={itemPath} to={itemPath} onClick={handleNavClick} title={collapsed ? item.label : undefined} className={cn("sidebar-item mb-0.5 relative min-h-[44px]", collapsed ? "md:justify-center md:px-0 md:py-2.5" : "", active ? "bg-primary text-white shadow-lg shadow-primary/25" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
+                <item.icon className="w-[18px] h-[18px] flex-shrink-0" />
+                {!collapsed && <><span className="text-sm font-medium flex-1 truncate">{item.label}</span>{badge > 0 && <span className="text-[10px] font-bold bg-red-500 text-white rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center">{badge}</span>}{item.agentStatus && <span className={cn("w-2 h-2 rounded-full flex-shrink-0", agentStatus === "online" ? "bg-emerald-500" : agentStatus === "checking" ? "bg-amber-400 animate-pulse" : "bg-red-500")} />}{item.agentLocal && <span className={cn("text-[9px] font-mono", agentStatus === "online" ? "text-emerald-500" : "text-red-400")}>8787</span>}</>}
+                {collapsed && badge > 0 && <span className="absolute top-1 right-1 text-[9px] font-bold bg-red-500 text-white rounded-full min-w-[16px] h-[16px] px-1 flex items-center justify-center">{badge}</span>}
+              </Link>;
+            })}
+          </div>)}
         </nav>
-
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="hidden md:flex items-center justify-center py-2 border-t border-border text-muted-foreground hover:bg-muted"
-        >
-          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-        </button>
-
-        {!collapsed ? (
-          <div className="border-t border-border p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                {user?.email?.[0]?.toUpperCase() || "J"}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium truncate">{user?.email || "Julien"}</p>
-                <p className="text-[10px] text-muted-foreground">{ROLE_LABELS[role]}</p>
-              </div>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              Déconnexion
-            </button>
-          </div>
-        ) : (
-          <div className="border-t border-border py-2 flex flex-col items-center gap-1">
-            <button onClick={handleLogout} className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted" title="Déconnexion">
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+        <button onClick={() => setCollapsed(!collapsed)} className="hidden md:flex items-center justify-center py-2 border-t border-border text-muted-foreground hover:bg-muted">{collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}</button>
+        {!collapsed ? <div className="border-t border-border p-3"><div className="flex items-center gap-2 mb-2"><div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">{user?.email?.[0]?.toUpperCase() || "J"}</div><div className="flex-1 min-w-0"><p className="text-xs font-medium truncate">{user?.email || "Julien"}</p><p className="text-[10px] text-muted-foreground">{ROLE_LABELS[role]}</p></div></div><button onClick={handleLogout} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-muted hover:text-foreground"><LogOut className="w-3.5 h-3.5" />Déconnexion</button></div> : <div className="border-t border-border py-2 flex flex-col items-center gap-1"><button onClick={handleLogout} className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted" title="Déconnexion"><LogOut className="w-4 h-4" /></button></div>}
       </aside>
     </>
   );
