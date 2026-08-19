@@ -34,7 +34,7 @@ export const ROLE_ROUTES = {
     "/devis", "/factures", "/emails", "/emails-core", "/cost-centers", "/ai-cost",
     "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
     "/devis", "/factures", "/emails", "/cost-centers", "/ai-cost",
-    "/production", "/portfolio", "/apps-agents",
+    "/production", "/avatar-factory", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
     "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations", "/gouvernance", "/confidentialite"
   ],
@@ -43,7 +43,7 @@ export const ROLE_ROUTES = {
     "/devis", "/factures", "/emails", "/emails-core", "/cost-centers", "/ai-cost",
     "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
     "/devis", "/factures", "/emails", "/cost-centers", "/ai-cost",
-    "/production", "/portfolio", "/apps-agents",
+    "/production", "/avatar-factory", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
     "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations", "/gouvernance", "/confidentialite"
   ],
