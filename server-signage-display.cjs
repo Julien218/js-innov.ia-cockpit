@@ -5,6 +5,7 @@ const { postgresRest } = require('./server-postgres.cjs');
 const router = express.Router();
 const encode = value => encodeURIComponent(String(value || ''));
 const nowMs = () => Date.now();
+const ONLINE_WINDOW_MS = 90_000;
 
 async function db(resource, options = {}) { return postgresRest(resource, options); }
 
@@ -45,12 +46,24 @@ function sameMode(mode, width, height, refresh) {
   return Number(mode.width) === Number(width) && Number(mode.height) === Number(height) && refreshMatches;
 }
 
+function ageMs(timestamp) {
+  if (!timestamp) return null;
+  const parsed = new Date(timestamp).getTime();
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, nowMs() - parsed);
+}
+
 function displayHealth(player, profile, publication, scheduleDecision) {
   const diagnostics = player?.diagnostics && typeof player.diagnostics === 'object' ? player.diagnostics : {};
+  const runtimeDiagnostics = player?.runtime_diagnostics && typeof player.runtime_diagnostics === 'object' ? player.runtime_diagnostics : {};
   const display = diagnostics.display && typeof diagnostics.display === 'object' ? diagnostics.display : {};
   const playback = diagnostics.playback && typeof diagnostics.playback === 'object' ? diagnostics.playback : {};
-  const heartbeatAgeMs = player?.last_seen_at ? nowMs() - new Date(player.last_seen_at).getTime() : Number.POSITIVE_INFINITY;
-  const online = player?.status === 'online' && heartbeatAgeMs < 90000;
+  const playbackHeartbeatAgeMs = ageMs(player?.last_seen_at);
+  const runtimeHeartbeatAgeMs = ageMs(player?.runtime_last_seen_at);
+  const playbackOnline = player?.status === 'online' && playbackHeartbeatAgeMs !== null && playbackHeartbeatAgeMs < ONLINE_WINDOW_MS;
+  const runtimeOnline = runtimeHeartbeatAgeMs !== null && runtimeHeartbeatAgeMs < ONLINE_WINDOW_MS;
+  const deviceOnline = runtimeOnline || playbackOnline;
+  const runtimeCapable = Boolean(player?.runtime_version || player?.runtime_last_seen_at);
   const scheduleAllowed = scheduleDecision?.ads_allowed;
   const hasPublication = Boolean(publication);
   const acked = Boolean(publication?.acknowledged_at) || publication?.status === 'active';
@@ -62,10 +75,11 @@ function displayHealth(player, profile, publication, scheduleDecision) {
     : false;
 
   const checks = {
-    player: online ? 'OK' : 'ERROR',
-    network: online ? 'OK' : 'ERROR',
+    runtime: runtimeOnline ? 'OK' : runtimeCapable ? 'ERROR' : playbackOnline ? 'UNKNOWN' : 'ERROR',
+    player: playbackOnline ? 'OK' : 'ERROR',
+    network: deviceOnline ? 'OK' : 'ERROR',
     schedule: scheduleAllowed === false ? 'WARNING' : scheduleAllowed === true ? 'OK' : 'UNKNOWN',
-    publication: !online ? 'UNKNOWN' : !hasPublication ? 'WARNING' : acked ? 'OK' : 'WARNING',
+    publication: !deviceOnline ? 'UNKNOWN' : !hasPublication ? 'WARNING' : acked ? 'OK' : 'WARNING',
     hdmi: connected === true ? 'OK' : connected === false ? 'ERROR' : 'UNKNOWN',
     displayMode: !mode ? 'UNKNOWN' : expectedMismatch ? 'WARNING' : 'OK',
     content: scheduleAllowed === false ? 'WARNING' : playing ? 'OK' : acked ? 'WARNING' : 'UNKNOWN',
@@ -73,7 +87,8 @@ function displayHealth(player, profile, publication, scheduleDecision) {
 
   let state = 'HEALTHY';
   let label = 'DISPLAY OK';
-  if (!online) { state = 'PLAYER_OFFLINE'; label = 'PLAYER OFFLINE'; }
+  if (!deviceOnline) { state = 'PLAYER_OFFLINE'; label = 'TVBOX / PLAYER OFFLINE'; }
+  else if (runtimeOnline && !playbackOnline) { state = 'PLAYER_APP_ERROR'; label = 'TVBOX CONNECTÉ / PLAYER NON ACTIF'; }
   else if (connected === false) { state = 'DISPLAY_ERROR'; label = 'HDMI NON DÉTECTÉ'; }
   else if (expectedMismatch) { state = 'DISPLAY_MODE_WARNING'; label = 'HDMI DÉTECTÉ / MODE INCOMPATIBLE'; }
   else if (scheduleAllowed === false) { state = 'OUT_OF_SCHEDULE'; label = 'PLAYER ONLINE / HORS HORAIRES'; }
@@ -82,11 +97,22 @@ function displayHealth(player, profile, publication, scheduleDecision) {
   else if (playing) { state = 'HEALTHY'; label = 'PUBLICATION ACK / CONTENU EN LECTURE'; }
   else { state = 'CONTENT_UNCONFIRMED'; label = 'PUBLICATION ACK / LECTURE NON CONFIRMÉE'; }
 
-  return { state, label, checks, heartbeatAgeMs: Number.isFinite(heartbeatAgeMs) ? heartbeatAgeMs : null, currentMode: mode };
+  return {
+    state,
+    label,
+    checks,
+    deviceOnline,
+    runtimeOnline,
+    playbackOnline,
+    runtimeHeartbeatAgeMs,
+    playbackHeartbeatAgeMs,
+    currentMode: mode,
+    runtime: runtimeDiagnostics,
+  };
 }
 
 async function assertPlayerOwner(playerId, ownerEmail) {
-  const rows = await db(`signage_players?select=id,owner_email,name,status,last_seen_at,current_publication_id,app_version,diagnostics,site_id&id=eq.${encode(playerId)}&owner_email=eq.${encode(ownerEmail)}&limit=1`);
+  const rows = await db(`signage_players?select=id,owner_email,name,status,last_seen_at,current_publication_id,app_version,diagnostics,site_id,runtime_last_seen_at,runtime_version,runtime_diagnostics&id=eq.${encode(playerId)}&owner_email=eq.${encode(ownerEmail)}&limit=1`);
   return rows?.[0] || null;
 }
 
@@ -119,7 +145,8 @@ router.get('/manage/display/players/:id', async (req, res) => {
     const display = diagnostics.display || {};
     res.json({
       player,
-      device: diagnostics.device || null,
+      runtime: player.runtime_diagnostics || null,
+      device: diagnostics.device || player.runtime_diagnostics?.device || null,
       display: diagnostics.display || null,
       playback: diagnostics.playback || null,
       supportedModes: supportedModes(display),
@@ -128,6 +155,7 @@ router.get('/manage/display/players/:id', async (req, res) => {
       schedule,
       health: displayHealth(player, profile, publication, schedule),
       capabilities: {
+        runtimeHeartbeat: 'SUPPORTED_FROM_0_5_3',
         hdmiDetection: 'PARTIALLY_SUPPORTED',
         activeResolution: 'SUPPORTED',
         activeRefreshRate: 'SUPPORTED',
