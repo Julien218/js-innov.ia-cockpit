@@ -9,6 +9,7 @@ on:
       - 'src/App.jsx'
       - 'src/lib/roles.js'
       - 'src/components/layout/Sidebar.jsx'
+      - '.env.example'
       - 'server-finops.cjs'
       - 'server.cjs'
       - 'supabase/migrations/*finops*'
@@ -38,7 +39,6 @@ jobs:
       - name: Build cockpit
         run: npm run build
       - name: Typecheck
-        continue-on-error: true
         run: npm run typecheck
       - name: Lint
         run: npm run lint
