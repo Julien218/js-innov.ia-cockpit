@@ -8,6 +8,7 @@ on:
       - 'src/api/avatarFactoryClient.js'
       - 'src/components/avatar/**'
       - 'src/App.jsx'
+      - 'src/index.css'
       - 'src/lib/roles.js'
       - 'src/components/layout/Sidebar.jsx'
       - '.env.example'
