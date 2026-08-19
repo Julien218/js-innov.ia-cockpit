@@ -12,7 +12,7 @@ import java.util.Locale;
 import java.util.TimeZone;
 
 public class ScheduledMainActivity extends MainActivity {
-  static final String SCHEDULED_APP_VERSION = "0.5.2-pilot";
+  static final String SCHEDULED_APP_VERSION = "0.5.3-pilot";
   static final String PREF_ADS_BLOCKED = "adsBlocked";
   static final String PREF_BLOCK_REASON = "adsBlockReason";
   static final String PREF_NEXT_CHANGE_AT = "adsNextChangeAt";
@@ -20,15 +20,26 @@ public class ScheduledMainActivity extends MainActivity {
   boolean adsBlocked;
 
   @Override void showPlayer() {
-    super.showPlayer();
     PixeliumGuardianService.start(this);
+    super.showPlayer();
     adsBlocked = cachedBlockStillActive();
     if (adsBlocked) blockAdvertising(cachedBlockReason(), cachedNextChangeAt());
   }
 
   @Override protected void onResume() {
     super.onResume();
+    PlayerRuntimeState.markActivityVisible(this, true);
     if (token != null && !token.isEmpty()) PixeliumGuardianService.start(this);
+  }
+
+  @Override protected void onPause() {
+    PlayerRuntimeState.markActivityVisible(this, false);
+    super.onPause();
+  }
+
+  @Override protected void onDestroy() {
+    PlayerRuntimeState.markActivityVisible(this, false);
+    super.onDestroy();
   }
 
   JSONObject playbackTelemetry() {
@@ -43,7 +54,8 @@ public class ScheduledMainActivity extends MainActivity {
       playback.put("preparingPublication", preparingCandidate);
       playback.put("candidatePublicationId", candidatePublicationId == null ? JSONObject.NULL : candidatePublicationId);
       playback.put("scheduleBlocked", adsBlocked || cachedBlockStillActive());
-      playback.put("guardian", "foreground-sticky");
+      playback.put("guardian", "foreground-special-use");
+      playback.put("runtimeState", PlayerRuntimeState.snapshot(this));
     } catch (Exception ignored) {}
     return playback;
   }
@@ -58,7 +70,7 @@ public class ScheduledMainActivity extends MainActivity {
           .put("freeBytes", mediaCache.getFreeSpace())
           .put("scheduleAware", true)
           .put("displayTelemetryVersion", 1)
-          .put("guardianVersion", 1)
+          .put("guardianVersion", 2)
           .put("device", DisplayTelemetry.device())
           .put("display", DisplayTelemetry.display(this))
           .put("playback", playbackTelemetry())
@@ -68,6 +80,7 @@ public class ScheduledMainActivity extends MainActivity {
           .put("diagnostics", diagnostics);
 
         JSONObject response = jsonRequest(server + "/api/signage/player/heartbeat", "POST", request);
+        PlayerRuntimeState.markPlaybackHeartbeat(this);
         PlayerUpdateManager.checkForUpdate(this, server, SCHEDULED_APP_VERSION);
 
         boolean allowed = response.optBoolean("adsAllowed", true);
@@ -95,6 +108,7 @@ public class ScheduledMainActivity extends MainActivity {
           }
         }
       } catch (Exception error) {
+        PlayerRuntimeState.markPlaybackError(this, error.getClass().getSimpleName() + ": " + error.getMessage());
         if (String.valueOf(error.getMessage()).contains("HTTP 401")) {
           retry = false;
           getSharedPreferences("player", 0).edit().remove("token").apply();
@@ -111,7 +125,9 @@ public class ScheduledMainActivity extends MainActivity {
           super.playCached();
         }
       } finally {
-        if (retry) handler.postDelayed(this::heartbeat, 30000);
+        if (retry && !isFinishing() && !(Build.VERSION.SDK_INT >= 17 && isDestroyed())) {
+          handler.postDelayed(this::heartbeat, 30000);
+        }
       }
     }).start();
   }
