@@ -99,6 +99,15 @@ try {
   console.warn('⚠️ Route AI Cost Control indisponible:', e.message);
 }
 
+// ── FinOps transversal : client / entité / projet / service ─
+try {
+  const finopsRouter = require('./server-finops.cjs');
+  app.use('/api/finops', finopsRouter);
+  console.log('✅ Route /api/finops activée (coûts réels, refacturation, marge par projet)');
+} catch (e) {
+  console.warn('⚠️ Route FinOps indisponible:', e.message);
+}
+
 // ── Companion adaptatif : owner / équipe / client ──────────
 try {
   const assistantRouter = require('./server-assistant.cjs');
