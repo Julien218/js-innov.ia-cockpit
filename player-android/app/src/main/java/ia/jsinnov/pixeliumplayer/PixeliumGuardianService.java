@@ -56,7 +56,7 @@ public class PixeliumGuardianService extends Service {
   private final Runnable runtimeHeartbeat = new Runnable() {
     @Override public void run() {
       sendRuntimeHeartbeat();
-      handler.postDelayed(this, RUNTIME_HEARTBEAT_INTERVAL_MS);
+      scheduleRuntimeHeartbeat(RUNTIME_HEARTBEAT_INTERVAL_MS);
     }
   };
 
@@ -65,7 +65,7 @@ public class PixeliumGuardianService extends Service {
       long lastPlayback = PlayerRuntimeState.playbackHeartbeatAt(PixeliumGuardianService.this);
       boolean stale = lastPlayback <= 0L || System.currentTimeMillis() - lastPlayback > PLAYBACK_STALE_MS;
       if (stale) ensurePlayerRunning("playback_stale");
-      handler.postDelayed(this, WATCHDOG_INTERVAL_MS);
+      scheduleWatchdog(WATCHDOG_INTERVAL_MS);
     }
   };
 
@@ -90,18 +90,14 @@ public class PixeliumGuardianService extends Service {
 
   @Override public int onStartCommand(Intent intent, int flags, int startId) {
     startForeground(NOTIFICATION_ID, buildNotification("Surveillance et reconnexion actives"));
-    handler.removeCallbacks(runtimeHeartbeat);
-    handler.removeCallbacks(watchdog);
-    handler.post(runtimeHeartbeat);
-    handler.post(watchdog);
+    scheduleRuntimeHeartbeat(0L);
+    scheduleWatchdog(0L);
     return START_STICKY;
   }
 
   @Override public void onTaskRemoved(Intent rootIntent) {
-    handler.removeCallbacks(runtimeHeartbeat);
-    handler.removeCallbacks(watchdog);
-    handler.postDelayed(runtimeHeartbeat, 1_000L);
-    handler.postDelayed(watchdog, 2_000L);
+    scheduleRuntimeHeartbeat(1_000L);
+    scheduleWatchdog(2_000L);
     super.onTaskRemoved(rootIntent);
   }
 
@@ -116,6 +112,16 @@ public class PixeliumGuardianService extends Service {
 
   @Override public IBinder onBind(Intent intent) {
     return null;
+  }
+
+  private void scheduleRuntimeHeartbeat(long delayMs) {
+    handler.removeCallbacks(runtimeHeartbeat);
+    handler.postDelayed(runtimeHeartbeat, Math.max(0L, delayMs));
+  }
+
+  private void scheduleWatchdog(long delayMs) {
+    handler.removeCallbacks(watchdog);
+    handler.postDelayed(watchdog, Math.max(0L, delayMs));
   }
 
   private void sendRuntimeHeartbeat() {
@@ -141,6 +147,7 @@ public class PixeliumGuardianService extends Service {
         runtime.put("processId", Process.myPid());
         runtime.put("networkAvailable", isNetworkAvailable());
         runtime.put("device", DisplayTelemetry.device());
+        runtime.put("updater", PlayerUpdateManager.telemetry(this));
 
         JSONObject request = new JSONObject()
           .put("runtimeVersion", RUNTIME_VERSION)
@@ -154,6 +161,10 @@ public class PixeliumGuardianService extends Service {
         );
         PlayerRuntimeState.markRuntimeHeartbeat(this);
         networkAvailable = true;
+
+        // Le service peut vérifier, télécharger, contrôler et installer une release
+        // signée même si l'activité de lecture n'est plus visible.
+        PlayerUpdateManager.checkForUpdate(this, server, PLAYER_VERSION);
 
         if (response.optBoolean("launchRequested", false)) {
           handler.post(() -> ensurePlayerRunning("server_playback_offline"));
@@ -206,7 +217,7 @@ public class PixeliumGuardianService extends Service {
       networkCallback = new ConnectivityManager.NetworkCallback() {
         @Override public void onAvailable(Network network) {
           networkAvailable = true;
-          handler.post(runtimeHeartbeat);
+          scheduleRuntimeHeartbeat(0L);
           handler.post(() -> ensurePlayerRunning("network_available"));
         }
 
