@@ -21,6 +21,7 @@ import Assurances from "@/pages/Assurances";
 import Documents from "@/pages/Documents";
 import AppsAgents from "@/pages/AppsAgents";
 import Production from "@/pages/Production";
+import AvatarFactory from "@/pages/AvatarFactory";
 import Domaines from "@/pages/Domaines";
 import Rangement from "@/pages/Rangement";
 import Clients from "@/pages/Clients";
@@ -103,6 +104,7 @@ const AppRoutes = () => {
           <Route path="/agent" element={isClient ? <Navigate to="/" replace /> : <PageBoundary><Agent /></PageBoundary>} />
           <Route path="/agents-ia" element={isClient ? <Navigate to="/" replace /> : <PageBoundary><AgentsIA /></PageBoundary>} />
           <Route path="/ai-cost-control" element={<PageBoundary><AICostControl /></PageBoundary>} />
+          <Route path="/avatar-factory" element={isClient ? <Navigate to="/" replace /> : <PageBoundary><AvatarFactory /></PageBoundary>} />
           <Route path="/validations" element={<PageBoundary><Validations /></PageBoundary>} />
           <Route path="/logs" element={<PageBoundary><Logs /></PageBoundary>} />
           <Route path="/invitations" element={<PageBoundary><Invitations /></PageBoundary>} />
