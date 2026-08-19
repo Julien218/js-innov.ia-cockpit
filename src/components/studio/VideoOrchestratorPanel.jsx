@@ -9,6 +9,7 @@ import {
   Loader2,
   Play,
   RefreshCw,
+  Scissors,
   Square,
   Upload,
 } from 'lucide-react';
@@ -36,7 +37,7 @@ function formatElapsed(ms) {
   return `${min}:${String(sec % 60).padStart(2, '0')}`;
 }
 
-export default function VideoOrchestratorPanel({ vp }) {
+export default function VideoOrchestratorPanel({ vp, onOptimizeMontage }) {
   const [mode, setMode] = useState(getVideoMode);
   const [status, setStatus] = useState(null);
   const [workflow, setWorkflow] = useState(() => loadLocalWorkflow(WORKFLOW_KIND));
@@ -47,6 +48,7 @@ export default function VideoOrchestratorPanel({ vp }) {
   const [height, setHeight] = useState(352);
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 0xffffffff));
   const [running, setRunning] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [promptId, setPromptId] = useState('');
   const [outputs, setOutputs] = useState([]);
@@ -159,6 +161,20 @@ export default function VideoOrchestratorPanel({ vp }) {
       setNotice({ type: 'info', text: 'Interruption envoyée à ComfyUI.' });
     } catch (error) {
       setNotice({ type: 'error', text: error.message });
+    }
+  };
+
+  const optimizeMontage = async () => {
+    if (!onOptimizeMontage) return;
+    setOptimizing(true);
+    setNotice(null);
+    try {
+      const result = await onOptimizeMontage();
+      setNotice({ type: 'success', text: result?.summary || 'Montage optimisé localement.' });
+    } catch (error) {
+      setNotice({ type: 'error', text: error.message });
+    } finally {
+      setOptimizing(false);
     }
   };
 
@@ -299,6 +315,16 @@ export default function VideoOrchestratorPanel({ vp }) {
               <button onClick={openLocalOutputFolder} className="px-3 py-2 rounded-xl border border-border text-sm flex items-center gap-2 text-muted-foreground hover:text-foreground">
                 <FolderOpen size={14} /> Dossier output
               </button>
+              {onOptimizeMontage && (
+                <button
+                  onClick={optimizeMontage}
+                  disabled={optimizing}
+                  className="px-3 py-2 rounded-xl border border-border text-sm flex items-center gap-2 text-muted-foreground hover:text-foreground disabled:opacity-50"
+                >
+                  {optimizing ? <Loader2 size={14} className="animate-spin" /> : <Scissors size={14} />}
+                  Optimiser montage LOCAL
+                </button>
+              )}
             </div>
 
             {promptId && <p className="text-[11px] text-muted-foreground break-all">Job ComfyUI : {promptId}</p>}
