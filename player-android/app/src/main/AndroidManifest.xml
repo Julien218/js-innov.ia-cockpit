@@ -4,10 +4,14 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
-    <application android:theme="@style/AppTheme" android:label="Pixelium Player" android:usesCleartextTraffic="false">
+
+    <application
+        android:theme="@style/AppTheme"
+        android:label="Pixelium Player"
+        android:usesCleartextTraffic="false">
         <activity
             android:name=".ScheduledMainActivity"
             android:screenOrientation="landscape"
@@ -20,19 +24,45 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Candidat HOME optionnel pour transformer le TVBOX en player dédié.
+             Android demande une validation utilisateur unique avant de le choisir. -->
+        <activity-alias
+            android:name=".PixeliumHome"
+            android:targetActivity=".ScheduledMainActivity"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
+
         <service
             android:name=".PixeliumGuardianService"
             android:enabled="true"
             android:exported="false"
             android:stopWithTask="false"
-            android:foregroundServiceType="mediaPlayback" />
-        <receiver android:name=".BootReceiver" android:enabled="true" android:exported="true">
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Dedicated digital-signage TVBOX runtime watchdog, cloud health heartbeat and playback recovery" />
+        </service>
+
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <action android:name="android.intent.action.USER_UNLOCKED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+
         <receiver
             android:name=".UpdateInstallReceiver"
             android:enabled="true"
