@@ -17,5 +17,6 @@ export const avatarFactory = {
   getJob: (id) => request(`/jobs/${encodeURIComponent(id)}`),
   createJob: (payload) => request('/jobs', { method: 'POST', body: JSON.stringify(payload) }),
   approveJob: (id) => request(`/jobs/${encodeURIComponent(id)}/approve`, { method: 'POST', body: '{}' }),
+  rejectJob: (id, reason) => request(`/jobs/${encodeURIComponent(id)}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
   costSummary: () => request('/costs/summary'),
 };
