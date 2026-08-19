@@ -6,15 +6,24 @@ on:
       - feature/olivier-signage-pilot-release
     paths:
       - '.github/workflows/pixelium-live-smoke.yml'
+      - '__manual_release_only__/**'
   workflow_dispatch:
 
 permissions:
   statuses: write
   contents: read
 
+concurrency:
+  group: pixelium-live-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    env:
+      BASE_URL: https://olivier-signage-cockpit-production.up.railway.app
+      EXPECTED_VERSION: 0.5.3-pilot
+      EXPECTED_CERT: 8fed74014024629caa1d253264e894e627dc1b96ce1add75d4ee8dad87f89cf9
     steps:
       - name: Mark live smoke pending
         shell: bash
@@ -28,42 +37,76 @@ jobs:
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -d '{"state":"pending","context":"Pixelium live smoke","description":"Checking live Player short URL","target_url":"'"${RUN_URL}"'"}'
+            -d '{"state":"pending","context":"Pixelium live smoke","description":"Waiting for Railway and validating Player 0.5.3","target_url":"'"${RUN_URL}"'"}'
 
-      - name: Check live Player endpoints
-        shell: bash
-        run: |
-          set -u
-          for BASE in 'https://olivier-signage-cockpit-production.up.railway.app' 'https://cockpit.jsinnovia.com'; do
-            for PATHNAME in /p /player /player.apk /api/player-download/status; do
-              echo "===== ${BASE}${PATHNAME} ====="
-              rm -f /tmp/headers /tmp/body
-              curl -sS -L --max-time 30 \
-                -D /tmp/headers \
-                -o /tmp/body \
-                -w 'http=%{http_code}\nurl=%{url_effective}\ncontent_type=%{content_type}\nsize=%{size_download}\n' \
-                "${BASE}${PATHNAME}" || true
-              echo '--- headers ---'
-              grep -Ei '^(HTTP/|location:|content-type:|content-disposition:|x-pixelium-player-version:|x-pixelium-release:|content-length:)' /tmp/headers || true
-              echo '--- file ---'
-              file /tmp/body || true
-              echo
-            done
-          done
-
-      - name: Assert Railway ultra-short URL serves signed 0.5 APK
+      - name: Wait for Railway deployment and signed 0.5.3 metadata
         shell: bash
         run: |
           set -euo pipefail
-          URL='https://olivier-signage-cockpit-production.up.railway.app/p'
+          rm -f /tmp/status.json /tmp/health.json
+          for ATTEMPT in $(seq 1 40); do
+            HEALTH_CODE="$(curl -sS --max-time 20 -o /tmp/health.json -w '%{http_code}' "${BASE_URL}/api/health" || true)"
+            STATUS_CODE="$(curl -sS --max-time 20 -o /tmp/status.json -w '%{http_code}' "${BASE_URL}/api/player-download/status" || true)"
+            VERSION="$(node -e "try{const x=require('/tmp/status.json');process.stdout.write(String(x.version||''))}catch{}")"
+            AVAILABLE="$(node -e "try{const x=require('/tmp/status.json');process.stdout.write(String(x.available===true))}catch{}")"
+            echo "attempt=${ATTEMPT} health=${HEALTH_CODE} status=${STATUS_CODE} available=${AVAILABLE} version=${VERSION}"
+            if [ "$HEALTH_CODE" = '200' ] && [ "$STATUS_CODE" = '200' ] && [ "$AVAILABLE" = 'true' ] && [ "$VERSION" = "$EXPECTED_VERSION" ]; then
+              break
+            fi
+            if [ "$ATTEMPT" = '40' ]; then
+              echo 'Railway did not expose the expected signed release in time.' >&2
+              cat /tmp/status.json || true
+              exit 1
+            fi
+            sleep 15
+          done
+
+      - name: Validate signed release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const status = JSON.parse(fs.readFileSync('/tmp/status.json', 'utf8'));
+          const expectedVersion = process.env.EXPECTED_VERSION;
+          const expectedCert = process.env.EXPECTED_CERT;
+          const normalize = value => String(value || '').replaceAll(':', '').toLowerCase();
+          if (status.available !== true) throw new Error('release unavailable');
+          if (status.version !== expectedVersion) throw new Error(`unexpected version ${status.version}`);
+          if (!/^[0-9a-f]{64}$/i.test(String(status.apkSha256 || ''))) throw new Error('invalid APK SHA-256');
+          if (normalize(status.certificateSha256) !== expectedCert) throw new Error('unexpected signing certificate');
+          if (status.channel !== 'signed-release') throw new Error(`unexpected channel ${status.channel}`);
+          if (status.commissioningPath !== '/api/player-download/commissioning') throw new Error('unexpected commissioning path');
+          console.log(JSON.stringify({ version: status.version, apkSha256: status.apkSha256, channel: status.channel }, null, 2));
+          NODE
+
+      - name: Validate ultra-short APK endpoint and headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_SHA="$(node -e "const x=require('/tmp/status.json');process.stdout.write(x.apkSha256)")"
           rm -f /tmp/p.headers /tmp/p.apk
-          CODE="$(curl -sS --max-time 30 -D /tmp/p.headers -o /tmp/p.apk -w '%{http_code}' "$URL")"
+          CODE="$(curl -sS --max-time 60 -D /tmp/p.headers -o /tmp/p.apk -w '%{http_code}' "${BASE_URL}/p")"
           test "$CODE" = '200'
           grep -qi '^content-type: application/vnd.android.package-archive' /tmp/p.headers
-          grep -qi '^content-disposition: attachment; filename="Pixelium-Player-Olivier-0.5.0-pilot.apk"' /tmp/p.headers
-          grep -qi '^x-pixelium-player-version: 0.5.0-pilot' /tmp/p.headers
+          grep -qi "^content-disposition: attachment; filename=\"Pixelium-Player-Olivier-${EXPECTED_VERSION}\.apk\"" /tmp/p.headers
+          grep -qi "^x-pixelium-player-version: ${EXPECTED_VERSION}" /tmp/p.headers
           grep -qi '^x-pixelium-release: signed-release' /tmp/p.headers
+          grep -qi "^x-pixelium-apk-sha256: ${APK_SHA}" /tmp/p.headers
           file /tmp/p.apk | grep -q 'Android package (APK)'
+          ACTUAL_SHA="$(sha256sum /tmp/p.apk | awk '{print $1}')"
+          test "$ACTUAL_SHA" = "$APK_SHA"
+
+      - name: Assert runtime heartbeat route is deployed and protected
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f /tmp/runtime.json
+          CODE="$(curl -sS --max-time 20 -o /tmp/runtime.json -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' -d '{}' \
+            "${BASE_URL}/api/signage/player/runtime-heartbeat")"
+          test "$CODE" = '401'
+          node -e "const x=require('/tmp/runtime.json'); if(!/Jeton Player requis/i.test(String(x.error||''))) process.exit(1)"
 
       - name: Mark live smoke successful
         if: success()
@@ -78,4 +121,18 @@ jobs:
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -d '{"state":"success","context":"Pixelium live smoke","description":"/p serves signed Player 0.5 APK","target_url":"'"${RUN_URL}"'"}'
+            -d '{"state":"success","context":"Pixelium live smoke","description":"Railway serves signed Player 0.5.3 and protected runtime route","target_url":"'"${RUN_URL}"'"}'
+
+      - name: Mark live smoke failed
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          curl --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -d '{"state":"failure","context":"Pixelium live smoke","description":"Live Player 0.5.3 validation failed","target_url":"'"${RUN_URL}"'"}' || true
