@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, BarChart3, CircleDollarSign, RefreshCw, Save, WalletCards } from 'lucide-react';
+import { AlertTriangle, BarChart3, RefreshCw, Save, WalletCards } from 'lucide-react';
 
 function euro(value) {
   return new Intl.NumberFormat('fr-BE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(Number(value || 0));
