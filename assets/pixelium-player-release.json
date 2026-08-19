@@ -1,6 +1,6 @@
 {
   "version": "0.5.3-pilot",
   "certificateSha256": "8F:ED:74:01:40:24:62:9C:AA:1D:25:32:64:E8:94:E6:27:DC:1B:96:CE:1A:DD:75:D4:EE:8D:AD:87:F8:9C:F9",
-  "apkSha256": "08cfb2539062b1e26db761c8a62f6cdc12421fe63ae6a8c6d108ac09814ffbf4",
-  "sourceCommit": "bbce561fe6fcad86d6145ae7655b36919b9d1376"
+  "apkSha256": "7b021f867d0dc2d00caeea555c6af85ed0eed965fb5614acf0c22e165ffc219d",
+  "sourceCommit": "94311b9e27b84d31a433baf14754ce753f414f16"
 }
