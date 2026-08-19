@@ -1,7 +1,10 @@
-const { app, BrowserWindow, shell, ipcMain, Notification, Tray, Menu, nativeImage } = require("electron");
+const { app, BrowserWindow, shell, ipcMain, Notification, Tray, Menu } = require("electron");
 const path = require("path");
 const os = require("os");
+const fs = require("fs");
+const http = require("http");
 const https = require("https");
+const { execFile } = require("child_process");
 
 let mainWindow = null;
 let tray = null;
@@ -9,7 +12,136 @@ let splashTimer = null;
 let updateAvailable = null;
 
 // ── Version actuelle de l'app ────────────────────────────────────────────────
-const APP_VERSION = "1.0.16";
+const APP_VERSION = "1.0.17";
+
+// ── Local Video Bridge — loopback uniquement ────────────────────────────────
+const COMFYUI_HOST = "127.0.0.1";
+const COMFYUI_PORT = Number(process.env.JSINNOVIA_COMFYUI_PORT || 8188);
+
+function comfyRequest(pathname, { method = "GET", json, body, headers = {}, timeoutMs = 10000 } = {}) {
+  return new Promise((resolve, reject) => {
+    const payload = json !== undefined ? Buffer.from(JSON.stringify(json)) : body;
+    const req = http.request({
+      host: COMFYUI_HOST,
+      port: COMFYUI_PORT,
+      path: pathname,
+      method,
+      headers: {
+        ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(payload ? { "Content-Length": payload.length } : {}),
+        ...headers,
+      },
+      timeout: timeoutMs,
+    }, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        let parsed = raw;
+        try { parsed = raw ? JSON.parse(raw) : {}; } catch (_) { /* texte brut */ }
+        if (res.statusCode >= 200 && res.statusCode < 300) return resolve(parsed);
+        const detail = typeof parsed === "object" ? parsed?.error || parsed?.message || JSON.stringify(parsed) : parsed;
+        reject(new Error(`ComfyUI HTTP ${res.statusCode}: ${detail || "erreur inconnue"}`));
+      });
+    });
+    req.on("timeout", () => req.destroy(new Error("ComfyUI timeout")));
+    req.on("error", reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+function commandAvailable(command, args = ["--version"]) {
+  return new Promise((resolve) => {
+    execFile(command, args, { windowsHide: true, timeout: 4000 }, (error, stdout, stderr) => {
+      resolve({
+        online: !error,
+        version: !error ? String(stdout || stderr || "").split(/\r?\n/)[0].trim() : "",
+        error: error ? error.message : "",
+      });
+    });
+  });
+}
+
+function comfyOutputCandidates() {
+  return [
+    process.env.JSINNOVIA_COMFYUI_OUTPUT_DIR,
+    path.join(os.homedir(), "AI", "ComfyUI_windows_portable", "ComfyUI_windows_portable", "ComfyUI", "output"),
+    path.join(os.homedir(), "ComfyUI_windows_portable", "ComfyUI", "output"),
+    path.join(os.homedir(), "ComfyUI", "output"),
+  ].filter(Boolean);
+}
+
+ipcMain.handle("video-local-status", async () => {
+  let comfyui = { online: false };
+  try {
+    const stats = await comfyRequest("/system_stats", { timeoutMs: 3000 });
+    comfyui = { online: true, stats };
+  } catch (error) {
+    comfyui = { online: false, error: error.message };
+  }
+  const ffmpeg = await commandAvailable("ffmpeg", ["-version"]);
+  return { available: comfyui.online, comfyui, ffmpeg, endpoint: `http://${COMFYUI_HOST}:${COMFYUI_PORT}` };
+});
+
+ipcMain.handle("video-local-queue", async (_event, payload = {}) => {
+  const workflow = payload.workflow;
+  if (!workflow || typeof workflow !== "object" || Array.isArray(workflow)) {
+    throw new Error("Workflow ComfyUI API invalide.");
+  }
+  return comfyRequest("/prompt", {
+    method: "POST",
+    json: {
+      prompt: workflow,
+      client_id: String(payload.clientId || "jsinnovia-cockpit"),
+    },
+    timeoutMs: 15000,
+  });
+});
+
+ipcMain.handle("video-local-history", async (_event, promptId) => {
+  const id = encodeURIComponent(String(promptId || ""));
+  if (!id) throw new Error("promptId manquant.");
+  return comfyRequest(`/history/${id}`, { timeoutMs: 10000 });
+});
+
+ipcMain.handle("video-local-interrupt", async () => {
+  return comfyRequest("/interrupt", { method: "POST", json: {}, timeoutMs: 5000 });
+});
+
+ipcMain.handle("video-local-upload-image", async (_event, payload = {}) => {
+  const name = path.basename(String(payload.name || "input.png")).replace(/[^a-zA-Z0-9._-]/g, "_");
+  const match = String(payload.dataUrl || "").match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) throw new Error("Image locale invalide ou format non supporté.");
+  const mime = match[1];
+  const file = Buffer.from(match[2], "base64");
+  if (file.length > 50 * 1024 * 1024) throw new Error("Image trop volumineuse (50 MB max).");
+
+  const boundary = `----JSInnovIA${Date.now().toString(16)}`;
+  const parts = [];
+  const push = (value) => parts.push(Buffer.isBuffer(value) ? value : Buffer.from(value));
+  push(`--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="${name}"\r\nContent-Type: ${mime}\r\n\r\n`);
+  push(file);
+  push(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="type"\r\n\r\ninput`);
+  push(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="overwrite"\r\n\r\ntrue`);
+  push(`\r\n--${boundary}--\r\n`);
+  const body = Buffer.concat(parts);
+
+  return comfyRequest("/upload/image", {
+    method: "POST",
+    body,
+    headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
+    timeoutMs: 30000,
+  });
+});
+
+ipcMain.handle("video-local-open-output", async () => {
+  const folder = comfyOutputCandidates().find((candidate) => fs.existsSync(candidate));
+  if (!folder) throw new Error("Dossier output ComfyUI introuvable. Configure JSINNOVIA_COMFYUI_OUTPUT_DIR si nécessaire.");
+  const error = await shell.openPath(folder);
+  if (error) throw new Error(error);
+  return { ok: true, folder };
+});
 
 // ── Helper: vérifier qu'une fenêtre est toujours vivante ────────────────────
 function isAlive(win) {
@@ -146,7 +278,7 @@ function createTray() {
     const menu = Menu.buildFromTemplate([
       { label: "Ouvrir le Cockpit", click: () => { if (isAlive(mainWindow)) mainWindow.show(); else createWindow().show(); } },
       { type: "separator" },
-      { 
+      {
         label: updateAvailable ? `Mise à jour ${updateAvailable.version} disponible` : "Vérifier les mises à jour",
         click: () => {
           if (updateAvailable) {
@@ -194,7 +326,6 @@ app.whenReady().then(() => {
       if (isAlive(win)) {
         win.show();
         if (os.platform() !== "darwin") createTray();
-        // Vérifier les mises à jour 3s après le démarrage (silencieux)
         setTimeout(() => checkForUpdates(true), 3000);
       }
     }, 1200);

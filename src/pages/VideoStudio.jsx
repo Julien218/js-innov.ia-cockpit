@@ -10,6 +10,9 @@ import VideoExporter from "../components/studio/VideoExporter";
 import MultiTrackTimeline from "../components/studio/MultiTrackTimeline";
 import MultiTrackExporter from "../components/studio/MultiTrackExporter";
 import SocialExporter from "../components/studio/SocialExporter";
+import VideoModeToggle from "../components/studio/VideoModeToggle";
+import VideoOrchestratorPanel from "../components/studio/VideoOrchestratorPanel";
+import { VIDEO_MODES, buildLocalMontagePlan, buildVideoPromptLocally, getVideoMode } from "@/lib/videoOrchestrator";
 import { ArrowLeft, Sparkles, Upload, Download, Save, Film, RefreshCw, Layers, Smartphone } from "lucide-react";
 
 const TRANSITIONS = [
@@ -23,13 +26,13 @@ const TRANSITIONS = [
 ];
 
 export default function VideoStudio() {
-  const { id } = useParams(); // optional: videoProjectId
+  const { id } = useParams();
   const navigate = useNavigate();
-  const [vp, setVp] = useState(null); // VideoProject
+  const [vp, setVp] = useState(null);
   const [sourceProject, setSourceProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activePanel, setActivePanel] = useState("timeline"); // timeline | ai | drive
+  const [activePanel, setActivePanel] = useState("timeline");
   const [driveStatus, setDriveStatus] = useState(null);
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -37,14 +40,14 @@ export default function VideoStudio() {
   const [showExporter, setShowExporter] = useState(false);
   const [showMultiExporter, setShowMultiExporter] = useState(false);
   const [showSocialExporter, setShowSocialExporter] = useState(false);
-  const [tracks, setTracks] = useState(null); // multipiste, null = non activé
+  const [tracks, setTracks] = useState(null);
+  const [videoMode, setVideoMode] = useState(getVideoMode);
 
   useEffect(() => {
     if (id && id !== "new") {
       base44.entities.VideoProject.filter({ id }).then(([found]) => {
         if (found) {
           setVp(found);
-          // Restore multipiste tracks if template was used
           if (found.template_tracks) setTracks(found.template_tracks);
           if (found.project_id) {
             base44.entities.Project.filter({ id: found.project_id }).then(([p]) => {
@@ -65,7 +68,7 @@ export default function VideoStudio() {
     if (projectId) {
       base44.entities.Project.filter({ id: projectId }).then(([p]) => {
         setSourceProject(p || null);
-        const vpTracks = null; // standard mode by default
+        const vpTracks = null;
         setTracks(vpTracks);
         const clips = (p?.artworks_images || []).map((url, i) => ({
           id: `clip_${i}`,
@@ -88,8 +91,7 @@ export default function VideoStudio() {
         setLoading(false);
       });
     } else if (id && id !== "new") {
-      // loaded from db — check for template_tracks
-      // handled by useEffect above
+      // Le chargement depuis la base est géré dans useEffect.
     } else {
       setVp({
         title: "Nouveau montage",
@@ -106,46 +108,67 @@ export default function VideoStudio() {
 
   const update = (key, val) => setVp((v) => ({ ...v, [key]: val }));
 
-  // Recharge le VideoProject depuis la base (utilisé après que l'agent l'a mis à jour)
   const reloadVp = useCallback(async () => {
     if (!vp?.id) return;
     const [fresh] = await base44.entities.VideoProject.filter({ id: vp.id });
     if (fresh) setVp(fresh);
   }, [vp?.id]);
 
-  // Subscription temps réel : dès que l'agent met à jour le VideoProject en base, on recharge
   useEffect(() => {
-    if (!vp?.id) return;
+    if (!vp?.id || typeof base44.entities.VideoProject.subscribe !== "function") return undefined;
     const unsub = base44.entities.VideoProject.subscribe((event) => {
-      if (event.id === vp.id && (event.type === "update")) {
-        // Recharge seulement les clips et transitions (pas écraser les edits locaux)
+      if (event.id === vp.id && event.type === "update") {
         if (event.data?.clips) {
           setVp((prev) => ({ ...prev, clips: event.data.clips, ai_prompt: event.data.ai_prompt || prev.ai_prompt }));
         }
       }
     });
-    return () => unsub();
+    return () => unsub?.();
   }, [vp?.id]);
 
   const handleSave = async () => {
     setSaving(true);
-    if (vp.id) {
-      const updated = await base44.entities.VideoProject.update(vp.id, vp);
-      setVp(updated);
-    } else {
-      const created = await base44.entities.VideoProject.create(vp);
-      setVp(created);
-      navigate(`/studio/${created.id}`, { replace: true });
+    try {
+      if (vp.id) {
+        const updated = await base44.entities.VideoProject.update(vp.id, vp);
+        setVp(updated);
+      } else {
+        const created = await base44.entities.VideoProject.create(vp);
+        setVp(created);
+        navigate(`/studio/${created.id}`, { replace: true });
+      }
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
+  };
+
+  const handleOptimizeMontage = async () => {
+    const plan = buildLocalMontagePlan(vp, sourceProject, "tempo_sync_editor");
+    setVp((current) => ({ ...current, clips: plan.clips }));
+    if (vp?.id) {
+      await base44.entities.VideoProject.update(vp.id, { clips: plan.clips });
+    }
+    return plan;
   };
 
   const handleGeneratePrompt = async () => {
     setGeneratingPrompt(true);
     setActivePanel("ai");
-    const res = await base44.functions.invoke("generateVideoPrompt", { videoProject: vp, sourceProject });
-    update("ai_prompt", res.data.prompt);
-    setGeneratingPrompt(false);
+    try {
+      if (videoMode === VIDEO_MODES.LOCAL) {
+        update("ai_prompt", buildVideoPromptLocally(vp, sourceProject));
+        return;
+      }
+      if (!base44.functions?.invoke) {
+        throw new Error("Le générateur de prompt API n’est pas configuré sur ce client vidéo.");
+      }
+      const res = await base44.functions.invoke("generateVideoPrompt", { videoProject: vp, sourceProject });
+      update("ai_prompt", res.data.prompt);
+    } catch (error) {
+      window.alert(error.message);
+    } finally {
+      setGeneratingPrompt(false);
+    }
   };
 
   const handleUploadDrive = async () => {
@@ -153,20 +176,27 @@ export default function VideoStudio() {
       alert("Générez d'abord le prompt IA pour uploader sur Drive.");
       return;
     }
+    if (!base44.functions?.invoke) {
+      alert("L’upload Drive historique n’est pas configuré sur le client vidéo actuel.");
+      return;
+    }
     setUploading(true);
     setActivePanel("drive");
-    const content = `JS-INNOV.IA VIDEO DEMO BUILDER — ${vp.title}\n${"=".repeat(60)}\n\n${vp.ai_prompt}`;
-    const res = await base44.functions.invoke("uploadToDrive", {
-      fileName: `${vp.title.replace(/\s+/g, "_")}_MONTAGE_PROMPT.txt`,
-      fileContent: content,
-      mimeType: "text/plain",
-    });
-    const { driveUrl, fileId, folderId } = res.data;
-    update("drive_url", driveUrl);
-    update("drive_file_id", fileId);
-    update("status", "uploaded");
-    setDriveStatus({ driveUrl, fileId, folderId });
-    setUploading(false);
+    try {
+      const content = `JS-INNOV.IA VIDEO DEMO BUILDER — ${vp.title}\n${"=".repeat(60)}\n\n${vp.ai_prompt}`;
+      const res = await base44.functions.invoke("uploadToDrive", {
+        fileName: `${vp.title.replace(/\s+/g, "_")}_MONTAGE_PROMPT.txt`,
+        fileContent: content,
+        mimeType: "text/plain",
+      });
+      const { driveUrl, fileId, folderId } = res.data;
+      update("drive_url", driveUrl);
+      update("drive_file_id", fileId);
+      update("status", "uploaded");
+      setDriveStatus({ driveUrl, fileId, folderId });
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleDownload = () => {
@@ -191,7 +221,6 @@ export default function VideoStudio() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Top bar */}
       <div className="border-b border-border px-4 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate(-1)} className="text-muted-foreground hover:text-foreground transition-colors">
@@ -207,7 +236,13 @@ export default function VideoStudio() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={reloadVp} title="Rafraîchir depuis la base (après l'agent)" className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-primary hover:border-primary/50 transition-all">
+          <VideoModeToggle
+            onChange={(nextMode) => {
+              setVideoMode(nextMode);
+              if (nextMode === VIDEO_MODES.LOCAL && activePanel === "agent") setActivePanel("orchestrator");
+            }}
+          />
+          <button onClick={reloadVp} title="Rafraîchir depuis la base" className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-primary hover:border-primary/50 transition-all">
             <RefreshCw size={13} />
             Sync
           </button>
@@ -229,7 +264,7 @@ export default function VideoStudio() {
           </button>
           <button onClick={handleGeneratePrompt} disabled={generatingPrompt} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-accent text-accent-foreground text-xs font-medium hover:opacity-90 disabled:opacity-50">
             <Sparkles size={13} className={generatingPrompt ? "animate-spin" : ""} />
-            {generatingPrompt ? "Génération…" : "Prompt IA"}
+            {generatingPrompt ? "Génération…" : videoMode === VIDEO_MODES.LOCAL ? "Prompt LOCAL" : "Prompt IA"}
           </button>
           <button onClick={handleUploadDrive} disabled={uploading} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/50 transition-all disabled:opacity-50">
             <Upload size={13} />
@@ -245,14 +280,10 @@ export default function VideoStudio() {
         </div>
       </div>
 
-      {/* Main layout */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
         <StudioSidebar vp={vp} update={update} transitions={TRANSITIONS} sourceProject={sourceProject} />
 
-        {/* Center: Preview + Timeline */}
         <div className="flex flex-col flex-1 overflow-hidden">
-          {/* Preview */}
           <VideoPreview
             clips={vp.clips || []}
             texts={vp.texts || []}
@@ -261,13 +292,13 @@ export default function VideoStudio() {
             onClipChange={setCurrentClipIdx}
           />
 
-          {/* Panel tabs */}
           <div className="border-t border-border flex shrink-0">
             {[
               { id: "timeline", label: "Timeline" },
               ...(tracks ? [{ id: "multitrack", label: "🎚️ Multipiste" }] : []),
-              { id: "ai", label: "🤖 Prompt IA" },
-              { id: "agent", label: "🎬 Agent Monteur" },
+              { id: "ai", label: videoMode === VIDEO_MODES.LOCAL ? "Prompt LOCAL" : "🤖 Prompt IA" },
+              { id: "orchestrator", label: videoMode === VIDEO_MODES.LOCAL ? "Agent Vidéo LOCAL" : "Agent Vidéo" },
+              ...(videoMode === VIDEO_MODES.API ? [{ id: "agent", label: "🎬 Agent Monteur API" }] : []),
               { id: "drive", label: "☁️ Drive" },
             ].map(t => (
               <button
@@ -280,7 +311,6 @@ export default function VideoStudio() {
             ))}
           </div>
 
-          {/* Panel content */}
           <div className="flex-1 overflow-auto bg-muted/30">
             {activePanel === "multitrack" && tracks && (
               <div className="h-64">
@@ -315,7 +345,10 @@ export default function VideoStudio() {
                 onUpdate={(p) => update("ai_prompt", p)}
               />
             )}
-            {activePanel === "agent" && (
+            {activePanel === "orchestrator" && (
+              <VideoOrchestratorPanel vp={vp} onOptimizeMontage={handleOptimizeMontage} />
+            )}
+            {activePanel === "agent" && videoMode === VIDEO_MODES.API && (
               <AgentMonteur
                 vp={vp}
                 sourceProject={sourceProject}
@@ -351,33 +384,39 @@ export default function VideoStudio() {
                     </button>
                   </div>
                 )}
+                {driveStatus?.driveUrl && !vp.drive_url && (
+                  <a href={driveStatus.driveUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline break-all">
+                    {driveStatus.driveUrl}
+                  </a>
+                )}
               </div>
             )}
           </div>
         </div>
       </div>
-    {showExporter && (
-      <VideoExporter
-        vp={vp}
-        sourceProject={sourceProject}
-        onClose={() => setShowExporter(false)}
-      />
-    )}
-    {showMultiExporter && tracks && (
-      <MultiTrackExporter
-        vp={vp}
-        tracks={tracks}
-        sourceProject={sourceProject}
-        onClose={() => setShowMultiExporter(false)}
-      />
-    )}
-    {showSocialExporter && (
-      <SocialExporter
-        vp={vp}
-        sourceProject={sourceProject}
-        onClose={() => setShowSocialExporter(false)}
-      />
-    )}
-  </div>
+
+      {showExporter && (
+        <VideoExporter
+          vp={vp}
+          sourceProject={sourceProject}
+          onClose={() => setShowExporter(false)}
+        />
+      )}
+      {showMultiExporter && tracks && (
+        <MultiTrackExporter
+          vp={vp}
+          tracks={tracks}
+          sourceProject={sourceProject}
+          onClose={() => setShowMultiExporter(false)}
+        />
+      )}
+      {showSocialExporter && (
+        <SocialExporter
+          vp={vp}
+          sourceProject={sourceProject}
+          onClose={() => setShowSocialExporter(false)}
+        />
+      )}
+    </div>
   );
 }

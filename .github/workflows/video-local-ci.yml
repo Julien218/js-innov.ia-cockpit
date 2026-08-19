@@ -1,0 +1,63 @@
+name: Video Local Orchestrator CI
+
+on:
+  pull_request:
+    paths:
+      - "src/pages/VideoStudio.jsx"
+      - "src/components/studio/**"
+      - "src/lib/videoOrchestrator.js"
+      - "electron/**"
+      - ".github/workflows/video-local-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/pages/VideoStudio.jsx"
+      - "src/components/studio/**"
+      - "src/lib/videoOrchestrator.js"
+      - "electron/**"
+
+permissions:
+  contents: read
+
+jobs:
+  web-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Cockpit
+        run: npm run build
+
+      - name: Syntax-check local orchestrator
+        run: node --check src/lib/videoOrchestrator.js
+
+  electron-check:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: electron
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate Electron sources
+        shell: pwsh
+        run: |
+          node --check main.js
+          node --check preload.js
+          node -e "const p=require('./package.json'); if(p.version!=='1.0.17') process.exit(1); console.log('Electron',p.version)"
