@@ -12,7 +12,7 @@ import MultiTrackExporter from "../components/studio/MultiTrackExporter";
 import SocialExporter from "../components/studio/SocialExporter";
 import VideoModeToggle from "../components/studio/VideoModeToggle";
 import VideoOrchestratorPanel from "../components/studio/VideoOrchestratorPanel";
-import { VIDEO_MODES, buildVideoPromptLocally, getVideoMode } from "@/lib/videoOrchestrator";
+import { VIDEO_MODES, buildLocalMontagePlan, buildVideoPromptLocally, getVideoMode } from "@/lib/videoOrchestrator";
 import { ArrowLeft, Sparkles, Upload, Download, Save, Film, RefreshCw, Layers, Smartphone } from "lucide-react";
 
 const TRANSITIONS = [
@@ -140,6 +140,15 @@ export default function VideoStudio() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleOptimizeMontage = async () => {
+    const plan = buildLocalMontagePlan(vp, sourceProject, "tempo_sync_editor");
+    setVp((current) => ({ ...current, clips: plan.clips }));
+    if (vp?.id) {
+      await base44.entities.VideoProject.update(vp.id, { clips: plan.clips });
+    }
+    return plan;
   };
 
   const handleGeneratePrompt = async () => {
@@ -337,7 +346,7 @@ export default function VideoStudio() {
               />
             )}
             {activePanel === "orchestrator" && (
-              <VideoOrchestratorPanel vp={vp} sourceProject={sourceProject} />
+              <VideoOrchestratorPanel vp={vp} onOptimizeMontage={handleOptimizeMontage} />
             )}
             {activePanel === "agent" && videoMode === VIDEO_MODES.API && (
               <AgentMonteur
