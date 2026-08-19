@@ -12,7 +12,7 @@ import java.util.Locale;
 import java.util.TimeZone;
 
 public class ScheduledMainActivity extends MainActivity {
-  static final String SCHEDULED_APP_VERSION = "0.5.1-pilot";
+  static final String SCHEDULED_APP_VERSION = "0.5.2-pilot";
   static final String PREF_ADS_BLOCKED = "adsBlocked";
   static final String PREF_BLOCK_REASON = "adsBlockReason";
   static final String PREF_NEXT_CHANGE_AT = "adsNextChangeAt";
@@ -21,8 +21,14 @@ public class ScheduledMainActivity extends MainActivity {
 
   @Override void showPlayer() {
     super.showPlayer();
+    PixeliumGuardianService.start(this);
     adsBlocked = cachedBlockStillActive();
     if (adsBlocked) blockAdvertising(cachedBlockReason(), cachedNextChangeAt());
+  }
+
+  @Override protected void onResume() {
+    super.onResume();
+    if (token != null && !token.isEmpty()) PixeliumGuardianService.start(this);
   }
 
   JSONObject playbackTelemetry() {
@@ -37,6 +43,7 @@ public class ScheduledMainActivity extends MainActivity {
       playback.put("preparingPublication", preparingCandidate);
       playback.put("candidatePublicationId", candidatePublicationId == null ? JSONObject.NULL : candidatePublicationId);
       playback.put("scheduleBlocked", adsBlocked || cachedBlockStillActive());
+      playback.put("guardian", "foreground-sticky");
     } catch (Exception ignored) {}
     return playback;
   }
@@ -51,6 +58,7 @@ public class ScheduledMainActivity extends MainActivity {
           .put("freeBytes", mediaCache.getFreeSpace())
           .put("scheduleAware", true)
           .put("displayTelemetryVersion", 1)
+          .put("guardianVersion", 1)
           .put("device", DisplayTelemetry.device())
           .put("display", DisplayTelemetry.display(this))
           .put("playback", playbackTelemetry())
