@@ -32,26 +32,20 @@ export const ROLE_ROUTES = {
   superadmin: [
     "/", "/hainoflow", "/assurances", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
     "/devis", "/factures", "/emails", "/emails-core", "/cost-centers", "/ai-cost",
-    "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
-    "/devis", "/factures", "/emails", "/cost-centers", "/ai-cost",
-    "/production", "/portfolio", "/apps-agents",
+    "/production", "/avatar-factory", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
-    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations", "/gouvernance", "/confidentialite"
+    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/finops", "/invitations", "/gouvernance", "/confidentialite"
   ],
   admin: [
     "/", "/hainoflow", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
     "/devis", "/factures", "/emails", "/emails-core", "/cost-centers", "/ai-cost",
-    "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
-    "/devis", "/factures", "/emails", "/cost-centers", "/ai-cost",
-    "/production", "/portfolio", "/apps-agents",
+    "/production", "/avatar-factory", "/portfolio", "/apps-agents",
     "/automations", "/domaines", "/rangement", "/parametres",
-    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations", "/gouvernance", "/confidentialite"
+    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/finops", "/invitations", "/gouvernance", "/confidentialite"
   ],
   collaborateur: [
     "/", "/hainoflow", "/documents", "/projets", "/taches", "/demandes", "/agent", "/agents-ia"
   ],
-  // Le client ne reçoit que les vues tenant-scopées et les modules produit autorisés.
-  // Aucun accès aux agents internes, demandes globales, outils de production ou routes owner.
   client: [
     "/", "/hainoflow", "/mes-projets", "/mes-devis", "/mes-factures", "/confidentialite"
   ],

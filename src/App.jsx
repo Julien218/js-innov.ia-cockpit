@@ -5,15 +5,11 @@ import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-d
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 
-// Routes publiques
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
-
-// Layout & guard
 import AppLayout from "@/components/layout/AppLayout";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
-// Pages
 import Dashboard from "@/pages/Dashboard";
 import ClientDashboard from "@/pages/ClientDashboard";
 import ClientRecords from "@/pages/ClientRecords";
@@ -21,6 +17,8 @@ import Assurances from "@/pages/Assurances";
 import Documents from "@/pages/Documents";
 import AppsAgents from "@/pages/AppsAgents";
 import Production from "@/pages/Production";
+import AvatarFactory from "@/pages/AvatarFactory";
+import FinOps from "@/pages/FinOps";
 import Domaines from "@/pages/Domaines";
 import Rangement from "@/pages/Rangement";
 import Clients from "@/pages/Clients";
@@ -43,7 +41,6 @@ import Invitations from "@/pages/Invitations";
 import Gouvernance from "@/pages/Gouvernance";
 import RoleAwareFloatingAgent from "@/components/RoleAwareFloatingAgent";
 
-// ── Studio Vidéo
 import VideoStudio from "@/pages/VideoStudio";
 import AIVideoReportGenerator from "@/pages/AIVideoReportGenerator";
 import ThumbnailGenerator from "@/pages/ThumbnailGenerator";
@@ -65,51 +62,44 @@ const PageBoundary = ({ children }) => <AppErrorBoundary>{children}</AppErrorBou
 const AppRoutes = () => {
   const { user, isAuthenticated, isLoadingAuth, authChecked } = useAuth();
   const isClient = user?.role === 'client';
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
 
   if (!authChecked || isLoadingAuth) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center bg-[#0a0a14]">
-        <div className="w-8 h-8 border-4 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin"></div>
-      </div>
-    );
+    return <div className="fixed inset-0 flex items-center justify-center bg-[#0a0a14]"><div className="w-8 h-8 border-4 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin" /></div>;
   }
 
   return (
     <Routes>
       <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/register" element={<Register />} />
-
       <Route element={<ProtectedRoute />}>
         <Route element={<AppErrorBoundary><AppLayout /></AppErrorBoundary>}>
           <Route path="/" element={<PageBoundary>{isClient ? <ClientDashboard /> : <Dashboard />}</PageBoundary>} />
           <Route path="/assurances" element={<PageBoundary><Assurances /></PageBoundary>} />
           <Route path="/documents" element={<PageBoundary><Documents /></PageBoundary>} />
-
           <Route path="/clients" element={<PageBoundary><Clients /></PageBoundary>} />
           <Route path="/leads" element={<PageBoundary><Leads /></PageBoundary>} />
-
           <Route path="/projets" element={<PageBoundary><Projets /></PageBoundary>} />
           <Route path="/mes-projets" element={<PageBoundary><ClientRecords kind="projects" /></PageBoundary>} />
           <Route path="/taches" element={<PageBoundary><Taches /></PageBoundary>} />
           <Route path="/demandes" element={<PageBoundary><Demandes /></PageBoundary>} />
-
           <Route path="/devis" element={<PageBoundary><Devis /></PageBoundary>} />
           <Route path="/mes-devis" element={<PageBoundary><ClientRecords kind="quotes" /></PageBoundary>} />
           <Route path="/factures" element={<PageBoundary><Factures /></PageBoundary>} />
           <Route path="/hainoflow" element={<PageBoundary><HainoFlow /></PageBoundary>} />
           <Route path="/mes-factures" element={<PageBoundary><ClientRecords kind="invoices" /></PageBoundary>} />
           <Route path="/commissions" element={<PageBoundary><Commissions /></PageBoundary>} />
-
           <Route path="/agent" element={isClient ? <Navigate to="/" replace /> : <PageBoundary><Agent /></PageBoundary>} />
           <Route path="/agents-ia" element={isClient ? <Navigate to="/" replace /> : <PageBoundary><AgentsIA /></PageBoundary>} />
-          <Route path="/ai-cost-control" element={<PageBoundary><AICostControl /></PageBoundary>} />
+          <Route path="/ai-cost-control" element={isAdmin ? <PageBoundary><AICostControl /></PageBoundary> : <Navigate to="/" replace />} />
+          <Route path="/finops" element={isAdmin ? <PageBoundary><FinOps /></PageBoundary> : <Navigate to="/" replace />} />
+          <Route path="/avatar-factory" element={isAdmin ? <PageBoundary><AvatarFactory /></PageBoundary> : <Navigate to="/" replace />} />
           <Route path="/validations" element={<PageBoundary><Validations /></PageBoundary>} />
           <Route path="/logs" element={<PageBoundary><Logs /></PageBoundary>} />
           <Route path="/invitations" element={<PageBoundary><Invitations /></PageBoundary>} />
           <Route path="/gouvernance" element={<PageBoundary><Gouvernance /></PageBoundary>} />
           <Route path="/commercants" element={<PageBoundary><Commercants /></PageBoundary>} />
           <Route path="/services" element={<Services />} />
-
           <Route path="/video-studio" element={<VideoStudio />} />
           <Route path="/video-studio/new" element={<VideoStudio />} />
           <Route path="/video-studio/:id" element={<VideoStudio />} />
@@ -120,15 +110,12 @@ const AppRoutes = () => {
           <Route path="/exported-videos" element={<ExportedVideos />} />
           <Route path="/templates" element={<Templates />} />
           <Route path="/calendar" element={<ProjectCalendar />} />
-
           <Route path="/portfolio" element={<PageBoundary><Portfolio /></PageBoundary>} />
           <Route path="/automations" element={<PageBoundary><Automations /></PageBoundary>} />
-
           <Route path="/emails" element={<PageBoundary><Emails /></PageBoundary>} />
           <Route path="/emails-core" element={<PageBoundary><EmailCore /></PageBoundary>} />
           <Route path="/twilio" element={<PageBoundary><Twilio /></PageBoundary>} />
           <Route path="/amails" element={<Navigate to="/emails?folder=sent" replace />} />
-
           <Route path="/parametres" element={<PageBoundary><Parametres /></PageBoundary>} />
           <Route path="/apps-agents" element={<PageBoundary><AppsAgents /></PageBoundary>} />
           <Route path="/production" element={<PageBoundary><Production /></PageBoundary>} />
@@ -136,7 +123,6 @@ const AppRoutes = () => {
           <Route path="/rangement" element={<PageBoundary><Rangement /></PageBoundary>} />
         </Route>
       </Route>
-
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
@@ -146,9 +132,7 @@ function App() {
   return (
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
-        <Router>
-          <AppRoutes />
-        </Router>
+        <Router><AppRoutes /></Router>
         <RoleAwareFloatingAgent />
         <Toaster />
       </QueryClientProvider>
