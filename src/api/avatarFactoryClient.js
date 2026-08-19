@@ -1,5 +1,6 @@
 const BASE_URL = import.meta.env.VITE_AVATAR_FACTORY_URL || 'http://127.0.0.1:8791';
 const UPLOAD_URL = import.meta.env.VITE_AVATAR_REFERENCE_UPLOAD_URL || 'http://127.0.0.1:8792';
+const PREVIEW_URL = import.meta.env.VITE_AVATAR_PREVIEW_URL || 'http://127.0.0.1:8793';
 
 async function request(path, options = {}, baseUrl = BASE_URL) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -27,14 +28,17 @@ function fileToBase64(file) {
 export const avatarFactory = {
   baseUrl: BASE_URL,
   uploadUrl: UPLOAD_URL,
+  previewUrl: PREVIEW_URL,
   health: () => request('/health'),
   uploadHealth: () => request('/health', {}, UPLOAD_URL),
+  previewHealth: () => request('/health', {}, PREVIEW_URL),
   listJobs: () => request('/jobs'),
   getJob: (id) => request(`/jobs/${encodeURIComponent(id)}`),
   createJob: (payload) => request('/jobs', { method: 'POST', body: JSON.stringify(payload) }),
   approveJob: (id) => request(`/jobs/${encodeURIComponent(id)}/approve`, { method: 'POST', body: '{}' }),
   rejectJob: (id, reason) => request(`/jobs/${encodeURIComponent(id)}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
   costSummary: () => request('/costs/summary'),
+  candidateUrl: id => `${PREVIEW_URL}/jobs/${encodeURIComponent(id)}/candidate.glb`,
   uploadReference: async (file, characterId) => {
     if (!file) throw new Error('Aucune image sélectionnée.');
     const allowed = ['image/png', 'image/jpeg', 'image/webp'];
