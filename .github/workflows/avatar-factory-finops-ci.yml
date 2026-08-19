@@ -6,6 +6,7 @@ on:
       - 'src/pages/AvatarFactory.jsx'
       - 'src/pages/FinOps.jsx'
       - 'src/api/avatarFactoryClient.js'
+      - 'src/components/avatar/**'
       - 'src/App.jsx'
       - 'src/lib/roles.js'
       - 'src/components/layout/Sidebar.jsx'
