@@ -16,13 +16,15 @@ public class BootReceiver extends BroadcastReceiver {
       return;
     }
 
+    PixeliumGuardianService.start(context);
+
     try {
       Intent launch = new Intent(context, ScheduledMainActivity.class)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
           | Intent.FLAG_ACTIVITY_CLEAR_TOP
           | Intent.FLAG_ACTIVITY_SINGLE_TOP);
       context.startActivity(launch);
-      Log.i(TAG, "Pixelium Player launch requested after " + action);
+      Log.i(TAG, "Pixelium Player + guardian launch requested after " + action);
     } catch (Exception error) {
       Log.e(TAG, "Unable to launch Pixelium Player after " + action, error);
     }
