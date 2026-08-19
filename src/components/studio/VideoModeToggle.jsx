@@ -5,7 +5,6 @@ import {
   getLocalVideoStatus,
   getVideoMode,
   setVideoMode,
-  subscribeVideoMode,
 } from '@/lib/videoOrchestrator';
 
 export default function VideoModeToggle({ onChange }) {
@@ -27,12 +26,6 @@ export default function VideoModeToggle({ onChange }) {
       setChecking(false);
     }
   };
-
-  useEffect(() => subscribeVideoMode((nextMode) => {
-    setModeState(nextMode);
-    onChange?.(nextMode);
-    refreshStatus(nextMode);
-  }), []);
 
   useEffect(() => {
     refreshStatus(mode);
