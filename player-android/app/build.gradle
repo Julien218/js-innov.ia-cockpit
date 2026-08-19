@@ -8,8 +8,8 @@ android {
         applicationId 'ia.jsinnov.pixeliumplayer'
         minSdk 23
         targetSdk 33
-        versionCode 6
-        versionName '0.5.2-pilot'
+        versionCode 7
+        versionName '0.5.3-pilot'
     }
 
     signingConfigs {
