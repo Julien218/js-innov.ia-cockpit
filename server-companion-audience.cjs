@@ -80,6 +80,8 @@ async function buildAdaptiveAudienceContext(user) {
   if (mode === 'owner') {
     return {
       mode,
+      client_id: null,
+      client_name: null,
       context: '[MODE OWNER JS-INNOV.IA — opérateur superadministrateur authentifié]',
       display: { assistant_name: 'Julien AI Companion', audience: 'owner' },
     };
@@ -88,6 +90,8 @@ async function buildAdaptiveAudienceContext(user) {
   if (mode === 'staff') {
     return {
       mode,
+      client_id: null,
+      client_name: null,
       context: '[MODE ÉQUIPE JS-INNOV.IA — respecter le rôle et les permissions du compte authentifié]',
       display: { assistant_name: 'NOVA', audience: 'staff' },
     };
@@ -136,6 +140,9 @@ async function buildAdaptiveAudienceContext(user) {
   return {
     mode,
     tenant,
+    // Ces champs servent uniquement au backend pour l'audit/coût/facturation. Ils ne sont jamais injectés dans le texte client.
+    client_id: client?.id ? String(client.id) : null,
+    client_name: identity.company || identity.contact_name || null,
     context: lines.join('\n'),
     display: {
       assistant_name: assistantName,
