@@ -51,6 +51,8 @@ alter table public.finops_policies enable row level security;
 -- No browser-facing policies are intentionally created. Access is server-side only
 -- through the service-role protected Cockpit API.
 
+-- Olivier: every entity inherits technical-cost-only billing unless an entity-specific
+-- policy is later created in the Cockpit.
 insert into public.finops_policies (client_key, entity_key, client_name, entity_name, policy, markup_percent, minimum_margin_percent, metadata)
-values ('olivier', 'default', 'Olivier', 'Entité à ventiler', 'technical_costs_only', 0, 0, '{"note":"Remplacer default par chaque société/ASBL réelle avant facturation"}'::jsonb)
+values ('olivier', '__default__', 'Olivier', 'Toutes les entités', 'technical_costs_only', 0, 0, '{"scope":"client_default","note":"S’applique à toutes les sociétés/ASBL d’Olivier sauf règle spécifique."}'::jsonb)
 on conflict (client_key, entity_key) do nothing;
