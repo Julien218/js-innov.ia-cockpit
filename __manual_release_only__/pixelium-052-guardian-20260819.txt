@@ -1,0 +1,2 @@
+Deploy Pixelium Player 0.5.2-pilot guardian release to Olivier Signage production.
+Release metadata verified and signed APK published on tracked pilot branch.
