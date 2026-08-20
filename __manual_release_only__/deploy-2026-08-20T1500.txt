@@ -1,0 +1,3 @@
+Manual Railway deployment marker.
+Purpose: deploy the latest Olivier Signage cockpit and Pixelium Player 0.5.3-pilot release after the automatic deployments were intentionally skipped by the __manual_release_only__ watch pattern.
+Requested for production recovery on 2026-08-20 Europe/Brussels.
