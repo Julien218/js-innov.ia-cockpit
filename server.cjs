@@ -155,6 +155,16 @@ try {
   console.warn('⚠️ Route governance indisponible:', e.message);
 }
 
+
+// ── Base44 Agents Proxy (sécurisé, sans clé frontend) ─────
+try {
+  const base44AgentsRouter = require('./server-base44-agents.cjs');
+  app.use('/api/base44-agents', requireSession('collaborateur'), base44AgentsRouter.router);
+  console.log('✅ Route /api/base44-agents activée (proxy sécurisé vers Base44 Agents API)');
+} catch (e) {
+  console.warn('⚠️ Route base44-agents indisponible:', e.message);
+}
+
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cockpit-api' }));
 
 app.listen(PORT, () => {

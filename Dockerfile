@@ -5,16 +5,15 @@ COPY package*.json ./
 RUN npm ci --legacy-peer-deps
 COPY . .
 
+# VITE_BASE44_API_KEY removed — key is now BASE44_API_KEY (server-side only)
 ARG VITE_AGENT_KEY
 ARG VITE_AGENT_URL
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY
-ARG VITE_BASE44_API_KEY
 ENV VITE_AGENT_KEY=$VITE_AGENT_KEY
 ENV VITE_AGENT_URL=$VITE_AGENT_URL
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
-ENV VITE_BASE44_API_KEY=$VITE_BASE44_API_KEY
 
 RUN npm run build
 
@@ -55,6 +54,7 @@ COPY --from=builder /app/server-insurance.cjs ./server-insurance.cjs
 COPY --from=builder /app/server-insurance-mailbox.cjs ./server-insurance-mailbox.cjs
 COPY --from=builder /app/server-documents.cjs ./server-documents.cjs
 COPY --from=builder /app/server-governance.cjs ./server-governance.cjs
+COPY --from=builder /app/server-base44-agents.cjs ./server-base44-agents.cjs
 COPY assets ./assets
 COPY public ./public
 
