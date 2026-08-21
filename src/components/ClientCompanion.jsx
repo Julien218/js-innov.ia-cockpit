@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Check, Send, X } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 
+const AFFIRMATIVE = /^(oui|ouais|ok|oki|okay|confirme|confirmer|je confirme|go|vas-y|vas y|proc[eè]de|envoyer?|envoie|ex[eé]cute|ex[eé]cuter)$/i;
+const NEGATIVE = /^(non|annule|annuler|stop|laisse tomber)$/i;
+
 function storageKey(user) {
   const scope = user?.organisation || user?.id || 'client';
   return `jsinnovia_client_companion_${String(scope).toLowerCase().replace(/[^a-z0-9_-]/g, '_')}`;
@@ -51,22 +54,63 @@ export default function ClientCompanion() {
     return () => { active = false; };
   }, []);
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, loading, confirmation]);
-
-  useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 100);
-  }, [open]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, loading, confirmation]);
+  useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 100); }, [open]);
 
   const visibleMessages = messages.length ? messages : [
     { role: 'assistant', content: defaultGreeting(user, profile), ts: Date.now() },
   ];
 
+  const executeConfirmation = useCallback(async (typedReply = '') => {
+    if (!confirmation || confirming) return;
+    if (typedReply) {
+      setMessages((prev) => [...prev, { role: 'user', content: typedReply, ts: Date.now() }]);
+    }
+    setConfirming(true);
+    try {
+      const response = await fetch('/api/assistant/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ token: confirmation.token }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Action non exécutée');
+      setMessages((prev) => [...prev, {
+        role: 'assistant',
+        content: data.action_type === 'create_client_request'
+          ? 'Votre demande a bien été transmise à l’équipe. Vous n’avez rien d’autre à confirmer.'
+          : `Action confirmée et exécutée${data.action_summary ? ` : ${data.action_summary}` : '.'}`,
+        ts: Date.now(),
+      }]);
+      setConfirmation(null);
+    } catch (error) {
+      setMessages((prev) => [...prev, { role: 'assistant', content: `La demande n’a pas pu être exécutée : ${error.message}`, ts: Date.now(), error: true }]);
+    } finally {
+      setConfirming(false);
+    }
+  }, [confirmation, confirming]);
+
   const send = useCallback(async () => {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text || loading || confirming) return;
     setInput('');
+
+    // Une réponse courte à une confirmation consomme le jeton existant au lieu de repartir au LLM.
+    if (confirmation && AFFIRMATIVE.test(text)) {
+      await executeConfirmation(text);
+      return;
+    }
+    if (confirmation && NEGATIVE.test(text)) {
+      setMessages((prev) => [...prev,
+        { role: 'user', content: text, ts: Date.now() },
+        { role: 'assistant', content: 'D’accord, la demande a été annulée.', ts: Date.now() + 1 },
+      ]);
+      setConfirmation(null);
+      return;
+    }
+
+    // Un texte substantiel remplace la proposition précédente : il s’agit d’une nouvelle instruction.
     setConfirmation(null);
     setMessages((prev) => [...prev, { role: 'user', content: text, ts: Date.now() }]);
     setLoading(true);
@@ -91,42 +135,14 @@ export default function ClientCompanion() {
     } finally {
       setLoading(false);
     }
-  }, [conversationId, input, loading]);
-
-  const confirmAction = useCallback(async () => {
-    if (!confirmation || confirming) return;
-    setConfirming(true);
-    try {
-      const response = await fetch('/api/assistant/confirm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ token: confirmation.token }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Action non exécutée');
-      setMessages((prev) => [...prev, {
-        role: 'assistant',
-        content: `Votre demande a bien été enregistrée${data.action_summary ? ` : ${data.action_summary}` : '.'}`,
-        ts: Date.now(),
-      }]);
-      setConfirmation(null);
-    } catch (error) {
-      setMessages((prev) => [...prev, { role: 'assistant', content: `La demande n’a pas pu être enregistrée : ${error.message}`, ts: Date.now(), error: true }]);
-    } finally {
-      setConfirming(false);
-    }
-  }, [confirmation, confirming]);
+  }, [confirmation, confirming, conversationId, executeConfirmation, input, loading]);
 
   const clearConversation = useCallback(async () => {
     setMessages([]);
     setConfirmation(null);
     localStorage.removeItem(key);
     try {
-      await fetch(`/api/assistant/history?conversation_id=${encodeURIComponent(conversationId)}`, {
-        method: 'DELETE',
-        credentials: 'same-origin',
-      });
+      await fetch(`/api/assistant/history?conversation_id=${encodeURIComponent(conversationId)}`, { method: 'DELETE', credentials: 'same-origin' });
     } catch {}
   }, [conversationId, key]);
 
@@ -135,12 +151,7 @@ export default function ClientCompanion() {
   return (
     <>
       {!open && (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-label={`Ouvrir ${profile.assistant_name || 'NOVA'}`}
-          className="fixed bottom-5 right-5 z-[99999] h-14 w-14 rounded-full border border-primary/50 bg-slate-950 text-primary shadow-2xl shadow-primary/20 flex items-center justify-center hover:scale-105 transition-transform"
-        >
+        <button type="button" onClick={() => setOpen(true)} aria-label={`Ouvrir ${profile.assistant_name || 'NOVA'}`} className="fixed bottom-5 right-5 z-[99999] h-14 w-14 rounded-full border border-primary/50 bg-slate-950 text-primary shadow-2xl shadow-primary/20 flex items-center justify-center hover:scale-105 transition-transform">
           <Bot className="h-6 w-6" />
         </button>
       )}
@@ -163,12 +174,9 @@ export default function ClientCompanion() {
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {visibleMessages.map((message, index) => (
-              <div
-                key={`${message.ts || index}-${index}`}
-                className={message.role === 'user'
-                  ? 'ml-auto max-w-[85%] rounded-xl rounded-br-sm border border-primary/25 bg-primary/10 px-3 py-2 text-sm text-slate-100 whitespace-pre-wrap'
-                  : `max-w-[88%] rounded-xl rounded-bl-sm border px-3 py-2 text-sm whitespace-pre-wrap ${message.error ? 'border-red-400/30 bg-red-500/10 text-red-200' : 'border-slate-700 bg-slate-900 text-slate-200'}`}
-              >
+              <div key={`${message.ts || index}-${index}`} className={message.role === 'user'
+                ? 'ml-auto max-w-[85%] rounded-xl rounded-br-sm border border-primary/25 bg-primary/10 px-3 py-2 text-sm text-slate-100 whitespace-pre-wrap'
+                : `max-w-[88%] rounded-xl rounded-bl-sm border px-3 py-2 text-sm whitespace-pre-wrap ${message.error ? 'border-red-400/30 bg-red-500/10 text-red-200' : 'border-slate-700 bg-slate-900 text-slate-200'}`}>
                 {message.content}
               </div>
             ))}
@@ -178,14 +186,9 @@ export default function ClientCompanion() {
             {confirmation && (
               <div className="rounded-xl border border-primary/30 bg-primary/5 p-3">
                 <p className="text-xs text-slate-300">{confirmation.summary || 'Confirmer cette demande ?'}</p>
-                <button
-                  type="button"
-                  onClick={confirmAction}
-                  disabled={confirming}
-                  className="mt-3 inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50"
-                >
+                <button type="button" onClick={() => executeConfirmation()} disabled={confirming} className="mt-3 inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50">
                   <Check className="h-3.5 w-3.5" />
-                  {confirming ? 'Enregistrement…' : 'Confirmer'}
+                  {confirming ? 'Exécution…' : 'Confirmer une fois'}
                 </button>
               </div>
             )}
@@ -194,30 +197,10 @@ export default function ClientCompanion() {
 
           <footer className="border-t border-primary/15 p-3">
             <div className="flex items-end gap-2">
-              <textarea
-                ref={inputRef}
-                rows={1}
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    send();
-                  }
-                }}
-                placeholder={`Écrivez à ${profile.assistant_name || 'NOVA'}…`}
-                disabled={loading}
-                className="min-h-10 max-h-24 flex-1 resize-none rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60"
-              />
-              <button
-                type="button"
-                onClick={send}
-                disabled={loading || !input.trim()}
-                className="h-10 w-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40"
-                title="Envoyer"
-              >
-                <Send className="h-4 w-4" />
-              </button>
+              <textarea ref={inputRef} rows={1} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); }
+              }} placeholder={confirmation ? 'Oui pour confirmer, Non pour annuler…' : `Écrivez à ${profile.assistant_name || 'NOVA'}…`} disabled={loading || confirming} className="min-h-10 max-h-24 flex-1 resize-none rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-primary/60" />
+              <button type="button" onClick={send} disabled={loading || confirming || !input.trim()} className="h-10 w-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40" title="Envoyer"><Send className="h-4 w-4" /></button>
             </div>
             <p className="mt-2 text-[10px] leading-4 text-slate-600">Réponses limitées aux informations et services autorisés pour votre espace.</p>
           </footer>

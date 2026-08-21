@@ -45,6 +45,14 @@ test('les écritures restent soumises à confirmation avant exécution', () => {
   assert.match(agentPage, /Action réellement exécutée/);
 });
 
+test('le client consomme une confirmation existante au lieu de repartir au LLM', () => {
+  assert.match(clientCompanion, /const AFFIRMATIVE/);
+  assert.match(clientCompanion, /confirmation && AFFIRMATIVE\.test\(text\)/);
+  assert.match(clientCompanion, /await executeConfirmation\(text\)/);
+  assert.match(clientCompanion, /Vous n’avez rien d’autre à confirmer/);
+  assert.match(clientCompanion, /Confirmer une fois/);
+});
+
 test('les sessions client sont séparées par organisation et utilisateur', () => {
   assert.match(assistantServer, /cockpit:client:\$\{cleanTenant\(req\.user\?\.organisation\)/);
   assert.match(assistantServer, /`cockpit:\$\{req\.user\.id\}`/);
