@@ -1,8 +1,13 @@
 const express = require('express');
 const dns = require('node:dns').promises;
 const tls = require('node:tls');
+const { SITE_AGENT_REGISTRY } = require('./server-agent-orchestrator.cjs');
 
 const router = express.Router();
+const JS_AGENT_URL = String(process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app').replace(/\/$/, '');
+const JS_AGENT_KEY = String(process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '').trim();
+const BASE44_API_KEY = String(process.env.BASE44_API_KEY || process.env.BASE44_SERVER_API_KEY || '').trim();
+const BASE44_AGENT_URL = String(process.env.BASE44_AGENT_URL || 'https://app.base44.com/api/agents').replace(/\/$/, '');
 
 const MANAGED_DOMAINS = Object.freeze({
   'jsinnovia.com': { app: 'JS-INNOV.IA', agent_hint: 'JsInnov-Agent' },
@@ -183,6 +188,134 @@ async function analyzeDomain(domain) {
   };
 }
 
+function agentForDomain(domain) {
+  const meta = MANAGED_DOMAINS[domain];
+  return SITE_AGENT_REGISTRY.find((agent) => agent.name === meta?.agent_hint)
+    || SITE_AGENT_REGISTRY.find((agent) => (agent.domains || []).includes(domain))
+    || null;
+}
+
+async function jsAgentRequest(path, options = {}) {
+  if (!JS_AGENT_KEY) throw new Error('JSINNOVIA_AGENT_KEY non configurée.');
+  const response = await fetch(`${JS_AGENT_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-agent-key': JS_AGENT_KEY,
+      'x-organisation-id': 'jsinnovia',
+      ...(options.headers || {}),
+    },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || `Agent HTTP ${response.status}`);
+  return data;
+}
+
+async function createRepairTask(domain, kind, before) {
+  const issueText = (before.issues || []).map((item) => `- ${item.label}`).join('\n') || '- Aucun incident critique; optimisation demandée.';
+  return jsAgentRequest('/data/Tache', {
+    method: 'POST',
+    body: JSON.stringify({
+      titre: `${kind === 'seo' ? 'SEO automatique' : 'Réparation IA'} — ${domain}`,
+      description: [
+        `Domaine: ${domain}`,
+        `Application: ${before.app}`,
+        `Agent métier recommandé: ${before.agent_hint}`,
+        `Type: ${kind}`,
+        '',
+        'Diagnostic avant intervention:',
+        issueText,
+        '',
+        `Score SEO avant: ${before.seo?.score ?? 'n/a'}/100`,
+        `HTTP avant: ${before.http?.apex?.status || 0}`,
+      ].join('\n').slice(0, 5000),
+      statut: 'en_cours',
+      priorite: before.issues?.some((item) => item.severity === 'critical') ? 'urgente' : 'haute',
+      notes: 'Créée automatiquement par Domaines / Companion après confirmation utilisateur.',
+    }),
+  });
+}
+
+async function patchTask(taskId, payload) {
+  if (!taskId) return null;
+  return jsAgentRequest(`/data/Tache/${encodeURIComponent(taskId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }).catch(() => null);
+}
+
+async function recordRun({ task, agent, domain, kind, status, result, error, conversationId }) {
+  if (!JS_AGENT_KEY) return null;
+  return jsAgentRequest('/agent-runs', {
+    method: 'POST',
+    body: JSON.stringify({
+      task_id: task?.id ? String(task.id) : null,
+      agent_id: String(agent?.key || agent?.provider_agent_id || 'domain-agent'),
+      functional_role: String(agent?.role || 'domain_ops'),
+      provider_agent_id: agent?.provider_agent_id || null,
+      provider_name: agent ? 'base44' : 'unavailable',
+      status,
+      execution_mode: 'confirmed_write',
+      input: { domain, kind },
+      result: result ? { summary: String(result).slice(0, 4000), conversation_id: conversationId || null } : null,
+      error: error ? String(error).slice(0, 500) : null,
+      requested_by: 'cockpit-domaines',
+      base44_agent_id: agent?.provider_agent_id || null,
+      base44_conv_id: conversationId || null,
+      started_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
+    }),
+  }).catch(() => null);
+}
+
+async function executeBase44Agent(agent, domain, kind, before) {
+  if (!agent?.provider_agent_id) throw new Error('Aucun agent Base44 métier associé à ce domaine.');
+  if (!BASE44_API_KEY) throw new Error('BASE44_API_KEY serveur non configurée.');
+  const headers = { api_key: BASE44_API_KEY, 'Content-Type': 'application/json' };
+  const convResponse = await fetch(`${BASE44_AGENT_URL}/${encodeURIComponent(agent.provider_agent_id)}/conversations`, {
+    method: 'POST', headers, body: JSON.stringify({}), signal: AbortSignal.timeout(15000),
+  });
+  const conv = await convResponse.json().catch(() => ({}));
+  if (!convResponse.ok || !conv?.id) throw new Error(conv?.error || `Base44 conversation HTTP ${convResponse.status}`);
+
+  const issues = (before.issues || []).map((item) => `- ${item.code}: ${item.label}`).join('\n') || '- optimisation proactive';
+  const seo = (before.seo?.recommendations || []).map((item) => `- ${item}`).join('\n') || '- aucune recommandation SEO';
+  const prompt = [
+    `Tu es l’agent métier responsable du site ${domain}.`,
+    'Cette intervention a reçu la confirmation explicite de l’administrateur JS-Innov.IA.',
+    `Mission: ${kind === 'seo' ? 'appliquer les corrections SEO techniques sûres et vérifiables' : 'corriger les incidents techniques du site que tes outils permettent réellement de modifier'}.`,
+    'Ne modifie aucun autre site, domaine, client ou projet.',
+    'Ne supprime aucune donnée métier. Ne change pas de facturation.',
+    'Si une correction nécessite DNS/registrar ou un accès que tu ne possèdes pas, ne simule pas la réussite: indique précisément le blocage.',
+    '',
+    'Incidents mesurés avant intervention:',
+    issues,
+    '',
+    'SEO mesuré avant intervention:',
+    seo,
+    '',
+    'Applique uniquement les corrections que tu peux réellement exécuter, puis retourne un compte rendu précis des changements effectués et des blocages restants.',
+  ].join('\n').slice(0, 7000);
+
+  const answerResponse = await fetch(`${BASE44_AGENT_URL}/${encodeURIComponent(agent.provider_agent_id)}/conversations/${encodeURIComponent(conv.id)}/messages`, {
+    method: 'POST', headers, body: JSON.stringify({ role: 'user', content: prompt }), signal: AbortSignal.timeout(120000),
+  });
+  const answer = await answerResponse.json().catch(() => ({}));
+  if (!answerResponse.ok) throw new Error(answer?.error || `Base44 agent HTTP ${answerResponse.status}`);
+  return { conversationId: conv.id, content: String(answer?.content || answer?.response || answer?.message || '').trim() };
+}
+
+function verifiedImprovement(kind, before, after) {
+  const beforeCritical = (before.issues || []).filter((item) => item.severity === 'critical').length;
+  const afterCritical = (after.issues || []).filter((item) => item.severity === 'critical').length;
+  if (kind === 'seo') {
+    return Boolean(after.http?.apex?.ok) && Number(after.seo?.score || 0) > Number(before.seo?.score || 0);
+  }
+  if (!before.http?.apex?.ok && after.http?.apex?.ok) return true;
+  if (afterCritical < beforeCritical) return true;
+  return beforeCritical === 0 && afterCritical === 0 && (after.issues || []).length < (before.issues || []).length;
+}
+
 router.get('/domains', (_req, res) => {
   res.json(Object.entries(MANAGED_DOMAINS).map(([domain, meta]) => ({ domain, ...meta })));
 });
@@ -203,7 +336,77 @@ router.post('/seo', async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
+// Effet réel : cette route ne doit être appelée qu'après le jeton de confirmation du Companion.
+router.post('/repair', async (req, res) => {
+  const domain = safeDomain(req.body?.domain);
+  const kind = req.body?.kind === 'seo' ? 'seo' : 'repair';
+  if (!domain) return res.status(400).json({ error: 'Domaine non géré par le Cockpit.' });
+
+  let task = null;
+  let agent = null;
+  let execution = null;
+  try {
+    const before = await analyzeDomain(domain);
+    task = await createRepairTask(domain, kind, before);
+    agent = agentForDomain(domain);
+
+    if (!agent) {
+      await patchTask(task?.id, { statut: 'bloquee', notes: 'Aucun agent métier compatible associé au domaine.' });
+      await recordRun({ task, agent, domain, kind, status: 'blocked', error: 'agent_missing' });
+      return res.status(409).json({
+        success: false,
+        verified: false,
+        domain,
+        task,
+        before,
+        error: 'Aucun agent métier compatible associé au domaine.',
+      });
+    }
+
+    execution = await executeBase44Agent(agent, domain, kind, before);
+    // Laisse le temps au provider/site de rendre le changement visible avant le contrôle.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const after = await analyzeDomain(domain);
+    const verified = verifiedImprovement(kind, before, after);
+
+    await patchTask(task?.id, {
+      statut: verified ? 'terminee' : 'bloquee',
+      notes: verified
+        ? `Correction vérifiée automatiquement. Agent: ${agent.name}.`
+        : `Intervention agent reçue mais aucune amélioration mesurable. Vérification manuelle/provider requise. Agent: ${agent.name}.`,
+    });
+    await recordRun({
+      task,
+      agent,
+      domain,
+      kind,
+      status: verified ? 'completed' : 'blocked',
+      result: execution.content,
+      conversationId: execution.conversationId,
+      error: verified ? null : 'no_verified_improvement',
+    });
+
+    return res.status(verified ? 200 : 409).json({
+      success: verified,
+      verified,
+      domain,
+      kind,
+      task,
+      agent: { name: agent.name, role: agent.role, provider_agent_id: agent.provider_agent_id },
+      execution: { summary: execution.content.slice(0, 5000), conversation_id: execution.conversationId },
+      before,
+      after,
+    });
+  } catch (error) {
+    if (task?.id) await patchTask(task.id, { statut: 'bloquee', notes: `Réparation automatique bloquée: ${String(error.message || error).slice(0, 400)}` });
+    await recordRun({ task, agent, domain, kind, status: 'failed', error: error.message, result: execution?.content, conversationId: execution?.conversationId });
+    res.status(500).json({ success: false, verified: false, domain, task, error: error.message });
+  }
+});
+
 module.exports = router;
 module.exports.analyzeDomain = analyzeDomain;
 module.exports.safeDomain = safeDomain;
 module.exports.MANAGED_DOMAINS = MANAGED_DOMAINS;
+module.exports.verifiedImprovement = verifiedImprovement;
+module.exports.agentForDomain = agentForDomain;
