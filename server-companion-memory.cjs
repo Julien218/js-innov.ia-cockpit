@@ -4,6 +4,7 @@ const {
   runReadOnlyDelegations,
   buildDelegationContext,
 } = require('./server-agent-orchestrator.cjs');
+const { logDelegationResults } = require('./server-agent-run-log.cjs');
 
 const MEMORY_ARCHIVE_ROOT = process.env.CHATGPT_MEMORY_ARCHIVE_ROOT || '/ChatGPT Données sauve garde';
 const MEMORY_SNAPSHOT_PREFIX = process.env.CHATGPT_MEMORY_SNAPSHOT_PREFIX || 'Analyse Cockpit ';
@@ -198,6 +199,7 @@ function architectContract() {
     'Délégation lecture seule: utiliser automatiquement les agents métier spécialisés, y compris les agents Base44 déjà liés aux sites gérés.',
     'Réutilisation: un agent site/projet existant est prioritaire; ne créer un nouvel agent métier que si aucun spécialiste existant ne convient.',
     'Fallback: si Base44 est indisponible, déléguer à un agent métier virtuel sur jsinnovia-agent avec le même rôle fonctionnel.',
+    'Traçabilité: journaliser les délégations dans agent_runs quand le backend est disponible.',
     'Effet réel: toute création ou modification métier, envoi, publication, déploiement, facturation ou suppression doit passer par UNE confirmation explicite juste avant exécution.',
     'Ne jamais prétendre avoir vérifié un système si aucun résultat d’outil, diagnostic local ou donnée courante ne le prouve.',
     'Quand un bloc DIAGNOSTIC LOCAL LECTURE SEULE est présent dans le message, l’utiliser comme mesure factuelle de la machine courante et signaler clairement les éléments non mesurés.',
@@ -218,6 +220,11 @@ async function buildHistoricalMemoryContext(message, user) {
     const delegationResults = await runReadOnlyDelegations(message);
     const delegationContext = buildDelegationContext(delegationResults);
     if (delegationContext) lines.push('', delegationContext);
+    try {
+      await logDelegationResults(message, delegationResults);
+    } catch (logError) {
+      console.warn('[assistant-agent-runs] logging failed:', logError.message);
+    }
   } catch (error) {
     lines.push('', `[ROUTAGE AGENTS MÉTIER: indisponible — ${String(error.message || error).slice(0, 300)}]`);
   }
