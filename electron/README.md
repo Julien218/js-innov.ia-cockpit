@@ -1,16 +1,32 @@
 # JS-Innov.IA Cockpit — App Desktop Windows
 
-Application Electron qui charge le cockpit web `cockpit.jsinnovia.com` dans une fenêtre dédiée.
+Application Electron qui charge le Cockpit web `cockpit.jsinnovia.com` dans une fenêtre dédiée.
 
 ## Fonctionnalités
 
 - ✅ Splash screen JS-Innov.IA au démarrage
-- ✅ Tray icon (barre de tâches Windows)  
+- ✅ Tray icon Windows
 - ✅ Notifications Windows natives
 - ✅ Raccourci bureau + menu Démarrer
-- ✅ Fenêtre sans menu bar (propre)
+- ✅ Fenêtre sans menu bar
 - ✅ Liens externes → navigateur par défaut
-- ✅ Installation silencieuse NSIS
+- ✅ Installation NSIS one-click
+- ✅ Bridge local ComfyUI sur `127.0.0.1:8188`
+- ✅ Mise à jour globale du Cockpit web au démarrage : purge du cache HTTP uniquement, sans déconnexion
+- ✅ Mise à jour automatique de l'application Electron via GitHub Releases
+
+## Politique de mise à jour
+
+Le Cockpit web reste la source de vérité de l'interface. À chaque démarrage du `.exe`, le cache HTTP Electron est vidé avant le chargement de `cockpit.jsinnovia.com`. Les cookies, la session et le stockage utilisateur ne sont pas effacés. Une évolution d'un module web ne nécessite donc pas un nouveau bouton de rechargement par module.
+
+L'enveloppe Electron est versionnée séparément. Lorsqu'une nouvelle release Windows est publiée, l'application :
+
+1. vérifie la dernière version au démarrage ;
+2. télécharge automatiquement l'installeur si nécessaire ;
+3. redémarre automatiquement pour l'installer ;
+4. relance le Cockpit après installation.
+
+Les releases doivent contenir l'installeur `.exe`, son `.blockmap` et `latest.yml`, utilisés par `electron-updater`.
 
 ## Installation (développement)
 
@@ -28,32 +44,29 @@ npm install
 npm run build:win
 ```
 
-Le fichier `.exe` sera dans `electron/dist/`.
+Le fichier `.exe` sera généré dans `electron/dist/`.
 
 ## Prérequis
 
 - Node.js 18+
-- npm ou yarn
-- Windows (pour le build .exe)
+- npm
+- Windows pour le build natif `.exe`
 
 ## Structure
 
-```
+```text
 electron/
-  main.js        ← Fenêtre principale, tray, notifications
-  preload.js     ← Bridge sécurisé React ↔ Electron
-  splash.html    ← Écran de démarrage
-  package.json   ← Config build electron-builder
-  icon.png       ← Icône app
+  bootstrap.js   ← refresh global + auto-update Electron
+  main.js        ← fenêtre principale, tray, notifications, bridge local
+  preload.js     ← bridge sécurisé React ↔ Electron
+  splash.html    ← écran de démarrage
+  package.json   ← configuration electron-builder / updater
+  icon.png       ← icône app
 ```
 
 ## Connexion
 
-Le cockpit charge **cockpit.jsinnovia.com** et se connecte directement à :
-- **Supabase** `gfjpryakxzdzwnazlsfz` — données métier
-- **NOVA** — IA centrale JS-Innov.IA
+Le Cockpit charge `cockpit.jsinnovia.com`. Les secrets restent côté serveur ou dans les services locaux dédiés ; l'enveloppe Electron n'embarque pas de clé fournisseur dans son code source.
 
 ---
-*JS-Innov.IA · Julien Pagin · Dour, Belgique*  
-*"When Vision meets Intelligence."*
-
+JS-Innov.IA · Dour, Belgique

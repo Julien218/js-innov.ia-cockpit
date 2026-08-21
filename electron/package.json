@@ -1,8 +1,8 @@
 {
   "name": "jsinnovia-cockpit",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "description": "JS-Innov.IA Cockpit — Application desktop Windows",
-  "main": "main.js",
+  "main": "bootstrap.js",
   "author": "Julien Pagin <julien@jsinnovia.com>",
   "license": "MIT",
   "repository": {
@@ -14,6 +14,9 @@
     "build:win": "electron-builder --win --publish never",
     "build:mac": "electron-builder --mac --publish never",
     "build:all": "electron-builder --win --mac --publish never"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2"
   },
   "devDependencies": {
     "electron": "^30.0.0",
@@ -28,11 +31,20 @@
       "buildResources": "."
     },
     "files": [
+      "bootstrap.js",
       "main.js",
       "preload.js",
       "splash.html",
       "icon.png",
       "icon.ico"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Julien218",
+        "repo": "js-innov.ia-cockpit",
+        "releaseType": "release"
+      }
     ],
     "win": {
       "target": [

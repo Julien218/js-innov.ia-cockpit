@@ -16,6 +16,7 @@ on:
       - "src/components/studio/**"
       - "src/lib/videoOrchestrator.js"
       - "electron/**"
+      - ".github/workflows/video-local-ci.yml"
 
 permissions:
   contents: read
@@ -30,7 +31,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Install dependencies
         run: npm install
@@ -53,11 +54,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Validate Electron sources
         shell: pwsh
         run: |
+          node --check bootstrap.js
           node --check main.js
           node --check preload.js
-          node -e "const p=require('./package.json'); if(p.version!=='1.0.17') process.exit(1); console.log('Electron',p.version)"
+          node -e "const p=require('./package.json'); if(!/^\d+\.\d+\.\d+$/.test(p.version)) process.exit(1); if(p.main!=='bootstrap.js') process.exit(1); console.log('Electron',p.version)"

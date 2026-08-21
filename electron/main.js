@@ -12,7 +12,7 @@ let splashTimer = null;
 let updateAvailable = null;
 
 // ── Version actuelle de l'app ────────────────────────────────────────────────
-const APP_VERSION = "1.0.17";
+const APP_VERSION = app.getVersion();
 
 // ── Local Video Bridge — loopback uniquement ────────────────────────────────
 const COMFYUI_HOST = "127.0.0.1";
