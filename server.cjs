@@ -126,6 +126,17 @@ try {
   console.warn('⚠️ Route domain-ops indisponible:', e.message);
 }
 
+// ── Companion batch : création multi-tâches + délégation ───
+try {
+  const assistantBatchRouter = require('./server-assistant-batch.cjs');
+  // Monté AVANT le Companion historique. Il intercepte uniquement les demandes
+  // multi-tâches et laisse toutes les autres routes continuer vers le routeur legacy.
+  app.use('/api/assistant', requireSession('client'), assistantBatchRouter);
+  console.log('✅ Companion batch activé (confirmation unique + tâches + agent_runs)');
+} catch (e) {
+  console.warn('⚠️ Companion batch indisponible:', e.message);
+}
+
 // ── Companion adaptatif : owner / équipe / client ──────────
 try {
   const assistantRouter = require('./server-assistant.cjs');
@@ -154,7 +165,6 @@ try {
 } catch (e) {
   console.warn('⚠️ Route governance indisponible:', e.message);
 }
-
 
 // ── Base44 Agents Proxy (sécurisé, sans clé frontend) ─────
 try {
