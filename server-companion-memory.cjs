@@ -1,14 +1,16 @@
-const { downloadFile } = require('./server-dropbox-helper.cjs');
+const { downloadFile, listFolder } = require('./server-dropbox-helper.cjs');
 
-const MEMORY_ROOT = process.env.CHATGPT_MEMORY_ROOT || '/ChatGPT Données sauve garde/Analyse Cockpit 2026-08-14';
-const INDEX_PATH = process.env.CHATGPT_MEMORY_INDEX_PATH || `${MEMORY_ROOT}/conversations.index.jsonl`;
-const MANIFEST_PATH = process.env.CHATGPT_MEMORY_MANIFEST_PATH || `${MEMORY_ROOT}/manifest.json`;
+const MEMORY_ARCHIVE_ROOT = process.env.CHATGPT_MEMORY_ARCHIVE_ROOT || '/ChatGPT Données sauve garde';
+const MEMORY_SNAPSHOT_PREFIX = process.env.CHATGPT_MEMORY_SNAPSHOT_PREFIX || 'Analyse Cockpit ';
+const EXPLICIT_MEMORY_ROOT = String(process.env.CHATGPT_MEMORY_ROOT || '').trim();
+const FALLBACK_MEMORY_ROOT = EXPLICIT_MEMORY_ROOT || `${MEMORY_ARCHIVE_ROOT}/Analyse Cockpit 2026-08-14`;
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
 let cache = {
   expiresAt: 0,
   conversations: [],
   manifest: null,
+  root: FALLBACK_MEMORY_ROOT,
 };
 
 const STOP_WORDS = new Set([
@@ -33,28 +35,84 @@ function queryTerms(message) {
     .slice(0, 12);
 }
 
+function isSnapshotFolder(entry) {
+  return entry?.['.tag'] === 'folder' && String(entry?.name || '').startsWith(MEMORY_SNAPSHOT_PREFIX);
+}
+
+function snapshotSortValue(entry) {
+  const name = String(entry?.name || '');
+  const datePart = name.slice(MEMORY_SNAPSHOT_PREFIX.length).trim();
+  const parsed = Date.parse(datePart);
+  if (Number.isFinite(parsed)) return parsed;
+  const modified = Date.parse(entry?.server_modified || entry?.client_modified || '');
+  return Number.isFinite(modified) ? modified : 0;
+}
+
+function pickLatestMemoryFolder(entries = []) {
+  return [...entries]
+    .filter(isSnapshotFolder)
+    .sort((a, b) => snapshotSortValue(b) - snapshotSortValue(a) || String(b.name).localeCompare(String(a.name)))[0] || null;
+}
+
 async function readDropboxText(path) {
   const result = await downloadFile(path);
   if (!result?.success || !result.buffer) throw new Error(result?.error || `Mémoire Dropbox indisponible: ${path}`);
   return result.buffer.toString('utf8');
 }
 
+async function isValidSnapshot(root) {
+  try {
+    const manifestText = await readDropboxText(`${root}/manifest.json`);
+    const manifest = JSON.parse(manifestText);
+    if (!manifest || Number(manifest.indexed_conversations || 0) < 1) return false;
+    const indexProbe = await downloadFile(`${root}/conversations.index.jsonl`);
+    return Boolean(indexProbe?.success && indexProbe.buffer?.length);
+  } catch {
+    return false;
+  }
+}
+
+async function resolveMemoryRoot() {
+  if (EXPLICIT_MEMORY_ROOT) return EXPLICIT_MEMORY_ROOT;
+
+  try {
+    const result = await listFolder(MEMORY_ARCHIVE_ROOT);
+    if (result?.entries?.length) {
+      const candidates = [...result.entries]
+        .filter(isSnapshotFolder)
+        .sort((a, b) => snapshotSortValue(b) - snapshotSortValue(a) || String(b.name).localeCompare(String(a.name)));
+
+      for (const candidate of candidates) {
+        const root = candidate.path_display || candidate.path_lower || `${MEMORY_ARCHIVE_ROOT}/${candidate.name}`;
+        if (await isValidSnapshot(root)) return root;
+      }
+    }
+  } catch (error) {
+    console.warn('[assistant-memory] snapshot discovery failed:', error.message);
+  }
+
+  return FALLBACK_MEMORY_ROOT;
+}
+
 async function loadArchive() {
   if (cache.expiresAt > Date.now() && cache.conversations.length) return cache;
 
+  const root = await resolveMemoryRoot();
+  const indexPath = `${root}/conversations.index.jsonl`;
+  const manifestPath = `${root}/manifest.json`;
+
   const [indexText, manifestText] = await Promise.all([
-    readDropboxText(INDEX_PATH),
-    readDropboxText(MANIFEST_PATH).catch(() => ''),
+    readDropboxText(indexPath),
+    readDropboxText(manifestPath).catch(() => ''),
   ]);
 
   const conversations = [];
   for (const line of indexText.split(/\r?\n/)) {
     if (!line.trim()) continue;
     try {
-      const item = JSON.parse(line);
-      conversations.push(item);
+      conversations.push(JSON.parse(line));
     } catch {
-      // Une ligne invalide ne doit pas rendre toute la mémoire indisponible.
+      // Une ligne invalide ne doit jamais rendre toute la mémoire indisponible.
     }
   }
 
@@ -65,6 +123,7 @@ async function loadArchive() {
     expiresAt: Date.now() + CACHE_TTL_MS,
     conversations,
     manifest,
+    root,
   };
   return cache;
 }
@@ -113,7 +172,7 @@ function compactRecord(record) {
 
 async function searchHistoricalMemory(message, limit = 6) {
   const terms = queryTerms(message);
-  if (!terms.length) return { results: [], manifest: null, terms };
+  if (!terms.length) return { results: [], manifest: null, terms, root: cache.root };
 
   const archive = await loadArchive();
   const ranked = archive.conversations
@@ -123,22 +182,44 @@ async function searchHistoricalMemory(message, limit = 6) {
     .slice(0, Math.min(10, Math.max(1, Number(limit) || 6)))
     .map((item) => ({ ...compactRecord(item.record), score: item.score }));
 
-  return { results: ranked, manifest: archive.manifest, terms };
+  return { results: ranked, manifest: archive.manifest, terms, root: archive.root };
+}
+
+function architectContract() {
+  return [
+    '[CONTRAT ARCHITECTE JS-INNOV.IA — OWNER]',
+    'Rôle: agir comme architecte/orchestratrice du Cockpit, pas comme chatbot passif.',
+    'Lecture seule: analyser, rechercher, diagnostiquer et comparer automatiquement sans demander confirmation.',
+    'Délégation: choisir le moteur ou agent spécialisé le plus pertinent selon la tâche (Cockpit/CRM, Agent Local, ComfyUI/H3, Dropbox, GitHub/Railway ou cloud lorsque disponible).',
+    'Effet réel: toute création, modification, envoi, publication, déploiement, facturation, suppression ou action externe doit passer par UNE confirmation explicite juste avant exécution.',
+    'Ne jamais prétendre avoir vérifié un système si aucun résultat d’outil, diagnostic local ou donnée courante ne le prouve.',
+    'Quand un bloc DIAGNOSTIC LOCAL LECTURE SEULE est présent dans le message, l’utiliser comme mesure factuelle de la machine courante et signaler clairement les éléments non mesurés.',
+    'Mémoire: utiliser l’archive ChatGPT Dropbox comme historique projet; en cas de conflit, privilégier l’état Cockpit/GitHub/infra le plus récent.',
+    '[/CONTRAT ARCHITECTE JS-INNOV.IA]',
+  ].join('\n');
 }
 
 async function buildHistoricalMemoryContext(message, user) {
   if (user?.role !== 'superadmin') return '';
-  const { results, manifest } = await searchHistoricalMemory(message, 6);
-  if (!results.length) return '';
+
+  const { results, manifest, root } = await searchHistoricalMemory(message, 6);
+  const lines = ['', architectContract()];
+
+  if (!results.length) {
+    lines.push('', '[MÉMOIRE HISTORIQUE JS-INNOV.IA — archive ChatGPT Dropbox, lecture seule]');
+    lines.push(`Snapshot mémoire actif: ${root || FALLBACK_MEMORY_ROOT}. Aucun résultat pertinent trouvé pour cette demande.`);
+    lines.push('[/MÉMOIRE HISTORIQUE JS-INNOV.IA]');
+    return lines.join('\n');
+  }
 
   const generatedAt = manifest?.generated_at || 'date inconnue';
   const indexedCount = manifest?.indexed_conversations || manifest?.source_conversations || 'inconnu';
-  const lines = [
+  lines.push(
     '',
     '[MÉMOIRE HISTORIQUE JS-INNOV.IA — archive ChatGPT Dropbox, lecture seule]',
-    `Index généré: ${generatedAt}. Conversations indexées: ${indexedCount}.`,
+    `Snapshot actif: ${root || FALLBACK_MEMORY_ROOT}. Index généré: ${generatedAt}. Conversations indexées: ${indexedCount}.`,
     'Utilise ces éléments comme mémoire historique, pas comme vérité actuelle absolue. En cas de conflit, privilégie les données Cockpit/GitHub/infra les plus récentes.',
-  ];
+  );
 
   for (const item of results) {
     lines.push(`- ${item.title} (${item.updated_at || 'date inconnue'})`);
@@ -154,9 +235,9 @@ async function buildHistoricalMemoryContext(message, user) {
 
 function getMemoryStatus() {
   return {
-    root: MEMORY_ROOT,
-    index_path: INDEX_PATH,
-    manifest_path: MANIFEST_PATH,
+    archive_root: MEMORY_ARCHIVE_ROOT,
+    root: cache.root || FALLBACK_MEMORY_ROOT,
+    explicit_root: Boolean(EXPLICIT_MEMORY_ROOT),
     cached: cache.conversations.length > 0 && cache.expiresAt > Date.now(),
     cached_conversations: cache.conversations.length,
     manifest: cache.manifest,
@@ -164,7 +245,7 @@ function getMemoryStatus() {
 }
 
 function clearMemoryCache() {
-  cache = { expiresAt: 0, conversations: [], manifest: null };
+  cache = { expiresAt: 0, conversations: [], manifest: null, root: FALLBACK_MEMORY_ROOT };
 }
 
 module.exports = {
@@ -172,4 +253,7 @@ module.exports = {
   searchHistoricalMemory,
   getMemoryStatus,
   clearMemoryCache,
+  pickLatestMemoryFolder,
+  architectContract,
+  resolveMemoryRoot,
 };
