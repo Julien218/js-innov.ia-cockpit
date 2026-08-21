@@ -1,6 +1,7 @@
 const express = require('express');
 const dns = require('node:dns').promises;
 const tls = require('node:tls');
+const crypto = require('node:crypto');
 const { SITE_AGENT_REGISTRY } = require('./server-agent-orchestrator.cjs');
 
 const router = express.Router();
@@ -8,6 +9,7 @@ const JS_AGENT_URL = String(process.env.JSINNOVIA_AGENT_URL || process.env.AGENT
 const JS_AGENT_KEY = String(process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '').trim();
 const BASE44_API_KEY = String(process.env.BASE44_API_KEY || process.env.BASE44_SERVER_API_KEY || '').trim();
 const BASE44_AGENT_URL = String(process.env.BASE44_AGENT_URL || 'https://app.base44.com/api/agents').replace(/\/$/, '');
+const pendingDomainActions = new Map();
 
 const MANAGED_DOMAINS = Object.freeze({
   'jsinnovia.com': { app: 'JS-INNOV.IA', agent_hint: 'JsInnov-Agent' },
@@ -316,6 +318,17 @@ function verifiedImprovement(kind, before, after) {
   return beforeCritical === 0 && afterCritical === 0 && (after.issues || []).length < (before.issues || []).length;
 }
 
+function pendingFor(req, token) {
+  const item = pendingDomainActions.get(String(token || ''));
+  if (!item) return { error: 'Confirmation de domaine absente ou déjà consommée.', status: 400 };
+  if (item.expiresAt < Date.now()) {
+    pendingDomainActions.delete(String(token));
+    return { error: 'Confirmation expirée. Relance la préparation.', status: 410 };
+  }
+  if (item.userId !== req.user?.id) return { error: 'Cette confirmation appartient à une autre session.', status: 403 };
+  return { item };
+}
+
 router.get('/domains', (_req, res) => {
   res.json(Object.entries(MANAGED_DOMAINS).map(([domain, meta]) => ({ domain, ...meta })));
 });
@@ -336,35 +349,61 @@ router.post('/seo', async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// Effet réel : cette route ne doit être appelée qu'après le jeton de confirmation du Companion.
-router.post('/repair', async (req, res) => {
+// Prépare l'intervention et émet un jeton à usage unique. Aucun effet réel ici.
+router.post('/prepare-repair', async (req, res) => {
   const domain = safeDomain(req.body?.domain);
   const kind = req.body?.kind === 'seo' ? 'seo' : 'repair';
   if (!domain) return res.status(400).json({ error: 'Domaine non géré par le Cockpit.' });
+  try {
+    const before = await analyzeDomain(domain);
+    const agent = agentForDomain(domain);
+    const token = crypto.randomBytes(24).toString('hex');
+    pendingDomainActions.set(token, {
+      userId: req.user?.id,
+      domain,
+      kind,
+      before,
+      agentName: agent?.name || null,
+      expiresAt: Date.now() + 5 * 60_000,
+    });
+    res.json({
+      confirmation: {
+        token,
+        expires_in: 300,
+        summary: `${kind === 'seo' ? 'SEO automatique' : 'Réparation IA'} de ${domain} via ${agent?.name || 'agent non disponible'}`,
+      },
+      domain,
+      kind,
+      before,
+      agent: agent ? { name: agent.name, role: agent.role, provider_agent_id: agent.provider_agent_id } : null,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
+// Effet réel : exige le jeton préparé et le consomme avant exécution pour empêcher tout double-run.
+router.post('/repair', async (req, res) => {
+  const token = String(req.body?.token || '');
+  const resolved = pendingFor(req, token);
+  if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
+  pendingDomainActions.delete(token);
+
+  const { domain, kind, before } = resolved.item;
   let task = null;
   let agent = null;
   let execution = null;
   try {
-    const before = await analyzeDomain(domain);
     task = await createRepairTask(domain, kind, before);
     agent = agentForDomain(domain);
 
     if (!agent) {
       await patchTask(task?.id, { statut: 'bloquee', notes: 'Aucun agent métier compatible associé au domaine.' });
       await recordRun({ task, agent, domain, kind, status: 'blocked', error: 'agent_missing' });
-      return res.status(409).json({
-        success: false,
-        verified: false,
-        domain,
-        task,
-        before,
-        error: 'Aucun agent métier compatible associé au domaine.',
-      });
+      return res.status(409).json({ success: false, verified: false, domain, task, before, error: 'Aucun agent métier compatible associé au domaine.' });
     }
 
     execution = await executeBase44Agent(agent, domain, kind, before);
-    // Laisse le temps au provider/site de rendre le changement visible avant le contrôle.
     await new Promise((resolve) => setTimeout(resolve, 1500));
     const after = await analyzeDomain(domain);
     const verified = verifiedImprovement(kind, before, after);
