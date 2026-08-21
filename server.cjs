@@ -104,9 +104,15 @@ try {
 
 // ── Ledger coûts client / refacturation ─────────────────────
 try {
+  const adminGuard = requireSession('admin');
+  // Route prioritaire : les micro-coûts LLM sont agrégés au mois par modèle
+  // avant l'arrondi au centime. Le détail requête reste dans ai_cost_usage.
+  const { router: aiCostLedgerAggregateRouter } = require('./server-ai-cost-ledger-aggregate.cjs');
+  app.use('/api/client-costs', adminGuard, aiCostLedgerAggregateRouter);
+
   const { router: clientCostsRouter } = require('./server-client-costs.cjs');
-  app.use('/api/client-costs', requireSession('admin'), clientCostsRouter);
-  console.log('✅ Route /api/client-costs activée (client_id canonique, coûts réels, marge, refacturation)');
+  app.use('/api/client-costs', adminGuard, clientCostsRouter);
+  console.log('✅ Route /api/client-costs activée (client_id canonique, agrégation IA précise, coûts réels, marge, refacturation)');
 } catch (e) {
   console.warn('⚠️ Route client-costs indisponible:', e.message);
 }
