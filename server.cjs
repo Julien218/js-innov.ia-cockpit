@@ -117,6 +117,15 @@ try {
   console.warn('⚠️ Route client-costs indisponible:', e.message);
 }
 
+// ── Diagnostic live des domaines + audit SEO ───────────────
+try {
+  const domainOpsRouter = require('./server-domain-ops.cjs');
+  app.use('/api/domain-ops', requireSession('admin'), domainOpsRouter);
+  console.log('✅ Route /api/domain-ops activée (DNS, HTTP, TLS, SEO lecture seule)');
+} catch (e) {
+  console.warn('⚠️ Route domain-ops indisponible:', e.message);
+}
+
 // ── Companion adaptatif : owner / équipe / client ──────────
 try {
   const assistantRouter = require('./server-assistant.cjs');
