@@ -1,0 +1,51 @@
+name: Electron Auto Update CI
+
+on:
+  pull_request:
+    paths:
+      - "electron/**"
+      - "tests/electron-global-auto-update.test.cjs"
+      - ".github/workflows/electron-auto-update-ci.yml"
+      - ".github/workflows/electron-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-windows-desktop:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Source checks
+        shell: pwsh
+        run: |
+          node --check electron/bootstrap.js
+          node --check electron/main.js
+          node --check electron/preload.js
+          node --test tests/electron-global-auto-update.test.cjs
+
+      - name: Install desktop dependencies
+        working-directory: electron
+        run: npm install
+
+      - name: Build Windows installer
+        working-directory: electron
+        run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify updater payload
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "electron/dist/latest.yml")) { throw "latest.yml manquant" }
+          if (-not (Get-ChildItem "electron/dist/*.exe" -ErrorAction SilentlyContinue)) { throw "installeur .exe manquant" }
+          if (-not (Get-ChildItem "electron/dist/*.blockmap" -ErrorAction SilentlyContinue)) { throw "blockmap manquant" }
