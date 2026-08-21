@@ -2,7 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://rzvvwcwyaddzsaattwqt.supabase.co";
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIUzI1NiIsInJlZiI6InJ6dnZ3Y3d5YWRkenNhYXR0d3F0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMTU4NjAsImV4cCI6MjA5NjY5MTg2MH0.VOEFK5BG_dxCnijcz2RexqMg1yDGoXdw58-2Ud_a7hM";
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6dnZ3Y3d5YWRkenNhYXR0d3F0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMTU4NjAsImV4cCI6MjA5NjY5MTg2MH0.VOEFK5BG_dxCnijcz2RexqMg1yDGoXdw58-2Ud_a7hM";
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -51,7 +51,7 @@ const unwrapSupabase = async (operation, { label = 'Opération Supabase', fallba
 // ─── Upload fichier vers Supabase Storage ─────────────────────────────────
 export async function uploadToStorage(file, bucket = 'videos', path = null) {
   const filePath = path || `${Date.now()}_${file.name}`;
-  const { data, error } = await supabase.storage.from(bucket).upload(filePath, file, { upsert: true });
+  const { error } = await supabase.storage.from(bucket).upload(filePath, file, { upsert: true });
   if (error) throw error;
   const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(filePath);
   return publicUrl;
