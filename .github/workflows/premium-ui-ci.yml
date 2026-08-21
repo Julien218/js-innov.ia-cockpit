@@ -1,0 +1,42 @@
+name: Premium Cockpit UI CI
+
+on:
+  pull_request:
+    paths:
+      - 'src/index.css'
+      - 'src/components/layout/**'
+      - 'src/pages/Emails.jsx'
+      - 'src/pages/EmailCore.jsx'
+      - 'tests/premium-ui.test.cjs'
+      - '.github/workflows/premium-ui-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/index.css'
+      - 'src/components/layout/**'
+      - 'src/pages/Emails.jsx'
+      - 'src/pages/EmailCore.jsx'
+      - 'tests/premium-ui.test.cjs'
+      - '.github/workflows/premium-ui-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Premium UI contract tests
+        run: node --require ./tests/node-test-globals.cjs --test tests/premium-ui.test.cjs
+      - name: Lint
+        run: npm run lint
+      - name: Production build
+        run: npm run build
