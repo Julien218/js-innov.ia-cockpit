@@ -95,6 +95,41 @@
     transform: translateY(-1px);
     box-shadow: 0 14px 34px rgba(212, 175, 55, 0.2);
   }
+
+  .premium-shell > aside,
+  .premium-shell aside.bg-white {
+    background: linear-gradient(180deg, rgba(9, 11, 16, 0.96), rgba(6, 8, 12, 0.96)) !important;
+    border-color: rgba(255, 255, 255, 0.065) !important;
+    box-shadow: 18px 0 60px rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(20px);
+  }
+
+  .premium-shell header,
+  .premium-shell header.bg-white {
+    background: rgba(8, 10, 15, 0.76) !important;
+    border-color: rgba(255, 255, 255, 0.06) !important;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.16);
+  }
+
+  .premium-shell main > * {
+    animation: premium-enter 260ms ease-out;
+  }
+
+  .premium-shell .bg-white {
+    background-color: hsl(var(--card)) !important;
+  }
+
+  .premium-shell .shadow-lg,
+  .premium-shell .shadow-xl,
+  .premium-shell .shadow-2xl {
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28) !important;
+  }
+}
+
+@keyframes premium-enter {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @layer utilities {
