@@ -94,9 +94,21 @@ try {
 try {
   const { router: aiCostRouter } = require('./server-ai-cost.cjs');
   app.use('/api/ai-cost', aiCostRouter);
-  console.log('✅ Route /api/ai-cost activée (usage, budgets, routage, hard limits)');
+  // Doit être installé avant le require de server-assistant.cjs : ce dernier
+  // récupère alors la fonction recordUsage enrichie avec le Client.id canonique.
+  require('./server-ai-cost-attribution.cjs').installAICostAttribution();
+  console.log('✅ Route /api/ai-cost activée (usage, budgets, routage, attribution client)');
 } catch (e) {
   console.warn('⚠️ Route AI Cost Control indisponible:', e.message);
+}
+
+// ── Ledger coûts client / refacturation ─────────────────────
+try {
+  const { router: clientCostsRouter } = require('./server-client-costs.cjs');
+  app.use('/api/client-costs', requireSession('admin'), clientCostsRouter);
+  console.log('✅ Route /api/client-costs activée (client_id canonique, coûts réels, marge, refacturation)');
+} catch (e) {
+  console.warn('⚠️ Route client-costs indisponible:', e.message);
 }
 
 // ── Companion adaptatif : owner / équipe / client ──────────
