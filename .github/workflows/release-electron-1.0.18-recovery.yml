@@ -1,0 +1,83 @@
+name: Release Electron 1.0.18 Recovery
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/release-electron-1.0.18-recovery.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: electron
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate v1.0.18 sources
+        shell: pwsh
+        run: |
+          node -e "const p=require('./package.json'); if(p.version!=='1.0.18') { console.error('Expected 1.0.18, got '+p.version); process.exit(1) }"
+          node --check bootstrap.js
+          node --check main.js
+          node --check preload.js
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Windows installer
+        run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify updater payload
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/latest.yml")) { throw "latest.yml manquant" }
+          if (-not (Get-ChildItem "dist/*.exe" -ErrorAction SilentlyContinue)) { throw "installeur .exe manquant" }
+          if (-not (Get-ChildItem "dist/*.blockmap" -ErrorAction SilentlyContinue)) { throw "blockmap manquant" }
+
+      - name: Upload recovery artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JSInnovIA-Cockpit-1.0.18-Windows-Recovery
+          path: |
+            electron/dist/*.exe
+            electron/dist/*.blockmap
+            electron/dist/latest.yml
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Publish or repair v1.0.18 release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.18
+          target_commitish: main
+          name: "JS-Innov.IA Cockpit v1.0.18 — Auto Update"
+          body: |
+            ## JS-Innov.IA Cockpit v1.0.18
+
+            - Mise à jour globale du Cockpit web au démarrage sans déconnexion.
+            - Vérification, téléchargement et installation automatiques des mises à jour Electron.
+            - Support du moteur vidéo local ComfyUI / MiniMax H3 conservé.
+            - Paquet updater complet : installeur `.exe`, `.blockmap` et `latest.yml`.
+          files: |
+            electron/dist/*.exe
+            electron/dist/*.blockmap
+            electron/dist/latest.yml
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
