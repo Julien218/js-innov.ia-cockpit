@@ -43,6 +43,9 @@ COPY --from=builder /app/server-companion-audience.cjs ./server-companion-audien
 COPY --from=builder /app/server-companion-memory.cjs ./server-companion-memory.cjs
 COPY --from=builder /app/server-dropbox-helper.cjs ./server-dropbox-helper.cjs
 COPY --from=builder /app/server-ai-cost.cjs ./server-ai-cost.cjs
+COPY --from=builder /app/server-ai-cost-attribution.cjs ./server-ai-cost-attribution.cjs
+COPY --from=builder /app/server-cost-centers.cjs ./server-cost-centers.cjs
+COPY --from=builder /app/server-client-costs.cjs ./server-client-costs.cjs
 COPY --from=builder /app/server-twilio.cjs ./server-twilio.cjs
 COPY --from=builder /app/server-insurance.cjs ./server-insurance.cjs
 COPY --from=builder /app/server-insurance-mailbox.cjs ./server-insurance-mailbox.cjs
@@ -52,7 +55,13 @@ COPY assets ./assets
 COPY public ./public
 
 RUN npm ci --omit=dev --legacy-peer-deps
-RUN ls -la /app/server-*.cjs | wc -l && echo "Server modules check OK"
+RUN test -f /app/server-ai-cost-attribution.cjs \
+ && test -f /app/server-cost-centers.cjs \
+ && test -f /app/server-client-costs.cjs \
+ && node --check /app/server-ai-cost-attribution.cjs \
+ && node --check /app/server-cost-centers.cjs \
+ && node --check /app/server-client-costs.cjs \
+ && echo "Required cost runtime modules check OK"
 
 RUN mkdir -p /etc/nginx/http.d && cat > /etc/nginx/http.d/default.conf << 'NGINXEOF'
 server {
