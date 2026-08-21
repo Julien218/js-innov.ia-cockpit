@@ -8,12 +8,29 @@ const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'llama3.1';
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
 const approvals = new Map();
 
+const ALLOWED_ORIGINS = new Set([
+  'https://cockpit.jsinnovia.com',
+]);
+function isAllowedOrigin(origin) {
+  if (!origin) return false;
+  if (ALLOWED_ORIGINS.has(origin)) return true;
+  return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin);
+}
+
 app.use(express.json({ limit: '5mb' }));
 app.use((req,res,next)=>{
   const origin = req.headers.origin;
-  if (origin && /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)) res.setHeader('Access-Control-Allow-Origin', origin);
+  if (origin && isAllowedOrigin(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
   res.setHeader('Access-Control-Allow-Methods','GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers','Content-Type,Authorization');
+  // Compatibilité avec les navigateurs qui utilisent encore le préflight
+  // Private Network Access. Chrome récent utilise surtout Local Network Access.
+  if (req.headers['access-control-request-private-network'] === 'true') {
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  }
   if(req.method==='OPTIONS') return res.sendStatus(204);
   next();
 });
