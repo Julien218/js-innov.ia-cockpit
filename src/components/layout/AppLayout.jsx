@@ -1,13 +1,15 @@
 import React, { useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
 
 export default function AppLayout() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const location = useLocation();
+  const isMailRoute = location.pathname.startsWith('/emails');
 
   return (
-    <div className="premium-shell flex h-screen overflow-hidden bg-background text-foreground">
+    <div className={`premium-shell ${isMailRoute ? 'premium-mail-route' : ''} flex h-screen overflow-hidden bg-background text-foreground`}>
       <Sidebar
         mobileOpen={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
