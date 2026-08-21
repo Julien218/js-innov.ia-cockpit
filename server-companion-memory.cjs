@@ -1,4 +1,10 @@
 const { downloadFile, listFolder } = require('./server-dropbox-helper.cjs');
+const {
+  buildAgentRoutingContext,
+  runReadOnlyDelegations,
+  buildDelegationContext,
+} = require('./server-agent-orchestrator.cjs');
+const { logDelegationResults } = require('./server-agent-run-log.cjs');
 
 const MEMORY_ARCHIVE_ROOT = process.env.CHATGPT_MEMORY_ARCHIVE_ROOT || '/ChatGPT Données sauve garde';
 const MEMORY_SNAPSHOT_PREFIX = process.env.CHATGPT_MEMORY_SNAPSHOT_PREFIX || 'Analyse Cockpit ';
@@ -190,8 +196,11 @@ function architectContract() {
     '[CONTRAT ARCHITECTE JS-INNOV.IA — OWNER]',
     'Rôle: agir comme architecte/orchestratrice du Cockpit, pas comme chatbot passif.',
     'Lecture seule: analyser, rechercher, diagnostiquer et comparer automatiquement sans demander confirmation.',
-    'Délégation: choisir le moteur ou agent spécialisé le plus pertinent selon la tâche (Cockpit/CRM, Agent Local, ComfyUI/H3, Dropbox, GitHub/Railway ou cloud lorsque disponible).',
-    'Effet réel: toute création, modification, envoi, publication, déploiement, facturation, suppression ou action externe doit passer par UNE confirmation explicite juste avant exécution.',
+    'Délégation lecture seule: utiliser automatiquement les agents métier spécialisés, y compris les agents Base44 déjà liés aux sites gérés.',
+    'Réutilisation: un agent site/projet existant est prioritaire; ne créer un nouvel agent métier que si aucun spécialiste existant ne convient.',
+    'Fallback: si Base44 est indisponible, déléguer à un agent métier virtuel sur jsinnovia-agent avec le même rôle fonctionnel.',
+    'Traçabilité: journaliser les délégations dans agent_runs quand le backend est disponible.',
+    'Effet réel: toute création ou modification métier, envoi, publication, déploiement, facturation ou suppression doit passer par UNE confirmation explicite juste avant exécution.',
     'Ne jamais prétendre avoir vérifié un système si aucun résultat d’outil, diagnostic local ou donnée courante ne le prouve.',
     'Quand un bloc DIAGNOSTIC LOCAL LECTURE SEULE est présent dans le message, l’utiliser comme mesure factuelle de la machine courante et signaler clairement les éléments non mesurés.',
     'Mémoire: utiliser l’archive ChatGPT Dropbox comme historique projet; en cas de conflit, privilégier l’état Cockpit/GitHub/infra le plus récent.',
@@ -202,8 +211,39 @@ function architectContract() {
 async function buildHistoricalMemoryContext(message, user) {
   if (user?.role !== 'superadmin') return '';
 
-  const { results, manifest, root } = await searchHistoricalMemory(message, 6);
   const lines = ['', architectContract()];
+
+  try {
+    const routing = buildAgentRoutingContext(message);
+    if (routing?.context) lines.push('', routing.context);
+
+    const delegationResults = await runReadOnlyDelegations(message);
+    const delegationContext = buildDelegationContext(delegationResults);
+    if (delegationContext) lines.push('', delegationContext);
+    try {
+      await logDelegationResults(message, delegationResults);
+    } catch (logError) {
+      console.warn('[assistant-agent-runs] logging failed:', logError.message);
+    }
+  } catch (error) {
+    lines.push('', `[ROUTAGE AGENTS MÉTIER: indisponible — ${String(error.message || error).slice(0, 300)}]`);
+  }
+
+  let results = [];
+  let manifest = null;
+  let root = cache.root || FALLBACK_MEMORY_ROOT;
+  try {
+    const search = await searchHistoricalMemory(message, 6);
+    results = search.results;
+    manifest = search.manifest;
+    root = search.root || root;
+  } catch (error) {
+    lines.push('', '[MÉMOIRE HISTORIQUE JS-INNOV.IA — archive ChatGPT Dropbox, lecture seule]');
+    lines.push(`Mémoire momentanément indisponible: ${String(error.message || error).slice(0, 300)}.`);
+    lines.push('Le routage et les délégations d’agents restent valides indépendamment de cette indisponibilité.');
+    lines.push('[/MÉMOIRE HISTORIQUE JS-INNOV.IA]');
+    return lines.join('\n');
+  }
 
   if (!results.length) {
     lines.push('', '[MÉMOIRE HISTORIQUE JS-INNOV.IA — archive ChatGPT Dropbox, lecture seule]');
