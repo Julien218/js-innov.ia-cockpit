@@ -44,6 +44,7 @@ COPY --from=builder /app/server-companion-memory.cjs ./server-companion-memory.c
 COPY --from=builder /app/server-dropbox-helper.cjs ./server-dropbox-helper.cjs
 COPY --from=builder /app/server-ai-cost.cjs ./server-ai-cost.cjs
 COPY --from=builder /app/server-ai-cost-attribution.cjs ./server-ai-cost-attribution.cjs
+COPY --from=builder /app/server-ai-cost-ledger-aggregate.cjs ./server-ai-cost-ledger-aggregate.cjs
 COPY --from=builder /app/server-cost-centers.cjs ./server-cost-centers.cjs
 COPY --from=builder /app/server-client-costs.cjs ./server-client-costs.cjs
 COPY --from=builder /app/server-twilio.cjs ./server-twilio.cjs
@@ -56,9 +57,11 @@ COPY public ./public
 
 RUN npm ci --omit=dev --legacy-peer-deps
 RUN test -f /app/server-ai-cost-attribution.cjs \
+ && test -f /app/server-ai-cost-ledger-aggregate.cjs \
  && test -f /app/server-cost-centers.cjs \
  && test -f /app/server-client-costs.cjs \
  && node --check /app/server-ai-cost-attribution.cjs \
+ && node --check /app/server-ai-cost-ledger-aggregate.cjs \
  && node --check /app/server-cost-centers.cjs \
  && node --check /app/server-client-costs.cjs \
  && echo "Required cost runtime modules check OK"
@@ -75,8 +78,6 @@ server {
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 
-    # Adresse produit dédiée. On conserve l'authentification sur cockpit.jsinnovia.com
-    # plutôt que d'élargir le cookie de session à tous les sous-domaines.
     if ($host = documents.jsinnovia.com) {
         return 302 https://cockpit.jsinnovia.com/documents;
     }
