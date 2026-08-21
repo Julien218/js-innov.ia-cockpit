@@ -114,10 +114,11 @@ test('les routes client excluent les agents internes et les demandes globales', 
   assert.match(appSource, /path="\/agents-ia" element=\{isClient \? <Navigate/);
 });
 
-test('la mémoire historique Dropbox utilise l’index existant sans modifier le ZIP source', () => {
+test('la mémoire historique Dropbox utilise un snapshot indexé en lecture seule sans modifier la source', () => {
   assert.match(memoryServer, /conversations\.index\.jsonl/);
   assert.match(memoryServer, /manifest\.json/);
-  assert.match(memoryServer, /readDropboxText\(INDEX_PATH\)/);
+  assert.match(memoryServer, /listFolder\(MEMORY_ARCHIVE_ROOT\)/);
+  assert.match(memoryServer, /readDropboxText\(indexPath\)/);
   assert.match(memoryServer, /downloadFile\(path\)/);
   assert.doesNotMatch(memoryServer, /uploadFile|deleteFile|moveFile/);
 });
