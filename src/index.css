@@ -9,32 +9,40 @@
     --font-inter: 'Inter', sans-serif;
     --font-space: 'Space Grotesk', sans-serif;
 
-    --background: 224 20% 96%;
-    --foreground: 222 47% 11%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 217 91% 50%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
-    --accent: 258 90% 62%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 84% 60%;
+    /* JS-Innov.IA Premium Dark */
+    --background: 225 28% 5%;
+    --foreground: 42 24% 96%;
+    --card: 224 22% 8%;
+    --card-foreground: 42 24% 96%;
+    --popover: 224 24% 7%;
+    --popover-foreground: 42 24% 96%;
+    --primary: 43 63% 52%;
+    --primary-foreground: 225 28% 5%;
+    --secondary: 223 17% 12%;
+    --secondary-foreground: 42 18% 92%;
+    --muted: 223 17% 11%;
+    --muted-foreground: 220 10% 62%;
+    --accent: 190 88% 55%;
+    --accent-foreground: 225 28% 5%;
+    --destructive: 0 72% 55%;
     --destructive-foreground: 0 0% 98%;
-    --border: 220 13% 88%;
-    --input: 220 13% 91%;
-    --ring: 217 91% 50%;
-    --radius: 0.75rem;
-    --success: 142 71% 45%;
-    --warning: 38 92% 50%;
+    --border: 220 16% 16%;
+    --input: 220 15% 15%;
+    --ring: 43 63% 52%;
+    --radius: 1rem;
+    --success: 153 61% 48%;
+    --warning: 39 88% 56%;
+
+    color-scheme: dark;
   }
 
   * {
     @apply border-border;
+  }
+
+  html {
+    overscroll-behavior: none;
+    background: hsl(var(--background));
   }
 
   body {
@@ -42,47 +50,98 @@
     font-family: 'Inter', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* Empêche le débordement horizontal sur mobile */
     overflow-x: hidden;
-    /* Safe area iPhone notch */
+    min-height: 100vh;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    background-image:
+      radial-gradient(circle at 18% -8%, rgba(212, 175, 55, 0.11), transparent 28%),
+      radial-gradient(circle at 86% 4%, rgba(34, 211, 238, 0.07), transparent 24%),
+      linear-gradient(180deg, #090b10 0%, #07090d 44%, #06070a 100%);
+    background-attachment: fixed;
   }
 
   h1, h2, h3 {
     font-family: 'Space Grotesk', sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  ::selection {
+    background: rgba(212, 175, 55, 0.28);
+    color: #fff8df;
+  }
+}
+
+@layer components {
+  .premium-panel {
+    background: linear-gradient(180deg, rgba(18, 21, 29, 0.92), rgba(10, 12, 18, 0.92));
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: 0 22px 70px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.025);
+    backdrop-filter: blur(18px);
+  }
+
+  .premium-soft {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.055);
+  }
+
+  .premium-button {
+    @apply inline-flex items-center justify-center rounded-xl font-medium transition-all duration-200;
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.98), rgba(230, 198, 89, 0.96));
+    color: #08090c;
+    box-shadow: 0 10px 30px rgba(212, 175, 55, 0.14);
+  }
+
+  .premium-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 34px rgba(212, 175, 55, 0.2);
   }
 }
 
 @layer utilities {
   .gradient-primary {
-    background: linear-gradient(135deg, hsl(217, 91%, 50%) 0%, hsl(258, 90%, 62%) 100%);
+    background: linear-gradient(135deg, #d4af37 0%, #ecd36f 58%, #67e8f9 160%);
   }
+
   .gradient-text {
-    background: linear-gradient(135deg, hsl(217, 91%, 50%) 0%, hsl(258, 90%, 62%) 100%);
+    background: linear-gradient(135deg, #f3dc82 0%, #d4af37 44%, #7dd3fc 118%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+
   .glass {
-    backdrop-filter: blur(12px);
-    background: rgba(255, 255, 255, 0.7);
-    border: 1px solid rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(18px);
+    background: rgba(10, 12, 18, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.07);
   }
+
   .sidebar-item {
     @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200;
   }
+
   .sidebar-item:hover {
-    @apply bg-primary/10 text-primary;
+    background: rgba(255, 255, 255, 0.045);
+    color: rgba(255, 255, 255, 0.94);
   }
+
   .sidebar-item.active {
-    @apply bg-primary text-white shadow-lg shadow-primary/25;
+    color: #f0d878;
+    background: linear-gradient(90deg, rgba(212, 175, 55, 0.14), rgba(212, 175, 55, 0.045));
+    border: 1px solid rgba(212, 175, 55, 0.18);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025), 0 10px 28px rgba(0, 0, 0, 0.12);
   }
+
   .card-hover {
-    @apply hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300;
+    @apply hover:-translate-y-0.5 transition-all duration-300;
+    box-shadow: 0 16px 45px rgba(0, 0, 0, 0.18);
+  }
+
+  .card-hover:hover {
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.28);
+    border-color: rgba(212, 175, 55, 0.16);
   }
 }
 
-/* Safe area utilities pour iPhone notch / home indicator */
 .safe-area-top {
   padding-top: env(safe-area-inset-top);
 }
@@ -96,29 +155,19 @@
   padding-right: env(safe-area-inset-right);
 }
 
-/* Scrollbar custom */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: 7px; height: 7px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: hsl(220, 13%, 85%); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: hsl(217, 91%, 50%); }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(212, 175, 55, 0.46); }
 
-/* Mobile : scrollbar plus fine */
 @media (max-width: 768px) {
   ::-webkit-scrollbar { width: 4px; height: 4px; }
-  
-  /* Tableaux : scrollbar horizontal discret */
   .overflow-x-auto {
     -webkit-overflow-scrolling: touch;
     scroll-behavior: smooth;
   }
 }
 
-/* PWA : empêter le bounce scroll sur iOS */
-html {
-  overscroll-behavior: none;
-}
-
-/* PWA : input fixed ne doit pas être masqué par le clavier iOS */
 @supports (padding: max(0px)) {
   .post-input-safe {
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
