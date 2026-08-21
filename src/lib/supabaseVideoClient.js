@@ -2,7 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://rzvvwcwyaddzsaattwqt.supabase.co";
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6dnZ3Y3d5YWRkenNhYXR0d3F0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMTU4NjAsImV4cCI6MjA5NjY5MTg2MH0.VOEFK5BG_dxCnijcz2RexqMg1yDGoXdw58-2Ud_a7hM"
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6dnZ3Y3d5YWRkenNhYXR0d3F0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMTU4NjAsImV4cCI6MjA5NjY5MTg2MH0.VOEFK5BG_dxCnijcz2RexqMg1yDGoXdw58-2Ud_a7hM";
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -37,10 +37,21 @@ export const videoDb = {
   },
 };
 
+const unwrapSupabase = async (operation, { label = 'Opération Supabase', fallback = null, required = false } = {}) => {
+  const { data, error } = await operation;
+  if (error) {
+    throw new Error(`${label} : ${error.message}`);
+  }
+  if (required && (data === null || data === undefined)) {
+    throw new Error(`${label} : la base a renvoyé une réponse vide.`);
+  }
+  return data ?? fallback;
+};
+
 // ─── Upload fichier vers Supabase Storage ─────────────────────────────────
 export async function uploadToStorage(file, bucket = 'videos', path = null) {
   const filePath = path || `${Date.now()}_${file.name}`;
-  const { data, error } = await supabase.storage.from(bucket).upload(filePath, file, { upsert: true });
+  const { error } = await supabase.storage.from(bucket).upload(filePath, file, { upsert: true });
   if (error) throw error;
   const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(filePath);
   return publicUrl;
@@ -51,25 +62,67 @@ export async function uploadToStorage(file, bucket = 'videos', path = null) {
 export const base44Shim = {
   entities: {
     VideoProject: {
-      list: async (order, limit) => { const { data } = await videoDb.VideoProject.list(order, limit); return data || []; },
-      filter: async (filters) => { const { data } = await videoDb.VideoProject.filter(filters); return data || []; },
-      create: async (data) => { const { data: d } = await videoDb.VideoProject.create(data); return d; },
-      update: async (id, data) => { const { data: d } = await videoDb.VideoProject.update(id, data); return d; },
-      delete: async (id) => { await videoDb.VideoProject.delete(id); },
+      list: (order, limit) => unwrapSupabase(videoDb.VideoProject.list(order, limit), {
+        label: 'Chargement des montages vidéo',
+        fallback: [],
+      }),
+      filter: (filters) => unwrapSupabase(videoDb.VideoProject.filter(filters), {
+        label: 'Recherche du montage vidéo',
+        fallback: [],
+      }),
+      create: (data) => unwrapSupabase(videoDb.VideoProject.create(data), {
+        label: 'Création du montage vidéo',
+        required: true,
+      }),
+      update: (id, data) => unwrapSupabase(videoDb.VideoProject.update(id, data), {
+        label: 'Mise à jour du montage vidéo',
+        required: true,
+      }),
+      delete: (id) => unwrapSupabase(videoDb.VideoProject.delete(id), {
+        label: 'Suppression du montage vidéo',
+      }),
     },
     AIVideoReport: {
-      list: async (order, limit) => { const { data } = await videoDb.AIVideoReport.list(order, limit); return data || []; },
-      filter: async (filters) => { const { data } = await videoDb.AIVideoReport.filter(filters); return data || []; },
-      create: async (data) => { const { data: d } = await videoDb.AIVideoReport.create(data); return d; },
-      update: async (id, data) => { const { data: d } = await videoDb.AIVideoReport.update(id, data); return d; },
-      delete: async (id) => { await videoDb.AIVideoReport.delete(id); },
+      list: (order, limit) => unwrapSupabase(videoDb.AIVideoReport.list(order, limit), {
+        label: 'Chargement des rapports vidéo IA',
+        fallback: [],
+      }),
+      filter: (filters) => unwrapSupabase(videoDb.AIVideoReport.filter(filters), {
+        label: 'Recherche du rapport vidéo IA',
+        fallback: [],
+      }),
+      create: (data) => unwrapSupabase(videoDb.AIVideoReport.create(data), {
+        label: 'Création du rapport vidéo IA',
+        required: true,
+      }),
+      update: (id, data) => unwrapSupabase(videoDb.AIVideoReport.update(id, data), {
+        label: 'Mise à jour du rapport vidéo IA',
+        required: true,
+      }),
+      delete: (id) => unwrapSupabase(videoDb.AIVideoReport.delete(id), {
+        label: 'Suppression du rapport vidéo IA',
+      }),
     },
     VideoExport: {
-      list: async (order, limit) => { const { data } = await videoDb.VideoExport.list(order, limit); return data || []; },
-      filter: async (filters) => { const { data } = await videoDb.VideoExport.filter(filters); return data || []; },
-      create: async (data) => { const { data: d } = await videoDb.VideoExport.create(data); return d; },
-      update: async (id, data) => { const { data: d } = await videoDb.VideoExport.update(id, data); return d; },
-      delete: async (id) => { await videoDb.VideoExport.delete(id); },
+      list: (order, limit) => unwrapSupabase(videoDb.VideoExport.list(order, limit), {
+        label: 'Chargement des exports vidéo',
+        fallback: [],
+      }),
+      filter: (filters) => unwrapSupabase(videoDb.VideoExport.filter(filters), {
+        label: 'Recherche de l’export vidéo',
+        fallback: [],
+      }),
+      create: (data) => unwrapSupabase(videoDb.VideoExport.create(data), {
+        label: 'Création de l’export vidéo',
+        required: true,
+      }),
+      update: (id, data) => unwrapSupabase(videoDb.VideoExport.update(id, data), {
+        label: 'Mise à jour de l’export vidéo',
+        required: true,
+      }),
+      delete: (id) => unwrapSupabase(videoDb.VideoExport.delete(id), {
+        label: 'Suppression de l’export vidéo',
+      }),
       subscribe: (callback) => {
         const channel = supabase.channel('video_export_changes')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'VideoExport' },
@@ -79,8 +132,14 @@ export const base44Shim = {
       },
     },
     Project: {
-      list: async (order, limit) => { const { data } = await supabase.from('projets_fr').select('*').order('created_date', { ascending: false }).limit(limit || 50); return data || []; },
-      filter: async (filters) => { const { data } = await supabase.from('projets_fr').select('*').match(filters); return data || []; },
+      list: (order, limit) => unwrapSupabase(
+        supabase.from('projets_fr').select('*').order('created_date', { ascending: false }).limit(limit || 50),
+        { label: 'Chargement des projets', fallback: [] },
+      ),
+      filter: (filters) => unwrapSupabase(
+        supabase.from('projets_fr').select('*').match(filters),
+        { label: 'Recherche du projet source', fallback: [] },
+      ),
     },
   },
   integrations: {
@@ -92,6 +151,9 @@ export const base44Shim = {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'generate_image', prompt }),
         });
+        if (!res.ok) {
+          throw new Error(`Génération d’image impossible (${res.status}).`);
+        }
         const data = await res.json();
         return { url: data.image_url || data.url || '' };
       },
