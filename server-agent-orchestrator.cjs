@@ -1,5 +1,7 @@
 const BASE44_API_KEY = String(process.env.BASE44_API_KEY || process.env.BASE44_SERVER_API_KEY || '').trim();
 const BASE44_AGENT_URL = String(process.env.BASE44_AGENT_URL || 'https://app.base44.com/api/agents').replace(/\/$/, '');
+const JS_AGENT_URL = String(process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app').replace(/\/$/, '');
+const JS_AGENT_KEY = String(process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '').trim();
 const MAX_DELEGATES = Math.max(1, Math.min(3, Number(process.env.COMPANION_MAX_SPECIALISTS || 2)));
 
 const SITE_AGENT_REGISTRY = Object.freeze([
@@ -124,7 +126,6 @@ function resolveAgentPlan(message, limit = MAX_DELEGATES) {
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score || a.agent.name.localeCompare(b.agent.name));
 
-  // Un agent site + un spécialiste transverse peuvent collaborer sur la même demande.
   const picked = [];
   const seenRoles = new Set();
   for (const item of scored) {
@@ -137,6 +138,30 @@ function resolveAgentPlan(message, limit = MAX_DELEGATES) {
   return picked;
 }
 
+function inferVirtualRole(message) {
+  const text = norm(message);
+  if (/(video|montage|minimax|h3|comfyui|ffmpeg)/.test(text)) return 'video_engineer';
+  if (/(site|seo|landing|frontend|mobile|responsive|ux|ui)/.test(text)) return 'web_product_engineer';
+  if (/(marketing|campagne|social|facebook|instagram|publication|communication)/.test(text)) return 'marketing_ops';
+  if (/(factur|cout|coût|finops|stripe|paiement|marge|devis)/.test(text)) return 'finops_billing';
+  if (/(github|railway|deploy|code|bug|api|architecture|securite|sécurité)/.test(text)) return 'software_architect';
+  if (/(assurance|sinistre|contrat|client assurance)/.test(text)) return 'insurance_ops';
+  return 'project_delivery_manager';
+}
+
+function buildVirtualAgent(message, preferred = null) {
+  const role = preferred?.role || inferVirtualRole(message);
+  const label = preferred?.name ? `${preferred.name} — fallback Cockpit` : `Agent métier ${role}`;
+  return {
+    key: `virtual:${role}`,
+    name: label,
+    provider: 'jsinnovia-agent',
+    provider_agent_id: null,
+    role,
+    virtual: true,
+  };
+}
+
 function shouldAutoDelegate(message) {
   return /(analyse|audit|diagnosti|verifi|vérifi|travaille|continue|avance|corrige|optimis|prepare|prépare|planifie|finalise|teste|test|projet|site|video|vidéo|campagne|publication|architecture|code|bug)/i.test(String(message || ''));
 }
@@ -146,11 +171,13 @@ function buildAgentRoutingContext(message) {
   const lines = [
     '[ROUTAGE AGENTS MÉTIER JS-INNOV.IA — lecture seule]',
     `Provider Base44 serveur configuré: ${BASE44_API_KEY ? 'oui' : 'non'}.`,
+    `Provider jsinnovia-agent configuré: ${JS_AGENT_KEY ? 'oui' : 'non'}.`,
     'Politique: réutiliser un agent existant lié au site/projet avant de créer un nouvel agent métier.',
-    'Si aucun spécialiste ne correspond, créer un rôle métier virtuel ciblé pour la tâche plutôt qu’un doublon permanent.',
+    'Un agent Base44 dédié au site garde la priorité. Si Base44 est indisponible, utiliser un agent métier virtuel avec le même rôle.',
   ];
   if (!plan.length) {
-    lines.push('Aucun agent métier existant ne correspond clairement à cette demande.');
+    const virtual = buildVirtualAgent(message);
+    lines.push(`Aucun agent existant ne correspond clairement. Agent métier virtuel prévu: ${virtual.name} | rôle=${virtual.role}.`);
   } else {
     for (const { agent, score } of plan) {
       lines.push(`- ${agent.name} | rôle=${agent.role} | provider=${agent.provider} | id=${agent.provider_agent_id} | score=${score}`);
@@ -166,11 +193,23 @@ async function fetchJson(url, options = {}, timeoutMs = 30000) {
   try {
     const response = await fetch(url, { ...options, signal: controller.signal });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data?.error || data?.message || `Base44 HTTP ${response.status}`);
+    if (!response.ok) throw new Error(data?.error || data?.message || `HTTP ${response.status}`);
     return data;
   } finally {
     clearTimeout(timer);
   }
+}
+
+function specialistPrompt(agent, message) {
+  return [
+    `Tu es ${agent.name}, agent métier délégué par le Companion JS-Innov.IA.`,
+    `Rôle fonctionnel: ${agent.role}.`,
+    'Mission: analyser la demande en lecture seule et produire un rapport exploitable par l’architecte principal.',
+    'Ne publie rien, n’envoie rien, ne supprime rien, ne modifie aucune donnée et ne déclenche aucun déploiement.',
+    'Réponds avec: état observé, anomalies, travail restant, dépendances, prochaines tâches recommandées.',
+    '',
+    `Demande: ${String(message || '').slice(0, 3500)}`,
+  ].join('\n');
 }
 
 async function delegateBase44ReadOnly(agent, message) {
@@ -189,39 +228,73 @@ async function delegateBase44ReadOnly(agent, message) {
   });
   if (!conversation?.id) throw new Error(`Base44 n'a pas retourné de conversation pour ${agent.name}.`);
 
-  const delegatedPrompt = [
-    `Tu es ${agent.name}, agent métier délégué par le Companion JS-Innov.IA.`,
-    `Rôle fonctionnel: ${agent.role}.`,
-    'Mission: analyser la demande en lecture seule et produire un rapport exploitable par l’architecte principal.',
-    'Ne publie rien, n’envoie rien, ne supprime rien, ne modifie aucune donnée et ne déclenche aucun déploiement.',
-    'Réponds avec: état observé, anomalies, travail restant, dépendances, prochaines tâches recommandées.',
-    '',
-    `Demande: ${String(message || '').slice(0, 3500)}`,
-  ].join('\n');
-
   const answer = await fetchJson(`${BASE44_AGENT_URL}/${encodeURIComponent(agent.provider_agent_id)}/conversations/${encodeURIComponent(conversation.id)}/messages`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ role: 'user', content: delegatedPrompt }),
+    body: JSON.stringify({ role: 'user', content: specialistPrompt(agent, message) }),
   }, 60000);
 
   const content = String(answer?.content || answer?.message || answer?.response || '').trim();
   return {
     ok: Boolean(content),
     skipped: false,
+    provider: 'base44',
     agent,
     conversation_id: conversation.id,
     content: content.slice(0, 8000),
   };
 }
 
+async function delegateVirtualReadOnly(agent, message) {
+  if (!JS_AGENT_KEY) {
+    return { ok: false, skipped: true, reason: 'jsinnovia_agent_key_missing', agent };
+  }
+  const sessionId = `delegated:${String(agent.role || 'specialist').replace(/[^a-zA-Z0-9_-]/g, '_')}:${Date.now()}`;
+  const data = await fetchJson(`${JS_AGENT_URL}/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-agent-key': JS_AGENT_KEY,
+    },
+    body: JSON.stringify({
+      message: specialistPrompt(agent, message),
+      session_id: sessionId,
+      assistant_mode: 'owner',
+      available_actions: [],
+      user_context: {
+        role: 'superadmin',
+        organisation: 'jsinnovia',
+        full_name: 'JS-Innov.IA Companion',
+      },
+      server_context: 'Délégation interne en lecture seule. Aucun effet métier réel n’est autorisé dans ce run.',
+    }),
+  }, 60000);
+  const content = String(data?.response || data?.message || '').trim();
+  return {
+    ok: Boolean(content),
+    skipped: false,
+    provider: 'jsinnovia-agent',
+    agent,
+    session_id: sessionId,
+    content: content.slice(0, 8000),
+  };
+}
+
+async function delegateSpecialistReadOnly(agent, message) {
+  if (agent?.provider === 'base44' && BASE44_API_KEY) {
+    return delegateBase44ReadOnly(agent, message);
+  }
+  return delegateVirtualReadOnly(buildVirtualAgent(message, agent), message);
+}
+
 async function runReadOnlyDelegations(message) {
   if (!shouldAutoDelegate(message)) return [];
   const plan = resolveAgentPlan(message);
+  const selectedAgents = plan.length ? plan.map((item) => item.agent) : [buildVirtualAgent(message)];
   const results = [];
-  for (const { agent } of plan) {
+  for (const agent of selectedAgents.slice(0, MAX_DELEGATES)) {
     try {
-      results.push(await delegateBase44ReadOnly(agent, message));
+      results.push(await delegateSpecialistReadOnly(agent, message));
     } catch (error) {
       results.push({ ok: false, skipped: false, agent, error: String(error.message || error).slice(0, 500) });
     }
@@ -235,7 +308,7 @@ function buildDelegationContext(results = []) {
   for (const item of results) {
     const name = item?.agent?.name || 'Agent métier';
     if (item.ok) {
-      lines.push(`- ${name} (${item.agent.role}) :`);
+      lines.push(`- ${name} (${item.agent.role}) via ${item.provider || item.agent.provider} :`);
       lines.push(String(item.content || '').slice(0, 8000));
     } else if (item.skipped) {
       lines.push(`- ${name}: non exécuté (${item.reason || 'indisponible'}).`);
@@ -251,9 +324,13 @@ function buildDelegationContext(results = []) {
 module.exports = {
   SITE_AGENT_REGISTRY,
   resolveAgentPlan,
+  inferVirtualRole,
+  buildVirtualAgent,
   shouldAutoDelegate,
   buildAgentRoutingContext,
   delegateBase44ReadOnly,
+  delegateVirtualReadOnly,
+  delegateSpecialistReadOnly,
   runReadOnlyDelegations,
   buildDelegationContext,
 };
