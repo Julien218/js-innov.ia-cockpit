@@ -38,6 +38,8 @@ COPY --from=builder /app/server-tenant.cjs ./server-tenant.cjs
 COPY --from=builder /app/server-data-proxy.cjs ./server-data-proxy.cjs
 COPY --from=builder /app/server-hainoflow.cjs ./server-hainoflow.cjs
 COPY --from=builder /app/server-assistant.cjs ./server-assistant.cjs
+COPY --from=builder /app/server-assistant-batch.cjs ./server-assistant-batch.cjs
+COPY --from=builder /app/server-task-batch.cjs ./server-task-batch.cjs
 COPY --from=builder /app/server-companion-audience.cjs ./server-companion-audience.cjs
 COPY --from=builder /app/server-companion-memory.cjs ./server-companion-memory.cjs
 COPY --from=builder /app/server-agent-orchestrator.cjs ./server-agent-orchestrator.cjs
@@ -66,6 +68,8 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-agent-orchestrator.cjs \
  && test -f /app/server-agent-run-log.cjs \
  && test -f /app/server-domain-ops.cjs \
+ && test -f /app/server-assistant-batch.cjs \
+ && test -f /app/server-task-batch.cjs \
  && node --check /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-ai-cost-ledger-aggregate.cjs \
  && node --check /app/server-cost-centers.cjs \
@@ -73,6 +77,8 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-agent-orchestrator.cjs \
  && node --check /app/server-agent-run-log.cjs \
  && node --check /app/server-domain-ops.cjs \
+ && node --check /app/server-assistant-batch.cjs \
+ && node --check /app/server-task-batch.cjs \
  && echo "Required runtime modules check OK"
 
 RUN mkdir -p /etc/nginx/http.d && cat > /etc/nginx/http.d/default.conf << 'NGINXEOF'
