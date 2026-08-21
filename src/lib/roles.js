@@ -28,25 +28,19 @@ export const ROLE_COLORS = {
   client:     { bg: "#1a0d00", text: "#f97316", badge: "#f97316" },
 };
 
+const OWNER_ROUTES = [
+  "/", "/hainoflow", "/assurances", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
+  "/devis", "/factures", "/emails", "/emails-core", "/cost-centers", "/ai-cost",
+  "/production", "/portfolio", "/apps-agents", "/automations", "/domaines", "/rangement", "/parametres",
+  "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations", "/gouvernance", "/confidentialite",
+  // Studio / production média
+  "/video-studio", "/video-studio/*", "/ai-video", "/thumbnail", "/dour-campaign",
+  "/exports", "/exported-videos", "/templates", "/calendar",
+];
+
 export const ROLE_ROUTES = {
-  superadmin: [
-    "/", "/hainoflow", "/assurances", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
-    "/devis", "/factures", "/emails", "/emails-core", "/cost-centers", "/ai-cost",
-    "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
-    "/devis", "/factures", "/emails", "/cost-centers", "/ai-cost",
-    "/production", "/portfolio", "/apps-agents",
-    "/automations", "/domaines", "/rangement", "/parametres",
-    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations", "/gouvernance", "/confidentialite"
-  ],
-  admin: [
-    "/", "/hainoflow", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
-    "/devis", "/factures", "/emails", "/emails-core", "/cost-centers", "/ai-cost",
-    "/", "/clients", "/leads", "/demandes", "/projets", "/taches",
-    "/devis", "/factures", "/emails", "/cost-centers", "/ai-cost",
-    "/production", "/portfolio", "/apps-agents",
-    "/automations", "/domaines", "/rangement", "/parametres",
-    "/services", "/validations", "/agent", "/agents-ia", "/ai-cost-control", "/invitations", "/gouvernance", "/confidentialite"
-  ],
+  superadmin: OWNER_ROUTES,
+  admin: OWNER_ROUTES.filter(route => route !== "/assurances"),
   collaborateur: [
     "/", "/hainoflow", "/documents", "/projets", "/taches", "/demandes", "/agent", "/agents-ia"
   ],
@@ -59,7 +53,12 @@ export const ROLE_ROUTES = {
 
 export const hasRouteAccess = (role, path) => {
   const routes = ROLE_ROUTES[role] || [];
-  return routes.includes(path);
+  return routes.some(route => {
+    if (route === path) return true;
+    if (!route.endsWith("/*")) return false;
+    const prefix = route.slice(0, -2);
+    return path.startsWith(`${prefix}/`);
+  });
 };
 
 export const hasMinRole = (userRole, requiredRole) => {
