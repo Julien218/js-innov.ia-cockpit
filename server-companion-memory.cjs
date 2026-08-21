@@ -3,7 +3,7 @@ const {
   buildAgentRoutingContext,
   runReadOnlyDelegations,
   buildDelegationContext,
-} = require('./server-agent-orchestrator.cjs');
+} = require('./server-agent-orchestrator-resilient.cjs');
 const { logDelegationResults } = require('./server-agent-run-log.cjs');
 
 const MEMORY_ARCHIVE_ROOT = process.env.CHATGPT_MEMORY_ARCHIVE_ROOT || '/ChatGPT Données sauve garde';
@@ -198,7 +198,7 @@ function architectContract() {
     'Lecture seule: analyser, rechercher, diagnostiquer et comparer automatiquement sans demander confirmation.',
     'Délégation lecture seule: utiliser automatiquement les agents métier spécialisés, y compris les agents Base44 déjà liés aux sites gérés.',
     'Réutilisation: un agent site/projet existant est prioritaire; ne créer un nouvel agent métier que si aucun spécialiste existant ne convient.',
-    'Fallback: si Base44 est indisponible, déléguer à un agent métier virtuel sur jsinnovia-agent avec le même rôle fonctionnel.',
+    'Fallback: si Base44 est indisponible ou expire pendant un diagnostic, déléguer à un agent métier virtuel sur jsinnovia-agent avec le même rôle fonctionnel.',
     'Traçabilité: journaliser les délégations dans agent_runs quand le backend est disponible.',
     'Effet réel: toute création ou modification métier, envoi, publication, déploiement, facturation ou suppression doit passer par UNE confirmation explicite juste avant exécution.',
     'Ne jamais prétendre avoir vérifié un système si aucun résultat d’outil, diagnostic local ou donnée courante ne le prouve.',
