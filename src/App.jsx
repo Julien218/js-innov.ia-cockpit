@@ -59,6 +59,7 @@ import Emails from "@/pages/Emails";
 import EmailCore from "@/pages/EmailCore";
 import Twilio from "@/pages/Twilio";
 import AppErrorBoundary from "@/components/shared/AppErrorBoundary";
+import MobileHub from "@/pages/MobileHub";
 
 const PageBoundary = ({ children }) => <AppErrorBoundary>{children}</AppErrorBoundary>;
 
@@ -102,6 +103,7 @@ const AppRoutes = () => {
 
           <Route path="/agent" element={isClient ? <Navigate to="/" replace /> : <PageBoundary><Agent /></PageBoundary>} />
           <Route path="/agents-ia" element={isClient ? <Navigate to="/" replace /> : <PageBoundary><AgentsIA /></PageBoundary>} />
+          <Route path="/mobile-hub" element={<PageBoundary><MobileHub /></PageBoundary>} />
           <Route path="/ai-cost-control" element={<PageBoundary><AICostControl /></PageBoundary>} />
           <Route path="/validations" element={<PageBoundary><Validations /></PageBoundary>} />
           <Route path="/logs" element={<PageBoundary><Logs /></PageBoundary>} />

@@ -10,6 +10,15 @@ installAssistantConfirmationBridge()
 installLocalAgentFetchCompat()
 installAssistantDiagnosticBridge()
 
+// ─── Service Worker (PWA + Push notifications) ──────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then(reg => console.log('[pwa] Service Worker enregistré:', reg.scope))
+      .catch(err => console.warn('[pwa] SW registration échouée:', err.message))
+  })
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <App />
 )

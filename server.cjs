@@ -175,6 +175,16 @@ try {
   console.warn('⚠️ Route base44-agents indisponible:', e.message);
 }
 
+
+// ── Push Notifications & Géolocalisation ───────────────────
+try {
+  const pushRouter = require('./server-push.cjs');
+  app.use('/api/push', requireSession('collaborateur'), pushRouter.router);
+  console.log('✅ Route /api/push activée (notifications push + géolocalisation)');
+} catch (e) {
+  console.warn('⚠️ Route push indisponible:', e.message);
+}
+
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cockpit-api' }));
 
 app.listen(PORT, () => {

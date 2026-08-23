@@ -58,6 +58,7 @@ COPY --from=builder /app/server-insurance-mailbox.cjs ./server-insurance-mailbox
 COPY --from=builder /app/server-documents.cjs ./server-documents.cjs
 COPY --from=builder /app/server-governance.cjs ./server-governance.cjs
 COPY --from=builder /app/server-base44-agents.cjs ./server-base44-agents.cjs
+COPY --from=builder /app/server-push.cjs ./server-push.cjs
 COPY assets ./assets
 COPY public ./public
 
