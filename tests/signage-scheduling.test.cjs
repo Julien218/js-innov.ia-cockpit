@@ -120,7 +120,7 @@ test('cockpit and Android player are wired for schedule-aware operation without 
   assert.match(android, /optBoolean\("adsAllowed", true\)/);
   assert.match(android, /blockAdvertising/);
   assert.match(android, /cachedBlockStillActive/);
-  assert.match(android, /0\.5\.0-pilot/);
+  assert.match(android, /0\.6\.0-pilot/);
   assert.match(manifest, /ScheduledMainActivity/);
   assert.doesNotMatch(android, /rotate-token|token_hash|enrollmentToken/);
 });

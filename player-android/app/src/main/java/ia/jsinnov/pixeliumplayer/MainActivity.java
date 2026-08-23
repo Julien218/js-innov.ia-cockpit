@@ -1,17 +1,21 @@
 package ia.jsinnov.pixeliumplayer;
 
 import android.app.Activity;
+import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.media.MediaPlayer;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.Display;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
@@ -55,6 +59,7 @@ public class MainActivity extends Activity {
   boolean preparingCandidate;
   int itemIndex;
   Runnable imageAdvance;
+  boolean remotePaused;
 
   @Override public void onCreate(Bundle state) {
     super.onCreate(state);
@@ -148,6 +153,7 @@ public class MainActivity extends Activity {
     status.setBackgroundColor(0xAA000000);
     root.addView(status, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
     setContentView(root);
+    remotePaused = getSharedPreferences("player", 0).getBoolean("remotePaused", false);
 
     video.setOnPreparedListener(this::onVideoPrepared);
     video.setOnCompletionListener(player -> playNext());
@@ -168,7 +174,7 @@ public class MainActivity extends Activity {
   void onVideoPrepared(MediaPlayer player) {
     int count = preparingCandidate && candidateItems != null ? candidateItems.length() : items.length();
     player.setLooping(count == 1);
-    video.start();
+    if (!remotePaused) video.start();
     if (preparingCandidate) activateCandidate();
     ui("Lecture Pixelium — vidéo compatible active");
   }
@@ -321,6 +327,10 @@ public class MainActivity extends Activity {
   }
 
   void playCached() {
+    if (remotePaused) {
+      ui("Lecture suspendue à distance");
+      return;
+    }
     try {
       String raw = getSharedPreferences("player", 0).getString("playlist", "[]");
       JSONArray cached = new JSONArray(raw);
@@ -333,6 +343,10 @@ public class MainActivity extends Activity {
   }
 
   void playNext() {
+    if (remotePaused) {
+      ui("Lecture suspendue à distance");
+      return;
+    }
     if (items.length() == 0) return;
     try {
       JSONObject item = items.getJSONObject(itemIndex++ % items.length());
@@ -377,6 +391,118 @@ public class MainActivity extends Activity {
     handler.post(() -> {
       if (status != null) status.setText(text);
     });
+  }
+
+  void processRemoteCommand() {
+    try {
+      JSONObject response = jsonRequest(server + "/api/signage/player/commands/next", "POST", new JSONObject());
+      JSONObject command = response.optJSONObject("command");
+      if (command == null) return;
+      String commandId = command.optString("id", "");
+      JSONObject result;
+      try {
+        result = applyRemoteCommand(command.optString("command", ""), command.optJSONObject("payload"));
+        acknowledgeRemoteCommand(commandId, "succeeded", result);
+      } catch (Exception error) {
+        acknowledgeRemoteCommand(commandId, "failed", new JSONObject().put("error", error.getMessage()));
+      }
+    } catch (Exception ignored) {}
+  }
+
+  JSONObject applyRemoteCommand(String command, JSONObject payload) throws Exception {
+    JSONObject input = payload == null ? new JSONObject() : payload;
+    JSONObject result = new JSONObject().put("command", command).put("acceptedAt", System.currentTimeMillis());
+    switch (command) {
+      case "pause_playback":
+        remotePaused = true;
+        getSharedPreferences("player", 0).edit().putBoolean("remotePaused", true).apply();
+        handler.post(() -> {
+          if (imageAdvance != null) handler.removeCallbacks(imageAdvance);
+          try { if (video != null) video.pause(); } catch (Exception ignored) {}
+          ui("Lecture suspendue depuis le cockpit");
+        });
+        return result.put("paused", true);
+      case "resume_playback":
+        remotePaused = false;
+        getSharedPreferences("player", 0).edit().putBoolean("remotePaused", false).apply();
+        handler.post(this::playCached);
+        return result.put("paused", false);
+      case "reload_content":
+        handler.post(this::playCached);
+        return result.put("reloaded", true);
+      case "restart_player":
+        acknowledgeRestartScheduled(result);
+        return result.put("restartScheduled", true);
+      case "set_volume": {
+        int percent = Math.max(0, Math.min(100, input.optInt("percent", 50)));
+        AudioManager audio = (AudioManager) getSystemService(AUDIO_SERVICE);
+        if (audio == null) throw new IOException("Contrôle audio indisponible");
+        int maximum = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, Math.round(maximum * percent / 100f), 0);
+        return result.put("volumePercent", percent);
+      }
+      case "set_brightness": {
+        int percent = Math.max(5, Math.min(100, input.optInt("percent", 100)));
+        handler.post(() -> {
+          WindowManager.LayoutParams attributes = getWindow().getAttributes();
+          attributes.screenBrightness = percent / 100f;
+          getWindow().setAttributes(attributes);
+        });
+        return result.put("brightnessPercent", percent).put("scope", "player_window");
+      }
+      case "set_orientation": {
+        String orientation = input.optString("orientation", "landscape");
+        int requested = orientation.equals("portrait") ? ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+          : orientation.equals("sensor") ? ActivityInfo.SCREEN_ORIENTATION_SENSOR
+          : ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
+        handler.post(() -> setRequestedOrientation(requested));
+        return result.put("orientation", orientation);
+      }
+      case "set_display_mode":
+        return applyDisplayMode(input, result);
+      case "update_now":
+        PlayerUpdateManager.checkForUpdate(this, server, ScheduledMainActivity.SCHEDULED_APP_VERSION);
+        return result.put("updateCheckStarted", true);
+      default:
+        throw new IOException("Commande non prise en charge par cette version du Player");
+    }
+  }
+
+  JSONObject applyDisplayMode(JSONObject input, JSONObject result) throws Exception {
+    if (Build.VERSION.SDK_INT < 23) throw new IOException("Changement de mode HDMI non pris en charge par Android");
+    int width = input.optInt("width", 0), height = input.optInt("height", 0);
+    double refresh = input.optDouble("refreshRate", 0);
+    Display display = getWindowManager().getDefaultDisplay();
+    Display.Mode selected = null;
+    for (Display.Mode mode : display.getSupportedModes()) {
+      if (mode.getPhysicalWidth() == width && mode.getPhysicalHeight() == height
+        && Math.abs(mode.getRefreshRate() - refresh) < 0.6) { selected = mode; break; }
+    }
+    if (selected == null) throw new IOException("Mode HDMI non annoncé par le matériel");
+    final int modeId = selected.getModeId();
+    handler.post(() -> {
+      WindowManager.LayoutParams attributes = getWindow().getAttributes();
+      attributes.preferredDisplayModeId = modeId;
+      getWindow().setAttributes(attributes);
+    });
+    return result.put("modeId", modeId).put("width", width).put("height", height).put("refreshRate", refresh);
+  }
+
+  void acknowledgeRestartScheduled(JSONObject result) {
+    handler.postDelayed(() -> {
+      Intent launch = new Intent(this, ScheduledMainActivity.class)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+      startActivity(launch);
+      finish();
+    }, 1500L);
+  }
+
+  void acknowledgeRemoteCommand(String commandId, String state, JSONObject result) {
+    if (commandId == null || commandId.isEmpty()) return;
+    try {
+      jsonRequest(server + "/api/signage/player/commands/" + commandId + "/ack", "POST",
+        new JSONObject().put("status", state).put("result", result == null ? new JSONObject() : result));
+    } catch (Exception ignored) {}
   }
 
   JSONObject jsonRequest(String target, String method, JSONObject body) throws Exception {

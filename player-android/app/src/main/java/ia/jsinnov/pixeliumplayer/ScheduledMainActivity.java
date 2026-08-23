@@ -12,7 +12,7 @@ import java.util.Locale;
 import java.util.TimeZone;
 
 public class ScheduledMainActivity extends MainActivity {
-  static final String SCHEDULED_APP_VERSION = "0.5.3-pilot";
+  static final String SCHEDULED_APP_VERSION = "0.6.0-pilot";
   static final String PREF_ADS_BLOCKED = "adsBlocked";
   static final String PREF_BLOCK_REASON = "adsBlockReason";
   static final String PREF_NEXT_CHANGE_AT = "adsNextChangeAt";
@@ -82,6 +82,7 @@ public class ScheduledMainActivity extends MainActivity {
         JSONObject response = jsonRequest(server + "/api/signage/player/heartbeat", "POST", request);
         PlayerRuntimeState.markPlaybackHeartbeat(this);
         PlayerUpdateManager.checkForUpdate(this, server, SCHEDULED_APP_VERSION);
+        processRemoteCommand();
 
         boolean allowed = response.optBoolean("adsAllowed", true);
         String reason = response.optString("reason", allowed ? "allowed" : "blocked");

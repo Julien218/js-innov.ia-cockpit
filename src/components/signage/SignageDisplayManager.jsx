@@ -1,6 +1,6 @@
 import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Monitor, Cpu, Radio, Activity, ShieldCheck } from "lucide-react";
+import { Monitor, Cpu, Radio, Activity, ShieldCheck, Power, Play, Pause, RotateCw, Volume2, Sun, RefreshCw } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 
 async function api(path, options = {}, clientEmail = "") {
@@ -47,6 +47,12 @@ export default function SignageDisplayManager({ player, managedClient = "" }) {
     enabled: Boolean(player?.id) && ["admin", "superadmin"].includes(user?.role),
     refetchInterval: 30000,
   });
+  const commandsQuery = useQuery({
+    queryKey: ["signage-remote-commands", player?.id, managedClient || "self"],
+    queryFn: () => api(`/manage/remote-control/players/${player.id}/commands`, {}, managedClient),
+    enabled: Boolean(player?.id) && isSuperAdmin,
+    refetchInterval: 5000,
+  });
   const data = query.data || {};
   const observedPlayer = data.player || player || {};
   const runtime = data.runtime || {};
@@ -62,6 +68,8 @@ export default function SignageDisplayManager({ player, managedClient = "" }) {
   const [profileName, setProfileName] = React.useState("Colorlight Dour");
   const [processorType, setProcessorType] = React.useState("colorlight");
   const [selectedMode, setSelectedMode] = React.useState("");
+  const [volume, setVolume] = React.useState(50);
+  const [brightness, setBrightness] = React.useState(100);
   React.useEffect(() => {
     if (!data.profile) return;
     setMode(data.profile.mode || "AUTO");
@@ -105,6 +113,25 @@ export default function SignageDisplayManager({ player, managedClient = "" }) {
     finally { setBusy(false); }
   };
 
+  const sendCommand = async (command, payload = {}, confirmation = "") => {
+    if (confirmation && !window.confirm(confirmation)) return;
+    setBusy(true); setMessage("");
+    try {
+      await api(`/manage/remote-control/players/${player.id}/commands`, {
+        method: "POST", body: JSON.stringify({ command, payload }),
+      }, managedClient);
+      setMessage("Commande envoyée. Elle sera exécutée au prochain signal du Player.");
+      await commandsQuery.refetch();
+    } catch (error) { setMessage(error.message); }
+    finally { setBusy(false); }
+  };
+
+  const applySelectedMode = () => {
+    const match = selectedMode.match(/^(\d+)x(\d+)@([0-9.]+)$/);
+    if (!match) return setMessage("Sélectionnez un mode HDMI annoncé par le Player.");
+    sendCommand("set_display_mode", { width: Number(match[1]), height: Number(match[2]), refreshRate: Number(match[3]) }, "Appliquer ce mode HDMI au Player ? L’écran peut devenir noir quelques secondes.");
+  };
+
   return <div className="space-y-4">
     <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <div><p className="text-sm font-semibold">Display / HDMI Manager</p><p className="text-xs text-muted-foreground">Le TVBOX, l’application de lecture, le réseau et l’affichage sont contrôlés séparément.</p></div>
@@ -139,5 +166,27 @@ export default function SignageDisplayManager({ player, managedClient = "" }) {
       {message && <p className="text-xs text-muted-foreground">{message}</p>}
       <p className="text-[11px] text-muted-foreground">Sécurité : aucun root, shell, firmware, reset, token ou changement HDMI n’est déclenché depuis ce panneau.</p>
     </div>
+
+    {isSuperAdmin && <div className="rounded-2xl border border-primary/20 bg-card p-4 space-y-4">
+      <div className="flex items-center gap-2"><Power className="h-4 w-4 text-primary"/><div><p className="text-sm font-semibold">Télécommande Super Admin</p><p className="text-xs text-muted-foreground">Commandes authentifiées, journalisées et exécutées par Pixelium Player 0.6 ou supérieur.</p></div></div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <button disabled={busy} onClick={() => sendCommand("pause_playback")} className="rounded-xl border px-3 py-2 text-sm flex items-center justify-center gap-2 disabled:opacity-50"><Pause className="h-4 w-4"/>Suspendre</button>
+        <button disabled={busy} onClick={() => sendCommand("resume_playback")} className="rounded-xl border px-3 py-2 text-sm flex items-center justify-center gap-2 disabled:opacity-50"><Play className="h-4 w-4"/>Reprendre</button>
+        <button disabled={busy} onClick={() => sendCommand("reload_content")} className="rounded-xl border px-3 py-2 text-sm flex items-center justify-center gap-2 disabled:opacity-50"><RefreshCw className="h-4 w-4"/>Recharger</button>
+        <button disabled={busy} onClick={() => sendCommand("restart_player", {}, "Redémarrer l’application Pixelium Player à distance ?")} className="rounded-xl border px-3 py-2 text-sm flex items-center justify-center gap-2 disabled:opacity-50"><RotateCw className="h-4 w-4"/>Redémarrer Player</button>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <label className="text-xs"><span className="flex items-center gap-2"><Volume2 className="h-4 w-4"/>Volume : {volume}%</span><input type="range" min="0" max="100" value={volume} onChange={e=>setVolume(Number(e.target.value))} className="mt-2 w-full"/><button disabled={busy} onClick={() => sendCommand("set_volume", { percent: volume })} className="mt-2 rounded-lg border px-3 py-1.5">Appliquer le volume</button></label>
+        <label className="text-xs"><span className="flex items-center gap-2"><Sun className="h-4 w-4"/>Luminosité Player : {brightness}%</span><input type="range" min="5" max="100" value={brightness} onChange={e=>setBrightness(Number(e.target.value))} className="mt-2 w-full"/><button disabled={busy} onClick={() => sendCommand("set_brightness", { percent: brightness })} className="mt-2 rounded-lg border px-3 py-1.5">Appliquer la luminosité</button></label>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button disabled={busy} onClick={() => sendCommand("set_orientation", { orientation: "landscape" })} className="rounded-lg border px-3 py-2 text-xs">Paysage</button>
+        <button disabled={busy} onClick={() => sendCommand("set_orientation", { orientation: "portrait" })} className="rounded-lg border px-3 py-2 text-xs">Portrait</button>
+        <button disabled={busy || !selectedMode} onClick={applySelectedMode} className="rounded-lg border px-3 py-2 text-xs disabled:opacity-50">Appliquer le mode HDMI choisi</button>
+        <button disabled={busy} onClick={() => sendCommand("update_now", {}, "Demander immédiatement la vérification et l’installation d’une mise à jour signée ?")} className="rounded-lg border px-3 py-2 text-xs">Vérifier la mise à jour</button>
+      </div>
+      <p className="text-[11px] text-muted-foreground">La luminosité agit sur la fenêtre Android. Le redémarrage complet du TVBOX, la capture système et la configuration interne Colorlight exigent des droits constructeur ou une API réseau et ne sont pas simulés.</p>
+      {(commandsQuery.data?.commands || []).length > 0 && <div><p className="text-xs font-semibold">Dernières commandes</p><div className="mt-2 space-y-1">{commandsQuery.data.commands.slice(0, 6).map(item => <div key={item.id} className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-xs"><span>{item.command}</span><span className={item.status === "succeeded" ? "text-emerald-600" : item.status === "failed" ? "text-red-600" : "text-amber-600"}>{item.status}</span></div>)}</div></div>}
+    </div>}
   </div>;
 }

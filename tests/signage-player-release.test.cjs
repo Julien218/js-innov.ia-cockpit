@@ -28,8 +28,8 @@ test('TVBOX receives the metadata-selected signed release through stable endpoin
   assert.match(dockerfile, /return 302 \/api\/player-download\/android/);
 });
 
-test('release signing uses repository secrets without committing private material', () => {
-  assert.match(gradle, /versionName '0\.5\.3-pilot'/);
+test('next release signing uses repository secrets without committing private material', () => {
+  assert.match(gradle, /versionName '0\.6\.0-pilot'/);
   assert.match(gradle, /PIXELIUM_KEYSTORE_PATH/);
   assert.match(gradle, /PIXELIUM_KEYSTORE_PASSWORD/);
   assert.match(gradle, /pixelium-release/);

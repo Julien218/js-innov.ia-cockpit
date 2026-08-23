@@ -7,7 +7,8 @@ const ALLOWED_TABLES = new Set([
   'commerce_orders','commerce_events','client_module_entitlements','commerce_onboarding_tasks',
   'signage_players','signage_media','signage_playlists','signage_publications','camera_gateways','cameras',
   'camera_recordings','signage_audit_events','signage_player_schedule_settings','signage_player_schedule_ranges',
-  'signage_player_schedule_exceptions','signage_schedule_audit','signage_sites','signage_display_profiles'
+  'signage_player_schedule_exceptions','signage_schedule_audit','signage_sites','signage_display_profiles',
+  'signage_player_commands'
 ]);
 const JSON_COLUMNS = new Map([
   ['signage_players', new Set(['diagnostics','runtime_diagnostics'])],
@@ -18,7 +19,8 @@ const JSON_COLUMNS = new Map([
   ['signage_audit_events', new Set(['details'])],
   ['signage_player_schedule_exceptions', new Set(['ranges'])],
   ['signage_schedule_audit', new Set(['details'])],
-  ['signage_display_profiles', new Set(['fallback_modes','last_stable_mode'])]
+  ['signage_display_profiles', new Set(['fallback_modes','last_stable_mode'])],
+  ['signage_player_commands', new Set(['payload','result'])]
 ]);
 const postgresValue = (table, column, value) => {
   if (!JSON_COLUMNS.get(table)?.has(column) || value === null || value === undefined) return value;
@@ -50,7 +52,8 @@ async function migrate() {
       '005_signage_camera_finalization.sql',
       '006_signage_scheduling.sql',
       '007_signage_display_manager.sql',
-      '008_signage_player_runtime_health.sql'
+      '008_signage_player_runtime_health.sql',
+      '009_signage_remote_commands.sql'
     ]) {
       const exists = await client.query('select 1 from pilot_schema_migrations where name=$1', [file]);
       if (exists.rowCount) continue;
