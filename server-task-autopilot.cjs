@@ -20,6 +20,17 @@ function canonicalTaskTitle(value) {
     .trim();
 }
 
+function duplicateTasksForCanonical(tasks, canonicalTask) {
+  const canonicalId = String(canonicalTask?.id || '');
+  const key = canonicalTaskTitle(canonicalTask?.titre || canonicalTask?.title);
+  if (!canonicalId || !key) return [];
+  return (Array.isArray(tasks) ? tasks : []).filter((task) => {
+    if (String(task?.id || '') === canonicalId) return false;
+    if (['terminee', 'terminée'].includes(norm(task?.statut || task?.status))) return false;
+    return canonicalTaskTitle(task?.titre || task?.title) === key;
+  });
+}
+
 function taskText(task) {
   return `${task?.titre || task?.title || ''}\n${task?.description || ''}`;
 }
@@ -159,6 +170,21 @@ async function executeExistingTask(task, classification) {
   throw new Error(`Exécuteur absent pour ${classification.kind}`);
 }
 
+async function closeVerifiedDuplicates(canonicalTask, copies, proofIds = []) {
+  const closed = [];
+  for (const copy of copies) {
+    const note = [
+      copy.notes || '',
+      `Doublon regroupé avec la tâche ${canonicalTask.id}.`,
+      'Aucune exécution séparée: le même objectif a été traité une seule fois.',
+      proofIds.length ? `Preuves de la tâche canonique: ${proofIds.join(', ')}` : '',
+    ].filter(Boolean).join('\n').trim().slice(0, 4000);
+    await patchTask(copy.id, { statut: 'terminee', notes: note });
+    closed.push(copy.id);
+  }
+  return closed;
+}
+
 async function runAutopilot() {
   if (state.running) return { skipped: true, reason: 'already_running' };
   state.running = true;
@@ -186,7 +212,9 @@ async function runAutopilot() {
         continue;
       }
       try {
-        executed.push(await executeExistingTask(task, classification));
+        const execution = await executeExistingTask(task, classification);
+        execution.duplicate_task_ids = await closeVerifiedDuplicates(task, copies, [execution.run_id, execution.tool_run_id].filter(Boolean));
+        executed.push(execution);
       } catch (error) {
         await patchTask(task.id, { statut: 'bloquee', notes: `${task.notes || ''}\nAutopilote bloqué: ${String(error.message || error).slice(0, 500)}`.trim().slice(0, 4000) }).catch(() => null);
         await recordRun(task, classification, null, 'failed', String(error.message || error).slice(0, 500)).catch(() => null);
@@ -216,15 +244,31 @@ const LOCAL_TOOLS = new Set(['ffmpeg_version', 'ffprobe_file', 'list_directory',
 router.post('/local-results', async (req, res) => {
   const results = Array.isArray(req.body?.task_results) ? req.body.task_results.slice(0, 50) : [];
   const synced = [];
+  let allTasks = [];
+  try {
+    allTasks = rowsFrom(await agentRequest('/data/Tache?limit=250'));
+  } catch (error) {
+    return res.status(502).json({ error: `Impossible de vérifier les task_id avant synchronisation: ${String(error.message || error).slice(0, 300)}` });
+  }
   for (const item of results) {
     const taskId = String(item?.task_id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
     const runs = Array.isArray(item?.tool_runs) ? item.tool_runs.slice(0, 10) : [];
     if (!taskId || !item?.completed || !runs.length || runs.some((run) => !LOCAL_TOOLS.has(run?.tool) || !run?.success || !/^[a-f0-9-]{20,}$/i.test(String(run?.id || '')))) continue;
     const evidence = runs.map((run) => ({ id: String(run.id), tool: run.tool, started_at: run.started_at, completed_at: run.completed_at, exit_code: run.exit_code, output: String(run.output || '').slice(0, 12000) }));
     try {
+      const canonicalTask = allTasks.find((task) => String(task?.id || '') === taskId);
+      if (!canonicalTask) throw new Error('task_id absent du Cockpit; résultat local refusé');
+      if (canonicalTaskTitle(canonicalTask.titre || canonicalTask.title) !== canonicalTaskTitle(item.title)) {
+        throw new Error('le titre du résultat local ne correspond pas au task_id; synchronisation refusée');
+      }
       const log = await agentRequest('/agent-runs', { method: 'POST', body: { task_id: taskId, agent_id: 'nova-local-tools', functional_role: 'windows_local_diagnostics', provider_name: 'local-agent', status: 'completed', execution_mode: 'read_only', input: { title: String(item.title || '').slice(0, 240), tools: evidence.map((run) => run.tool) }, result: { tool_runs: evidence }, idempotency_key: `local-autopilot:${taskId}:${evidence.map((run) => run.id).join(':')}`.slice(0, 500), requested_by: String(req.user?.email || req.user?.id || 'desktop-companion').slice(0, 180), started_at: evidence[0].started_at, completed_at: evidence[evidence.length - 1].completed_at } });
       await patchTask(taskId, { statut: 'terminee', notes: `NOVA locale — diagnostic terminé avec preuve.\nOutils: ${evidence.map((run) => run.tool).join(', ')}\nJournaux: ${evidence.map((run) => run.id).join(', ')}`.slice(0, 4000) });
-      synced.push({ task_id: taskId, run_id: log?.id || null, tool_run_ids: evidence.map((run) => run.id) });
+      const duplicateTaskIds = await closeVerifiedDuplicates(
+        canonicalTask,
+        duplicateTasksForCanonical(allTasks, canonicalTask),
+        evidence.map((run) => run.id),
+      );
+      synced.push({ task_id: taskId, run_id: log?.id || null, tool_run_ids: evidence.map((run) => run.id), duplicate_task_ids: duplicateTaskIds });
     } catch (error) {
       synced.push({ task_id: taskId, error: String(error.message || error).slice(0, 300) });
     }
@@ -241,4 +285,4 @@ function startTaskAutopilotScheduler() {
   return { started: true, interval_ms: AUTOPILOT_INTERVAL_MS };
 }
 
-module.exports = { router, canonicalTaskTitle, classifyTask, rowsFrom, summarizeBusinessData, runAutopilot, startTaskAutopilotScheduler, state };
+module.exports = { router, canonicalTaskTitle, duplicateTasksForCanonical, classifyTask, rowsFrom, summarizeBusinessData, runAutopilot, startTaskAutopilotScheduler, state };
