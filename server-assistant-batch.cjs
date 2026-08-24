@@ -43,7 +43,15 @@ function batchSignals(text) {
   const hasTask = /t[aâ]ches?|task/.test(source);
   const hasAgent = /agents?|d[eé]l[eé]gu|sp[eé]cialistes?|qa|devops|backend|support|produit|vid[eé]o/.test(source);
   const hasPlural = /plusieurs|toutes?|chacun|chaque|liste|six|6|diff[eé]rentes?/.test(source);
-  return hasTask && (hasAgent || hasPlural);
+  const hasExecutionIntent = /(effectue|ex[eé]cute|lance|fais|faites|continue|poursuis|traite|r[eé]alise).*(t[aâ]ches?|actions?)/.test(source)
+    || /(toutes?|chaque).*(t[aâ]ches?|actions?).*(effectue|ex[eé]cute|lance|fais|traite|r[eé]alise)/.test(source);
+  return (hasTask && (hasAgent || hasPlural)) || hasExecutionIntent;
+}
+
+function explicitExecutionAuthorization(message) {
+  const source = String(message || '').trim().toLowerCase();
+  return /(effectue|ex[eé]cute|lance|fais|faites|continue|poursuis|traite|r[eé]alise|applique).*(toutes?|chaque|les|la|le)?\s*(t[aâ]ches?|actions?|changements?|modifications?)/.test(source)
+    || /(go|oki|ok|oui)[,\s!-]*(effectue|ex[eé]cute|lance|continue|poursuis)/.test(source);
 }
 
 async function recentContext(req) {
@@ -74,6 +82,7 @@ router.post('/chat', async (req, res, next) => {
   if (!(await shouldHandleBatch(req, message))) return next();
 
   const sessionId = sessionIdFor(req);
+  const userAlreadyAuthorizedExecution = explicitExecutionAuthorization(message);
   try {
     const response = await agentFetch('/chat', {
       method: 'POST',
@@ -89,13 +98,20 @@ router.post('/chat', async (req, res, next) => {
         },
         server_context: [
           'MODE BATCH TÂCHES COCKPIT ACTIF.',
+          'Tu es l’orchestrateur du Cockpit: comprends, planifie, délègue, suis, vérifie et clôture.',
           'Quand plusieurs tâches métier doivent être créées, utilise uniquement propose_action avec type=create_task_batch.',
           'Payload obligatoire: { tasks: [{ titre, description, priorite, projet_id?, client_id?, agent_name, agent_role, provider, provider_agent_id?, read_only }] }.',
-          'Chaque tâche doit avoir un titre non vide. read_only=true pour diagnostic/analyse sans effet métier.',
-          'Une seule confirmation utilisateur couvre le batch complet.',
+          'Chaque tâche doit avoir un titre non vide. read_only=true uniquement pour diagnostic/analyse sans effet métier.',
+          'Une tâche déléguée n’est jamais considérée terminée tant qu’un résultat réel et vérifié n’existe pas.',
+          'Ne demande pas de confirmation supplémentaire lorsque le message utilisateur autorise explicitement l’exécution du lot et que les sous-actions sont normales, réversibles et nécessaires à cette demande.',
+          'Ne déclare jamais une capacité indisponible sans vérifier les agents/outils disponibles; un état ancien ne vaut pas état actuel.',
+          'Si une branche de travail est bloquée, continue les branches indépendantes et ne bloque pas toute la mission.',
           'Ne dis jamais que les tâches sont créées tant que le Cockpit n’a pas renvoyé un résultat d’exécution réel.',
         ].join('\n'),
-        security: { assistant: req.user?.role === 'superadmin' ? 'owner' : 'staff', require_confirmation_for_actions: true },
+        security: {
+          assistant: req.user?.role === 'superadmin' ? 'owner' : 'staff',
+          require_confirmation_for_actions: !userAlreadyAuthorizedExecution,
+        },
         action_protocol: {
           proposed_action: { type: 'create_task_batch', payload: { tasks: [] } },
           action_summary: 'Résumé français du batch',
@@ -109,6 +125,8 @@ router.post('/chat', async (req, res, next) => {
 
     const rawAction = data.proposed_action || data.action;
     let confirmation = null;
+    let executionResult = null;
+
     if (rawAction?.type === 'create_task_batch') {
       const payload = sanitizeTaskBatchPayload(rawAction.payload || {});
       if (!payload) {
@@ -119,16 +137,43 @@ router.post('/chat', async (req, res, next) => {
           conversation_id: conversationIdFrom(req),
         });
       }
+
       const token = crypto.randomBytes(24).toString('hex');
-      const summary = String(data.action_summary || `Créer ${payload.tasks.length} tâche(s) et déléguer le diagnostic`).slice(0, 300);
-      pendingBatches.set(token, {
+      const summary = String(data.action_summary || `Créer ${payload.tasks.length} tâche(s) et les déléguer`).slice(0, 300);
+      const batchContext = {
         payload,
         summary,
         userId: req.user.id,
         tenant: cleanTenant(req.user?.organisation) || 'jsinnovia',
         expiresAt: Date.now() + 5 * 60_000,
+      };
+
+      if (userAlreadyAuthorizedExecution) {
+        executionResult = await executeTaskBatch({
+          payload,
+          token,
+          user: req.user,
+          tenant: batchContext.tenant,
+          agentFetch,
+        });
+      } else {
+        pendingBatches.set(token, batchContext);
+        confirmation = { token, type: 'create_task_batch', summary, expires_in: 300 };
+      }
+    }
+
+    if (executionResult) {
+      const suffix = executionResult.success
+        ? `\n\n✅ Exécution lancée et suivie: ${executionResult.succeeded}/${executionResult.requested} tâche(s) traitée(s) sans confirmation supplémentaire.`
+        : `\n\n⚠️ Exécution partielle: ${executionResult.succeeded}/${executionResult.requested} tâche(s) traitée(s). Les branches bloquées restent identifiées sans arrêter les autres.`;
+      return res.status(executionResult.success ? 200 : 207).json({
+        message: `${data.response || data.reply || data.message || 'Batch préparé.'}${suffix}`,
+        confirmation: null,
+        execution_result: executionResult,
+        conversation_id: conversationIdFrom(req),
+        model_used: data.model_used || data.model,
+        assistant_mode: req.user?.role === 'superadmin' ? 'owner' : 'staff',
       });
-      confirmation = { token, type: 'create_task_batch', summary, expires_in: 300 };
     }
 
     return res.json({
@@ -140,7 +185,7 @@ router.post('/chat', async (req, res, next) => {
     });
   } catch (error) {
     console.error('[assistant-batch] chat failed:', error.message);
-    return res.status(502).json({ error: 'Préparation du batch impossible', details: error.message });
+    return res.status(502).json({ error: 'Préparation ou exécution du batch impossible', details: error.message });
   }
 });
 
@@ -164,8 +209,8 @@ router.post('/confirm', async (req, res, next) => {
     });
 
     if (!result.success) {
-      return res.status(502).json({
-        error: `Batch incomplet: ${result.succeeded}/${result.requested} tâche(s) exécutée(s).`,
+      return res.status(207).json({
+        error: `Batch partiel: ${result.succeeded}/${result.requested} tâche(s) traitée(s).`,
         action_type: 'create_task_batch',
         action_summary: item.summary,
         result,
@@ -187,3 +232,4 @@ router.post('/confirm', async (req, res, next) => {
 
 module.exports = router;
 module.exports.batchSignals = batchSignals;
+module.exports.explicitExecutionAuthorization = explicitExecutionAuthorization;

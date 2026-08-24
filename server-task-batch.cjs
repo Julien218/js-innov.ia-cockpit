@@ -159,8 +159,8 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch }) {
           functional_role: item.agent.role,
           provider_agent_id: item.agent.provider_agent_id,
           provider_name: item.agent.provider || 'jsinnovia-agent',
-          status: item.agent.read_only ? 'running' : 'awaiting_approval',
-          execution_mode: item.agent.read_only ? 'prepare_only' : 'approval_required',
+          status: 'running',
+          execution_mode: item.agent.read_only ? 'prepare_only' : 'delegated_execution',
           input: { titre: item.record.titre, description: item.record.description, read_only: item.agent.read_only },
           idempotency_key: runKey,
           requested_by: cleanText(user?.email || user?.id || 'companion', 180),
@@ -170,6 +170,11 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch }) {
       const runData = await runResponse.json().catch(() => ({}));
       if (!runResponse.ok) throw new Error(runData?.error || `Création run HTTP ${runResponse.status}`);
       run = runData;
+
+      await patchTask(agentFetch, task.id, {
+        statut: 'en_cours',
+        notes: `${item.record.notes || ''}\nDélégation lancée automatiquement par le Companion.`.trim().slice(0, 4000),
+      }, organisation);
 
       if (item.agent.read_only) {
         let report = null;
@@ -194,12 +199,12 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch }) {
 
         await patchTask(agentFetch, task.id, {
           statut: 'terminee',
-          notes: `${item.record.notes || ''}\nDiagnostic agent terminé automatiquement après confirmation du batch.`.trim().slice(0, 4000),
+          notes: `${item.record.notes || ''}\nDiagnostic agent terminé et résultat vérifié par le moteur batch.`.trim().slice(0, 4000),
         }, organisation);
 
         results.push({ index, success: true, task_id: task.id, run_id: run.id, status: 'completed', report: report?.content || '' });
       } else {
-        results.push({ index, success: true, task_id: task.id, run_id: run.id, status: 'awaiting_approval' });
+        results.push({ index, success: true, task_id: task.id, run_id: run.id, status: 'running', delegated: true });
       }
     } catch (error) {
       if (task?.id) {
@@ -226,7 +231,7 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch }) {
     succeeded,
     failed: results.length - succeeded,
     results,
-    verification: 'Résultat calculé uniquement à partir des réponses réelles de création/run/délégation.',
+    verification: 'Résultat calculé à partir des créations réelles de tâches, runs et délégations; les tâches d’écriture restent en_cours tant qu’un résultat final n’est pas enregistré.',
   };
 }
 

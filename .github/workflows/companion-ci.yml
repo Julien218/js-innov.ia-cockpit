@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'server-assistant.cjs'
+      - 'server-assistant-batch.cjs'
+      - 'server-task-batch.cjs'
       - 'server-companion-audience.cjs'
       - 'server-companion-memory.cjs'
       - 'server-data-proxy.cjs'
@@ -24,6 +26,7 @@ on:
       - 'src/pages/ClientDashboard.jsx'
       - 'src/pages/ClientRecords.jsx'
       - 'tests/companion-contract.test.cjs'
+      - 'tests/companion-task-batch.test.cjs'
       - 'tests/client-billing-integrity.test.cjs'
       - 'tests/hainoflow-tenant.test.cjs'
       - 'tests/billing-archive.test.cjs'
@@ -37,6 +40,7 @@ on:
       - main
       - feat/companion-dual-audience
       - fix/companion-confirm-client-billing-integrity
+      - fix/companion-orchestration-autonomy
 
 permissions:
   contents: read
@@ -57,6 +61,8 @@ jobs:
         run: |
           node --check server.cjs
           node --check server-assistant.cjs
+          node --check server-assistant-batch.cjs
+          node --check server-task-batch.cjs
           node --check server-companion-audience.cjs
           node --check server-companion-memory.cjs
           node --check server-data-proxy.cjs
@@ -66,7 +72,7 @@ jobs:
       - name: Full Cockpit regression suite
         run: npm test
       - name: Companion contract tests
-        run: node --require ./tests/node-test-globals.cjs --test tests/companion-contract.test.cjs tests/client-billing-integrity.test.cjs
+        run: node --require ./tests/node-test-globals.cjs --test tests/companion-contract.test.cjs tests/companion-task-batch.test.cjs tests/client-billing-integrity.test.cjs
       - name: Build web application
         run: npm run build
       - name: Verify client confidentiality and billing guards
