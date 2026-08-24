@@ -41,10 +41,46 @@ function classifyTask(task) {
   if (/(comfyui|minimax|workflow|ffmpeg|video ia|avatar.*local)/.test(text)) {
     return { kind: 'local_machine', executable: false, reason: 'agent_windows_local_requis' };
   }
+  if (/(analys|audit|verifi|control).*(client|facture|societe|asbl|rattachement)|(facture|rattachement).*(analys|audit|verifi|control)/.test(text)) {
+    return { kind: 'business_data_audit', executable: true };
+  }
   if (/(client|facture|tva|societe|asbl|rattachement)/.test(text)) {
     return { kind: 'business_data', executable: false, reason: 'donnees_metier_ou_validation_humaine_requises' };
   }
   return { kind: 'unsupported', executable: false, reason: 'aucun_executeur_verifiable' };
+}
+
+function summarizeBusinessData({ clients = [], invoices = [], projects = [] }) {
+  const missingClientLegal = clients.filter((item) => !item.numero_tva && !item.tva && !item.vat_number).map((item) => item.id).filter(Boolean);
+  const invoiceWithoutClient = invoices.filter((item) => !item.client_id && !item.client_nom).map((item) => item.id).filter(Boolean);
+  const projectWithoutClient = projects.filter((item) => !item.client_id && !item.client_nom).map((item) => item.id).filter(Boolean);
+  return {
+    clients_count: clients.length,
+    invoices_count: invoices.length,
+    projects_count: projects.length,
+    clients_missing_vat_count: missingClientLegal.length,
+    invoices_without_client_count: invoiceWithoutClient.length,
+    projects_without_client_count: projectWithoutClient.length,
+    affected_ids: {
+      clients_missing_vat: missingClientLegal.slice(0, 100),
+      invoices_without_client: invoiceWithoutClient.slice(0, 100),
+      projects_without_client: projectWithoutClient.slice(0, 100),
+    },
+  };
+}
+
+async function auditBusinessData() {
+  const [clientsPayload, invoicesPayload, projectsPayload] = await Promise.all([
+    agentRequest('/data/Client?limit=500'),
+    agentRequest('/data/Facture?limit=500'),
+    agentRequest('/data/Projet?limit=500'),
+  ]);
+  return {
+    tool: 'cockpit_business_data_audit',
+    run_id: `business-${crypto.randomUUID()}`,
+    checked_at: new Date().toISOString(),
+    ...summarizeBusinessData({ clients: rowsFrom(clientsPayload), invoices: rowsFrom(invoicesPayload), projects: rowsFrom(projectsPayload) }),
+  };
 }
 
 function rowsFrom(payload) {
@@ -97,9 +133,9 @@ function proofNote(result) {
     'Autopilote Cockpit — diagnostic réellement exécuté.',
     `Outil: ${result.tool}`,
     `Heure: ${result.checked_at}`,
-    `Cible: ${result.domain}`,
+    `Cible: ${result.domain || 'clients, projets et factures du Cockpit'}`,
     `Journal: ${result.run_id}`,
-    `Résultat: ${JSON.stringify({ dns: result.dns, http: result.http, tls: result.tls, seo: result.seo, issues: result.issues })}`,
+    `Résultat: ${JSON.stringify(result.tool === 'cockpit_domain_probe' ? { dns: result.dns, http: result.http, tls: result.tls, seo: result.seo, issues: result.issues } : result)}`,
   ].join('\n').slice(0, 3900);
 }
 
@@ -112,6 +148,12 @@ async function executeExistingTask(task, classification) {
       statut: 'terminee',
       notes: `${task.notes || ''}\n${proofNote(result)}`.trim().slice(0, 4000),
     });
+    return { task_id: task.id, title: task.titre || task.title, status: 'completed', run_id: run?.id || result.run_id, tool_run_id: result.run_id };
+  }
+  if (classification.kind === 'business_data_audit') {
+    const result = await auditBusinessData();
+    const run = await recordRun(task, classification, result);
+    await patchTask(task.id, { statut: 'terminee', notes: `${task.notes || ''}\n${proofNote(result)}`.trim().slice(0, 4000) });
     return { task_id: task.id, title: task.titre || task.title, status: 'completed', run_id: run?.id || result.run_id, tool_run_id: result.run_id };
   }
   throw new Error(`Exécuteur absent pour ${classification.kind}`);
@@ -179,4 +221,4 @@ function startTaskAutopilotScheduler() {
   return { started: true, interval_ms: AUTOPILOT_INTERVAL_MS };
 }
 
-module.exports = { router, canonicalTaskTitle, classifyTask, rowsFrom, runAutopilot, startTaskAutopilotScheduler, state };
+module.exports = { router, canonicalTaskTitle, classifyTask, rowsFrom, summarizeBusinessData, runAutopilot, startTaskAutopilotScheduler, state };

@@ -6,6 +6,7 @@ on:
       - 'server-assistant.cjs'
       - 'server-assistant-batch.cjs'
       - 'server-task-batch.cjs'
+      - 'server-task-autopilot.cjs'
       - 'server-companion-audience.cjs'
       - 'server-companion-memory.cjs'
       - 'server-data-proxy.cjs'
@@ -29,6 +30,7 @@ on:
       - 'src/pages/ClientRecords.jsx'
       - 'tests/companion-contract.test.cjs'
       - 'tests/companion-task-batch.test.cjs'
+      - 'tests/task-autopilot.test.cjs'
       - 'tests/local-agent-tools.test.cjs'
       - 'tests/client-billing-integrity.test.cjs'
       - 'tests/hainoflow-tenant.test.cjs'
@@ -66,6 +68,7 @@ jobs:
           node --check server-assistant.cjs
           node --check server-assistant-batch.cjs
           node --check server-task-batch.cjs
+          node --check server-task-autopilot.cjs
           node --check server-companion-audience.cjs
           node --check server-companion-memory.cjs
           node --check server-data-proxy.cjs
@@ -76,7 +79,7 @@ jobs:
       - name: Full Cockpit regression suite
         run: npm test
       - name: Companion contract tests
-        run: node --require ./tests/node-test-globals.cjs --test tests/companion-contract.test.cjs tests/companion-task-batch.test.cjs tests/client-billing-integrity.test.cjs tests/local-agent-tools.test.cjs
+        run: node --require ./tests/node-test-globals.cjs --test tests/companion-contract.test.cjs tests/companion-task-batch.test.cjs tests/task-autopilot.test.cjs tests/client-billing-integrity.test.cjs tests/local-agent-tools.test.cjs
       - name: Build web application
         run: npm run build
       - name: Verify client confidentiality and billing guards

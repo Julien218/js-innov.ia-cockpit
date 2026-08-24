@@ -30,6 +30,23 @@ test('les tâches locales et métier restent bloquées avec une cause exacte', (
   assert.equal(autopilot.classifyTask({ titre: 'Compléter les données TVA du client' }).reason, 'donnees_metier_ou_validation_humaine_requises');
 });
 
+test('les audits clients et factures sont exécutables en lecture seule', () => {
+  assert.equal(autopilot.classifyTask({ titre: 'Analyser les factures et leur rattachement' }).kind, 'business_data_audit');
+  assert.equal(autopilot.classifyTask({ titre: 'Vérifier les rattachements clients, sites, sociétés ou ASBL' }).executable, true);
+});
+
+test('l’audit métier compte les rattachements et TVA manquants sans modifier les données', () => {
+  const result = autopilot.summarizeBusinessData({
+    clients: [{ id: 'c1', numero_tva: 'BE1' }, { id: 'c2' }],
+    invoices: [{ id: 'f1', client_id: 'c1' }, { id: 'f2' }],
+    projects: [{ id: 'p1', client_nom: 'Client' }, { id: 'p2' }],
+  });
+  assert.equal(result.clients_missing_vat_count, 1);
+  assert.equal(result.invoices_without_client_count, 1);
+  assert.equal(result.projects_without_client_count, 1);
+  assert.deepEqual(result.affected_ids.invoices_without_client, ['f2']);
+});
+
 test('le serveur et Docker embarquent l’autopilote permanent', () => {
   const server = fs.readFileSync(path.join(root, 'server.cjs'), 'utf8');
   const docker = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
