@@ -5,6 +5,7 @@ const path = require('path');
 const app = express();
 const PORT = process.env.API_PORT || 3001;
 const { requireSession, requireSameOrigin, ROLE_LEVEL } = require('./server-security.cjs');
+let taskAutopilotState = null;
 
 // Trust proxy — nécessaire pour détecter HTTPS (X-Forwarded-Proto) et l'IP réelle
 app.set('trust proxy', 1);
@@ -129,6 +130,7 @@ try {
 // ── Companion batch : création multi-tâches + délégation ───
 try {
   const taskAutopilot = require('./server-task-autopilot.cjs');
+  taskAutopilotState = taskAutopilot.state;
   app.use('/api/task-autopilot', requireSession('admin'), taskAutopilot.router);
   const autopilot = taskAutopilot.startTaskAutopilotScheduler();
   console.log(`✅ Autopilote tâches ${autopilot.started ? 'activé' : 'inactif'} (${autopilot.reason || `${autopilot.interval_ms} ms`})`);
@@ -195,7 +197,21 @@ try {
   console.warn('⚠️ Route push indisponible:', e.message);
 }
 
-app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cockpit-api' }));
+app.get('/api/health', (req, res) => res.json({
+  status: 'ok',
+  service: 'cockpit-api',
+  task_autopilot: taskAutopilotState ? {
+    running: taskAutopilotState.running,
+    last_started_at: taskAutopilotState.last_started_at,
+    last_finished_at: taskAutopilotState.last_finished_at,
+    last_error: taskAutopilotState.last_error,
+    examined: taskAutopilotState.last_result?.examined ?? null,
+    unique: taskAutopilotState.last_result?.unique ?? null,
+    executed: taskAutopilotState.last_result?.executed?.length ?? null,
+    blocked: taskAutopilotState.last_result?.blocked?.length ?? null,
+    duplicate_groups: taskAutopilotState.last_result?.duplicates?.length ?? null,
+  } : { available: false },
+}));
 
 app.listen(PORT, () => {
   console.log(`✅ JS-Innov.IA Cockpit API — port ${PORT}`);

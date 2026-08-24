@@ -35,6 +35,8 @@ test('le serveur et Docker embarquent l’autopilote permanent', () => {
   const docker = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
   assert.match(server, /startTaskAutopilotScheduler/);
   assert.match(server, /\/api\/task-autopilot/);
+  assert.match(server, /task_autopilot:/);
+  assert.match(server, /duplicate_groups:/);
   assert.match(docker, /server-task-autopilot\.cjs/);
   assert.match(docker, /node --check \/app\/server-task-autopilot\.cjs/);
 });
