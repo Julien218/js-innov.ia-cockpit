@@ -9,7 +9,7 @@ const taskBatchSource = fs.readFileSync(path.join(root, 'server-task-batch.cjs')
 const serverSource = fs.readFileSync(path.join(root, 'server.cjs'), 'utf8');
 const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
 
-const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage, executionProof } = require(path.join(root, 'server-assistant-batch.cjs'));
+const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage, executionProof, directAutopilotSignal, autopilotMessage } = require(path.join(root, 'server-assistant-batch.cjs'));
 const { canonicalTaskTitle, latestActiveRun, sanitizeTaskBatchPayload } = require(path.join(root, 'server-task-batch.cjs'));
 
 test('les demandes multi-tâches et d’exécution sont reconnues sans intercepter un chat banal', () => {
@@ -149,4 +149,14 @@ test('une confirmation formulée en phrase complète est consommée par le pont 
   assert.match(bridge, /je confirme\|confirme/);
   assert.match(bridge, /isAffirmativeIntent\(intent\)/);
   assert.match(bridge, /Preuves du lot/);
+});
+
+test('effectue toutes les tâches déclenche directement l’autopilote sans réponse LLM', () => {
+  assert.equal(directAutopilotSignal('Effectue toutes les tâches non terminées'), true);
+  assert.equal(directAutopilotSignal('liste les tâches'), false);
+  const message = autopilotMessage({ run_id: 'auto-1', unique: 2, executed: [{ task_id: 't1', run_id: 'r1', status: 'completed' }], blocked: [{ task_id: 't2', reason: 'accès manquant' }] });
+  assert.match(message, /run_id=auto-1/);
+  assert.match(message, /task_id=t1 · run_id=r1/);
+  assert.match(message, /task_id=t2 · statut=bloquee/);
+  assert.match(batchSource, /if \(userAlreadyAuthorizedExecution && directAutopilotSignal\(message\)\)/);
 });
