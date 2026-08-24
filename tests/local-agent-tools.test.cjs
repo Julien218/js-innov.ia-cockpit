@@ -55,6 +55,9 @@ test('NOVA locale reconnaît uniquement les intentions d’outils autorisées', 
     ] });
     assert.match(duplicates, /4 enregistrement\(s\).*2 tâche\(s\) unique\(s\)/s);
     assert.match(duplicates, /2 occurrences regroupées/);
+    assert.deepEqual(module.localTaskPlan({ titre: "Vérifier l'absence de workflow MiniMax H3 local" }), ['find_local_workflows', 'comfyui_health']);
+    assert.deepEqual(module.localTaskPlan({ titre: "Contrôler l’état des API vidéo IA" }), ['comfyui_health']);
+    assert.equal(module.localTaskPlan({ titre: 'Mettre à jour la documentation sur les workflows locaux' }), null);
   } finally {
     if (previous.noListen === undefined) delete process.env.LOCAL_AGENT_NO_LISTEN; else process.env.LOCAL_AGENT_NO_LISTEN = previous.noListen;
     if (previous.roots === undefined) delete process.env.LOCAL_AGENT_ALLOWED_ROOTS; else process.env.LOCAL_AGENT_ALLOWED_ROOTS = previous.roots;
@@ -87,4 +90,6 @@ test('le Cockpit synchronise et transmet une copie locale des tâches', () => {
   assert.match(source, /nova_local_task_snapshot_v1/);
   assert.match(source, /\/api\/data\/Tache\?limit=100/);
   assert.match(source, /task_snapshot: taskSnapshot/);
+  assert.match(source, /\/api\/tasks\/autopilot/);
+  assert.match(source, /\/api\/task-autopilot\/local-results/);
 });

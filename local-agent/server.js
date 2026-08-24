@@ -12,7 +12,7 @@ const PORT = Number(process.env.LOCAL_AGENT_PORT || 8787);
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-const VERSION = '1.3.3';
+const VERSION = '1.3.4';
 const MAX_BODY = 5 * 1024 * 1024;
 const approvals = new Map();
 const runs = new Map();
@@ -322,6 +322,38 @@ function taskAnalysisResponse(snapshot) {
   return `Analyse factuelle de ${ranked.length} enregistrement(s) non terminé(s), regroupés en ${unique.length} tâche(s) unique(s).${lines.join('\n')}\n\nExécutions réelles lancées: 0. Aucun tool_run n’a été créé automatiquement. Outils disponibles: ffmpeg_version, ffprobe_file, list_directory, find_local_workflows, comfyui_health et http_diagnose. Les diagnostics doivent être demandés explicitement pour produire un journal vérifiable; aucune tâche n’est marquée terminée sans résultat réel.`;
 }
 
+function localTaskPlan(task) {
+  const text = `${task?.titre || task?.title || ''} ${task?.description || ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (/(mettre a jour|documentation|achever|finaliser|corriger|modifier)/.test(text)) return null;
+  if (/verifi.*(?:workflow|minimax)|absence.*(?:workflow|minimax)/.test(text)) return ['find_local_workflows', 'comfyui_health'];
+  if (/control.*(?:persistance|workflow)/.test(text)) return ['find_local_workflows'];
+  if (/control.*(?:api video|comfyui|port 8188)/.test(text)) return ['comfyui_health'];
+  return null;
+}
+
+async function executeLocalTaskAutopilot(snapshot) {
+  const tasks = Array.isArray(snapshot?.tasks) ? snapshot.tasks : [];
+  const pending = tasks.filter((task) => !['terminee', 'terminée', 'completed', 'done', 'annulee', 'annulée', 'cancelled'].includes(String(task.statut || task.status || '').toLowerCase()));
+  const seen = new Set();
+  const cache = new Map();
+  const taskResults = [];
+  for (const task of pending) {
+    const key = canonicalTaskKey(task.titre || task.title || '');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const tools = localTaskPlan(task);
+    if (!tools) continue;
+    const toolRuns = [];
+    for (const tool of tools) {
+      if (!cache.has(tool)) cache.set(tool, await executeTool(tool, {}));
+      toolRuns.push(cache.get(tool));
+    }
+    const completed = toolRuns.every((run) => run.success);
+    taskResults.push({ task_id: task.id, title: task.titre || task.title, completed, tools, tool_runs: toolRuns.map((run) => ({ id: run.id, tool: run.tool, started_at: run.started_at, completed_at: run.completed_at, success: run.success, exit_code: run.exit_code, output: String(run.output || '').slice(0, 12000) })) });
+  }
+  return { run_id: `local-autopilot-${crypto.randomUUID()}`, examined: pending.length, executed: taskResults.length, task_results: taskResults };
+}
+
 async function health() {
   let ollamaOnline = false;
   let models = [];
@@ -357,6 +389,10 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req);
       const run = await executeTool(body.tool, body.args || {});
       return send(req, res, run.success ? 200 : 422, { ok: run.success, run });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/tasks/autopilot') {
+      const body = await readJson(req);
+      return send(req, res, 200, { ok: true, ...(await executeLocalTaskAutopilot(body.task_snapshot)) });
     }
     if (req.method === 'POST' && url.pathname === '/api/agent/chat') {
       const body = await readJson(req);
@@ -411,4 +447,4 @@ if (process.env.LOCAL_AGENT_NO_LISTEN !== '1') {
     void ensureComfyUi();
   });
 }
-export { executeTool, pathInsideAllowedRoot, requestedTool, requestedTools, requestsTaskList, taskSnapshotResponse, requestsTaskAnalysis, taskAnalysisResponse, canonicalTaskKey, comfyUiLaunchSpec, ensureComfyUi };
+export { executeTool, pathInsideAllowedRoot, requestedTool, requestedTools, requestsTaskList, taskSnapshotResponse, requestsTaskAnalysis, taskAnalysisResponse, canonicalTaskKey, localTaskPlan, executeLocalTaskAutopilot, comfyUiLaunchSpec, ensureComfyUi };
