@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - "electron/**"
+      - "local-agent/**"
+      - "src/components/FloatingAgent.jsx"
       - ".github/workflows/electron-build.yml"
   workflow_dispatch:
 
