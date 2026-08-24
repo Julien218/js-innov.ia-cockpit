@@ -12,7 +12,7 @@ const PORT = Number(process.env.LOCAL_AGENT_PORT || 8787);
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-const VERSION = '1.3.5';
+const VERSION = '1.3.6';
 const MAX_BODY = 5 * 1024 * 1024;
 const approvals = new Map();
 const runs = new Map();
@@ -324,6 +324,7 @@ function taskAnalysisResponse(snapshot) {
 
 function localTaskPlan(task) {
   const text = `${task?.titre || task?.title || ''} ${task?.description || ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (/fonctionnalites.*non operationnelles.*(?:video|module video)/.test(text)) return ['find_local_workflows', 'comfyui_health', 'ffmpeg_version'];
   if (/(mettre a jour|documentation|achever|finaliser|corriger|modifier)/.test(text)) return null;
   if (/verifi.*(?:workflow|minimax)|absence.*(?:workflow|minimax)/.test(text)) return ['find_local_workflows', 'comfyui_health'];
   if (/control.*(?:persistance|workflow)/.test(text)) return ['find_local_workflows'];
