@@ -36,6 +36,7 @@ COPY --from=builder /app/server-billing-template.cjs ./server-billing-template.c
 COPY --from=builder /app/server-security.cjs ./server-security.cjs
 COPY --from=builder /app/server-tenant.cjs ./server-tenant.cjs
 COPY --from=builder /app/server-data-proxy.cjs ./server-data-proxy.cjs
+COPY --from=builder /app/server-bce.cjs ./server-bce.cjs
 COPY --from=builder /app/server-hainoflow.cjs ./server-hainoflow.cjs
 COPY --from=builder /app/server-assistant.cjs ./server-assistant.cjs
 COPY --from=builder /app/server-assistant-batch.cjs ./server-assistant-batch.cjs
@@ -77,6 +78,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-assistant-batch.cjs \
  && test -f /app/server-task-batch.cjs \
  && test -f /app/server-task-autopilot.cjs \
+ && test -f /app/server-bce.cjs \
  && node --check /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-ai-cost-ledger-aggregate.cjs \
  && node --check /app/server-cost-centers.cjs \
@@ -89,6 +91,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-assistant-batch.cjs \
  && node --check /app/server-task-batch.cjs \
  && node --check /app/server-task-autopilot.cjs \
+ && node --check /app/server-bce.cjs \
  && echo "Required runtime modules check OK"
 
 RUN mkdir -p /etc/nginx/http.d && cat > /etc/nginx/http.d/default.conf << 'NGINXEOF'
