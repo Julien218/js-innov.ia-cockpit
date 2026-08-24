@@ -28,6 +28,11 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Build offline Cockpit interface
+        run: |
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run build
+
       - name: Source checks
         shell: pwsh
         run: |
@@ -52,6 +57,7 @@ jobs:
           if (-not (Test-Path "electron/dist/latest.yml")) { throw "latest.yml manquant" }
           if (-not (Get-ChildItem "electron/dist/*.exe" -ErrorAction SilentlyContinue)) { throw "installeur .exe manquant" }
           if (-not (Get-ChildItem "electron/dist/*.blockmap" -ErrorAction SilentlyContinue)) { throw "blockmap manquant" }
+          if (-not (Test-Path "electron/dist/win-unpacked/resources/offline-web/index.html")) { throw "Interface Cockpit hors ligne manquante" }
 
       - name: Upload validated Windows package
         uses: actions/upload-artifact@v4

@@ -15,7 +15,7 @@ test('desktop starts through the global bootstrap', () => {
 });
 
 test('desktop bundles and starts NOVA Local Tools without a second assistant UI', () => {
-  assert.equal(pkg.version, '1.0.20');
+  assert.equal(pkg.version, '1.0.21');
   const localAgentResource = pkg.build?.extraResources?.find((item) => item.to === 'local-agent');
   assert.ok(localAgentResource);
   assert.ok(localAgentResource.filter.includes('server.js'));
@@ -23,6 +23,16 @@ test('desktop bundles and starts NOVA Local Tools without a second assistant UI'
   assert.match(bootstrap, /startBundledLocalAgent/);
   assert.match(bootstrap, /ELECTRON_RUN_AS_NODE:\s*"1"/);
   assert.match(bootstrap, /legacyOnline \? 8788 : 8787/);
+  const offlineWebResource = pkg.build?.extraResources?.find((item) => item.to === 'offline-web');
+  assert.ok(offlineWebResource);
+  assert.match(bootstrap, /startBundledOfflineCockpit/);
+  assert.match(bootstrap, /OFFLINE_WEB_PORT = 8790/);
+  const main = fs.readFileSync(path.join(root, 'electron', 'main.js'), 'utf8');
+  assert.match(main, /did-fail-load/);
+  assert.match(main, /http:\/\/127\.0\.0\.1:8790/);
+  assert.match(main, /captureOfflineSession/);
+  assert.match(main, /hydrateOfflineSession/);
+  assert.match(main, /nova_local_task_snapshot_v1/);
 });
 
 test('startup refreshes only HTTP cache before loading the remote cockpit', () => {

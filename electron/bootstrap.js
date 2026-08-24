@@ -1,11 +1,60 @@
 const { app, session, Notification } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { spawn } = require("node:child_process");
+const fs = require("node:fs");
 const path = require("node:path");
 const http = require("node:http");
 
 let updaterStarted = false;
 let localAgentProcess = null;
+let offlineWebServer = null;
+const OFFLINE_WEB_PORT = 8790;
+
+const MIME_TYPES = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
+};
+
+function startBundledOfflineCockpit() {
+  const webRoot = app.isPackaged
+    ? path.join(process.resourcesPath, "offline-web")
+    : path.join(__dirname, "..", "dist");
+  const indexPath = path.join(webRoot, "index.html");
+  if (!fs.existsSync(indexPath)) {
+    console.log(`[desktop] offline Cockpit missing: ${indexPath}`);
+    return Promise.resolve(false);
+  }
+  return new Promise((resolve) => {
+    offlineWebServer = http.createServer((request, response) => {
+      let pathname = "/";
+      try { pathname = decodeURIComponent(new URL(request.url, `http://127.0.0.1:${OFFLINE_WEB_PORT}`).pathname); } catch {}
+      const requested = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+      const candidate = path.resolve(webRoot, requested);
+      const insideRoot = candidate === webRoot || candidate.startsWith(`${webRoot}${path.sep}`);
+      const filePath = insideRoot && fs.existsSync(candidate) && fs.statSync(candidate).isFile() ? candidate : indexPath;
+      response.writeHead(200, {
+        "Content-Type": MIME_TYPES[path.extname(filePath).toLowerCase()] || "application/octet-stream",
+        "Cache-Control": "no-cache",
+      });
+      fs.createReadStream(filePath).pipe(response);
+    });
+    offlineWebServer.once("error", (error) => {
+      console.log(`[desktop] offline Cockpit server unavailable: ${error.message}`);
+      resolve(error.code === "EADDRINUSE");
+    });
+    offlineWebServer.listen(OFFLINE_WEB_PORT, "127.0.0.1", () => {
+      console.log(`[desktop] offline Cockpit ready on 127.0.0.1:${OFFLINE_WEB_PORT}`);
+      resolve(true);
+    });
+  });
+}
 
 function localAgentOnline(port) {
   return new Promise((resolve) => {
@@ -36,6 +85,7 @@ async function startBundledLocalAgent() {
 
 app.on("before-quit", () => {
   if (localAgentProcess && !localAgentProcess.killed) localAgentProcess.kill();
+  if (offlineWebServer) offlineWebServer.close();
 });
 
 function notify(title, body) {
@@ -116,6 +166,7 @@ function startAutoUpdater() {
 
 app.whenReady().then(async () => {
   await startBundledLocalAgent();
+  await startBundledOfflineCockpit();
   await refreshWebRuntime();
 
   // On charge l'application historique seulement après le nettoyage du cache HTTP,

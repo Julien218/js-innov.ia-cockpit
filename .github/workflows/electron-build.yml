@@ -28,6 +28,12 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Build offline Cockpit interface
+        working-directory: .
+        run: |
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run build
+
       - name: Read Electron version
         id: version
         shell: pwsh
@@ -59,6 +65,7 @@ jobs:
           if (-not (Test-Path "dist/latest.yml")) { throw "dist/latest.yml manquant : auto-update impossible" }
           $exe = Get-ChildItem "dist/*.exe" | Select-Object -First 1
           if (-not $exe) { throw "Installeur .exe manquant" }
+          if (-not (Test-Path "dist/win-unpacked/resources/offline-web/index.html")) { throw "Interface Cockpit hors ligne manquante" }
           Write-Host "Installer: $($exe.Name)"
 
       - name: Upload Windows artifact

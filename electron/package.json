@@ -1,6 +1,6 @@
 {
   "name": "jsinnovia-cockpit",
-  "version": "1.0.20",
+  "version": "1.0.21",
   "description": "JS-Innov.IA Cockpit — Application desktop Windows",
   "main": "bootstrap.js",
   "author": "Julien Pagin <julien@jsinnovia.com>",
@@ -45,6 +45,13 @@
         "filter": [
           "server.js",
           "package.json"
+        ]
+      },
+      {
+        "from": "../dist",
+        "to": "offline-web",
+        "filter": [
+          "**/*"
         ]
       }
     ],
