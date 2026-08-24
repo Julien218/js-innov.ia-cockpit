@@ -1,10 +1,14 @@
+const { AGENT_REGISTRY } = require('./server-agent-registry.cjs');
+
 const BASE44_API_KEY = String(process.env.BASE44_API_KEY || process.env.BASE44_SERVER_API_KEY || '').trim();
 const BASE44_AGENT_URL = String(process.env.BASE44_AGENT_URL || 'https://app.base44.com/api/agents').replace(/\/$/, '');
 const JS_AGENT_URL = String(process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app').replace(/\/$/, '');
 const JS_AGENT_KEY = String(process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '').trim();
 const MAX_DELEGATES = Math.max(1, Math.min(3, Number(process.env.COMPANION_MAX_SPECIALISTS || 2)));
 
-const SITE_AGENT_REGISTRY = Object.freeze([
+/* Le proxy UI et l'orchestrateur consomment exactement le même registre. */
+const SITE_AGENT_REGISTRY = Object.freeze(AGENT_REGISTRY.filter((agent) => agent.status === 'active'));
+/*
   {
     key: 'jsinnovia-core',
     name: 'JsInnov-Agent',
@@ -95,7 +99,7 @@ const SITE_AGENT_REGISTRY = Object.freeze([
     aliases: ['creative director', 'direction creative', 'direction créative'],
     capabilities: ['branding', 'identite', 'identité', 'visuel', 'campagne', 'storyboard', 'direction artistique', 'créatif', 'creatif'],
   },
-]);
+]); */
 
 function norm(value) {
   return String(value || '')
@@ -163,7 +167,7 @@ function buildVirtualAgent(message, preferred = null) {
 }
 
 function shouldAutoDelegate(message) {
-  return /(analyse|audit|diagnosti|verifi|vérifi|travaille|continue|avance|corrige|optimis|prepare|prépare|planifie|finalise|teste|test|projet|site|video|vidéo|campagne|publication|architecture|code|bug)/i.test(String(message || ''));
+  return /(analyse|audit|diagnosti|verifi|vérifi|travaille|continue|avance|corrige|optimis|prepare|prépare|planifie|finalise|teste|test|projet|site|video|vidéo|campagne|publication|architecture|code|bug|dns|tls|https|seo|domaine|domain|hébergement|hebergement)/i.test(String(message || ''));
 }
 
 function buildAgentRoutingContext(message) {
@@ -204,9 +208,9 @@ function specialistPrompt(agent, message) {
   return [
     `Tu es ${agent.name}, agent métier délégué par le Companion JS-Innov.IA.`,
     `Rôle fonctionnel: ${agent.role}.`,
-    'Mission: analyser la demande en lecture seule et produire un rapport exploitable par l’architecte principal.',
+    'Mission: interroger réellement les données et capacités auxquelles ton backend a accès, en lecture seule, puis produire un rapport exploitable par l’architecte principal.',
     'Ne publie rien, n’envoie rien, ne supprime rien, ne modifie aucune donnée et ne déclenche aucun déploiement.',
-    'Réponds avec: état observé, anomalies, travail restant, dépendances, prochaines tâches recommandées.',
+    'N’affirme jamais qu’une vérification est impossible avant d’avoir contrôlé tes capacités réelles. Réponds avec: état observé, preuves ou identifiants disponibles, anomalies, travail restant, dépendances et prochaines tâches recommandées.',
     '',
     `Demande: ${String(message || '').slice(0, 3500)}`,
   ].join('\n');
@@ -308,7 +312,8 @@ function buildDelegationContext(results = []) {
   for (const item of results) {
     const name = item?.agent?.name || 'Agent métier';
     if (item.ok) {
-      lines.push(`- ${name} (${item.agent.role}) via ${item.provider || item.agent.provider} :`);
+      const runId = item.conversation_id || item.session_id || 'non fourni';
+      lines.push(`- ${name} (${item.agent.role}) via ${item.provider || item.agent.provider} | exécution=${runId} :`);
       lines.push(String(item.content || '').slice(0, 8000));
     } else if (item.skipped) {
       lines.push(`- ${name}: non exécuté (${item.reason || 'indisponible'}).`);

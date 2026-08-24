@@ -11,6 +11,7 @@ const {
   inferVirtualRole,
   buildAgentRoutingContext,
   shouldAutoDelegate,
+  buildDelegationContext,
 } = orchestrator;
 
 test('route Synergie Dour vers son agent Base44 dédié', () => {
@@ -24,6 +25,21 @@ test('route MiniMax H3 / Video Studio vers Agent GeneratVideoPro', () => {
   const plan = resolveAgentPlan('Continue Video Studio et vérifie MiniMax H3 dans ComfyUI');
   assert.ok(plan.some((item) => item.agent.role === 'video_production'));
   assert.ok(plan.some((item) => item.agent.provider_agent_id === '69e467a9d6329bb2ead81fa3'));
+});
+
+test('route DNS, TLS et SEO vers JsInnov-Agent', () => {
+  const plan = resolveAgentPlan('Diagnostique réellement le DNS, HTTPS, TLS et SEO de jsinnovia.com');
+  assert.equal(plan[0].agent.provider_agent_id, '6a1845e17cc526d1e44965bc');
+});
+
+test('distingue DourConnect et VilleConnect', () => {
+  assert.equal(resolveAgentPlan('Analyse dourconnect.be')[0].agent.provider_agent_id, '6a22f0c096ce009a943f4a05');
+  assert.equal(resolveAgentPlan('Analyse villeconnect.be')[0].agent.provider_agent_id, '6a11d1493754e75ce76ee0de');
+});
+
+test('route le CRM Cockpit vers NOVA Base44', () => {
+  const plan = resolveAgentPlan('NOVA analyse le CRM et le portfolio du Cockpit');
+  assert.equal(plan[0].agent.provider_agent_id, '69ff4dc771a2cdab275f8a00');
 });
 
 test('peut combiner un agent site et un spécialiste transverse', () => {
@@ -41,6 +57,13 @@ test('crée un rôle métier virtuel pertinent quand aucun agent historique ne c
 test('la délégation automatique ne se déclenche pas sur une simple salutation', () => {
   assert.equal(shouldAutoDelegate('Bonjour merci'), false);
   assert.equal(shouldAutoDelegate('Analyse le projet VilleConnect'), true);
+  assert.equal(shouldAutoDelegate('Contrôle DNS, TLS et HTTPS'), true);
+});
+
+test('les résultats délégués conservent une preuve de conversation', () => {
+  const context = buildDelegationContext([{ ok: true, provider: 'base44', conversation_id: 'conv-123', agent: { name: 'JsInnov-Agent', role: 'architecture_devops' }, content: 'DNS observé.' }]);
+  assert.match(context, /exécution=conv-123/);
+  assert.match(context, /DNS observé/);
 });
 
 test('le contexte de routage interdit les clés Base44 côté frontend', () => {
@@ -63,5 +86,14 @@ test('la mémoire owner intègre routage, délégation et journal agent_runs', (
 test('Docker embarque les modules d’orchestration', () => {
   const docker = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
   assert.match(docker, /server-agent-orchestrator\.cjs/);
+  assert.match(docker, /server-agent-registry\.cjs/);
   assert.match(docker, /server-agent-run-log\.cjs/);
+});
+
+test('le proxy et NOVA utilisent un registre Base44 unique', () => {
+  const registry = require(path.join(root, 'server-agent-registry.cjs')).AGENT_REGISTRY;
+  const active = registry.filter((agent) => agent.status === 'active');
+  assert.equal(active.length, 10);
+  assert.equal(new Set(active.map((agent) => agent.provider_agent_id)).size, 10);
+  assert.deepEqual(orchestrator.SITE_AGENT_REGISTRY, active);
 });
