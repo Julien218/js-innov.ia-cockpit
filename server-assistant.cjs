@@ -195,6 +195,17 @@ function validEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || ''));
 }
 
+function guardUnverifiedCapabilityRefusal(value) {
+  const text = String(value || '');
+  const staleRefusal = /(je ne peux pas ex[eé]cuter(?: de t[aâ]ches?)? directement|je suis une ia textuelle|l['’]agent local[^.\n]*(?:hors ligne|offline)[^.\n]*donc)/i;
+  if (!staleRefusal.test(text)) return text;
+  return [
+    'Je ne conclus pas à une indisponibilité sur la base d’un ancien état ou du seul statut de l’Agent Local.',
+    'NOVA doit d’abord vérifier les capacités, actions et agents disponibles dans le Cockpit pour cette demande.',
+    'Si une capacité requise manque réellement après cette vérification, je préciserai laquelle et proposerai la prochaine action vérifiable.',
+  ].join(' ');
+}
+
 function sanitizeAction(raw, user) {
   if (!raw || typeof raw !== 'object') return null;
   const definition = ALLOWED_ACTIONS[raw.type];
@@ -341,7 +352,17 @@ router.post('/chat', async (req, res) => {
   const sessionId = sessionIdFor(req);
   try {
     const audience = await buildAdaptiveAudienceContext(req.user);
-    const contextBlocks = [audience.context].filter(Boolean);
+    const contextBlocks = [
+      audience.context,
+      [
+        '[CONTRAT DE CAPACITÉS NOVA — état courant du serveur]',
+        `Actions Cockpit autorisées pour cette session: ${availableActionsFor(req.user).join(', ') || 'aucune action d’écriture'}.`,
+        'L’Agent Local 8787 est une capacité optionnelle et son absence ne signifie jamais que NOVA ou le Cockpit ne peuvent rien exécuter.',
+        'Avant d’affirmer qu’une action, un outil ou un agent est indisponible, vérifie les actions et contextes réellement fournis dans cette requête.',
+        'Interdit: se présenter comme une simple IA textuelle, reprendre un ancien statut de capacité, ou dire « je ne peux pas exécuter directement » sans preuve issue de la requête courante.',
+        '[/CONTRAT DE CAPACITÉS NOVA]',
+      ].join('\n'),
+    ].filter(Boolean);
 
     if (audience.mode === 'owner') {
       try {
@@ -440,7 +461,7 @@ router.post('/chat', async (req, res) => {
     );
 
     res.json({
-      message: data.response || data.reply || data.message || 'Réponse vide',
+      message: guardUnverifiedCapabilityRefusal(data.response || data.reply || data.message || 'Réponse vide'),
       confirmation,
       conversation_id: conversationIdFrom(req),
       model_used: data.model_used || data.model,
@@ -604,3 +625,4 @@ router.post('/upload', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.guardUnverifiedCapabilityRefusal = guardUnverifiedCapabilityRefusal;

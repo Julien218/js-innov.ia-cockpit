@@ -54,6 +54,14 @@ function explicitExecutionAuthorization(message) {
     || /(go|oki|ok|oui)[,\s!-]*(effectue|ex[eé]cute|lance|continue|poursuis)/.test(source);
 }
 
+function removeStaleConfirmationLanguage(value) {
+  return String(value || '')
+    .replace(/[^.!?\n]*(?:pr[eê]tes?\s+[àa]\s+[eê]tre\s+confirm[eé]es?|pr[eê]t\s+[àa]\s+[eê]tre\s+confirm[eé])[^.!?\n]*[.!?]?/gi, '')
+    .replace(/[^.!?\n]*souhaitez-vous\s+que\s+je\s+(?:les?\s+)?(?:envoie|lance|ex[eé]cute)[^.!?\n]*[.!?]?/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 async function recentContext(req) {
   const sessionId = sessionIdFor(req);
   try {
@@ -167,7 +175,7 @@ router.post('/chat', async (req, res, next) => {
         ? `\n\n✅ Exécution lancée et suivie: ${executionResult.succeeded}/${executionResult.requested} tâche(s) traitée(s) sans confirmation supplémentaire.`
         : `\n\n⚠️ Exécution partielle: ${executionResult.succeeded}/${executionResult.requested} tâche(s) traitée(s). Les branches bloquées restent identifiées sans arrêter les autres.`;
       return res.status(executionResult.success ? 200 : 207).json({
-        message: `${data.response || data.reply || data.message || 'Batch préparé.'}${suffix}`,
+        message: `${removeStaleConfirmationLanguage(data.response || data.reply || data.message || 'Batch préparé.')}${suffix}`,
         confirmation: null,
         execution_result: executionResult,
         conversation_id: conversationIdFrom(req),
@@ -233,3 +241,4 @@ router.post('/confirm', async (req, res, next) => {
 module.exports = router;
 module.exports.batchSignals = batchSignals;
 module.exports.explicitExecutionAuthorization = explicitExecutionAuthorization;
+module.exports.removeStaleConfirmationLanguage = removeStaleConfirmationLanguage;

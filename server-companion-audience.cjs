@@ -83,7 +83,7 @@ async function buildAdaptiveAudienceContext(user) {
       client_id: null,
       client_name: null,
       context: '[MODE OWNER JS-INNOV.IA — opérateur superadministrateur authentifié]',
-      display: { assistant_name: 'Julien AI Companion', audience: 'owner' },
+      display: { assistant_name: 'NOVA', brand_name: 'JS-Innov.IA', audience: 'owner' },
     };
   }
 

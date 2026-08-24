@@ -17,6 +17,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import novaAvatar from '@/assets/nova-avatar-128.png';
 
+const LOCAL_NOVA_URL = 'http://127.0.0.1:8787';
+const LOCAL_NOVA_PROMPT = `Tu es NOVA, l’unique assistant visible du Cockpit JS-Innov.IA. Tu conserves le même nom et le même rôle en mode cloud et en mode local. Vérifie les outils réellement disponibles avant toute affirmation de capacité. Ne dis jamais que tu es une simple IA textuelle ni que tu ne peux rien exécuter uniquement parce qu’Internet est coupé.`;
+
 const FloatingAgent = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState(() => {
@@ -147,20 +150,50 @@ const FloatingAgent = () => {
     setLoading(true);
 
     try {
-      const resp = await fetch('/api/assistant/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ message: msg, conversation_id: conversationId }),
-      });
+      const sendCloud = async () => {
+        const resp = await fetch('/api/assistant/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ message: msg, conversation_id: conversationId }),
+        });
+        if (!resp.ok) {
+          const errData = await resp.json().catch(() => ({}));
+          throw new Error(errData.error || 'Cockpit cloud indisponible');
+        }
+        return resp.json();
+      };
 
-      if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({}));
-        throw new Error(errData.error || 'Erreur serveur');
+      const sendLocal = async () => {
+        const resp = await fetch(`${LOCAL_NOVA_URL}/api/agent/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: msg,
+            history: messages.slice(-20).map(({ role, content }) => ({ role, content })),
+            system_prompt: LOCAL_NOVA_PROMPT,
+            context: { source: 'cockpit-nova', conversation_id: conversationId, offline: true },
+          }),
+          signal: AbortSignal.timeout(90000),
+        });
+        if (!resp.ok) throw new Error(`NOVA locale indisponible (${resp.status})`);
+        const data = await resp.json();
+        return { ...data, local_fallback: true };
+      };
+
+      let data;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        data = await sendLocal();
+      } else {
+        try {
+          data = await sendCloud();
+        } catch {
+          data = await sendLocal();
+        }
       }
 
-      const data = await resp.json();
-      let content = data.message || data.response || data.reply || 'Réponse vide';
+      let content = data.message || data.response || data.reply || data.content || data.text || 'Réponse vide';
+      if (data.local_fallback) content = `Mode local · ${content}`;
       if (data.confirmation) {
         content += '\n\n⚠️ Action proposée: ' + (data.confirmation.type || 'Action') + '. Confirme pour exécuter.';
       }
@@ -168,11 +201,11 @@ const FloatingAgent = () => {
       setMessages(prev => [...prev, { role: 'assistant', content, ts: Date.now() }]);
       speak(content);
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ ' + err.message, ts: Date.now(), isError: true }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ NOVA cloud et locale sont injoignables : ' + err.message, ts: Date.now(), isError: true }]);
     } finally {
       setLoading(false);
     }
-  }, [input, loading, conversationId, speak, stopSpeaking]);
+  }, [input, loading, conversationId, messages, speak, stopSpeaking]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {

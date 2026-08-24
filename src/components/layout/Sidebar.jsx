@@ -4,9 +4,9 @@ import {
   LayoutDashboard, Users, Target, FolderKanban,
   FileText, Receipt, ChevronLeft, ChevronRight, X,
   CheckSquare, MessageSquare, Shield,
-  Bot, Network, Smartphone, LogOut, Crown, Briefcase, User,
+  Network, Smartphone, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
-  PlayCircle, GalleryHorizontalEnd, Send, Server, Gauge, Workflow,
+  PlayCircle, GalleryHorizontalEnd, Send, Gauge, Workflow,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -136,8 +136,6 @@ const allNavGroups = [
   {
     label: "IA & Système",
     items: [
-      { label: "Julien AI", icon: Bot, path: "/agent", minRole: "collaborateur", agentStatus: true },
-      { label: "Agent Local", icon: Server, path: "/agent", minRole: "admin", agentLocal: true },
       { label: "Agents IA", icon: Network, path: "/agents-ia" },
       { label: "Mobile Hub", icon: Smartphone, path: "/mobile-hub" },
       { label: "AI Cost Control", icon: Gauge, path: "/ai-cost-control", minRole: "admin" },

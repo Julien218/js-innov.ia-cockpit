@@ -36,7 +36,6 @@ import HainoFlow from "@/pages/HainoFlow";
 import Commissions from "@/pages/Commissions";
 import Validations from "@/pages/Validations";
 import Logs from "@/pages/Logs";
-import Agent from "@/pages/Agent";
 import AgentsIA from "@/pages/AgentsIA";
 import AICostControl from "@/pages/AICostControl";
 import Invitations from "@/pages/Invitations";
@@ -101,7 +100,7 @@ const AppRoutes = () => {
           <Route path="/mes-factures" element={<PageBoundary><ClientRecords kind="invoices" /></PageBoundary>} />
           <Route path="/commissions" element={<PageBoundary><Commissions /></PageBoundary>} />
 
-          <Route path="/agent" element={isClient ? <Navigate to="/" replace /> : <PageBoundary><Agent /></PageBoundary>} />
+          <Route path="/agent" element={<Navigate to="/" replace />} />
           <Route path="/agents-ia" element={isClient ? <Navigate to="/" replace /> : <PageBoundary><AgentsIA /></PageBoundary>} />
           <Route path="/mobile-hub" element={<PageBoundary><MobileHub /></PageBoundary>} />
           <Route path="/ai-cost-control" element={<PageBoundary><AICostControl /></PageBoundary>} />
