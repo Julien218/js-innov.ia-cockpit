@@ -10,6 +10,20 @@ const NEGATIVE = new Set([
 
 const state = new Map();
 
+function isAffirmativeIntent(value) {
+  const intent = normalize(value);
+  return AFFIRMATIVE.has(intent)
+    || /^(?:oui|ok|oki|go|je confirme|confirme|confirmation|execute|vas y|fais le)\b/.test(intent);
+}
+
+function executionProof(result) {
+  if (!Array.isArray(result?.results) || result.results.length === 0) return '';
+  return result.results.map((item, index) => {
+    const error = item.error ? ` — erreur: ${item.error}` : '';
+    return `${index + 1}. task_id=${item.task_id || 'absent'} · run_id=${item.run_id || 'aucun'} · statut=${item.status || (item.success ? 'créée' : 'échec')}${error}`;
+  }).join('\n');
+}
+
 function normalize(value) {
   return String(value || '')
     .normalize('NFD')
@@ -112,7 +126,8 @@ async function executeConfirmedAction(originalFetch, pending, userMessage) {
   }
 
   const label = confirmData.action_summary || pending.summary || confirmData.action_type || 'Action';
-  const message = `✅ ${label} — action exécutée une seule fois et journalisée.`;
+  const proof = executionProof(executionResult);
+  const message = `✅ ${label} — action exécutée une seule fois et journalisée.${proof ? `\n\nPreuves du lot:\n${proof}` : ''}`;
   await appendHistory(originalFetch, pending.conversationId, userMessage, message);
 
   return jsonResponse({
@@ -163,7 +178,7 @@ export function installAssistantConfirmationBridge() {
       return jsonResponse({ message, response: message, confirmation: null, cancelled: true, conversation_id: key });
     }
 
-    if (pending && AFFIRMATIVE.has(intent)) {
+    if (pending && isAffirmativeIntent(intent)) {
       // On consomme le jeton avant l'appel : un double clic ou une répétition ne peut pas rejouer l'action.
       state.delete(key);
       return executeConfirmedAction(originalFetch, pending, body.message);
