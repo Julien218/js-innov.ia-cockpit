@@ -20,6 +20,7 @@ import novaAvatar from '@/assets/nova-avatar-128.png';
 const LOCAL_NOVA_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
 const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
 const LOCAL_AUTOPILOT_LAST_RUN_KEY = 'nova_local_autopilot_last_run_v1';
+const LOCAL_TOOL_REQUEST = /\b(?:find_local_workflows|comfyui_health|ffmpeg_version|ffprobe_file|list_directory|http_diagnose)\b|(?:ex[eé]cut|diagnosti|contr[oô]l|v[eé]rifi|recherch).*(?:comfyui|port\s*8188|workflow|minimax|ffmpeg|ffprobe|dossier\s+local)/i;
 const LOCAL_NOVA_PROMPT = `Tu es NOVA, l’unique assistant visible du Cockpit JS-Innov.IA. Tu conserves le même nom et le même rôle en mode cloud et en mode local. Vérifie les outils réellement disponibles avant toute affirmation de capacité. Ne dis jamais que tu es une simple IA textuelle ni que tu ne peux rien exécuter uniquement parce qu’Internet est coupé.`;
 
 const FloatingAgent = () => {
@@ -86,7 +87,6 @@ const FloatingAgent = () => {
         const now = Date.now();
         const lastRun = Number(localStorage.getItem(LOCAL_AUTOPILOT_LAST_RUN_KEY) || 0);
         if (now - lastRun > 5 * 60_000) {
-          localStorage.setItem(LOCAL_AUTOPILOT_LAST_RUN_KEY, String(now));
           const taskSnapshot = { synced_at: new Date().toISOString(), tasks };
           void (async () => {
             for (const localUrl of LOCAL_NOVA_URLS) {
@@ -95,8 +95,10 @@ const FloatingAgent = () => {
                 const localResult = await localResponse.json().catch(() => ({}));
                 if (!localResponse.ok) throw new Error(localResult.error || `HTTP ${localResponse.status}`);
                 if (Array.isArray(localResult.task_results) && localResult.task_results.length) {
-                  await fetch('/api/task-autopilot/local-results', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ task_results: localResult.task_results }) });
+                  const syncResponse = await fetch('/api/task-autopilot/local-results', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ task_results: localResult.task_results }) });
+                  if (!syncResponse.ok) throw new Error(`Synchronisation locale HTTP ${syncResponse.status}`);
                 }
+                localStorage.setItem(LOCAL_AUTOPILOT_LAST_RUN_KEY, String(Date.now()));
                 break;
               } catch {}
             }
@@ -185,6 +187,7 @@ const FloatingAgent = () => {
   const doSend = useCallback(async (text) => {
     const msg = (text || input).trim();
     if (!msg || loading) return;
+    const requiresLocalTool = LOCAL_TOOL_REQUEST.test(msg);
 
     setInput('');
     stopSpeaking();
@@ -234,7 +237,7 @@ const FloatingAgent = () => {
       };
 
       let data;
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      if (requiresLocalTool || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
         data = await sendLocal();
       } else {
         try {
@@ -253,7 +256,8 @@ const FloatingAgent = () => {
       setMessages(prev => [...prev, { role: 'assistant', content, ts: Date.now() }]);
       speak(content);
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ NOVA cloud et locale sont injoignables : ' + err.message, ts: Date.now(), isError: true }]);
+      const prefix = requiresLocalTool ? '⚠️ L’agent local requis est injoignable : ' : '⚠️ NOVA cloud et locale sont injoignables : ';
+      setMessages(prev => [...prev, { role: 'assistant', content: prefix + err.message, ts: Date.now(), isError: true }]);
     } finally {
       setLoading(false);
     }

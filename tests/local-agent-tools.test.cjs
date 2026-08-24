@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const floatingAgent = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'FloatingAgent.jsx'), 'utf8');
 
 test('NOVA locale reconnaît uniquement les intentions d’outils autorisées', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-tools-'));
@@ -92,4 +93,17 @@ test('le Cockpit synchronise et transmet une copie locale des tâches', () => {
   assert.match(source, /task_snapshot: taskSnapshot/);
   assert.match(source, /\/api\/tasks\/autopilot/);
   assert.match(source, /\/api\/task-autopilot\/local-results/);
+});
+
+test('les demandes d outils locaux sont routées vers NOVA Windows même avec Internet', () => {
+  assert.match(floatingAgent, /LOCAL_TOOL_REQUEST/);
+  assert.match(floatingAgent, /requiresLocalTool \|\| \(typeof navigator/);
+  assert.match(floatingAgent, /data = await sendLocal\(\)/);
+});
+
+test('une synchronisation locale échouée reste relançable', () => {
+  const successMarker = floatingAgent.indexOf("localStorage.setItem(LOCAL_AUTOPILOT_LAST_RUN_KEY, String(Date.now()))");
+  const localFetch = floatingAgent.indexOf('/api/tasks/autopilot');
+  assert.ok(successMarker > localFetch);
+  assert.match(floatingAgent, /if \(!syncResponse\.ok\) throw new Error/);
 });
