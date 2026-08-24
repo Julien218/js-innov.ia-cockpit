@@ -40,6 +40,14 @@ test('NOVA locale reconnaît uniquement les intentions d’outils autorisées', 
     assert.match(analysis, /Données clients et facturation/);
     assert.match(analysis, /Exécutions réelles lancées: 0/);
     assert.match(analysis, /Aucun tool_run n’a été créé/);
+    const duplicates = module.taskAnalysisResponse({ tasks: [
+      { titre: 'Analyser les factures', statut: 'a_faire' },
+      { titre: 'Analyser les factures et leur rattachement', statut: 'a_faire' },
+      { titre: 'SEO automatique — jsinnovia.com', statut: 'a_faire' },
+      { titre: 'SEO automatique — jsinnovia.com', statut: 'a_faire' },
+    ] });
+    assert.match(duplicates, /4 enregistrement\(s\).*2 tâche\(s\) unique\(s\)/s);
+    assert.match(duplicates, /2 occurrences regroupées/);
   } finally {
     if (previous.noListen === undefined) delete process.env.LOCAL_AGENT_NO_LISTEN; else process.env.LOCAL_AGENT_NO_LISTEN = previous.noListen;
     if (previous.roots === undefined) delete process.env.LOCAL_AGENT_ALLOWED_ROOTS; else process.env.LOCAL_AGENT_ALLOWED_ROOTS = previous.roots;

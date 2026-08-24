@@ -12,7 +12,7 @@ const PORT = Number(process.env.LOCAL_AGENT_PORT || 8787);
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-const VERSION = '1.2.1';
+const VERSION = '1.2.2';
 const MAX_BODY = 5 * 1024 * 1024;
 const approvals = new Map();
 const runs = new Map();
@@ -169,6 +169,25 @@ function taskGroup(task) {
   return 'Autres tâches';
 }
 
+function normalizedTaskText(task) {
+  return `${task.titre || task.title || ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function canonicalTaskKey(task) {
+  const text = normalizedTaskText(task);
+  if (/ajouter.*completer.*clients?/.test(text)) return 'clients-completer';
+  if (/analyser.*factures?/.test(text)) return 'factures-analyser';
+  if (/rattachement.*clients?.*(?:sites?|societes?|asbl)/.test(text)) return 'clients-rattachements';
+  if (/mise a jour.*synergie dour/.test(text)) return 'synergie-dour-informations';
+  if (/minimax h3.*local/.test(text)) return 'video-minimax-h3-local';
+  if (/campagne.*tests?.*video ia/.test(text)) return 'video-campagne-tests';
+  if (/documentation.*workflows?.*locaux/.test(text)) return 'video-documentation-workflows';
+  if (/etat.*api.*video ia/.test(text)) return 'video-api-etat';
+  if (/persistance.*workflows?.*video ia/.test(text)) return 'video-workflows-persistance';
+  if (/fonctionnalites.*non operationnelles.*video ia/.test(text)) return 'video-fonctionnalites-manquantes';
+  return text;
+}
+
 function taskAnalysisResponse(snapshot) {
   const tasks = Array.isArray(snapshot?.tasks) ? snapshot.tasks : [];
   if (!tasks.length) return taskSnapshotResponse(snapshot);
@@ -178,21 +197,33 @@ function taskAnalysisResponse(snapshot) {
     const due = Date.parse(task.date_echeance || task.due_date || '');
     const overdue = Number.isFinite(due) && due < now;
     const group = taskGroup(task);
-    return { task, overdue, group };
-  }).sort((a, b) => Number(b.overdue) - Number(a.overdue));
+    return { task, overdue, group, count: 1 };
+  });
+  const deduplicated = new Map();
+  for (const item of ranked) {
+    const key = canonicalTaskKey(item.task);
+    const existing = deduplicated.get(key);
+    if (existing) {
+      existing.count += 1;
+      existing.overdue ||= item.overdue;
+    } else {
+      deduplicated.set(key, { ...item });
+    }
+  }
+  const unique = [...deduplicated.values()].sort((a, b) => Number(b.overdue) - Number(a.overdue));
   const grouped = new Map();
-  for (const item of ranked) grouped.set(item.group, [...(grouped.get(item.group) || []), item]);
+  for (const item of unique) grouped.set(item.group, [...(grouped.get(item.group) || []), item]);
   const lines = [];
   let index = 1;
   for (const [group, items] of grouped) {
     lines.push(`\n${group}:`);
     for (const item of items) {
       const title = String(item.task.titre || item.task.title || `Tâche ${index}`).trim();
-      lines.push(`${index}. ${title}${item.overdue ? ' — EN RETARD' : ''}`);
+      lines.push(`${index}. ${title}${item.count > 1 ? ` — ${item.count} occurrences regroupées` : ''}${item.overdue ? ' — EN RETARD' : ''}`);
       index += 1;
     }
   }
-  return `Analyse factuelle de ${ranked.length} tâche(s) non terminée(s).${lines.join('\n')}\n\nExécutions réelles lancées: 0. Aucun tool_run n’a été créé. Les seuls outils disponibles sont ffmpeg_version, ffprobe_file et list_directory. Ces tâches ne fournissent aucun chemin de fichier ou dossier autorisé et nécessitent, selon le cas, ComfyUI, un client HTTP/API, l’accès aux données métier ou des droits d’écriture. Elles restent donc à faire ou bloquées; aucune n’est marquée terminée. Pour lancer un diagnostic local vérifiable, indiquez le chemin exact du dossier ou du fichier à contrôler.`;
+  return `Analyse factuelle de ${ranked.length} enregistrement(s) non terminé(s), regroupés en ${unique.length} tâche(s) unique(s).${lines.join('\n')}\n\nExécutions réelles lancées: 0. Aucun tool_run n’a été créé. Les seuls outils disponibles sont ffmpeg_version, ffprobe_file et list_directory. Ces tâches ne fournissent aucun chemin de fichier ou dossier autorisé et nécessitent, selon le cas, ComfyUI, un client HTTP/API, l’accès aux données métier ou des droits d’écriture. Elles restent donc à faire ou bloquées; aucune n’est marquée terminée. Pour lancer un diagnostic local vérifiable, indiquez le chemin exact du dossier ou du fichier à contrôler.`;
 }
 
 async function health() {
@@ -278,4 +309,4 @@ const server = http.createServer(async (req, res) => {
 if (process.env.LOCAL_AGENT_NO_LISTEN !== '1') {
   server.listen(PORT, '127.0.0.1', () => console.log(`NOVA Local Tools v${VERSION} http://127.0.0.1:${PORT}`));
 }
-export { executeTool, pathInsideAllowedRoot, requestedTool, requestsTaskList, taskSnapshotResponse, requestsTaskAnalysis, taskAnalysisResponse };
+export { executeTool, pathInsideAllowedRoot, requestedTool, requestsTaskList, taskSnapshotResponse, requestsTaskAnalysis, taskAnalysisResponse, canonicalTaskKey };
