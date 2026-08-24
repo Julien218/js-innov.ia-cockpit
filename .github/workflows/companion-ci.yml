@@ -22,11 +22,14 @@ on:
       - 'src/lib/assistantConfirmationBridge.js'
       - 'src/components/ClientCompanion.jsx'
       - 'src/components/RoleAwareFloatingAgent.jsx'
+      - 'src/components/FloatingAgent.jsx'
+      - 'local-agent/**'
       - 'src/pages/Agent.jsx'
       - 'src/pages/ClientDashboard.jsx'
       - 'src/pages/ClientRecords.jsx'
       - 'tests/companion-contract.test.cjs'
       - 'tests/companion-task-batch.test.cjs'
+      - 'tests/local-agent-tools.test.cjs'
       - 'tests/client-billing-integrity.test.cjs'
       - 'tests/hainoflow-tenant.test.cjs'
       - 'tests/billing-archive.test.cjs'
@@ -69,10 +72,11 @@ jobs:
           node --check server-tenant.cjs
           node --check server-ai-cost-attribution.cjs
           node --check server-client-costs.cjs
+          node --check local-agent/server.js
       - name: Full Cockpit regression suite
         run: npm test
       - name: Companion contract tests
-        run: node --require ./tests/node-test-globals.cjs --test tests/companion-contract.test.cjs tests/companion-task-batch.test.cjs tests/client-billing-integrity.test.cjs
+        run: node --require ./tests/node-test-globals.cjs --test tests/companion-contract.test.cjs tests/companion-task-batch.test.cjs tests/client-billing-integrity.test.cjs tests/local-agent-tools.test.cjs
       - name: Build web application
         run: npm run build
       - name: Verify client confidentiality and billing guards

@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "electron/**"
+      - "local-agent/**"
+      - "src/components/FloatingAgent.jsx"
+      - "tests/local-agent-tools.test.cjs"
       - "tests/electron-global-auto-update.test.cjs"
       - ".github/workflows/electron-auto-update-ci.yml"
       - ".github/workflows/electron-build.yml"
