@@ -31,6 +31,15 @@ test('NOVA locale reconnaît uniquement les intentions d’outils autorisées', 
       { titre: 'Ancienne tâche', statut: 'terminee' },
     ] }), /Ancienne tâche/);
     assert.match(module.taskSnapshotResponse(null), /Aucune liste de tâches.*copie locale/);
+    assert.equal(module.requestsTaskAnalysis('Analyse ces 11 tâches, regroupe les doublons et classe-les'), true);
+    const analysis = module.taskAnalysisResponse({ tasks: [
+      { titre: 'Contrôler API vidéo IA', statut: 'a_faire', priorite: 'haute', date_echeance: '2026-08-21' },
+      { titre: 'Analyser les factures clients', statut: 'a_faire', priorite: 'haute' },
+    ] });
+    assert.match(analysis, /Vidéo IA et workflows locaux/);
+    assert.match(analysis, /Données clients et facturation/);
+    assert.match(analysis, /Exécutions réelles lancées: 0/);
+    assert.match(analysis, /Aucun tool_run n’a été créé/);
   } finally {
     if (previous.noListen === undefined) delete process.env.LOCAL_AGENT_NO_LISTEN; else process.env.LOCAL_AGENT_NO_LISTEN = previous.noListen;
     if (previous.roots === undefined) delete process.env.LOCAL_AGENT_ALLOWED_ROOTS; else process.env.LOCAL_AGENT_ALLOWED_ROOTS = previous.roots;
@@ -46,6 +55,9 @@ test('le moteur local emploie execFile sans shell ni commande arbitraire', () =>
   assert.match(source, /tool_not_allowed/);
   assert.match(source, /tool-runs\.jsonl/);
   assert.match(source, /NOVA locale n’a produit aucune réponse exploitable/);
+  assert.match(source, /think: false/);
+  assert.match(source, /Copie locale des tâches/);
+  assert.match(source, /body\.context\.task_snapshot/);
 });
 
 test('le Cockpit synchronise et transmet une copie locale des tâches', () => {

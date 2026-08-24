@@ -115,7 +115,7 @@ async function executeTool(tool, args = {}) {
 }
 
 async function ollama(prompt, model = DEFAULT_MODEL) {
-  const response = await fetch(`${OLLAMA_URL}/api/generate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model, prompt, stream: false }), signal: AbortSignal.timeout(120000) });
+  const response = await fetch(`${OLLAMA_URL}/api/generate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model, prompt, stream: false, think: false }), signal: AbortSignal.timeout(120000) });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload?.error || `Ollama ${response.status}`);
   return String(payload.response || '').trim();
@@ -153,6 +153,46 @@ function taskSnapshotResponse(snapshot) {
     return `${index + 1}. ${title} — statut: ${status}${priority ? ` — priorité: ${priority}` : ''}`;
   });
   return `Tâches restant à effectuer d’après la copie locale${syncedAt} :\n\n${lines.join('\n')}`;
+}
+
+function requestsTaskAnalysis(message) {
+  const text = String(message || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return /\b(?:analyse|regroupe|classe|priorise)\b/.test(text) && /\btaches?\b/.test(text);
+}
+
+function taskGroup(task) {
+  const text = `${task.titre || task.title || ''} ${task.description || ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (/video|comfy|minimax|workflow|api/.test(text)) return 'Vidéo IA et workflows locaux';
+  if (/client|facture|societe|asbl|tva/.test(text)) return 'Données clients et facturation';
+  if (/avatar|companion|nova/.test(text)) return 'Assistant et avatar local';
+  if (/documentation/.test(text)) return 'Documentation';
+  return 'Autres tâches';
+}
+
+function taskAnalysisResponse(snapshot) {
+  const tasks = Array.isArray(snapshot?.tasks) ? snapshot.tasks : [];
+  if (!tasks.length) return taskSnapshotResponse(snapshot);
+  const now = Date.now();
+  const active = tasks.filter((task) => !['terminee', 'terminée', 'completed', 'done', 'annulee', 'annulée', 'cancelled'].includes(String(task.statut || task.status || '').toLowerCase()));
+  const ranked = active.map((task) => {
+    const due = Date.parse(task.date_echeance || task.due_date || '');
+    const overdue = Number.isFinite(due) && due < now;
+    const group = taskGroup(task);
+    return { task, overdue, group };
+  }).sort((a, b) => Number(b.overdue) - Number(a.overdue));
+  const grouped = new Map();
+  for (const item of ranked) grouped.set(item.group, [...(grouped.get(item.group) || []), item]);
+  const lines = [];
+  let index = 1;
+  for (const [group, items] of grouped) {
+    lines.push(`\n${group}:`);
+    for (const item of items) {
+      const title = String(item.task.titre || item.task.title || `Tâche ${index}`).trim();
+      lines.push(`${index}. ${title}${item.overdue ? ' — EN RETARD' : ''}`);
+      index += 1;
+    }
+  }
+  return `Analyse factuelle de ${ranked.length} tâche(s) non terminée(s).${lines.join('\n')}\n\nExécutions réelles lancées: 0. Aucun tool_run n’a été créé. Les seuls outils disponibles sont ffmpeg_version, ffprobe_file et list_directory. Ces tâches ne fournissent aucun chemin de fichier ou dossier autorisé et nécessitent, selon le cas, ComfyUI, un client HTTP/API, l’accès aux données métier ou des droits d’écriture. Elles restent donc à faire ou bloquées; aucune n’est marquée terminée. Pour lancer un diagnostic local vérifiable, indiquez le chemin exact du dossier ou du fichier à contrôler.`;
 }
 
 async function health() {
@@ -198,10 +238,16 @@ const server = http.createServer(async (req, res) => {
         const run = await executeTool(request.tool, request.args);
         return send(req, res, 200, { ok: run.success, response: toolResponse(run), tool_run: run });
       }
+      if (requestsTaskAnalysis(body.message)) {
+        return send(req, res, 200, { ok: true, response: taskAnalysisResponse(body.context?.task_snapshot), mode: 'local', source: 'local_task_analysis', tool_runs: [] });
+      }
       if (requestsTaskList(body.message)) {
         return send(req, res, 200, { ok: true, response: taskSnapshotResponse(body.context?.task_snapshot), mode: 'local', source: 'local_task_snapshot' });
       }
-      const prompt = `${body.system_prompt || 'Tu es NOVA, assistant local JS-Innov.IA.'}\nOutils réels: ffmpeg_version, ffprobe_file, list_directory. N’invente jamais une exécution.\nHistorique: ${JSON.stringify(Array.isArray(body.history) ? body.history.slice(-20) : []).slice(0, 20000)}\nUtilisateur: ${String(body.message).slice(0, 4000)}\nNOVA:`;
+      const taskContext = body.context?.task_snapshot
+        ? JSON.stringify(body.context.task_snapshot).slice(0, 30000)
+        : 'Aucune copie locale de tâches disponible.';
+      const prompt = `${body.system_prompt || 'Tu es NOVA, assistant local JS-Innov.IA.'}\nOutils réels: ffmpeg_version, ffprobe_file, list_directory. N’invente jamais une exécution. Ne prétends jamais avoir exécuté un outil sans tool_run réel. Si une tâche exige un outil absent, marque-la bloquée et précise l’outil manquant.\nCopie locale des tâches: ${taskContext}\nHistorique: ${JSON.stringify(Array.isArray(body.history) ? body.history.slice(-20) : []).slice(0, 20000)}\nUtilisateur: ${String(body.message).slice(0, 4000)}\nNOVA:`;
       const response = await ollama(prompt, body.model);
       if (!response) {
         return send(req, res, 200, { ok: true, response: 'NOVA locale n’a produit aucune réponse exploitable. Reformulez la demande ou précisez le fichier, le dossier ou l’action souhaitée.', model: body.model || DEFAULT_MODEL, mode: 'local', empty_model_response: true });
@@ -232,4 +278,4 @@ const server = http.createServer(async (req, res) => {
 if (process.env.LOCAL_AGENT_NO_LISTEN !== '1') {
   server.listen(PORT, '127.0.0.1', () => console.log(`NOVA Local Tools v${VERSION} http://127.0.0.1:${PORT}`));
 }
-export { executeTool, pathInsideAllowedRoot, requestedTool, requestsTaskList, taskSnapshotResponse };
+export { executeTool, pathInsideAllowedRoot, requestedTool, requestsTaskList, taskSnapshotResponse, requestsTaskAnalysis, taskAnalysisResponse };
