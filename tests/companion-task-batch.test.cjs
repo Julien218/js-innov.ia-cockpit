@@ -112,7 +112,7 @@ test('les modules batch sont présents dans l’image de production', () => {
 });
 
 test('le texte d’un batch déjà autorisé ne redemande jamais une confirmation', () => {
-  const cleaned = removeStaleConfirmationLanguage('Deux tâches sont prêtes à être confirmées. Souhaitez-vous que je les envoie ?');
+  const cleaned = removeStaleConfirmationLanguage('Deux tâches sont prêtes à être confirmées. Ce lot nécessite votre confirmation. Veuillez confirmer maintenant. Souhaitez-vous que je les envoie ?');
   assert.doesNotMatch(cleaned, /confirm[eé]|Souhaitez-vous/i);
   assert.match(batchSource, /removeStaleConfirmationLanguage\(data\.response/);
 });
@@ -133,8 +133,11 @@ test('le batch rapproche les tâches existantes par titre canonique', () => {
 });
 
 test('already_running exige un agent_run actif et expose son identifiant', () => {
-  assert.equal(latestActiveRun({ data: [{ id: 'old', status: 'completed' }] }), null);
-  assert.equal(latestActiveRun({ data: [{ id: 'run-1', status: 'running', updated_at: '2026-08-25T01:00:00Z' }] }).id, 'run-1');
+  assert.equal(latestActiveRun({ data: [{ id: 'old', task_id: 'task-1', status: 'completed' }] }, 'task-1'), null);
+  assert.equal(latestActiveRun({ data: [
+    { id: 'wrong-run', task_id: 'task-2', status: 'running', updated_at: '2026-08-25T02:00:00Z' },
+    { id: 'run-1', task_id: 'task-1', status: 'running', updated_at: '2026-08-25T01:00:00Z' },
+  ] }, 'task-1').id, 'run-1');
   assert.match(taskBatchSource, /agent-runs\?task_id=/);
   assert.match(taskBatchSource, /run_id: activeRun\.id/);
   assert.match(taskBatchSource, /Statut en_cours obsolète corrigé automatiquement/);

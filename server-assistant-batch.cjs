@@ -58,6 +58,8 @@ function removeStaleConfirmationLanguage(value) {
   return String(value || '')
     .replace(/[^.!?\n]*(?:pr[eê]tes?\s+[àa]\s+[eê]tre\s+confirm[eé]es?|pr[eê]t\s+[àa]\s+[eê]tre\s+confirm[eé])[^.!?\n]*[.!?]?/gi, '')
     .replace(/[^.!?\n]*souhaitez-vous\s+que\s+je\s+(?:les?\s+)?(?:envoie|lance|ex[eé]cute)[^.!?\n]*[.!?]?/gi, '')
+    .replace(/[^.!?\n]*(?:n[eé]cessite|requiert)\s+(?:votre|une)\s+confirmation[^.!?\n]*[.!?]?/gi, '')
+    .replace(/[^.!?\n]*veuillez\s+confirmer[^.!?\n]*[.!?]?/gi, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
