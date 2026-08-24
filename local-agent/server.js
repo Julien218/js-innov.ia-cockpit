@@ -12,7 +12,7 @@ const PORT = Number(process.env.LOCAL_AGENT_PORT || 8787);
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-const VERSION = '1.3.4';
+const VERSION = '1.3.5';
 const MAX_BODY = 5 * 1024 * 1024;
 const approvals = new Map();
 const runs = new Map();
@@ -338,7 +338,7 @@ async function executeLocalTaskAutopilot(snapshot) {
   const cache = new Map();
   const taskResults = [];
   for (const task of pending) {
-    const key = canonicalTaskKey(task.titre || task.title || '');
+    const key = canonicalTaskKey(task);
     if (seen.has(key)) continue;
     seen.add(key);
     const tools = localTaskPlan(task);

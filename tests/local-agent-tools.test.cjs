@@ -59,6 +59,14 @@ test('NOVA locale reconnaît uniquement les intentions d’outils autorisées', 
     assert.deepEqual(module.localTaskPlan({ titre: "Vérifier l'absence de workflow MiniMax H3 local" }), ['find_local_workflows', 'comfyui_health']);
     assert.deepEqual(module.localTaskPlan({ titre: "Contrôler l’état des API vidéo IA" }), ['comfyui_health']);
     assert.equal(module.localTaskPlan({ titre: 'Mettre à jour la documentation sur les workflows locaux' }), null);
+    const autopilot = await module.executeLocalTaskAutopilot({ tasks: [
+      { id: 'api-video', titre: "Contrôler l’état des API vidéo IA", statut: 'a_faire' },
+      { id: 'workflows', titre: 'Contrôler la persistance des workflows vidéo IA locaux', statut: 'a_faire' },
+      { id: 'minimax', titre: "Vérifier l'absence de workflow MiniMax H3 local", statut: 'a_faire' },
+    ] });
+    assert.equal(autopilot.examined, 3);
+    assert.equal(autopilot.executed, 3);
+    assert.deepEqual(autopilot.task_results.map((item) => item.task_id), ['api-video', 'workflows', 'minimax']);
   } finally {
     if (previous.noListen === undefined) delete process.env.LOCAL_AGENT_NO_LISTEN; else process.env.LOCAL_AGENT_NO_LISTEN = previous.noListen;
     if (previous.roots === undefined) delete process.env.LOCAL_AGENT_ALLOWED_ROOTS; else process.env.LOCAL_AGENT_ALLOWED_ROOTS = previous.roots;
