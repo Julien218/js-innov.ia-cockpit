@@ -15,7 +15,7 @@ test('desktop starts through the global bootstrap', () => {
 });
 
 test('desktop bundles and starts NOVA Local Tools without a second assistant UI', () => {
-  assert.equal(pkg.version, '1.0.19');
+  assert.equal(pkg.version, '1.0.20');
   const localAgentResource = pkg.build?.extraResources?.find((item) => item.to === 'local-agent');
   assert.ok(localAgentResource);
   assert.ok(localAgentResource.filter.includes('server.js'));
