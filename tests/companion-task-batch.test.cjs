@@ -10,7 +10,7 @@ const serverSource = fs.readFileSync(path.join(root, 'server.cjs'), 'utf8');
 const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
 
 const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage, executionProof } = require(path.join(root, 'server-assistant-batch.cjs'));
-const { canonicalTaskTitle, sanitizeTaskBatchPayload } = require(path.join(root, 'server-task-batch.cjs'));
+const { canonicalTaskTitle, latestActiveRun, sanitizeTaskBatchPayload } = require(path.join(root, 'server-task-batch.cjs'));
 
 test('les demandes multi-tâches et d’exécution sont reconnues sans intercepter un chat banal', () => {
   assert.equal(batchSignals('Crée les 6 tâches et délègue-les aux agents spécialisés'), true);
@@ -130,6 +130,14 @@ test('le batch rapproche les tâches existantes par titre canonique', () => {
   assert.match(taskBatchSource, /\/data\/Tache\?limit=250/);
   assert.match(taskBatchSource, /status: 'already_running'/);
   assert.match(taskBatchSource, /reused: true/);
+});
+
+test('already_running exige un agent_run actif et expose son identifiant', () => {
+  assert.equal(latestActiveRun({ data: [{ id: 'old', status: 'completed' }] }), null);
+  assert.equal(latestActiveRun({ data: [{ id: 'run-1', status: 'running', updated_at: '2026-08-25T01:00:00Z' }] }).id, 'run-1');
+  assert.match(taskBatchSource, /agent-runs\?task_id=/);
+  assert.match(taskBatchSource, /run_id: activeRun\.id/);
+  assert.match(taskBatchSource, /Statut en_cours obsolète corrigé automatiquement/);
 });
 
 test('une confirmation formulée en phrase complète est consommée par le pont UI', () => {

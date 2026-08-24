@@ -24,6 +24,21 @@ function canonicalTaskTitle(value) {
     .trim();
 }
 
+function latestActiveRun(payload) {
+  return rowsFrom(payload)
+    .filter((run) => ['running', 'queued', 'pending'].includes(cleanText(run.status, 40).toLowerCase()))
+    .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')))[0] || null;
+}
+
+async function activeRunForTask(agentFetch, taskId, organisation) {
+  const response = await agentFetch(`/agent-runs?task_id=${encodeURIComponent(taskId)}&limit=20`, {
+    headers: { 'x-organisation-id': organisation },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || `Lecture runs HTTP ${response.status}`);
+  return latestActiveRun(data);
+}
+
 function sanitizeTaskItem(item = {}) {
   const titre = cleanText(item.titre || item.title, 240);
   if (!titre) return null;
@@ -183,8 +198,15 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch }) {
       task = existingByTitle.get(titleKey) || null;
       const reusedTask = Boolean(task);
       if (task && cleanText(task.statut || task.status, 40).toLowerCase() === 'en_cours') {
-        results.push({ index, success: true, task_id: task.id, run_id: null, status: 'already_running', reused: true });
-        continue;
+        const activeRun = await activeRunForTask(agentFetch, task.id, organisation);
+        if (activeRun?.id) {
+          results.push({ index, success: true, task_id: task.id, run_id: activeRun.id, status: 'already_running', reused: true, verified: true });
+          continue;
+        }
+        await patchTask(agentFetch, task.id, {
+          statut: 'a_faire',
+          notes: `${task.notes || ''}\nStatut en_cours obsolète corrigé automatiquement: aucun agent_run actif trouvé.`.trim().slice(0, 4000),
+        }, organisation);
       }
       if (!task) {
         const createResponse = await agentFetch('/data/Tache', {
@@ -286,6 +308,7 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch }) {
 
 module.exports = {
   canonicalTaskTitle,
+  latestActiveRun,
   sanitizeTaskBatchPayload,
   executeTaskBatch,
 };
