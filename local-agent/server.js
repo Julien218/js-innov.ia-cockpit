@@ -12,7 +12,7 @@ const PORT = Number(process.env.LOCAL_AGENT_PORT || 8787);
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const MAX_BODY = 5 * 1024 * 1024;
 const approvals = new Map();
 const runs = new Map();
@@ -130,6 +130,27 @@ function requestedTool(message) {
   return null;
 }
 
+function requestsTaskList(message) {
+  return /(?:qu(?:el(?:le)?s?|oi).*(?:t[aâ]ches?|travail).*(?:effectuer|faire|cours|rest)|t[aâ]ches?.*(?:effectuer|faire|cours|rest))/i.test(String(message || ''));
+}
+
+function taskSnapshotResponse(snapshot) {
+  const tasks = Array.isArray(snapshot?.tasks) ? snapshot.tasks : [];
+  const syncedAt = snapshot?.synced_at ? ` (synchronisée le ${snapshot.synced_at})` : '';
+  if (!tasks.length) {
+    return `Aucune liste de tâches n’est disponible dans la copie locale${syncedAt}. Reconnectez brièvement le Cockpit pour la synchroniser, puis cette liste restera consultable hors connexion.`;
+  }
+  const pending = tasks.filter((task) => !['terminee', 'terminée', 'completed', 'done', 'annulee', 'annulée', 'cancelled'].includes(String(task.statut || task.status || '').toLowerCase()));
+  if (!pending.length) return `La copie locale${syncedAt} ne contient aucune tâche restant à effectuer.`;
+  const lines = pending.slice(0, 50).map((task, index) => {
+    const title = String(task.titre || task.title || task.nom || `Tâche ${index + 1}`).trim();
+    const status = String(task.statut || task.status || 'à faire').trim();
+    const priority = String(task.priorite || task.priority || '').trim();
+    return `${index + 1}. ${title} — statut: ${status}${priority ? ` — priorité: ${priority}` : ''}`;
+  });
+  return `Tâches restant à effectuer d’après la copie locale${syncedAt} :\n\n${lines.join('\n')}`;
+}
+
 async function health() {
   let ollamaOnline = false;
   let models = [];
@@ -173,8 +194,14 @@ const server = http.createServer(async (req, res) => {
         const run = await executeTool(request.tool, request.args);
         return send(req, res, 200, { ok: run.success, response: toolResponse(run), tool_run: run });
       }
+      if (requestsTaskList(body.message)) {
+        return send(req, res, 200, { ok: true, response: taskSnapshotResponse(body.context?.task_snapshot), mode: 'local', source: 'local_task_snapshot' });
+      }
       const prompt = `${body.system_prompt || 'Tu es NOVA, assistant local JS-Innov.IA.'}\nOutils réels: ffmpeg_version, ffprobe_file, list_directory. N’invente jamais une exécution.\nHistorique: ${JSON.stringify(Array.isArray(body.history) ? body.history.slice(-20) : []).slice(0, 20000)}\nUtilisateur: ${String(body.message).slice(0, 4000)}\nNOVA:`;
       const response = await ollama(prompt, body.model);
+      if (!response) {
+        return send(req, res, 200, { ok: true, response: 'NOVA locale n’a produit aucune réponse exploitable. Reformulez la demande ou précisez le fichier, le dossier ou l’action souhaitée.', model: body.model || DEFAULT_MODEL, mode: 'local', empty_model_response: true });
+      }
       return send(req, res, 200, { ok: true, response, model: body.model || DEFAULT_MODEL, mode: 'local' });
     }
     if (req.method === 'POST' && url.pathname === '/architect/analyze') {
@@ -201,4 +228,4 @@ const server = http.createServer(async (req, res) => {
 if (process.env.LOCAL_AGENT_NO_LISTEN !== '1') {
   server.listen(PORT, '127.0.0.1', () => console.log(`NOVA Local Tools v${VERSION} http://127.0.0.1:${PORT}`));
 }
-export { executeTool, pathInsideAllowedRoot, requestedTool };
+export { executeTool, pathInsideAllowedRoot, requestedTool, requestsTaskList, taskSnapshotResponse };
