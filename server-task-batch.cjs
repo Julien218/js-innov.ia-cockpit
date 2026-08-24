@@ -8,6 +8,22 @@ function cleanText(value, max = 1000) {
   return String(value || '').trim().slice(0, max);
 }
 
+function rowsFrom(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  return [];
+}
+
+function canonicalTaskTitle(value) {
+  return cleanText(value, 240)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 function sanitizeTaskItem(item = {}) {
   const titre = cleanText(item.titre || item.title, 240);
   if (!titre) return null;
@@ -51,7 +67,15 @@ function sanitizeTaskBatchPayload(payload = {}) {
   if (!source.length || source.length > 20) return null;
   const tasks = source.map(sanitizeTaskItem);
   if (tasks.some((item) => !item)) return null;
-  return { tasks };
+  const unique = [];
+  const titles = new Set();
+  for (const item of tasks) {
+    const key = canonicalTaskTitle(item.record.titre);
+    if (titles.has(key)) continue;
+    titles.add(key);
+    unique.push(item);
+  }
+  return { tasks: unique };
 }
 
 async function jsonFetch(url, options = {}, timeoutMs = 45000) {
@@ -133,6 +157,21 @@ async function patchTask(agentFetch, taskId, payload, tenant) {
 async function executeTaskBatch({ payload, token, user, tenant, agentFetch }) {
   const results = [];
   const organisation = tenant || 'jsinnovia';
+  const existingPayload = await agentFetch('/data/Tache?limit=250', {
+    headers: { 'x-organisation-id': organisation },
+  }).then(async (response) => {
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error || `Lecture tâches HTTP ${response.status}`);
+    return data;
+  });
+  const existingByTitle = new Map();
+  for (const candidate of rowsFrom(existingPayload)) {
+    const key = canonicalTaskTitle(candidate.titre || candidate.title);
+    const status = cleanText(candidate.statut || candidate.status, 40).toLowerCase();
+    if (key && !['terminee', 'terminée'].includes(status) && !existingByTitle.has(key)) {
+      existingByTitle.set(key, candidate);
+    }
+  }
 
   for (let index = 0; index < payload.tasks.length; index += 1) {
     const item = payload.tasks[index];
@@ -140,14 +179,24 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch }) {
     let task = null;
     let run = null;
     try {
-      const createResponse = await agentFetch('/data/Tache', {
-        method: 'POST',
-        headers: { 'idempotency-key': taskKey, 'x-organisation-id': organisation },
-        body: JSON.stringify(item.record),
-      });
-      const createData = await createResponse.json().catch(() => ({}));
-      if (!createResponse.ok) throw new Error(createData?.error || `Création tâche HTTP ${createResponse.status}`);
-      task = createData;
+      const titleKey = canonicalTaskTitle(item.record.titre);
+      task = existingByTitle.get(titleKey) || null;
+      const reusedTask = Boolean(task);
+      if (task && cleanText(task.statut || task.status, 40).toLowerCase() === 'en_cours') {
+        results.push({ index, success: true, task_id: task.id, run_id: null, status: 'already_running', reused: true });
+        continue;
+      }
+      if (!task) {
+        const createResponse = await agentFetch('/data/Tache', {
+          method: 'POST',
+          headers: { 'idempotency-key': taskKey, 'x-organisation-id': organisation },
+          body: JSON.stringify(item.record),
+        });
+        const createData = await createResponse.json().catch(() => ({}));
+        if (!createResponse.ok) throw new Error(createData?.error || `Création tâche HTTP ${createResponse.status}`);
+        task = createData;
+        existingByTitle.set(titleKey, task);
+      }
 
       const runKey = `${token}:run:${index}`;
       const runResponse = await agentFetch('/agent-runs', {
@@ -202,9 +251,9 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch }) {
           notes: `${item.record.notes || ''}\nDiagnostic agent terminé et résultat vérifié par le moteur batch.`.trim().slice(0, 4000),
         }, organisation);
 
-        results.push({ index, success: true, task_id: task.id, run_id: run.id, status: 'completed', report: report?.content || '' });
+        results.push({ index, success: true, task_id: task.id, run_id: run.id, status: 'completed', reused: reusedTask, report: report?.content || '' });
       } else {
-        results.push({ index, success: true, task_id: task.id, run_id: run.id, status: 'running', delegated: true });
+        results.push({ index, success: true, task_id: task.id, run_id: run.id, status: 'running', reused: reusedTask, delegated: true });
       }
     } catch (error) {
       if (task?.id) {
@@ -236,6 +285,7 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch }) {
 }
 
 module.exports = {
+  canonicalTaskTitle,
   sanitizeTaskBatchPayload,
   executeTaskBatch,
 };

@@ -10,7 +10,7 @@ const { applyBillingRule, summarize, buildInvoiceLines, monthWindow } = require(
 test('un oui/ok/confirme consomme la confirmation existante sans repasser par le LLM', () => {
   const source = read('src/lib/assistantConfirmationBridge.js');
   assert.match(source, /AFFIRMATIVE/);
-  assert.match(source, /pending && AFFIRMATIVE\.has\(intent\)/);
+  assert.match(source, /pending && isAffirmativeIntent\(intent\)/);
   assert.match(source, /\/api\/assistant\/confirm/);
   assert.match(source, /state\.delete\(key\)/);
   assert.match(source, /action exécutée une seule fois/);

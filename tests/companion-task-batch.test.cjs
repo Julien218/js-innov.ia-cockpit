@@ -9,8 +9,8 @@ const taskBatchSource = fs.readFileSync(path.join(root, 'server-task-batch.cjs')
 const serverSource = fs.readFileSync(path.join(root, 'server.cjs'), 'utf8');
 const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
 
-const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage } = require(path.join(root, 'server-assistant-batch.cjs'));
-const { sanitizeTaskBatchPayload } = require(path.join(root, 'server-task-batch.cjs'));
+const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage, executionProof } = require(path.join(root, 'server-assistant-batch.cjs'));
+const { canonicalTaskTitle, sanitizeTaskBatchPayload } = require(path.join(root, 'server-task-batch.cjs'));
 
 test('les demandes multi-tâches et d’exécution sont reconnues sans intercepter un chat banal', () => {
   assert.equal(batchSignals('Crée les 6 tâches et délègue-les aux agents spécialisés'), true);
@@ -46,6 +46,14 @@ test('un batch exige des tâches avec un titre non vide', () => {
   assert.equal(valid.tasks.length, 1);
   assert.equal(valid.tasks[0].record.titre, 'Audit MiniMax H3');
   assert.equal(valid.tasks[0].agent.read_only, true);
+});
+
+test('un même titre ne peut apparaître deux fois dans un lot', () => {
+  const payload = sanitizeTaskBatchPayload({ tasks: [
+    { titre: 'Mettre à jour la documentation' },
+    { titre: '  Mettre à jour — la documentation ' },
+  ] });
+  assert.equal(payload.tasks.length, 1);
 });
 
 test('l’assignation agent est stockée dans notes et jamais dans une colonne inexistante', () => {
@@ -107,4 +115,27 @@ test('le texte d’un batch déjà autorisé ne redemande jamais une confirmatio
   const cleaned = removeStaleConfirmationLanguage('Deux tâches sont prêtes à être confirmées. Souhaitez-vous que je les envoie ?');
   assert.doesNotMatch(cleaned, /confirm[eé]|Souhaitez-vous/i);
   assert.match(batchSource, /removeStaleConfirmationLanguage\(data\.response/);
+});
+
+test('les identifiants réels du lot sont rendus visibles dans la réponse', () => {
+  const proof = executionProof({ results: [{ success: true, task_id: 'task-1', run_id: 'run-1', status: 'running' }] });
+  assert.match(proof, /task_id=task-1/);
+  assert.match(proof, /run_id=run-1/);
+  assert.match(proof, /statut=running/);
+  assert.match(batchSource, /executionProof\(executionResult\)/);
+});
+
+test('le batch rapproche les tâches existantes par titre canonique', () => {
+  assert.equal(canonicalTaskTitle('  Mise à jour — Documentation  '), 'mise a jour documentation');
+  assert.match(taskBatchSource, /\/data\/Tache\?limit=250/);
+  assert.match(taskBatchSource, /status: 'already_running'/);
+  assert.match(taskBatchSource, /reused: true/);
+});
+
+test('une confirmation formulée en phrase complète est consommée par le pont UI', () => {
+  const bridge = fs.readFileSync(path.join(root, 'src', 'lib', 'assistantConfirmationBridge.js'), 'utf8');
+  assert.match(bridge, /function isAffirmativeIntent/);
+  assert.match(bridge, /je confirme\|confirme/);
+  assert.match(bridge, /isAffirmativeIntent\(intent\)/);
+  assert.match(bridge, /Preuves du lot/);
 });

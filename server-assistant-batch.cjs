@@ -62,6 +62,18 @@ function removeStaleConfirmationLanguage(value) {
     .trim();
 }
 
+function executionProof(result) {
+  if (!result?.results?.length) return '';
+  const lines = result.results.map((item, index) => {
+    const taskId = item.task_id || 'absent';
+    const runId = item.run_id || 'aucun';
+    const status = item.status || (item.success ? 'créée' : 'échec');
+    const error = item.error ? ` — erreur: ${item.error}` : '';
+    return `${index + 1}. task_id=${taskId} · run_id=${runId} · statut=${status}${error}`;
+  });
+  return `\n\nPreuves du lot:\n${lines.join('\n')}`;
+}
+
 async function recentContext(req) {
   const sessionId = sessionIdFor(req);
   try {
@@ -175,7 +187,7 @@ router.post('/chat', async (req, res, next) => {
         ? `\n\n✅ Exécution lancée et suivie: ${executionResult.succeeded}/${executionResult.requested} tâche(s) traitée(s) sans confirmation supplémentaire.`
         : `\n\n⚠️ Exécution partielle: ${executionResult.succeeded}/${executionResult.requested} tâche(s) traitée(s). Les branches bloquées restent identifiées sans arrêter les autres.`;
       return res.status(executionResult.success ? 200 : 207).json({
-        message: `${removeStaleConfirmationLanguage(data.response || data.reply || data.message || 'Batch préparé.')}${suffix}`,
+        message: `${removeStaleConfirmationLanguage(data.response || data.reply || data.message || 'Batch préparé.')}${suffix}${executionProof(executionResult)}`,
         confirmation: null,
         execution_result: executionResult,
         conversation_id: conversationIdFrom(req),
@@ -242,3 +254,4 @@ module.exports = router;
 module.exports.batchSignals = batchSignals;
 module.exports.explicitExecutionAuthorization = explicitExecutionAuthorization;
 module.exports.removeStaleConfirmationLanguage = removeStaleConfirmationLanguage;
+module.exports.executionProof = executionProof;
