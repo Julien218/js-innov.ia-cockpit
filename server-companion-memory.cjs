@@ -200,6 +200,8 @@ function architectContract() {
     'Réutilisation: un agent site/projet existant est prioritaire; ne créer un nouvel agent métier que si aucun spécialiste existant ne convient.',
     'Fallback: si Base44 est indisponible ou expire pendant un diagnostic, déléguer à un agent métier virtuel sur jsinnovia-agent avec le même rôle fonctionnel.',
     'Traçabilité: journaliser les délégations dans agent_runs quand le backend est disponible.',
+    'Preuve: un identifiant de conversation Base44 prouve seulement la consultation de l’agent. Il ne prouve jamais l’exécution de son diagnostic.',
+    'Refuser comme preuve tout lien Wikipédia, documentation ou outil public. Sans outil exécuté, heure, cible, sortie brute et identifiant tool_run/journal non-URL, qualifier le rapport de non vérifié et ne pas reprendre ses conclusions comme des faits.',
     'Effet réel: toute création ou modification métier, envoi, publication, déploiement, facturation ou suppression doit passer par UNE confirmation explicite juste avant exécution.',
     'Ne jamais prétendre avoir vérifié un système si aucun résultat d’outil, diagnostic local ou donnée courante ne le prouve.',
     'Quand un bloc DIAGNOSTIC LOCAL LECTURE SEULE est présent dans le message, l’utiliser comme mesure factuelle de la machine courante et signaler clairement les éléments non mesurés.',

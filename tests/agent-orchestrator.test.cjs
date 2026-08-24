@@ -12,6 +12,7 @@ const {
   buildAgentRoutingContext,
   shouldAutoDelegate,
   buildDelegationContext,
+  hasOperationalEvidence,
 } = orchestrator;
 
 test('route Synergie Dour vers son agent Base44 dédié', () => {
@@ -62,8 +63,24 @@ test('la délégation automatique ne se déclenche pas sur une simple salutation
 
 test('les résultats délégués conservent une preuve de conversation', () => {
   const context = buildDelegationContext([{ ok: true, provider: 'base44', conversation_id: 'conv-123', agent: { name: 'JsInnov-Agent', role: 'architecture_devops' }, content: 'DNS observé.' }]);
-  assert.match(context, /exécution=conv-123/);
+  assert.match(context, /consultation=conv-123/);
+  assert.match(context, /preuve_diagnostic=non fournie/);
   assert.match(context, /DNS observé/);
+});
+
+test('une URL documentaire ne peut jamais servir de journal d’exécution', () => {
+  const fake = 'Outil utilisé : Base44\nHeure : maintenant\nRésultat brut : domaine inactif\nIdentifiant du journal : https://en.wikipedia.org/wiki/Base44';
+  assert.equal(hasOperationalEvidence(fake), false);
+  const context = buildDelegationContext([{ ok: true, provider: 'base44', conversation_id: 'conv-fake', agent: { name: 'JsInnov-Agent', role: 'architecture_devops' }, content: fake }]);
+  assert.match(context, /rapport agent non vérifié/i);
+  assert.match(context, /Une URL externe n’est jamais un journal/i);
+});
+
+test('un diagnostic complet avec journal non-URL est reconnu comme rapport prouvé', () => {
+  const proven = 'Outil réellement utilisé : dns_probe\nHeure d’exécution : 2026-08-24T18:35:15Z\nCible : jsinnovia.com\nSortie brute : A 217.160.0.193\nIdentifiant du journal : run-dns-123456';
+  assert.equal(hasOperationalEvidence(proven), true);
+  const context = buildDelegationContext([{ ok: true, provider: 'base44', conversation_id: 'conv-real', agent: { name: 'JsInnov-Agent', role: 'architecture_devops' }, content: proven }]);
+  assert.match(context, /preuve_diagnostic=présente/);
 });
 
 test('le contexte de routage interdit les clés Base44 côté frontend', () => {
