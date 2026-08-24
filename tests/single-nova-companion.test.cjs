@@ -23,7 +23,7 @@ test('NOVA est le seul Companion visible et l’ancienne route JulienAI est neut
 
 test('la même NOVA bascule automatiquement sur l’IA locale quand Internet est coupé', () => {
   assert.match(floating, /navigator\.onLine === false/);
-  assert.match(floating, /LOCAL_NOVA_URL.*127\.0\.0\.1:8787/);
+  assert.match(floating, /LOCAL_NOVA_URLS.*127\.0\.0\.1:8788.*127\.0\.0\.1:8787/);
   assert.match(floating, /sendCloud\(\)[\s\S]*catch[\s\S]*sendLocal\(\)/);
   assert.match(floating, /Tu es NOVA, l’unique assistant visible/);
   assert.doesNotMatch(floating, /Julien AI Companion/);

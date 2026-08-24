@@ -17,7 +17,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import novaAvatar from '@/assets/nova-avatar-128.png';
 
-const LOCAL_NOVA_URL = 'http://127.0.0.1:8787';
+const LOCAL_NOVA_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
 const LOCAL_NOVA_PROMPT = `Tu es NOVA, l’unique assistant visible du Cockpit JS-Innov.IA. Tu conserves le même nom et le même rôle en mode cloud et en mode local. Vérifie les outils réellement disponibles avant toute affirmation de capacité. Ne dis jamais que tu es une simple IA textuelle ni que tu ne peux rien exécuter uniquement parce qu’Internet est coupé.`;
 
 const FloatingAgent = () => {
@@ -165,20 +165,28 @@ const FloatingAgent = () => {
       };
 
       const sendLocal = async () => {
-        const resp = await fetch(`${LOCAL_NOVA_URL}/api/agent/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: msg,
-            history: messages.slice(-20).map(({ role, content }) => ({ role, content })),
-            system_prompt: LOCAL_NOVA_PROMPT,
-            context: { source: 'cockpit-nova', conversation_id: conversationId, offline: true },
-          }),
-          signal: AbortSignal.timeout(90000),
-        });
-        if (!resp.ok) throw new Error(`NOVA locale indisponible (${resp.status})`);
-        const data = await resp.json();
-        return { ...data, local_fallback: true };
+        let lastError;
+        for (const localUrl of LOCAL_NOVA_URLS) {
+          try {
+            const resp = await fetch(`${localUrl}/api/agent/chat`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                message: msg,
+                history: messages.slice(-20).map(({ role, content }) => ({ role, content })),
+                system_prompt: LOCAL_NOVA_PROMPT,
+                context: { source: 'cockpit-nova', conversation_id: conversationId, offline: true },
+              }),
+              signal: AbortSignal.timeout(90000),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(data.error || `NOVA locale indisponible (${resp.status})`);
+            return { ...data, local_fallback: true, local_endpoint: localUrl };
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        throw lastError || new Error('NOVA locale indisponible');
       };
 
       let data;

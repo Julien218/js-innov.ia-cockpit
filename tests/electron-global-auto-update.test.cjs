@@ -14,6 +14,17 @@ test('desktop starts through the global bootstrap', () => {
   assert.ok(pkg.build?.files?.includes('bootstrap.js'));
 });
 
+test('desktop bundles and starts NOVA Local Tools without a second assistant UI', () => {
+  assert.equal(pkg.version, '1.0.19');
+  const localAgentResource = pkg.build?.extraResources?.find((item) => item.to === 'local-agent');
+  assert.ok(localAgentResource);
+  assert.ok(localAgentResource.filter.includes('server.js'));
+  assert.ok(localAgentResource.filter.includes('package.json'));
+  assert.match(bootstrap, /startBundledLocalAgent/);
+  assert.match(bootstrap, /ELECTRON_RUN_AS_NODE:\s*"1"/);
+  assert.match(bootstrap, /legacyOnline \? 8788 : 8787/);
+});
+
 test('startup refreshes only HTTP cache before loading the remote cockpit', () => {
   assert.match(bootstrap, /session\.defaultSession\.clearCache\(\)/);
   assert.doesNotMatch(bootstrap, /clearStorageData\(/);
