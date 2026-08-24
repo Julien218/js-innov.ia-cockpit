@@ -1,6 +1,6 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { appendFile, readdir, stat } from 'node:fs/promises';
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
@@ -12,7 +12,7 @@ const PORT = Number(process.env.LOCAL_AGENT_PORT || 8787);
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 const MAX_BODY = 5 * 1024 * 1024;
 const approvals = new Map();
 const runs = new Map();
@@ -26,6 +26,35 @@ const ALLOWED_ROOTS = [...new Set((configuredRoots.length ? configuredRoots : de
 const logDir = process.env.LOCAL_AGENT_LOG_DIR || path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'JS-InnovIA', 'AI-Factory');
 mkdirSync(logDir, { recursive: true });
 const runLogPath = path.join(logDir, 'tool-runs.jsonl');
+
+function comfyUiLaunchSpec() {
+  const installRoot = process.env.COMFYUI_INSTALL_ROOT || path.join(os.homedir(), 'AppData', 'Local', 'Comfy-Desktop', 'ComfyUI-Installs', 'Comfyui');
+  const sharedRoot = process.env.COMFYUI_SHARED_ROOT || path.join(os.homedir(), 'AppData', 'Local', 'Comfy-Desktop', 'ComfyUI-Shared');
+  const python = path.join(installRoot, 'ComfyUI', '.venv', 'Scripts', 'python.exe');
+  const main = path.join(installRoot, 'ComfyUI', 'main.py');
+  const modelConfig = path.join(os.homedir(), 'AppData', 'Roaming', 'Comfy Desktop', 'shared_model_paths.yaml');
+  if (!existsSync(python) || !existsSync(main)) return null;
+  return {
+    command: python,
+    cwd: installRoot,
+    args: ['-s', main, '--feature-flag', 'show_signin_button=true', '--enable-manager', '--extra-model-paths-config', modelConfig, '--input-directory', path.join(sharedRoot, 'input'), '--output-directory', path.join(sharedRoot, 'output')],
+  };
+}
+
+async function ensureComfyUi() {
+  if (process.platform !== 'win32' || process.env.COMFYUI_AUTOSTART === '0') return { started: false, reason: 'disabled' };
+  try {
+    const response = await fetch('http://127.0.0.1:8188/system_stats', { signal: AbortSignal.timeout(1200) });
+    if (response.ok) return { started: false, reason: 'already_online' };
+  } catch {}
+  const spec = comfyUiLaunchSpec();
+  if (!spec) return { started: false, reason: 'not_installed' };
+  const childEnv = { ...process.env };
+  delete childEnv.SSLKEYLOGFILE;
+  const child = spawn(spec.command, spec.args, { cwd: spec.cwd, env: childEnv, detached: true, stdio: 'ignore', windowsHide: true });
+  child.unref();
+  return { started: true, pid: child.pid };
+}
 
 function isAllowedOrigin(origin) {
   return ALLOWED_ORIGINS.has(origin) || /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin || '');
@@ -359,6 +388,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 if (process.env.LOCAL_AGENT_NO_LISTEN !== '1') {
-  server.listen(PORT, '127.0.0.1', () => console.log(`NOVA Local Tools v${VERSION} http://127.0.0.1:${PORT}`));
+  server.listen(PORT, '127.0.0.1', () => {
+    console.log(`NOVA Local Tools v${VERSION} http://127.0.0.1:${PORT}`);
+    void ensureComfyUi();
+  });
 }
-export { executeTool, pathInsideAllowedRoot, requestedTool, requestsTaskList, taskSnapshotResponse, requestsTaskAnalysis, taskAnalysisResponse, canonicalTaskKey };
+export { executeTool, pathInsideAllowedRoot, requestedTool, requestsTaskList, taskSnapshotResponse, requestsTaskAnalysis, taskAnalysisResponse, canonicalTaskKey, comfyUiLaunchSpec, ensureComfyUi };
