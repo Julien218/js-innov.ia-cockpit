@@ -1,7 +1,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
-import { appendFile, readdir, stat } from 'node:fs/promises';
+import { appendFile, readFile, readdir, stat } from 'node:fs/promises';
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -12,7 +12,7 @@ const PORT = Number(process.env.LOCAL_AGENT_PORT || 8787);
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-const VERSION = '1.3.6';
+const VERSION = '1.3.7';
 const MAX_BODY = 5 * 1024 * 1024;
 const approvals = new Map();
 const runs = new Map();
@@ -132,6 +132,25 @@ async function executeTool(tool, args = {}) {
   } else if (tool === 'find_local_workflows') {
     const matches = await findLocalWorkflows();
     return recordRun({ id, tool, started_at: startedAt, completed_at: new Date().toISOString(), success: true, exit_code: 0, target: ALLOWED_ROOTS, output: JSON.stringify({ count: matches.length, matches }) });
+  } else if (tool === 'workflow_documentation_audit') {
+    const candidates = await findNamedFiles('WORKFLOWS_LOCAUX.md');
+    const documents = [];
+    for (const file of candidates) {
+      const content = await readFile(file, 'utf8').catch(() => '');
+      documents.push({
+        path: file,
+        bytes: Buffer.byteLength(content),
+        sha256: content ? crypto.createHash('sha256').update(content).digest('hex') : null,
+        measured_state: /État du moteur local|Etat du moteur local/i.test(content),
+        remaining_work: /Travail encore nécessaire|Travail encore necessaire/i.test(content),
+        evidence_ids: [...content.matchAll(/`([a-f0-9]{8}-[a-f0-9-]{27,})`/gi)].map((match) => match[1]),
+      });
+    }
+    const valid = documents.some((document) => document.bytes > 0 && document.measured_state && document.remaining_work);
+    return recordRun({ id, tool, started_at: startedAt, completed_at: new Date().toISOString(), success: valid, exit_code: valid ? 0 : 1, target: candidates, output: JSON.stringify({ count: documents.length, valid, documents }) });
+  } else if (tool === 'video_pipeline_audit') {
+    const report = await auditVideoPipeline();
+    return recordRun({ id, tool, started_at: startedAt, completed_at: new Date().toISOString(), success: true, exit_code: 0, target: 'local_video_pipeline', output: JSON.stringify(report) });
   } else if (tool === 'ffprobe_file') {
     const file = pathInsideAllowedRoot(args.path);
     if (!file) throw Object.assign(new Error('path_not_allowed'), { status: 403 });
@@ -234,6 +253,76 @@ async function findLocalWorkflows() {
   return matches;
 }
 
+async function findNamedFiles(fileName) {
+  const matches = [];
+  const ignored = new Set(['node_modules', '.git', 'dist', 'build', '.cache']);
+  async function visit(directory, depth) {
+    if (depth > 6 || matches.length >= 50) return;
+    const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (matches.length >= 50 || ignored.has(entry.name.toLowerCase())) continue;
+      const fullPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) await visit(fullPath, depth + 1);
+      else if (entry.isFile() && entry.name.toLowerCase() === fileName.toLowerCase()) matches.push(fullPath);
+    }
+  }
+  for (const root of ALLOWED_ROOTS) await visit(root, 0);
+  return matches;
+}
+
+async function auditVideoPipeline() {
+  const matches = (await findLocalWorkflows()).filter((item) => item.type === 'workflow_json');
+  const files = [];
+  const requiredNodeTypes = new Set();
+  for (const match of matches) {
+    try {
+      const payload = JSON.parse(await readFile(match.path, 'utf8'));
+      const nodeTypes = Array.isArray(payload?.nodes)
+        ? payload.nodes.map((node) => node?.type).filter(Boolean)
+        : Object.values(payload || {}).map((node) => node?.class_type).filter(Boolean);
+      nodeTypes.forEach((type) => requiredNodeTypes.add(String(type)));
+      files.push({ path: match.path, valid_json: true, node_types: [...new Set(nodeTypes.map(String))] });
+    } catch (error) {
+      files.push({ path: match.path, valid_json: false, error: String(error.message || error).slice(0, 300) });
+    }
+  }
+
+  let comfy = { online: false, node_type_count: 0, missing_node_types: [...requiredNodeTypes] };
+  try {
+    const [statsResponse, objectInfoResponse] = await Promise.all([
+      fetch('http://127.0.0.1:8188/system_stats', { signal: AbortSignal.timeout(8000) }),
+      fetch('http://127.0.0.1:8188/object_info', { signal: AbortSignal.timeout(15000) }),
+    ]);
+    const stats = await statsResponse.json().catch(() => ({}));
+    const objectInfo = await objectInfoResponse.json().catch(() => ({}));
+    const available = new Set(Object.keys(objectInfo || {}));
+    comfy = {
+      online: statsResponse.ok && objectInfoResponse.ok,
+      version: stats?.system?.comfyui_version || null,
+      node_type_count: available.size,
+      missing_node_types: [...requiredNodeTypes].filter((type) => !available.has(type)),
+    };
+  } catch (error) {
+    comfy.error = String(error.message || error).slice(0, 300);
+  }
+  const [ffmpeg, ffprobe] = await Promise.all([commandStatus('ffmpeg'), commandStatus('ffprobe')]);
+  return {
+    checked_at: new Date().toISOString(),
+    scope: ['workflow_discovery', 'json_parse', 'comfyui_health', 'node_compatibility', 'ffmpeg_export', 'ffprobe_validation'],
+    workflow_files: files,
+    workflow_count: files.length,
+    invalid_json_count: files.filter((file) => !file.valid_json).length,
+    required_node_types: [...requiredNodeTypes],
+    comfyui: comfy,
+    ffmpeg,
+    ffprobe,
+    generation_queued: false,
+    output_file_created: false,
+    non_destructive: true,
+    uncovered: ['interactive_editor_ui', 'real_generation_queue', 'rendered_output_quality', 'automatic_publication'],
+  };
+}
+
 function taskSnapshotResponse(snapshot) {
   const tasks = Array.isArray(snapshot?.tasks) ? snapshot.tasks : [];
   const syncedAt = snapshot?.synced_at ? ` (synchronisée le ${snapshot.synced_at})` : '';
@@ -325,7 +414,9 @@ function taskAnalysisResponse(snapshot) {
 function localTaskPlan(task) {
   const text = `${task?.titre || task?.title || ''} ${task?.description || ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   if (/fonctionnalites.*non operationnelles.*(?:video|module video)/.test(text)) return ['find_local_workflows', 'comfyui_health', 'ffmpeg_version'];
-  if (/(mettre a jour|documentation|achever|finaliser|corriger|modifier)/.test(text)) return null;
+  if (/campagne.*tests?.*video ia/.test(text)) return ['video_pipeline_audit'];
+  if (/mettre a jour.*documentation.*workflows?.*locaux/.test(text)) return ['workflow_documentation_audit'];
+  if (/(achever|finaliser|corriger|modifier)/.test(text)) return null;
   if (/verifi.*(?:workflow|minimax)|absence.*(?:workflow|minimax)/.test(text)) return ['find_local_workflows', 'comfyui_health'];
   if (/control.*(?:persistance|workflow)/.test(text)) return ['find_local_workflows'];
   if (/control.*(?:api video|comfyui|port 8188)/.test(text)) return ['comfyui_health'];
@@ -365,7 +456,7 @@ async function health() {
     models = (payload.models || []).map((item) => item.name);
   } catch {}
   const [ffmpeg, ffprobe] = await Promise.all([commandStatus('ffmpeg'), commandStatus('ffprobe')]);
-  return { ok: true, agent: { name: 'NOVA Local Tools', version: VERSION, mode: 'local-first', approvalGate: true }, services: { ollama: { online: ollamaOnline, url: OLLAMA_URL, models }, ffmpeg, ffprobe }, tools: [{ name: 'ffmpeg_version', mode: 'read_only', available: ffmpeg.online }, { name: 'ffprobe_file', mode: 'read_only', available: ffprobe.online }, { name: 'list_directory', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'find_local_workflows', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'comfyui_health', mode: 'read_only', available: true }, { name: 'http_diagnose', mode: 'read_only', available: true }], allowed_roots: ALLOWED_ROOTS, allowed_http_hosts: [...ALLOWED_HTTP_HOSTS] };
+  return { ok: true, agent: { name: 'NOVA Local Tools', version: VERSION, mode: 'local-first', approvalGate: true }, services: { ollama: { online: ollamaOnline, url: OLLAMA_URL, models }, ffmpeg, ffprobe }, tools: [{ name: 'ffmpeg_version', mode: 'read_only', available: ffmpeg.online }, { name: 'ffprobe_file', mode: 'read_only', available: ffprobe.online }, { name: 'list_directory', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'find_local_workflows', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'workflow_documentation_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'video_pipeline_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'comfyui_health', mode: 'read_only', available: true }, { name: 'http_diagnose', mode: 'read_only', available: true }], allowed_roots: ALLOWED_ROOTS, allowed_http_hosts: [...ALLOWED_HTTP_HOSTS] };
 }
 
 function toolResponse(run) {
@@ -448,4 +539,4 @@ if (process.env.LOCAL_AGENT_NO_LISTEN !== '1') {
     void ensureComfyUi();
   });
 }
-export { executeTool, pathInsideAllowedRoot, requestedTool, requestedTools, requestsTaskList, taskSnapshotResponse, requestsTaskAnalysis, taskAnalysisResponse, canonicalTaskKey, localTaskPlan, executeLocalTaskAutopilot, comfyUiLaunchSpec, ensureComfyUi };
+export { executeTool, pathInsideAllowedRoot, requestedTool, requestedTools, requestsTaskList, taskSnapshotResponse, requestsTaskAnalysis, taskAnalysisResponse, canonicalTaskKey, localTaskPlan, executeLocalTaskAutopilot, auditVideoPipeline, comfyUiLaunchSpec, ensureComfyUi };
