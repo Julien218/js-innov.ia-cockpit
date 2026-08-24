@@ -10,6 +10,37 @@ let mainWindow = null;
 let tray = null;
 let splashTimer = null;
 let updateAvailable = null;
+let offlineFallbackActive = false;
+const OFFLINE_COCKPIT_URL = "http://127.0.0.1:8790";
+const OFFLINE_STORAGE_KEYS = ["cockpit_session_user", "nova_local_task_snapshot_v1", "agent_chat_messages", "agent_conversation_id", "agent_tts_enabled"];
+let offlineStorageHydrated = false;
+
+function offlineSessionPath() {
+  return path.join(app.getPath("userData"), "offline-session.json");
+}
+
+async function captureOfflineSession(win) {
+  if (!isAlive(win) || !win.webContents.getURL().startsWith("https://cockpit.jsinnovia.com")) return;
+  try {
+    const snapshot = await win.webContents.executeJavaScript(`Object.fromEntries(${JSON.stringify(OFFLINE_STORAGE_KEYS)}.map((key) => [key, localStorage.getItem(key)]).filter(([, value]) => value !== null))`);
+    fs.writeFileSync(offlineSessionPath(), JSON.stringify(snapshot), "utf8");
+    console.log("Session Cockpit préparée pour le mode hors ligne.");
+  } catch (error) {
+    console.log(`Sauvegarde de session hors ligne ignorée: ${error.message}`);
+  }
+}
+
+async function hydrateOfflineSession(win) {
+  if (offlineStorageHydrated || !isAlive(win) || !win.webContents.getURL().startsWith(OFFLINE_COCKPIT_URL)) return;
+  offlineStorageHydrated = true;
+  try {
+    const snapshot = JSON.parse(fs.readFileSync(offlineSessionPath(), "utf8"));
+    await win.webContents.executeJavaScript(`for (const [key, value] of Object.entries(${JSON.stringify(snapshot)})) { if (typeof value === 'string') localStorage.setItem(key, value); }`);
+    win.webContents.reload();
+  } catch (error) {
+    console.log(`Aucune session hors ligne à restaurer: ${error.message}`);
+  }
+}
 
 // ── Version actuelle de l'app ────────────────────────────────────────────────
 const APP_VERSION = app.getVersion();
@@ -236,6 +267,7 @@ function createSplash() {
 
 // ── Fenêtre principale ──────────────────────────────────────────────────────
 function createWindow() {
+  offlineFallbackActive = false;
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -319,6 +351,11 @@ app.whenReady().then(() => {
   const win = createWindow();
 
   win.webContents.on("did-finish-load", () => {
+    if (win.webContents.getURL().startsWith(OFFLINE_COCKPIT_URL)) {
+      hydrateOfflineSession(win);
+    } else {
+      setTimeout(() => captureOfflineSession(win), 5000);
+    }
     if (splashTimer) clearTimeout(splashTimer);
     splashTimer = setTimeout(() => {
       splashTimer = null;
@@ -331,7 +368,13 @@ app.whenReady().then(() => {
     }, 1200);
   });
 
-  win.webContents.on("did-fail-load", () => {
+  win.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (isMainFrame !== false && !offlineFallbackActive && !String(validatedURL || "").startsWith(OFFLINE_COCKPIT_URL)) {
+      offlineFallbackActive = true;
+      console.log(`Cockpit distant indisponible (${errorCode}: ${errorDescription}), ouverture du mode hors ligne.`);
+      win.loadURL(OFFLINE_COCKPIT_URL);
+      return;
+    }
     if (splashTimer) { clearTimeout(splashTimer); splashTimer = null; }
     if (isAlive(splash)) splash.close();
     if (isAlive(win)) win.show();
