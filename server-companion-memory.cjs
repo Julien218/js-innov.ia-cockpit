@@ -4,6 +4,7 @@ const {
   runReadOnlyDelegations,
   buildDelegationContext,
 } = require('./server-agent-orchestrator-resilient.cjs');
+const { analyzeDomain, MANAGED_DOMAINS } = require('./server-domain-ops.cjs');
 const { logDelegationResults } = require('./server-agent-run-log.cjs');
 
 const MEMORY_ARCHIVE_ROOT = process.env.CHATGPT_MEMORY_ARCHIVE_ROOT || '/ChatGPT Données sauve garde';
@@ -210,6 +211,46 @@ function architectContract() {
   ].join('\n');
 }
 
+function managedDomainsInMessage(message) {
+  const text = String(message || '').toLowerCase();
+  return Object.keys(MANAGED_DOMAINS).filter((domain) => text.includes(domain));
+}
+
+function requestsLiveDomainDiagnostic(message) {
+  return /(dns|https|tls|ssl|certificat|seo|diagnosti|audit|contr[oô]le|v[ée]rifi)/i.test(String(message || ''));
+}
+
+async function buildLiveDomainDiagnosticContext(message, user) {
+  if (user?.role !== 'superadmin' || !requestsLiveDomainDiagnostic(message)) return '';
+  const domains = managedDomainsInMessage(message).slice(0, 3);
+  if (!domains.length) return '';
+
+  const lines = ['[DIAGNOSTIC DOMAINES COCKPIT — EXÉCUTION RÉELLE LECTURE SEULE]'];
+  for (const domain of domains) {
+    try {
+      const result = await analyzeDomain(domain);
+      const raw = {
+        dns: result.dns,
+        http: result.http,
+        tls: result.tls,
+        seo: result.seo,
+        issues: result.issues,
+      };
+      lines.push(`Outil réellement utilisé: ${result.tool}`);
+      lines.push(`Heure d’exécution: ${result.checked_at}`);
+      lines.push(`Cible: ${domain}`);
+      lines.push(`Identifiant du journal: ${result.run_id}`);
+      lines.push(`Sortie brute: ${JSON.stringify(raw)}`);
+    } catch (error) {
+      lines.push(`Cible: ${domain}`);
+      lines.push(`Diagnostic échoué: ${String(error.message || error).slice(0, 300)}`);
+    }
+  }
+  lines.push('Ces mesures serveur priment sur les affirmations non prouvées des agents délégués et sur les résultats de recherche web.');
+  lines.push('[/DIAGNOSTIC DOMAINES COCKPIT]');
+  return lines.join('\n');
+}
+
 async function buildHistoricalMemoryContext(message, user) {
   if (user?.role !== 'superadmin') return '';
 
@@ -218,6 +259,9 @@ async function buildHistoricalMemoryContext(message, user) {
   try {
     const routing = buildAgentRoutingContext(message);
     if (routing?.context) lines.push('', routing.context);
+
+    const liveDomainContext = await buildLiveDomainDiagnosticContext(message, user);
+    if (liveDomainContext) lines.push('', liveDomainContext);
 
     const delegationResults = await runReadOnlyDelegations(message);
     const delegationContext = buildDelegationContext(delegationResults);
@@ -298,4 +342,7 @@ module.exports = {
   pickLatestMemoryFolder,
   architectContract,
   resolveMemoryRoot,
+  managedDomainsInMessage,
+  requestsLiveDomainDiagnostic,
+  buildLiveDomainDiagnosticContext,
 };

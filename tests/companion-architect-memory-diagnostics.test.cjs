@@ -5,6 +5,12 @@ const { pathToFileURL } = require('node:url');
 
 const memory = require('../server-companion-memory.cjs');
 
+test('NOVA reconnaît les demandes de diagnostic sur un domaine géré', () => {
+  assert.deepEqual(memory.managedDomainsInMessage('Contrôle DNS et TLS de jsinnovia.com'), ['jsinnovia.com']);
+  assert.equal(memory.requestsLiveDomainDiagnostic('Contrôle DNS et TLS de jsinnovia.com'), true);
+  assert.equal(memory.requestsLiveDomainDiagnostic('Bonjour jsinnovia.com'), false);
+});
+
 test('memory snapshot selector prefers the newest Analyse Cockpit folder', () => {
   const picked = memory.pickLatestMemoryFolder([
     { '.tag': 'folder', name: 'Analyse Cockpit 2026-08-14', path_display: '/ChatGPT Données sauve garde/Analyse Cockpit 2026-08-14' },
