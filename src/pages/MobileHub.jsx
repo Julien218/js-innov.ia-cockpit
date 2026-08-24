@@ -3,19 +3,17 @@
 // Cockpit JS-Innov.IA
 // ============================================================
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   subscribeToPush,
   unsubscribeFromPush,
   getPushSubscriptionStatus,
-  requestNotificationPermission,
 } from '@/lib/push-notifications';
 import {
   isGeolocationSupported,
   getCurrentPosition,
   watchPosition,
   stopWatching,
-  calculateDistance,
   sendLocationToServer,
 } from '@/lib/geolocation';
 

@@ -9,7 +9,7 @@ const taskBatchSource = fs.readFileSync(path.join(root, 'server-task-batch.cjs')
 const serverSource = fs.readFileSync(path.join(root, 'server.cjs'), 'utf8');
 const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
 
-const { batchSignals, explicitExecutionAuthorization } = require(path.join(root, 'server-assistant-batch.cjs'));
+const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage } = require(path.join(root, 'server-assistant-batch.cjs'));
 const { sanitizeTaskBatchPayload } = require(path.join(root, 'server-task-batch.cjs'));
 
 test('les demandes multi-tâches et d’exécution sont reconnues sans intercepter un chat banal', () => {
@@ -101,4 +101,10 @@ test('les modules batch sont présents dans l’image de production', () => {
   assert.match(dockerfile, /server-task-batch\.cjs/);
   assert.match(dockerfile, /node --check \/app\/server-assistant-batch\.cjs/);
   assert.match(dockerfile, /node --check \/app\/server-task-batch\.cjs/);
+});
+
+test('le texte d’un batch déjà autorisé ne redemande jamais une confirmation', () => {
+  const cleaned = removeStaleConfirmationLanguage('Deux tâches sont prêtes à être confirmées. Souhaitez-vous que je les envoie ?');
+  assert.doesNotMatch(cleaned, /confirm[eé]|Souhaitez-vous/i);
+  assert.match(batchSource, /removeStaleConfirmationLanguage\(data\.response/);
 });
