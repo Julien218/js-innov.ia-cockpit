@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { cleanTenant } = require('./server-tenant.cjs');
 const { sanitizeTaskBatchPayload, executeTaskBatch } = require('./server-task-batch.cjs');
+const { runAutopilot } = require('./server-task-autopilot.cjs');
 
 const router = express.Router();
 const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
@@ -52,6 +53,21 @@ function explicitExecutionAuthorization(message) {
   const source = String(message || '').trim().toLowerCase();
   return /(effectue|ex[eé]cute|lance|fais|faites|continue|poursuis|traite|r[eé]alise|applique).*(toutes?|chaque|les|la|le)?\s*(t[aâ]ches?|actions?|changements?|modifications?)/.test(source)
     || /(go|oki|ok|oui)[,\s!-]*(effectue|ex[eé]cute|lance|continue|poursuis)/.test(source);
+}
+
+function directAutopilotSignal(message) {
+  const source = String(message || '').toLowerCase();
+  return /(effectue|ex[eé]cute|lance|traite|r[eé]alise).*(toutes?|les)\s+t[aâ]ches?/.test(source)
+    || /toutes?\s+les\s+t[aâ]ches?.*(effectue|ex[eé]cute|lance|traite|r[eé]alise)/.test(source);
+}
+
+function autopilotMessage(result) {
+  if (result?.skipped) return `Autopilote déjà en cours (${result.reason}).`;
+  const executed = Array.isArray(result?.executed) ? result.executed : [];
+  const blocked = Array.isArray(result?.blocked) ? result.blocked : [];
+  const lines = executed.map((item) => `✅ task_id=${item.task_id} · run_id=${item.run_id || item.tool_run_id || 'aucun'} · statut=${item.status || 'completed'}`)
+    .concat(blocked.map((item) => `⛔ task_id=${item.task_id} · statut=bloquee · raison=${item.reason || 'exécuteur ou accès indisponible'}`));
+  return `Exécution déterministe terminée. run_id=${result?.run_id || 'absent'} · tâches uniques=${result?.unique || 0} · exécutées=${executed.length} · bloquées=${blocked.length}\n${lines.join('\n')}`;
 }
 
 function removeStaleConfirmationLanguage(value) {
@@ -106,6 +122,10 @@ router.post('/chat', async (req, res, next) => {
   const sessionId = sessionIdFor(req);
   const userAlreadyAuthorizedExecution = explicitExecutionAuthorization(message);
   try {
+    if (userAlreadyAuthorizedExecution && directAutopilotSignal(message)) {
+      const result = await runAutopilot();
+      return res.json({ message: autopilotMessage(result), confirmation: null, result, conversation_id: conversationIdFrom(req), assistant_mode: req.user?.role === 'superadmin' ? 'owner' : 'staff' });
+    }
     const response = await agentFetch('/chat', {
       method: 'POST',
       body: JSON.stringify({
@@ -257,3 +277,5 @@ module.exports.batchSignals = batchSignals;
 module.exports.explicitExecutionAuthorization = explicitExecutionAuthorization;
 module.exports.removeStaleConfirmationLanguage = removeStaleConfirmationLanguage;
 module.exports.executionProof = executionProof;
+module.exports.directAutopilotSignal = directAutopilotSignal;
+module.exports.autopilotMessage = autopilotMessage;
