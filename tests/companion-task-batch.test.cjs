@@ -57,12 +57,12 @@ test('l’assignation agent est stockée dans notes et jamais dans une colonne i
 test('chaque tâche créée reçoit un agent_run relié et un idempotency key', () => {
   assert.match(taskBatchSource, /task_id:\s*String\(task\.id\)/);
   assert.match(taskBatchSource, /idempotency_key:\s*runKey/);
-  assert.match(taskBatchSource, /execution_mode:\s*item\.agent\.read_only \? 'prepare_only' : 'direct_execution'/);
+  assert.match(taskBatchSource, /execution_mode:\s*item\.agent\.read_only \? 'prepare_only' : 'delegated_execution'/);
 });
 
 test('une tâche d’écriture déléguée démarre réellement au lieu d’attendre une nouvelle validation', () => {
   assert.match(taskBatchSource, /status:\s*'running'/);
-  assert.match(taskBatchSource, /execution_mode:\s*item\.agent\.read_only \? 'prepare_only' : 'direct_execution'/);
+  assert.match(taskBatchSource, /execution_mode:\s*item\.agent\.read_only \? 'prepare_only' : 'delegated_execution'/);
   assert.match(taskBatchSource, /statut:\s*'en_cours'/);
   assert.doesNotMatch(taskBatchSource, /status:\s*item\.agent\.read_only \? 'running' : 'awaiting_approval'/);
 });
