@@ -128,6 +128,16 @@ try {
 
 // ── Companion batch : création multi-tâches + délégation ───
 try {
+  const taskAutopilot = require('./server-task-autopilot.cjs');
+  app.use('/api/task-autopilot', requireSession('admin'), taskAutopilot.router);
+  const autopilot = taskAutopilot.startTaskAutopilotScheduler();
+  console.log(`✅ Autopilote tâches ${autopilot.started ? 'activé' : 'inactif'} (${autopilot.reason || `${autopilot.interval_ms} ms`})`);
+} catch (e) {
+  console.warn('⚠️ Autopilote tâches indisponible:', e.message);
+}
+
+// ── Companion batch : création multi-tâches + délégation ───
+try {
   const assistantBatchRouter = require('./server-assistant-batch.cjs');
   // Monté AVANT le Companion historique. Il intercepte uniquement les demandes
   // multi-tâches et laisse toutes les autres routes continuer vers le routeur legacy.
