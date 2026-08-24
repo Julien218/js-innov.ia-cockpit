@@ -42,6 +42,7 @@ COPY --from=builder /app/server-assistant-batch.cjs ./server-assistant-batch.cjs
 COPY --from=builder /app/server-task-batch.cjs ./server-task-batch.cjs
 COPY --from=builder /app/server-companion-audience.cjs ./server-companion-audience.cjs
 COPY --from=builder /app/server-companion-memory.cjs ./server-companion-memory.cjs
+COPY --from=builder /app/server-agent-registry.cjs ./server-agent-registry.cjs
 COPY --from=builder /app/server-agent-orchestrator.cjs ./server-agent-orchestrator.cjs
 COPY --from=builder /app/server-agent-orchestrator-resilient.cjs ./server-agent-orchestrator-resilient.cjs
 COPY --from=builder /app/server-agent-run-log.cjs ./server-agent-run-log.cjs
@@ -67,6 +68,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-ai-cost-ledger-aggregate.cjs \
  && test -f /app/server-cost-centers.cjs \
  && test -f /app/server-client-costs.cjs \
+ && test -f /app/server-agent-registry.cjs \
  && test -f /app/server-agent-orchestrator.cjs \
  && test -f /app/server-agent-orchestrator-resilient.cjs \
  && test -f /app/server-agent-run-log.cjs \
@@ -77,6 +79,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-ai-cost-ledger-aggregate.cjs \
  && node --check /app/server-cost-centers.cjs \
  && node --check /app/server-client-costs.cjs \
+ && node --check /app/server-agent-registry.cjs \
  && node --check /app/server-agent-orchestrator.cjs \
  && node --check /app/server-agent-orchestrator-resilient.cjs \
  && node --check /app/server-agent-run-log.cjs \

@@ -20,13 +20,15 @@
 
 const express = require('express');
 const router = express.Router();
+const { AGENT_REGISTRY } = require('./server-agent-registry.cjs');
 
 // === Configuration ===
 const BASE44_API_URL = 'https://app.base44.com/api/agents';
 const BASE44_API_KEY = process.env.BASE44_API_KEY || process.env.BASE44_SERVER_API_KEY || '';
 
 // === Registre central des agents Base44 ===
-const AGENT_REGISTRY = [
+/* Registre partagé avec NOVA : voir server-agent-registry.cjs. */
+/*
   {
     key: 'jsinnov-agent',
     name: 'JsInnov-Agent',
@@ -138,7 +140,7 @@ const AGENT_REGISTRY = [
     status: 'deleted',
     status_detail: 'Agent non trouvé dans le workspace Base44 (supprimé ou déplacé)'
   }
-];
+]; */
 
 // === Middleware de vérification de clé serveur ===
 function checkServerKey(req, res, next) {
@@ -164,7 +166,7 @@ router.get('/', checkServerKey, (req, res) => {
       name: a.name,
       provider: a.provider,
       provider_agent_id: a.provider_agent_id,
-      role: a.role,
+      role: a.label || a.role,
       domains: a.domains,
       capabilities: a.capabilities,
       status: a.status,
