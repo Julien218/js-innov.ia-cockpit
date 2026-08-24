@@ -7,7 +7,7 @@ import DataTable from "@/components/shared/DataTable";
 import StatusBadge from "@/components/shared/StatusBadge";
 import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2 } from "lucide-react";
+import { Landmark, Pencil, Trash2 } from "lucide-react";
 
 const formFields = [
   { name: "nom",                   label: "Nom du contact",                 type: "text", required: true },
@@ -89,8 +89,77 @@ export default function Clients() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["Client"] }),
   });
 
+  const verifyBce = useMutation({
+    mutationFn: async (client) => {
+      const response = await fetch("/api/bce/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enterprise_number: client.numero_entreprise || client.numero_tva,
+          name: client.denomination_legale || client.entreprise || client.nom,
+          postal_code: client.code_postal,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const error = new Error(payload.error || "La recherche BCE a échoué.");
+        error.auditId = payload.audit_id;
+        error.registrationUrl = payload.official_registration_url;
+        throw error;
+      }
+
+      const official = payload.record || {};
+      const editable = ["denomination_legale", "numero_entreprise", "numero_tva", "adresse", "code_postal", "ville", "pays"];
+      const changes = editable
+        .filter((field) => official[field] && String(official[field]).trim() !== String(client[field] || "").trim())
+        .map((field) => ({ field, before: client[field] || "—", after: official[field] }));
+      if (changes.length === 0) {
+        return { unchanged: true, auditId: payload.audit_id };
+      }
+
+      const labels = {
+        denomination_legale: "Dénomination",
+        numero_entreprise: "N° entreprise",
+        numero_tva: "N° TVA",
+        adresse: "Adresse",
+        code_postal: "Code postal",
+        ville: "Ville",
+        pays: "Pays",
+      };
+      const summary = changes.map(({ field, before, after }) => `${labels[field]} : ${before} → ${after}`).join("\n");
+      const accepted = window.confirm(
+        `Données reçues de la BCE officielle :\n\n${summary}\n\nAppliquer uniquement ces différences à cette fiche client ?`
+      );
+      if (!accepted) return { cancelled: true, auditId: payload.audit_id };
+
+      const update = Object.fromEntries(changes.map(({ field, after }) => [field, after]));
+      update.facturation_statut = "verifie";
+      update.facturation_verifiee_at = payload.retrieved_at || new Date().toISOString();
+      update.facturation_source = `bce-officielle:${payload.audit_id}`;
+      await base44.entities.Client.update(client.id, update);
+      return { updated: true, auditId: payload.audit_id, count: changes.length };
+    },
+    onSuccess: async (result) => {
+      if (result?.updated) {
+        await qc.invalidateQueries({ queryKey: ["Client"] });
+        alert(`Fiche mise à jour avec ${result.count} donnée(s) BCE. Journal : ${result.auditId}`);
+      } else if (result?.unchanged) {
+        alert(`La fiche correspond déjà aux données BCE reçues. Journal : ${result.auditId}`);
+      }
+    },
+    onError: (lookupError) => {
+      const journal = lookupError.auditId ? `\nJournal : ${lookupError.auditId}` : "";
+      const access = lookupError.registrationUrl ? "\nUn accès au service web officiel BCE doit être configuré par l’administrateur." : "";
+      alert(`${lookupError.message}${journal}${access}`);
+    },
+  });
+
   const actions = (row) => (
     <div className="flex gap-2">
+      <Button size="icon" variant="ghost" title="Vérifier auprès de la BCE officielle"
+        disabled={verifyBce.isPending} onClick={() => verifyBce.mutate(row)}>
+        <Landmark className="w-4 h-4" />
+      </Button>
       <Button size="icon" variant="ghost" onClick={() => { setEditing(row); setOpen(true); }}>
         <Pencil className="w-4 h-4" />
       </Button>

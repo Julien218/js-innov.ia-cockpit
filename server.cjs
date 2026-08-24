@@ -82,6 +82,15 @@ try {
   console.warn('⚠️ Route data multi-tenant indisponible:', e.message);
 }
 
+// ── Vérification légale clients via la BCE officielle ──────
+try {
+  const bceRouter = require('./server-bce.cjs');
+  app.use('/api/bce', requireSession('admin'), bceRouter.router);
+  console.log('✅ Route /api/bce activée (recherche officielle + validation humaine)');
+} catch (e) {
+  console.warn('⚠️ Route BCE indisponible:', e.message);
+}
+
 // ── Centre HainoFlow by JS-Innov.IA ────────────────────────
 try {
   const hainoFlowRouter = require('./server-hainoflow.cjs');
