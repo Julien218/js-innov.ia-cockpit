@@ -14,6 +14,12 @@ test('domain ops refuse tout domaine hors inventaire géré', () => {
   assert.ok(MANAGED_DOMAINS['missetmisterdour.be']);
 });
 
+test('chaque diagnostic de domaine reçoit un outil et un journal vérifiables', () => {
+  const source = fs.readFileSync(path.join(root, 'server-domain-ops.cjs'), 'utf8');
+  assert.match(source, /tool:\s*'cockpit_domain_probe'/);
+  assert.match(source, /run_id:\s*`domain-\$\{crypto\.randomUUID\(\)\}`/);
+});
+
 test('une réparation n’est déclarée réussie que si une amélioration est mesurable', () => {
   const before = {
     http: { apex: { ok: false } },

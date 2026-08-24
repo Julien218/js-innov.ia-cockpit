@@ -177,6 +177,8 @@ async function analyzeDomain(domain) {
   if (httpsApex.ok && httpsApex.response_ms > 2500) issues.push({ severity: 'warning', code: 'slow_response', label: `Temps de réponse élevé (${httpsApex.response_ms} ms).` });
 
   return {
+    tool: 'cockpit_domain_probe',
+    run_id: `domain-${crypto.randomUUID()}`,
     domain,
     app: meta.app,
     agent_hint: meta.agent_hint,
