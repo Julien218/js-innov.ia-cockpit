@@ -21,6 +21,8 @@ test('NOVA locale reconnaît uniquement les intentions d’outils autorisées', 
     assert.equal(module.pathInsideAllowedRoot(path.join(root, 'video.mp4')), path.resolve(root, 'video.mp4'));
     assert.equal(module.pathInsideAllowedRoot(path.resolve(root, '..', 'secret.txt')), null);
     assert.equal(module.requestsTaskList('quelles tâches sont à effectuer ?'), true);
+    assert.equal(module.requestsTaskList('quel sont les taches non effectuees?'), true);
+    assert.equal(module.requestsTaskList('quelles sont les tâches non terminées ?'), true);
     assert.match(module.taskSnapshotResponse({ synced_at: '2026-08-24T14:00:00Z', tasks: [
       { titre: 'Audit SEO', statut: 'en_cours', priorite: 'haute' },
       { titre: 'Ancienne tâche', statut: 'terminee' },

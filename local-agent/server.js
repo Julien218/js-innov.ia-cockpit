@@ -12,7 +12,7 @@ const PORT = Number(process.env.LOCAL_AGENT_PORT || 8787);
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 const MAX_BODY = 5 * 1024 * 1024;
 const approvals = new Map();
 const runs = new Map();
@@ -131,7 +131,11 @@ function requestedTool(message) {
 }
 
 function requestsTaskList(message) {
-  return /(?:qu(?:el(?:le)?s?|oi).*(?:t[aâ]ches?|travail).*(?:effectuer|faire|cours|rest)|t[aâ]ches?.*(?:effectuer|faire|cours|rest))/i.test(String(message || ''));
+  const text = String(message || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const mentionsTasks = /\b(?:taches?|travail)\b/.test(text);
+  const asksForList = /\b(?:quel(?:le)?s?|quoi)\b/.test(text);
+  const mentionsPending = /(?:non\s+(?:effectue|termine)|a\s+(?:effectuer|faire)|en\s+cours|rest|effectuer|faire|pending)/.test(text);
+  return mentionsTasks && (asksForList || mentionsPending);
 }
 
 function taskSnapshotResponse(snapshot) {
