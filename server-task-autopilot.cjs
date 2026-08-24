@@ -212,6 +212,26 @@ router.post('/run', async (_req, res) => {
   catch (error) { res.status(502).json({ error: error.message, state }); }
 });
 
+const LOCAL_TOOLS = new Set(['ffmpeg_version', 'ffprobe_file', 'list_directory', 'find_local_workflows', 'comfyui_health', 'http_diagnose']);
+router.post('/local-results', async (req, res) => {
+  const results = Array.isArray(req.body?.task_results) ? req.body.task_results.slice(0, 50) : [];
+  const synced = [];
+  for (const item of results) {
+    const taskId = String(item?.task_id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+    const runs = Array.isArray(item?.tool_runs) ? item.tool_runs.slice(0, 10) : [];
+    if (!taskId || !item?.completed || !runs.length || runs.some((run) => !LOCAL_TOOLS.has(run?.tool) || !run?.success || !/^[a-f0-9-]{20,}$/i.test(String(run?.id || '')))) continue;
+    const evidence = runs.map((run) => ({ id: String(run.id), tool: run.tool, started_at: run.started_at, completed_at: run.completed_at, exit_code: run.exit_code, output: String(run.output || '').slice(0, 12000) }));
+    try {
+      const log = await agentRequest('/agent-runs', { method: 'POST', body: { task_id: taskId, agent_id: 'nova-local-tools', functional_role: 'windows_local_diagnostics', provider_name: 'local-agent', status: 'completed', execution_mode: 'read_only', input: { title: String(item.title || '').slice(0, 240), tools: evidence.map((run) => run.tool) }, result: { tool_runs: evidence }, idempotency_key: `local-autopilot:${taskId}:${evidence.map((run) => run.id).join(':')}`.slice(0, 500), requested_by: String(req.user?.email || req.user?.id || 'desktop-companion').slice(0, 180), started_at: evidence[0].started_at, completed_at: evidence[evidence.length - 1].completed_at } });
+      await patchTask(taskId, { statut: 'terminee', notes: `NOVA locale — diagnostic terminé avec preuve.\nOutils: ${evidence.map((run) => run.tool).join(', ')}\nJournaux: ${evidence.map((run) => run.id).join(', ')}`.slice(0, 4000) });
+      synced.push({ task_id: taskId, run_id: log?.id || null, tool_run_ids: evidence.map((run) => run.id) });
+    } catch (error) {
+      synced.push({ task_id: taskId, error: String(error.message || error).slice(0, 300) });
+    }
+  }
+  res.json({ received: results.length, synced: synced.filter((item) => !item.error).length, results: synced });
+});
+
 function startTaskAutopilotScheduler() {
   if (!AUTOPILOT_ENABLED || !AGENT_KEY) return { started: false, reason: AUTOPILOT_ENABLED ? 'agent_key_missing' : 'disabled' };
   const first = setTimeout(() => runAutopilot().catch((error) => console.warn('[task-autopilot]', error.message)), 30_000);

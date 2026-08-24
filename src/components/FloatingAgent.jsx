@@ -19,6 +19,7 @@ import novaAvatar from '@/assets/nova-avatar-128.png';
 
 const LOCAL_NOVA_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
 const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
+const LOCAL_AUTOPILOT_LAST_RUN_KEY = 'nova_local_autopilot_last_run_v1';
 const LOCAL_NOVA_PROMPT = `Tu es NOVA, l’unique assistant visible du Cockpit JS-Innov.IA. Tu conserves le même nom et le même rôle en mode cloud et en mode local. Vérifie les outils réellement disponibles avant toute affirmation de capacité. Ne dis jamais que tu es une simple IA textuelle ni que tu ne peux rien exécuter uniquement parce qu’Internet est coupé.`;
 
 const FloatingAgent = () => {
@@ -82,6 +83,25 @@ const FloatingAgent = () => {
           date_echeance: task.date_echeance || task.due_date,
         }));
         localStorage.setItem(LOCAL_TASK_SNAPSHOT_KEY, JSON.stringify({ synced_at: new Date().toISOString(), tasks }));
+        const now = Date.now();
+        const lastRun = Number(localStorage.getItem(LOCAL_AUTOPILOT_LAST_RUN_KEY) || 0);
+        if (now - lastRun > 5 * 60_000) {
+          localStorage.setItem(LOCAL_AUTOPILOT_LAST_RUN_KEY, String(now));
+          const taskSnapshot = { synced_at: new Date().toISOString(), tasks };
+          void (async () => {
+            for (const localUrl of LOCAL_NOVA_URLS) {
+              try {
+                const localResponse = await fetch(`${localUrl}/api/tasks/autopilot`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task_snapshot: taskSnapshot }), signal: AbortSignal.timeout(120000) });
+                const localResult = await localResponse.json().catch(() => ({}));
+                if (!localResponse.ok) throw new Error(localResult.error || `HTTP ${localResponse.status}`);
+                if (Array.isArray(localResult.task_results) && localResult.task_results.length) {
+                  await fetch('/api/task-autopilot/local-results', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ task_results: localResult.task_results }) });
+                }
+                break;
+              } catch {}
+            }
+          })();
+        }
       })
       .catch(() => {});
     return () => controller.abort();

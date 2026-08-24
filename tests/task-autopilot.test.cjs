@@ -57,3 +57,10 @@ test('le serveur et Docker embarquent l’autopilote permanent', () => {
   assert.match(docker, /server-task-autopilot\.cjs/);
   assert.match(docker, /node --check \/app\/server-task-autopilot\.cjs/);
 });
+
+test('les preuves locales sont synchronisées sans accepter de commande arbitraire', () => {
+  const source = fs.readFileSync(path.join(root, 'server-task-autopilot.cjs'), 'utf8');
+  assert.match(source, /LOCAL_TOOLS = new Set/);
+  assert.match(source, /\/local-results/);
+  assert.match(source, /provider_name: 'local-agent'/);
+});
