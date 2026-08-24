@@ -240,7 +240,7 @@ router.post('/run', async (_req, res) => {
   catch (error) { res.status(502).json({ error: error.message, state }); }
 });
 
-const LOCAL_TOOLS = new Set(['ffmpeg_version', 'ffprobe_file', 'list_directory', 'find_local_workflows', 'comfyui_health', 'http_diagnose']);
+const LOCAL_TOOLS = new Set(['ffmpeg_version', 'ffprobe_file', 'list_directory', 'find_local_workflows', 'workflow_documentation_audit', 'video_pipeline_audit', 'comfyui_health', 'http_diagnose']);
 router.post('/local-results', async (req, res) => {
   const results = Array.isArray(req.body?.task_results) ? req.body.task_results.slice(0, 50) : [];
   const synced = [];
