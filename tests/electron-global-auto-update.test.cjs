@@ -15,7 +15,7 @@ test('desktop starts through the global bootstrap', () => {
 });
 
 test('desktop bundles and starts NOVA Local Tools without a second assistant UI', () => {
-  assert.equal(pkg.version, '1.0.23');
+  assert.equal(pkg.version, '1.0.24');
   const localAgentResource = pkg.build?.extraResources?.find((item) => item.to === 'local-agent');
   assert.ok(localAgentResource);
   assert.ok(localAgentResource.filter.includes('server.js'));
@@ -53,6 +53,14 @@ test('release workflow publishes updater metadata with the installer', () => {
   assert.match(workflow, /electron\/dist\/\*\.blockmap/);
   assert.match(workflow, /electron\/dist\/latest\.yml/);
   assert.match(workflow, /tag_name:\s*v\$\{\{ steps\.version\.outputs\.version \}\}/);
+});
+
+test('packaged desktop enables startup with Windows', () => {
+  assert.match(bootstrap, /function enableWindowsStartup\(\)/);
+  assert.match(bootstrap, /app\.setLoginItemSettings\(\{/);
+  assert.match(bootstrap, /openAtLogin:\s*true/);
+  assert.match(bootstrap, /path:\s*process\.execPath/);
+  assert.match(bootstrap, /app\.whenReady\(\)\.then\(async \(\) => \{\s*enableWindowsStartup\(\)/);
 });
 
 test('desktop release runs when NOVA local capabilities change', () => {
