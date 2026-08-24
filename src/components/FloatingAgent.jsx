@@ -18,6 +18,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import novaAvatar from '@/assets/nova-avatar-128.png';
 
 const LOCAL_NOVA_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
+const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
 const LOCAL_NOVA_PROMPT = `Tu es NOVA, l’unique assistant visible du Cockpit JS-Innov.IA. Tu conserves le même nom et le même rôle en mode cloud et en mode local. Vérifie les outils réellement disponibles avant toute affirmation de capacité. Ne dis jamais que tu es une simple IA textuelle ni que tu ne peux rien exécuter uniquement parce qu’Internet est coupé.`;
 
 const FloatingAgent = () => {
@@ -64,6 +65,27 @@ const FloatingAgent = () => {
   useEffect(() => {
     localStorage.setItem('agent_tts_enabled', String(ttsEnabled));
   }, [ttsEnabled]);
+
+  // Conserve une copie minimale des tâches pour que NOVA puisse les consulter hors connexion.
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return undefined;
+    const controller = new AbortController();
+    fetch('/api/data/Tache?limit=100', { credentials: 'include', signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`)))
+      .then((payload) => {
+        const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.items) ? payload.items : [];
+        const tasks = rows.slice(0, 100).map((task) => ({
+          id: task.id,
+          titre: task.titre || task.title || task.nom,
+          statut: task.statut || task.status,
+          priorite: task.priorite || task.priority,
+          date_echeance: task.date_echeance || task.due_date,
+        }));
+        localStorage.setItem(LOCAL_TASK_SNAPSHOT_KEY, JSON.stringify({ synced_at: new Date().toISOString(), tasks }));
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
 
   // Preload TTS voices
   useEffect(() => {
@@ -166,6 +188,8 @@ const FloatingAgent = () => {
 
       const sendLocal = async () => {
         let lastError;
+        let taskSnapshot = null;
+        try { taskSnapshot = JSON.parse(localStorage.getItem(LOCAL_TASK_SNAPSHOT_KEY) || 'null'); } catch {}
         for (const localUrl of LOCAL_NOVA_URLS) {
           try {
             const resp = await fetch(`${localUrl}/api/agent/chat`, {
@@ -175,7 +199,7 @@ const FloatingAgent = () => {
                 message: msg,
                 history: messages.slice(-20).map(({ role, content }) => ({ role, content })),
                 system_prompt: LOCAL_NOVA_PROMPT,
-                context: { source: 'cockpit-nova', conversation_id: conversationId, offline: true },
+                context: { source: 'cockpit-nova', conversation_id: conversationId, offline: true, task_snapshot: taskSnapshot },
               }),
               signal: AbortSignal.timeout(90000),
             });
