@@ -58,6 +58,7 @@ test('NOVA locale reconnaît uniquement les intentions d’outils autorisées', 
     assert.match(duplicates, /2 occurrences regroupées/);
     assert.deepEqual(module.localTaskPlan({ titre: "Vérifier l'absence de workflow MiniMax H3 local" }), ['find_local_workflows', 'comfyui_health']);
     assert.deepEqual(module.localTaskPlan({ titre: "Contrôler l’état des API vidéo IA" }), ['comfyui_health']);
+    assert.deepEqual(module.localTaskPlan({ titre: 'Recenser les fonctionnalités non opérationnelles dans le module vidéo IA' }), ['find_local_workflows', 'comfyui_health', 'ffmpeg_version']);
     assert.equal(module.localTaskPlan({ titre: 'Mettre à jour la documentation sur les workflows locaux' }), null);
     const autopilot = await module.executeLocalTaskAutopilot({ tasks: [
       { id: 'api-video', titre: "Contrôler l’état des API vidéo IA", statut: 'a_faire' },
