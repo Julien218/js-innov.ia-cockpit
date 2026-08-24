@@ -29,10 +29,8 @@ const createVideoProject = (project = {}) => {
   const safeProject = project && typeof project === "object" ? project : {};
   return {
     title: "Nouveau montage",
-    clips: [],
     audio_url: "",
     audio_name: "",
-    texts: [],
     transition: "fade",
     status: "draft",
     ...safeProject,

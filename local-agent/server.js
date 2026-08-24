@@ -12,7 +12,7 @@ const PORT = Number(process.env.LOCAL_AGENT_PORT || 8787);
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-const VERSION = '1.3.2';
+const VERSION = '1.3.3';
 const MAX_BODY = 5 * 1024 * 1024;
 const approvals = new Map();
 const runs = new Map();
@@ -337,7 +337,8 @@ async function health() {
 
 function toolResponse(run) {
   const intro = run.success ? 'Action locale réellement exécutée.' : 'L’action locale a échoué.';
-  return `${intro} Outil: ${run.tool}. Heure: ${run.started_at}. Code de sortie: ${run.exit_code ?? 'indisponible'}. Journal: ${run.id}.\n\nSortie brute:\n${run.output}`;
+  const raw = String(run.output || '').replace(/```/g, '``\\`');
+  return `${intro} Outil: ${run.tool}. Heure: ${run.started_at}. Code de sortie: ${run.exit_code ?? 'indisponible'}. Journal: ${run.id}.\n\nSortie brute:\n\n\u0060\u0060\u0060text\n${raw}\n\u0060\u0060\u0060`;
 }
 
 const server = http.createServer(async (req, res) => {

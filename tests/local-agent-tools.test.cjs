@@ -78,6 +78,8 @@ test('le moteur local emploie execFile sans shell ni commande arbitraire', () =>
   assert.match(source, /find_local_workflows/);
   assert.match(source, /delete childEnv\.SSLKEYLOGFILE/);
   assert.match(source, /void ensureComfyUi\(\)/);
+  assert.match(source, /const raw = String\(run\.output/);
+  assert.match(source, /u0060\\u0060\\u0060text/);
 });
 
 test('le Cockpit synchronise et transmet une copie locale des tâches', () => {
