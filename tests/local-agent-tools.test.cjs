@@ -17,6 +17,9 @@ test('NOVA locale reconnaît uniquement les intentions d’outils autorisées', 
   try {
     const module = await import(`../local-agent/server.js?test=${Date.now()}`);
     assert.deepEqual(module.requestedTool('lance ffmpeg -version'), { tool: 'ffmpeg_version', args: {} });
+    assert.deepEqual(module.requestedTool('contrôle l’état de ComfyUI sur le port 8188'), { tool: 'comfyui_health', args: {} });
+    assert.deepEqual(module.requestedTool('recherche les workflows MiniMax H3 locaux'), { tool: 'find_local_workflows', args: {} });
+    assert.deepEqual(module.requestedTool('vérifie le diagnostic HTTPS du domaine jsinnovia.com'), { tool: 'http_diagnose', args: { url: 'https://jsinnovia.com' } });
     assert.equal(module.requestedTool('supprime tous mes fichiers'), null);
     assert.equal(module.pathInsideAllowedRoot(path.join(root, 'video.mp4')), path.resolve(root, 'video.mp4'));
     assert.equal(module.pathInsideAllowedRoot(path.resolve(root, '..', 'secret.txt')), null);
@@ -66,6 +69,9 @@ test('le moteur local emploie execFile sans shell ni commande arbitraire', () =>
   assert.match(source, /think: false/);
   assert.match(source, /Copie locale des tâches/);
   assert.match(source, /body\.context\.task_snapshot/);
+  assert.match(source, /http_target_not_allowed/);
+  assert.match(source, /127\.0\.0\.1:8188\/system_stats/);
+  assert.match(source, /find_local_workflows/);
 });
 
 test('le Cockpit synchronise et transmet une copie locale des tâches', () => {

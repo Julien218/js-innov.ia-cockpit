@@ -12,12 +12,13 @@ const PORT = Number(process.env.LOCAL_AGENT_PORT || 8787);
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-const VERSION = '1.2.2';
+const VERSION = '1.3.0';
 const MAX_BODY = 5 * 1024 * 1024;
 const approvals = new Map();
 const runs = new Map();
 const execOptions = { windowsHide: true, timeout: 30_000, maxBuffer: 1024 * 1024 };
 const ALLOWED_ORIGINS = new Set(['https://cockpit.jsinnovia.com']);
+const ALLOWED_HTTP_HOSTS = new Set(String(process.env.LOCAL_AGENT_ALLOWED_HTTP_HOSTS || 'jsinnovia.com,www.jsinnovia.com,assurances-dour.be,www.assurances-dour.be,letourdedour.com,www.letourdedour.com').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean));
 
 const configuredRoots = String(process.env.LOCAL_AGENT_ALLOWED_ROOTS || '').split(path.delimiter).map((v) => v.trim()).filter(Boolean);
 const defaultRoots = ['Downloads', 'Documents', 'Videos'].map((name) => path.join(os.homedir(), name)).filter(existsSync);
@@ -91,6 +92,17 @@ async function executeTool(tool, args = {}) {
 
   if (tool === 'ffmpeg_version') {
     command = 'ffmpeg'; commandArgs = ['-version'];
+  } else if (tool === 'comfyui_health') {
+    return fetchRun({ id, tool, startedAt, url: 'http://127.0.0.1:8188/system_stats', timeout: 5000 });
+  } else if (tool === 'http_diagnose') {
+    let target;
+    try { target = new URL(String(args.url || '')); } catch { throw Object.assign(new Error('invalid_url'), { status: 400 }); }
+    if (!['http:', 'https:'].includes(target.protocol) || !ALLOWED_HTTP_HOSTS.has(target.hostname.toLowerCase()) || target.username || target.password) throw Object.assign(new Error('http_target_not_allowed'), { status: 403 });
+    target.hash = '';
+    return fetchRun({ id, tool, startedAt, url: target.toString(), timeout: 10000 });
+  } else if (tool === 'find_local_workflows') {
+    const matches = await findLocalWorkflows();
+    return recordRun({ id, tool, started_at: startedAt, completed_at: new Date().toISOString(), success: true, exit_code: 0, target: ALLOWED_ROOTS, output: JSON.stringify({ count: matches.length, matches }) });
   } else if (tool === 'ffprobe_file') {
     const file = pathInsideAllowedRoot(args.path);
     if (!file) throw Object.assign(new Error('path_not_allowed'), { status: 403 });
@@ -124,6 +136,11 @@ async function ollama(prompt, model = DEFAULT_MODEL) {
 function requestedTool(message) {
   const text = String(message || '');
   if (/ffmpeg\s+-version|version\s+(?:de\s+)?ffmpeg|teste?.*ffmpeg/i.test(text)) return { tool: 'ffmpeg_version', args: {} };
+  if (/(?:recherche|trouve|recense|localise|v[eé]rifie).*(?:workflow|minimax\s*h3)|(?:workflow|minimax\s*h3).*(?:local|dossier|fichier)/i.test(text)) return { tool: 'find_local_workflows', args: {} };
+  if (/(?:comfyui|port\s*8188).*(?:[eé]tat|sant[eé]|status|disponible|en ligne|diagnostic|contr[oô]le)|(?:[eé]tat|sant[eé]|status|diagnostic|contr[oô]le).*(?:comfyui|8188)/i.test(text)) return { tool: 'comfyui_health', args: {} };
+  const explicitUrl = text.match(/https?:\/\/[^\s<>)]+/i)?.[0]?.replace(/[.,;!?]+$/, '');
+  const managedDomain = text.match(/\b(?:www\.)?(?:jsinnovia\.com|assurances-dour\.be|letourdedour\.com)\b/i)?.[0];
+  if (/(?:https?|tls|api|site|domaine).*(?:diagnostic|teste?|v[eé]rifie|contr[oô]le)|(?:diagnostic|teste?|v[eé]rifie|contr[oô]le).*(?:https?|tls|api|site|domaine)/i.test(text) && (explicitUrl || managedDomain)) return { tool: 'http_diagnose', args: { url: explicitUrl || `https://${managedDomain}` } };
   const localPath = text.match(/["“](.+?)["”]/)?.[1] || text.match(/([A-Za-z]:\\[^\r\n]+)/)?.[1];
   if (/ffprobe|m[eé]tadonn[eé]es?|analyse.*(?:vid[eé]o|fichier)/i.test(text) && localPath) return { tool: 'ffprobe_file', args: { path: localPath.trim() } };
   if (/(?:liste|contenu).*(?:dossier|fichiers?)/i.test(text) && localPath) return { tool: 'list_directory', args: { path: localPath.trim() } };
@@ -136,6 +153,41 @@ function requestsTaskList(message) {
   const asksForList = /\b(?:quel(?:le)?s?|quoi)\b/.test(text);
   const mentionsPending = /(?:non\s+(?:effectue|termine)|a\s+(?:effectuer|faire)|en\s+cours|rest|effectuer|faire|pending)/.test(text);
   return mentionsTasks && (asksForList || mentionsPending);
+}
+
+async function fetchRun({ id, tool, startedAt, url, timeout = 8000 }) {
+  const started = Date.now();
+  try {
+    const response = await fetch(url, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(timeout), headers: { 'user-agent': 'NOVA-Local-Tools/1.3' } });
+    const successful = response.ok || (response.status >= 300 && response.status < 400);
+    const output = JSON.stringify({ url, status: response.status, status_text: response.statusText, location: response.headers.get('location'), content_type: response.headers.get('content-type'), duration_ms: Date.now() - started });
+    return recordRun({ id, tool, started_at: startedAt, completed_at: new Date().toISOString(), success: successful, exit_code: successful ? 0 : 1, target: url, output });
+  } catch (error) {
+    return recordRun({ id, tool, started_at: startedAt, completed_at: new Date().toISOString(), success: false, exit_code: 1, target: url, output: JSON.stringify({ url, error: String(error.message || error), cause: String(error.cause?.code || error.cause?.message || ''), duration_ms: Date.now() - started }) });
+  }
+}
+
+async function findLocalWorkflows() {
+  const matches = [];
+  const ignored = new Set(['node_modules', '.git', 'dist', 'build', '.cache']);
+  async function visit(directory, depth) {
+    if (depth > 5 || matches.length >= 200) return;
+    const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (matches.length >= 200) break;
+      if (ignored.has(entry.name.toLowerCase())) continue;
+      const fullPath = path.join(directory, entry.name);
+      const normalized = fullPath.toLowerCase();
+      if (entry.isDirectory()) {
+        if (/comfyui|minimax/.test(entry.name.toLowerCase())) matches.push({ path: fullPath, type: 'directory' });
+        await visit(fullPath, depth + 1);
+      } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.json') && /comfyui|minimax/.test(normalized) && !/(?:secret|credential|token|oauth)/.test(entry.name.toLowerCase())) {
+        matches.push({ path: fullPath, type: 'workflow_json' });
+      }
+    }
+  }
+  for (const root of ALLOWED_ROOTS) await visit(root, 0);
+  return matches;
 }
 
 function taskSnapshotResponse(snapshot) {
@@ -223,7 +275,7 @@ function taskAnalysisResponse(snapshot) {
       index += 1;
     }
   }
-  return `Analyse factuelle de ${ranked.length} enregistrement(s) non terminé(s), regroupés en ${unique.length} tâche(s) unique(s).${lines.join('\n')}\n\nExécutions réelles lancées: 0. Aucun tool_run n’a été créé. Les seuls outils disponibles sont ffmpeg_version, ffprobe_file et list_directory. Ces tâches ne fournissent aucun chemin de fichier ou dossier autorisé et nécessitent, selon le cas, ComfyUI, un client HTTP/API, l’accès aux données métier ou des droits d’écriture. Elles restent donc à faire ou bloquées; aucune n’est marquée terminée. Pour lancer un diagnostic local vérifiable, indiquez le chemin exact du dossier ou du fichier à contrôler.`;
+  return `Analyse factuelle de ${ranked.length} enregistrement(s) non terminé(s), regroupés en ${unique.length} tâche(s) unique(s).${lines.join('\n')}\n\nExécutions réelles lancées: 0. Aucun tool_run n’a été créé automatiquement. Outils disponibles: ffmpeg_version, ffprobe_file, list_directory, find_local_workflows, comfyui_health et http_diagnose. Les diagnostics doivent être demandés explicitement pour produire un journal vérifiable; aucune tâche n’est marquée terminée sans résultat réel.`;
 }
 
 async function health() {
@@ -236,7 +288,7 @@ async function health() {
     models = (payload.models || []).map((item) => item.name);
   } catch {}
   const [ffmpeg, ffprobe] = await Promise.all([commandStatus('ffmpeg'), commandStatus('ffprobe')]);
-  return { ok: true, agent: { name: 'NOVA Local Tools', version: VERSION, mode: 'local-first', approvalGate: true }, services: { ollama: { online: ollamaOnline, url: OLLAMA_URL, models }, ffmpeg, ffprobe }, tools: [{ name: 'ffmpeg_version', mode: 'read_only', available: ffmpeg.online }, { name: 'ffprobe_file', mode: 'read_only', available: ffprobe.online }, { name: 'list_directory', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }], allowed_roots: ALLOWED_ROOTS };
+  return { ok: true, agent: { name: 'NOVA Local Tools', version: VERSION, mode: 'local-first', approvalGate: true }, services: { ollama: { online: ollamaOnline, url: OLLAMA_URL, models }, ffmpeg, ffprobe }, tools: [{ name: 'ffmpeg_version', mode: 'read_only', available: ffmpeg.online }, { name: 'ffprobe_file', mode: 'read_only', available: ffprobe.online }, { name: 'list_directory', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'find_local_workflows', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'comfyui_health', mode: 'read_only', available: true }, { name: 'http_diagnose', mode: 'read_only', available: true }], allowed_roots: ALLOWED_ROOTS, allowed_http_hosts: [...ALLOWED_HTTP_HOSTS] };
 }
 
 function toolResponse(run) {
@@ -278,7 +330,7 @@ const server = http.createServer(async (req, res) => {
       const taskContext = body.context?.task_snapshot
         ? JSON.stringify(body.context.task_snapshot).slice(0, 30000)
         : 'Aucune copie locale de tâches disponible.';
-      const prompt = `${body.system_prompt || 'Tu es NOVA, assistant local JS-Innov.IA.'}\nOutils réels: ffmpeg_version, ffprobe_file, list_directory. N’invente jamais une exécution. Ne prétends jamais avoir exécuté un outil sans tool_run réel. Si une tâche exige un outil absent, marque-la bloquée et précise l’outil manquant.\nCopie locale des tâches: ${taskContext}\nHistorique: ${JSON.stringify(Array.isArray(body.history) ? body.history.slice(-20) : []).slice(0, 20000)}\nUtilisateur: ${String(body.message).slice(0, 4000)}\nNOVA:`;
+      const prompt = `${body.system_prompt || 'Tu es NOVA, assistant local JS-Innov.IA.'}\nOutils réels: ffmpeg_version, ffprobe_file, list_directory, find_local_workflows, comfyui_health, http_diagnose. N’invente jamais une exécution. Ne prétends jamais avoir exécuté un outil sans tool_run réel. Si une tâche exige un outil absent, marque-la bloquée et précise l’outil manquant.\nCopie locale des tâches: ${taskContext}\nHistorique: ${JSON.stringify(Array.isArray(body.history) ? body.history.slice(-20) : []).slice(0, 20000)}\nUtilisateur: ${String(body.message).slice(0, 4000)}\nNOVA:`;
       const response = await ollama(prompt, body.model);
       if (!response) {
         return send(req, res, 200, { ok: true, response: 'NOVA locale n’a produit aucune réponse exploitable. Reformulez la demande ou précisez le fichier, le dossier ou l’action souhaitée.', model: body.model || DEFAULT_MODEL, mode: 'local', empty_model_response: true });
