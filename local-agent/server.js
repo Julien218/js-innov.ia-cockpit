@@ -12,7 +12,7 @@ const PORT = Number(process.env.LOCAL_AGENT_PORT || 8787);
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-const VERSION = '1.3.1';
+const VERSION = '1.3.2';
 const MAX_BODY = 5 * 1024 * 1024;
 const approvals = new Map();
 const runs = new Map();
@@ -122,7 +122,7 @@ async function executeTool(tool, args = {}) {
   if (tool === 'ffmpeg_version') {
     command = 'ffmpeg'; commandArgs = ['-version'];
   } else if (tool === 'comfyui_health') {
-    return fetchRun({ id, tool, startedAt, url: 'http://127.0.0.1:8188/system_stats', timeout: 5000 });
+    return fetchRun({ id, tool, startedAt, url: 'http://127.0.0.1:8188/system_stats', timeout: 5000, includeJson: true });
   } else if (tool === 'http_diagnose') {
     let target;
     try { target = new URL(String(args.url || '')); } catch { throw Object.assign(new Error('invalid_url'), { status: 400 }); }
@@ -162,18 +162,24 @@ async function ollama(prompt, model = DEFAULT_MODEL) {
   return String(payload.response || '').trim();
 }
 
-function requestedTool(message) {
+function requestedTools(message) {
   const text = String(message || '');
-  if (/ffmpeg\s+-version|version\s+(?:de\s+)?ffmpeg|teste?.*ffmpeg/i.test(text)) return { tool: 'ffmpeg_version', args: {} };
-  if (/(?:recherche|trouve|recense|localise|v[eé]rifie).*(?:workflow|minimax\s*h3)|(?:workflow|minimax\s*h3).*(?:local|dossier|fichier)/i.test(text)) return { tool: 'find_local_workflows', args: {} };
-  if (/(?:comfyui|port\s*8188).*(?:[eé]tat|sant[eé]|status|disponible|en ligne|diagnostic|contr[oô]le)|(?:[eé]tat|sant[eé]|status|diagnostic|contr[oô]le).*(?:comfyui|8188)/i.test(text)) return { tool: 'comfyui_health', args: {} };
+  const requests = [];
+  const add = (tool, args = {}) => { if (!requests.some((item) => item.tool === tool && JSON.stringify(item.args) === JSON.stringify(args))) requests.push({ tool, args }); };
+  if (/ffmpeg\s+-version|version\s+(?:de\s+)?ffmpeg|teste?.*ffmpeg/i.test(text)) add('ffmpeg_version');
+  if (/(?:recherche|trouve|recense|localise|v[eé]rifie).*(?:workflow|minimax\s*h3)|(?:workflow|minimax\s*h3).*(?:local|dossier|fichier)/i.test(text)) add('find_local_workflows');
+  if (/(?:comfyui|port\s*8188).*(?:[eé]tat|sant[eé]|status|disponible|en ligne|diagnostic|contr[oô]le)|(?:[eé]tat|sant[eé]|status|diagnostic|contr[oô]le).*(?:comfyui|8188)/i.test(text)) add('comfyui_health');
   const explicitUrl = text.match(/https?:\/\/[^\s<>)]+/i)?.[0]?.replace(/[.,;!?]+$/, '');
   const managedDomain = text.match(/\b(?:www\.)?(?:jsinnovia\.com|assurances-dour\.be|letourdedour\.com)\b/i)?.[0];
-  if (/(?:https?|tls|api|site|domaine).*(?:diagnostic|teste?|v[eé]rifie|contr[oô]le)|(?:diagnostic|teste?|v[eé]rifie|contr[oô]le).*(?:https?|tls|api|site|domaine)/i.test(text) && (explicitUrl || managedDomain)) return { tool: 'http_diagnose', args: { url: explicitUrl || `https://${managedDomain}` } };
+  if (/(?:https?|tls|api|site|domaine).*(?:diagnostic|teste?|v[eé]rifie|contr[oô]le)|(?:diagnostic|teste?|v[eé]rifie|contr[oô]le).*(?:https?|tls|api|site|domaine)/i.test(text) && (explicitUrl || managedDomain)) add('http_diagnose', { url: explicitUrl || `https://${managedDomain}` });
   const localPath = text.match(/["“](.+?)["”]/)?.[1] || text.match(/([A-Za-z]:\\[^\r\n]+)/)?.[1];
-  if (/ffprobe|m[eé]tadonn[eé]es?|analyse.*(?:vid[eé]o|fichier)/i.test(text) && localPath) return { tool: 'ffprobe_file', args: { path: localPath.trim() } };
-  if (/(?:liste|contenu).*(?:dossier|fichiers?)/i.test(text) && localPath) return { tool: 'list_directory', args: { path: localPath.trim() } };
-  return null;
+  if (/ffprobe|m[eé]tadonn[eé]es?|analyse.*(?:vid[eé]o|fichier)/i.test(text) && localPath) add('ffprobe_file', { path: localPath.trim() });
+  if (/(?:liste|contenu).*(?:dossier|fichiers?)/i.test(text) && localPath) add('list_directory', { path: localPath.trim() });
+  return requests;
+}
+
+function requestedTool(message) {
+  return requestedTools(message)[0] || null;
 }
 
 function requestsTaskList(message) {
@@ -184,12 +190,21 @@ function requestsTaskList(message) {
   return mentionsTasks && (asksForList || mentionsPending);
 }
 
-async function fetchRun({ id, tool, startedAt, url, timeout = 8000 }) {
+async function fetchRun({ id, tool, startedAt, url, timeout = 8000, includeJson = false }) {
   const started = Date.now();
   try {
     const response = await fetch(url, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(timeout), headers: { 'user-agent': 'NOVA-Local-Tools/1.3' } });
     const successful = response.ok || (response.status >= 300 && response.status < 400);
-    const output = JSON.stringify({ url, status: response.status, status_text: response.statusText, location: response.headers.get('location'), content_type: response.headers.get('content-type'), duration_ms: Date.now() - started });
+    const details = { url, status: response.status, status_text: response.statusText, location: response.headers.get('location'), content_type: response.headers.get('content-type'), duration_ms: Date.now() - started };
+    if (includeJson) {
+      const payload = await response.json().catch(() => null);
+      if (payload) {
+        details.comfyui_version = payload.system?.comfyui_version || null;
+        details.python_version = payload.system?.python_version || null;
+        details.devices = Array.isArray(payload.devices) ? payload.devices.map((device) => ({ name: device.name, type: device.type, vram_total: device.vram_total, vram_free: device.vram_free })) : [];
+      }
+    }
+    const output = JSON.stringify(details);
     return recordRun({ id, tool, started_at: startedAt, completed_at: new Date().toISOString(), success: successful, exit_code: successful ? 0 : 1, target: url, output });
   } catch (error) {
     return recordRun({ id, tool, started_at: startedAt, completed_at: new Date().toISOString(), success: false, exit_code: 1, target: url, output: JSON.stringify({ url, error: String(error.message || error), cause: String(error.cause?.code || error.cause?.message || ''), duration_ms: Date.now() - started }) });
@@ -345,10 +360,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/agent/chat') {
       const body = await readJson(req);
       if (!body.message) return send(req, res, 400, { ok: false, error: 'message_required' });
-      const request = requestedTool(body.message);
-      if (request) {
-        const run = await executeTool(request.tool, request.args);
-        return send(req, res, 200, { ok: run.success, response: toolResponse(run), tool_run: run });
+      const requests = requestedTools(body.message);
+      if (requests.length) {
+        const toolRuns = [];
+        for (const request of requests) toolRuns.push(await executeTool(request.tool, request.args));
+        const response = toolRuns.map((run) => toolResponse(run)).join('\n\n---\n\n');
+        return send(req, res, 200, { ok: toolRuns.every((run) => run.success), response, tool_run: toolRuns.length === 1 ? toolRuns[0] : undefined, tool_runs: toolRuns });
       }
       if (requestsTaskAnalysis(body.message)) {
         return send(req, res, 200, { ok: true, response: taskAnalysisResponse(body.context?.task_snapshot), mode: 'local', source: 'local_task_analysis', tool_runs: [] });
@@ -393,4 +410,4 @@ if (process.env.LOCAL_AGENT_NO_LISTEN !== '1') {
     void ensureComfyUi();
   });
 }
-export { executeTool, pathInsideAllowedRoot, requestedTool, requestsTaskList, taskSnapshotResponse, requestsTaskAnalysis, taskAnalysisResponse, canonicalTaskKey, comfyUiLaunchSpec, ensureComfyUi };
+export { executeTool, pathInsideAllowedRoot, requestedTool, requestedTools, requestsTaskList, taskSnapshotResponse, requestsTaskAnalysis, taskAnalysisResponse, canonicalTaskKey, comfyUiLaunchSpec, ensureComfyUi };

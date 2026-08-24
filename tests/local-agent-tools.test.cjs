@@ -20,6 +20,10 @@ test('NOVA locale reconnaît uniquement les intentions d’outils autorisées', 
     assert.deepEqual(module.requestedTool('contrôle l’état de ComfyUI sur le port 8188'), { tool: 'comfyui_health', args: {} });
     assert.deepEqual(module.requestedTool('recherche les workflows MiniMax H3 locaux'), { tool: 'find_local_workflows', args: {} });
     assert.deepEqual(module.requestedTool('vérifie le diagnostic HTTPS du domaine jsinnovia.com'), { tool: 'http_diagnose', args: { url: 'https://jsinnovia.com' } });
+    assert.deepEqual(module.requestedTools('contrôle ComfyUI puis recherche les workflows MiniMax H3 locaux'), [
+      { tool: 'find_local_workflows', args: {} },
+      { tool: 'comfyui_health', args: {} },
+    ]);
     assert.equal(module.requestedTool('supprime tous mes fichiers'), null);
     assert.equal(module.pathInsideAllowedRoot(path.join(root, 'video.mp4')), path.resolve(root, 'video.mp4'));
     assert.equal(module.pathInsideAllowedRoot(path.resolve(root, '..', 'secret.txt')), null);
