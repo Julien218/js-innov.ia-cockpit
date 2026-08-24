@@ -10,6 +10,17 @@ test('l’autopilote regroupe les titres dupliqués', () => {
   assert.equal(autopilot.canonicalTaskTitle('SEO automatique — jsinnovia.com (duplicata)'), autopilot.canonicalTaskTitle('SEO automatique — jsinnovia.com'));
 });
 
+test('une preuve canonique clôt uniquement les doublons non terminés du même objectif', () => {
+  const canonical = { id: 't1', titre: 'Recenser les fonctionnalités non opérationnelles dans le module vidéo IA', statut: 'terminee' };
+  const copies = autopilot.duplicateTasksForCanonical([
+    canonical,
+    { id: 't2', titre: 'Recenser les fonctionnalités non opérationnelles dans le module vidéo IA (duplicata)', statut: 'a_faire' },
+    { id: 't3', titre: 'Recenser les fonctionnalités non opérationnelles dans le module vidéo IA', statut: 'terminee' },
+    { id: 't4', titre: 'Lancer une campagne de tests vidéo IA', statut: 'a_faire' },
+  ], canonical);
+  assert.deepEqual(copies.map((task) => task.id), ['t2']);
+});
+
 test('les diagnostics de domaine sont exécutables sans effet métier', () => {
   const item = autopilot.classifyTask({ titre: 'Contrôler DNS et TLS — jsinnovia.com' });
   assert.equal(item.kind, 'domain_diagnostic');
@@ -63,4 +74,6 @@ test('les preuves locales sont synchronisées sans accepter de commande arbitrai
   assert.match(source, /LOCAL_TOOLS = new Set/);
   assert.match(source, /\/local-results/);
   assert.match(source, /provider_name: 'local-agent'/);
+  assert.match(source, /task_id absent du Cockpit/);
+  assert.match(source, /Doublon regroupé avec la tâche/);
 });
