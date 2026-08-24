@@ -24,8 +24,9 @@ function canonicalTaskTitle(value) {
     .trim();
 }
 
-function latestActiveRun(payload) {
+function latestActiveRun(payload, taskId) {
   return rowsFrom(payload)
+    .filter((run) => String(run.task_id || '') === String(taskId || ''))
     .filter((run) => ['running', 'queued', 'pending'].includes(cleanText(run.status, 40).toLowerCase()))
     .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')))[0] || null;
 }
@@ -36,7 +37,7 @@ async function activeRunForTask(agentFetch, taskId, organisation) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data?.error || `Lecture runs HTTP ${response.status}`);
-  return latestActiveRun(data);
+  return latestActiveRun(data, taskId);
 }
 
 function sanitizeTaskItem(item = {}) {
