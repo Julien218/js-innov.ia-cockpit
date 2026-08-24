@@ -1,7 +1,42 @@
 const { app, session, Notification } = require("electron");
 const { autoUpdater } = require("electron-updater");
+const { spawn } = require("node:child_process");
+const path = require("node:path");
+const http = require("node:http");
 
 let updaterStarted = false;
+let localAgentProcess = null;
+
+function localAgentOnline(port) {
+  return new Promise((resolve) => {
+    const request = http.get({ host: "127.0.0.1", port, path: "/health", timeout: 800 }, (response) => {
+      response.resume();
+      resolve(response.statusCode === 200);
+    });
+    request.on("timeout", () => { request.destroy(); resolve(false); });
+    request.on("error", () => resolve(false));
+  });
+}
+
+async function startBundledLocalAgent() {
+  const legacyOnline = await localAgentOnline(8787);
+  const port = legacyOnline ? 8788 : 8787;
+  if (await localAgentOnline(port)) return;
+  const serverPath = app.isPackaged
+    ? path.join(process.resourcesPath, "local-agent", "server.js")
+    : path.join(__dirname, "..", "local-agent", "server.js");
+  localAgentProcess = spawn(process.execPath, [serverPath], {
+    windowsHide: true,
+    stdio: "ignore",
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", LOCAL_AGENT_PORT: String(port) },
+  });
+  localAgentProcess.unref();
+  console.log(`[desktop] NOVA Local Tools starting on 127.0.0.1:${port}`);
+}
+
+app.on("before-quit", () => {
+  if (localAgentProcess && !localAgentProcess.killed) localAgentProcess.kill();
+});
 
 function notify(title, body) {
   if (!Notification.isSupported()) return;
@@ -80,6 +115,7 @@ function startAutoUpdater() {
 }
 
 app.whenReady().then(async () => {
+  await startBundledLocalAgent();
   await refreshWebRuntime();
 
   // On charge l'application historique seulement après le nettoyage du cache HTTP,

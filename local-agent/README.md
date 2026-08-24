@@ -12,8 +12,12 @@ npm start
 
 Vérification: `GET http://127.0.0.1:8787/health`.
 
-## Contrat v1
+## Contrat v1.1
 
+- `POST /api/agent/chat`: conversation NOVA locale et détection déterministe des outils autorisés.
+- `GET /api/tools`: capacités réellement mesurées et dossiers autorisés.
+- `POST /api/tools/execute`: exécution d’un outil en liste blanche.
+- `GET /api/tools/runs/:id`: preuve d’exécution en mémoire.
 - `POST /architect/analyze`: analyse une demande et produit un plan structuré sans effet de bord.
 - `GET /validations`: file de validation locale.
 - `POST /validations/:id/approve`: validation humaine.
@@ -21,8 +25,8 @@ Vérification: `GET http://127.0.0.1:8787/health`.
 
 ## Sécurité
 
-Le v1 n'exécute aucune écriture GitHub/Railway/Supabase/Dropbox. L'architecte marque les tâches à effet de bord `requires_approval=true`. L'exécution automatique ne sera ajoutée qu'après tests des permissions et des garde-fous. Le service est bindé sur loopback uniquement. Définir `LOCAL_AGENT_TOKEN` pour protéger les appels depuis le Cockpit.exe.
+Les seuls outils exécutables sont `ffmpeg_version`, `ffprobe_file` et `list_directory`. Ils utilisent `execFile` sans shell. Les chemins doivent appartenir à `LOCAL_AGENT_ALLOWED_ROOTS` (sinon Downloads, Documents et Videos). Chaque appel produit heure, code de sortie, sortie brute et identifiant dans `%LOCALAPPDATA%\JS-InnovIA\AI-Factory\tool-runs.jsonl`. Aucune écriture GitHub/Railway/Supabase/Dropbox, suppression ou commande libre n'est acceptée.
 
 ## Production locale
 
-Ce composant doit être installé sur le PC qui exécute le Cockpit.exe/Ollama. Il ne doit pas être déployé sur Railway si Ollama reste sur le PC, car `127.0.0.1` de Railway désignerait le conteneur Railway et non le PC local.
+La version Electron 1.0.19 embarque et démarre ce composant automatiquement. Si un ancien agent occupe déjà 8787, le moteur embarqué démarre sur 8788 et NOVA le privilégie. Il ne doit pas être déployé sur Railway : Ollama et les outils restent sur le PC.

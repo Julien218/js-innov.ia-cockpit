@@ -10,6 +10,7 @@ test('la CSP du Cockpit autorise uniquement les endpoints loopback du Local Agen
   const dockerfile = read('Dockerfile');
   assert.match(dockerfile, /connect-src[^\n]*http:\/\/127\.0\.0\.1:8787/);
   assert.match(dockerfile, /connect-src[^\n]*http:\/\/localhost:8787/);
+  assert.match(dockerfile, /connect-src[^\n]*http:\/\/127\.0\.0\.1:8788/);
 });
 
 test('le Local Agent autorise explicitement le domaine Cockpit en CORS', () => {
