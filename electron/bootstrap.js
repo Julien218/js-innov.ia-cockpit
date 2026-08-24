@@ -97,6 +97,19 @@ function notify(title, body) {
   }
 }
 
+function enableWindowsStartup() {
+  if (process.platform !== "win32" || !app.isPackaged) return;
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: true,
+      path: process.execPath,
+    });
+    console.log("[desktop] Windows startup enabled");
+  } catch (error) {
+    console.log("[desktop] Windows startup setup failed:", error.message);
+  }
+}
+
 async function refreshWebRuntime() {
   try {
     // Le Cockpit desktop charge l'application distante. On vide uniquement le cache
@@ -165,6 +178,7 @@ function startAutoUpdater() {
 }
 
 app.whenReady().then(async () => {
+  enableWindowsStartup();
   await startBundledLocalAgent();
   await startBundledOfflineCockpit();
   await refreshWebRuntime();
