@@ -210,10 +210,22 @@ function specialistPrompt(agent, message) {
     `Rôle fonctionnel: ${agent.role}.`,
     'Mission: interroger réellement les données et capacités auxquelles ton backend a accès, en lecture seule, puis produire un rapport exploitable par l’architecte principal.',
     'Ne publie rien, n’envoie rien, ne supprime rien, ne modifie aucune donnée et ne déclenche aucun déploiement.',
-    'N’affirme jamais qu’une vérification est impossible avant d’avoir contrôlé tes capacités réelles. Réponds avec: état observé, preuves ou identifiants disponibles, anomalies, travail restant, dépendances et prochaines tâches recommandées.',
+    'N’affirme jamais qu’une vérification est impossible avant d’avoir contrôlé tes capacités réelles.',
+    'Une URL documentaire, une page Wikipédia ou le nom d’un outil recommandé ne constitue jamais une preuve d’exécution ni un identifiant de journal.',
+    'Pour tout diagnostic présenté comme exécuté, fournis obligatoirement: outil ou commande réellement utilisé, heure, cible, sortie brute et identifiant de journal/tool_run. Si un de ces éléments manque, écris explicitement « diagnostic non exécuté ou non prouvé » et ne conclus pas sur l’état de la cible.',
+    'Réponds avec: état réellement observé, preuves techniques, anomalies, travail restant, dépendances et prochaines tâches recommandées.',
     '',
     `Demande: ${String(message || '').slice(0, 3500)}`,
   ].join('\n');
+}
+
+function hasOperationalEvidence(content) {
+  const text = String(content || '');
+  const hasTool = /(outil|commande)\s+(réellement\s+)?(utilisé|utilisee|utilisée|exécuté|executee|exécutée)\s*:/i.test(text);
+  const hasRawOutput = /(sortie|résultat|resultat)\s+brut(e)?\s*:/i.test(text);
+  const hasRunId = /(identifiant\s+(du\s+)?(journal|tool[_ -]?run)|journal|tool[_ -]?run)\s*:\s*(?!https?:\/\/)[a-z0-9][a-z0-9._:-]{5,}/i.test(text);
+  const hasTime = /(heure|date)\s+(d['’]exécution|execution|du contrôle|du controle)?\s*:/i.test(text);
+  return hasTool && hasRawOutput && hasRunId && hasTime;
 }
 
 async function delegateBase44ReadOnly(agent, message) {
@@ -313,7 +325,8 @@ function buildDelegationContext(results = []) {
     const name = item?.agent?.name || 'Agent métier';
     if (item.ok) {
       const runId = item.conversation_id || item.session_id || 'non fourni';
-      lines.push(`- ${name} (${item.agent.role}) via ${item.provider || item.agent.provider} | exécution=${runId} :`);
+      const evidence = hasOperationalEvidence(item.content) ? 'présente' : 'non fournie';
+      lines.push(`- ${name} (${item.agent.role}) via ${item.provider || item.agent.provider} | consultation=${runId} | preuve_diagnostic=${evidence} :`);
       lines.push(String(item.content || '').slice(0, 8000));
     } else if (item.skipped) {
       lines.push(`- ${name}: non exécuté (${item.reason || 'indisponible'}).`);
@@ -321,7 +334,9 @@ function buildDelegationContext(results = []) {
       lines.push(`- ${name}: erreur de délégation (${item.error || 'erreur inconnue'}).`);
     }
   }
-  lines.push('Le Companion doit synthétiser ces rapports, arbitrer les contradictions et ne jamais les présenter comme des actions déjà exécutées.');
+  lines.push('L’identifiant de consultation prouve uniquement que l’agent a été contacté; il ne prouve pas que le diagnostic décrit a été exécuté.');
+  lines.push('Quand preuve_diagnostic=non fournie, le Companion doit annoncer « rapport agent non vérifié », ne pas reprendre ses conclusions comme des faits et ne marquer aucune tâche terminée. Une URL externe n’est jamais un journal d’exécution.');
+  lines.push('Le Companion doit synthétiser les seuls résultats prouvés, arbitrer les contradictions et ne jamais présenter une recommandation comme une action déjà exécutée.');
   lines.push('[/RÉSULTATS AGENTS MÉTIER DÉLÉGUÉS]');
   return lines.join('\n');
 }
@@ -337,5 +352,6 @@ module.exports = {
   delegateVirtualReadOnly,
   delegateSpecialistReadOnly,
   runReadOnlyDelegations,
+  hasOperationalEvidence,
   buildDelegationContext,
 };
