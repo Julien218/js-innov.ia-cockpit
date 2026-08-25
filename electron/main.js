@@ -117,7 +117,99 @@ function comfyOutputCandidates() {
     path.join(os.homedir(), "AI", "ComfyUI_windows_portable", "ComfyUI_windows_portable", "ComfyUI", "output"),
     path.join(os.homedir(), "ComfyUI_windows_portable", "ComfyUI", "output"),
     path.join(os.homedir(), "ComfyUI", "output"),
+    path.join(os.homedir(), "AppData", "Local", "Comfy-Desktop", "ComfyUI-Shared", "output"),
   ].filter(Boolean);
+}
+
+function safeLocalName(value, fallback = "A-Classer") {
+  const cleaned = String(value || "").replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim();
+  return cleaned || fallback;
+}
+
+function resolveComfyOutputFile(output = {}) {
+  const filename = String(output.filename || "");
+  if (!filename) throw new Error("Sortie ComfyUI sans nom de fichier.");
+  const subfolder = String(output.subfolder || "");
+  for (const rootCandidate of comfyOutputCandidates()) {
+    const root = path.resolve(rootCandidate);
+    const candidate = path.resolve(root, subfolder, filename);
+    if (candidate !== root && !candidate.startsWith(`${root}${path.sep}`)) continue;
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+  }
+  throw new Error(`Fichier ComfyUI introuvable: ${filename}. Configure JSINNOVIA_COMFYUI_OUTPUT_DIR si nécessaire.`);
+}
+
+function reviewDrawtext(label, size = 82) {
+  return `drawtext=text='${label}':fontcolor=white:fontsize=${size}:x=(w-text_w)/2:y=(h-text_h)/2`;
+}
+
+async function createLocalReviewVideo(batch) {
+  await refreshLocalVideoBatch(batch);
+  const completed = batch.jobs
+    .filter((job) => job.status === "completed")
+    .slice(0, 3);
+  if (completed.length < 3) throw new Error("Les trois premières propositions doivent être terminées.");
+
+  const videoPaths = completed.map((job) => {
+    const output = job.outputs.find((item) => item.kind === "videos")
+      || job.outputs.find((item) => item.kind === "gifs")
+      || job.outputs[0];
+    return resolveComfyOutputFile(output);
+  });
+
+  const outputFolder = path.join(
+    app.getPath("videos"),
+    "JS-Innov.IA",
+    "Validations",
+    safeLocalName(batch.clientName),
+    safeLocalName(batch.campaignName, "Ecran-geant"),
+  );
+  fs.mkdirSync(outputFolder, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const outputPath = path.join(outputFolder, `${safeLocalName(batch.clientName)}-3-propositions-${stamp}.mp4`);
+
+  const args = [
+    "-y",
+    "-f", "lavfi", "-t", "3", "-i", "color=c=0x081426:s=1920x1080:r=25",
+    "-f", "lavfi", "-t", "1.5", "-i", "color=c=0x081426:s=1920x1080:r=25",
+    "-t", "8", "-i", videoPaths[0],
+    "-f", "lavfi", "-t", "1.5", "-i", "color=c=0x081426:s=1920x1080:r=25",
+    "-t", "8", "-i", videoPaths[1],
+    "-f", "lavfi", "-t", "1.5", "-i", "color=c=0x081426:s=1920x1080:r=25",
+    "-t", "8", "-i", videoPaths[2],
+    "-f", "lavfi", "-t", "4", "-i", "color=c=0x081426:s=1920x1080:r=25",
+    "-filter_complex",
+    [
+      `[0:v]${reviewDrawtext("3 PROPOSITIONS VISUELLES", 76)},format=yuv420p[v0]`,
+      `[1:v]${reviewDrawtext("PROPOSITION 1")},format=yuv420p[v1]`,
+      "[2:v]trim=duration=8,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=25,format=yuv420p[v2]",
+      `[3:v]${reviewDrawtext("PROPOSITION 2")},format=yuv420p[v3]`,
+      "[4:v]trim=duration=8,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=25,format=yuv420p[v4]",
+      `[5:v]${reviewDrawtext("PROPOSITION 3")},format=yuv420p[v5]`,
+      "[6:v]trim=duration=8,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=25,format=yuv420p[v6]",
+      `[7:v]${reviewDrawtext("CHOISISSEZ 1, 2 OU 3", 72)},format=yuv420p[v7]`,
+      "[v0][v1][v2][v3][v4][v5][v6][v7]concat=n=8:v=1:a=0[outv]",
+    ].join(";"),
+    "-map", "[outv]",
+    "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+    "-pix_fmt", "yuv420p", "-r", "25", "-movflags", "+faststart",
+    "-metadata", `title=Validation 3 propositions - ${batch.clientName || "Client"}`,
+    "-metadata", "artist=JS-Innov.IA",
+    "-metadata", "comment=Production locale cockpit; choix client 1, 2 ou 3",
+    outputPath,
+  ];
+  await execFileStrict("ffmpeg", args, 30 * 60 * 1000);
+  batch.review = {
+    status: "ready",
+    duration: 35.5,
+    outputPath,
+    createdAt: new Date().toISOString(),
+    sourceJobIds: completed.map((job) => job.id),
+    metadata: { creator: "JS-Innov.IA", workflow: "local-signage-review-v1" },
+  };
+  batch.updatedAt = new Date().toISOString();
+  saveLocalVideoBatches();
+  return { success: true, batchId: batch.id, ...batch.review };
 }
 
 ipcMain.handle("video-local-status", async () => {
@@ -360,6 +452,23 @@ ipcMain.handle("video-local-upload-image", async (_event, payload = {}) => {
     headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
     timeoutMs: 30000,
   });
+});
+
+ipcMain.handle("video-local-batch-review", async (_event, batchId) => {
+  loadLocalVideoBatches();
+  const batch = localVideoBatches.get(String(batchId || ""));
+  if (!batch) throw new Error("Lot vidéo local introuvable.");
+  return createLocalReviewVideo(batch);
+});
+
+ipcMain.handle("video-local-review-open-folder", async (_event, reviewPath) => {
+  const root = path.resolve(app.getPath("videos"), "JS-Innov.IA", "Validations");
+  const candidate = path.resolve(String(reviewPath || ""));
+  if (!candidate.startsWith(`${root}${path.sep}`)) throw new Error("Chemin de validation refusé.");
+  const folder = fs.existsSync(candidate) && fs.statSync(candidate).isDirectory() ? candidate : path.dirname(candidate);
+  const error = await shell.openPath(folder);
+  if (error) throw new Error(error);
+  return { ok: true, folder };
 });
 
 ipcMain.handle("video-local-open-output", async () => {
