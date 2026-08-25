@@ -41,17 +41,19 @@ function canBatch(user) {
 
 function batchSignals(text) {
   const source = String(text || '').toLowerCase();
-  const hasTask = /t[aâ]ches?|task/.test(source);
+  const hasWorkItem = /t[aâ]ches?|tasks?|actions?|diagnostics?|audits?/.test(source);
   const hasAgent = /agents?|d[eé]l[eé]gu|sp[eé]cialistes?|qa|devops|backend|support|produit|vid[eé]o/.test(source);
   const hasPlural = /plusieurs|toutes?|chacun|chaque|liste|six|6|diff[eé]rentes?/.test(source);
   const hasExecutionIntent = /(effectue|ex[eé]cute|lance|fais|faites|continue|poursuis|traite|r[eé]alise).*(t[aâ]ches?|actions?)/.test(source)
     || /(toutes?|chaque).*(t[aâ]ches?|actions?).*(effectue|ex[eé]cute|lance|fais|traite|r[eé]alise)/.test(source);
-  return (hasTask && (hasAgent || hasPlural)) || hasExecutionIntent;
+  return (hasWorkItem && (hasAgent || hasPlural)) || hasExecutionIntent;
 }
 
 function explicitExecutionAuthorization(message) {
   const source = String(message || '').trim().toLowerCase();
-  return /(effectue|ex[eé]cute|lance|fais|faites|continue|poursuis|traite|r[eé]alise|applique).*(toutes?|chaque|les|la|le)?\s*(t[aâ]ches?|actions?|changements?|modifications?)/.test(source)
+  return /\b(?:je\s+)?confirme(?:\s+explicitement)?\s+(?:l['’]\s*)?(?:ex[eé]cution|lancement|d[eé]l[eé]gation)\b/.test(source)
+    || /\b(?:j['’]\s*)?autorise(?:\s+explicitement)?\b.*\b(?:ex[eé]cuter|lancer|d[eé]l[eé]guer|effectuer)\b/.test(source)
+    || /(effectue|ex[eé]cute|lance|fais|faites|continue|poursuis|traite|r[eé]alise|applique|d[eé]l[eè]gue).*(toutes?|chaque|les|la|le)?\s*(t[aâ]ches?|actions?|changements?|modifications?|diagnostics?|audits?)/.test(source)
     || /(go|oki|ok|oui)[,\s!-]*(effectue|ex[eé]cute|lance|continue|poursuis)/.test(source);
 }
 
@@ -78,6 +80,7 @@ function removeStaleConfirmationLanguage(value) {
     .replace(/[^.!?\n]*souhaitez-vous\s+que\s+je\s+(?:les?\s+)?(?:envoie|lance|ex[eé]cute)[^.!?\n]*[.!?]?/gi, '')
     .replace(/[^.!?\n]*(?:n[eé]cessite|requiert)\s+(?:votre|une)\s+confirmation[^.!?\n]*[.!?]?/gi, '')
     .replace(/[^.!?\n]*veuillez\s+confirmer[^.!?\n]*[.!?]?/gi, '')
+    .replace(/[^.!?\n]*veux-tu\s+que\s+je\s+(?:confirme|lance|ex[eé]cute)[^.!?\n]*[.!?]?/gi, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
