@@ -52,6 +52,7 @@ COPY --from=builder /app/server-agent-run-log.cjs ./server-agent-run-log.cjs
 COPY --from=builder /app/server-domain-ops.cjs ./server-domain-ops.cjs
 COPY --from=builder /app/server-dropbox-helper.cjs ./server-dropbox-helper.cjs
 COPY --from=builder /app/server-ai-cost.cjs ./server-ai-cost.cjs
+COPY --from=builder /app/server-nova-routing.cjs ./server-nova-routing.cjs
 COPY --from=builder /app/server-ai-cost-attribution.cjs ./server-ai-cost-attribution.cjs
 COPY --from=builder /app/server-ai-cost-ledger-aggregate.cjs ./server-ai-cost-ledger-aggregate.cjs
 COPY --from=builder /app/server-cost-centers.cjs ./server-cost-centers.cjs
@@ -68,6 +69,7 @@ COPY public ./public
 
 RUN npm ci --omit=dev --legacy-peer-deps
 RUN test -f /app/server-ai-cost-attribution.cjs \
+ && test -f /app/server-nova-routing.cjs \
  && test -f /app/server-ai-cost-ledger-aggregate.cjs \
  && test -f /app/server-cost-centers.cjs \
  && test -f /app/server-client-costs.cjs \
@@ -82,6 +84,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-task-autopilot.cjs \
  && test -f /app/server-bce.cjs \
  && node --check /app/server-ai-cost-attribution.cjs \
+ && node --check /app/server-nova-routing.cjs \
  && node --check /app/server-ai-cost-ledger-aggregate.cjs \
  && node --check /app/server-cost-centers.cjs \
  && node --check /app/server-client-costs.cjs \

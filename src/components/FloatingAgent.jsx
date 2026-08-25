@@ -16,10 +16,12 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import novaAvatar from '@/assets/nova-avatar-128.png';
+import { chooseNovaVoice } from '@/lib/nova-voice';
 
 const LOCAL_NOVA_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
 const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
 const LOCAL_AUTOPILOT_LAST_RUN_KEY = 'nova_local_autopilot_last_run_v1';
+const TTS_VOICE_KEY = 'nova_tts_voice_name';
 const LOCAL_TOOL_REQUEST = /\b(?:find_local_workflows|comfyui_health|avatar_factory_status|ffmpeg_version|ffprobe_file|list_directory|http_diagnose)\b|(?:ex[eé]cut|diagnosti|contr[oô]l|v[eé]rifi|recherch).*(?:comfyui|port\s*(?:8188|8791)|workflow|minimax|avatar|ffmpeg|ffprobe|dossier\s+local)/i;
 const LOCAL_NOVA_PROMPT = `Tu es NOVA, l’unique assistant visible du Cockpit JS-Innov.IA. Tu conserves le même nom et le même rôle en mode cloud et en mode local. Vérifie les outils réellement disponibles avant toute affirmation de capacité. Ne dis jamais que tu es une simple IA textuelle ni que tu ne peux rien exécuter uniquement parce qu’Internet est coupé.`;
 
@@ -36,6 +38,8 @@ const FloatingAgent = () => {
   const [conversationId] = useState(() => localStorage.getItem('agent_conversation_id') || 'floating');
   const [isListening, setIsListening] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('agent_tts_enabled') === 'true');
+  const [ttsVoices, setTtsVoices] = useState([]);
+  const [ttsVoiceName, setTtsVoiceName] = useState(() => localStorage.getItem(TTS_VOICE_KEY) || '');
   const [speaking, setSpeaking] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
@@ -66,6 +70,10 @@ const FloatingAgent = () => {
   useEffect(() => {
     localStorage.setItem('agent_tts_enabled', String(ttsEnabled));
   }, [ttsEnabled]);
+
+  useEffect(() => {
+    if (ttsVoiceName) localStorage.setItem(TTS_VOICE_KEY, ttsVoiceName);
+  }, [ttsVoiceName]);
 
   // Conserve une copie minimale des tâches pour que NOVA puisse les consulter hors connexion.
   useEffect(() => {
@@ -127,11 +135,24 @@ const FloatingAgent = () => {
   // Preload TTS voices
   useEffect(() => {
     if (ttsSupported) {
-      window.speechSynthesis.getVoices();
-      window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+      const refreshVoices = () => {
+        const french = window.speechSynthesis.getVoices().filter((voice) => String(voice.lang || '').toLowerCase().startsWith('fr'));
+        setTtsVoices(french);
+        if (!ttsVoiceName && french.length) {
+          const selected = chooseNovaVoice(french);
+          if (selected) setTtsVoiceName(selected.name);
+        }
+      };
+      refreshVoices();
+      window.speechSynthesis.onvoiceschanged = refreshVoices;
     }
-    return () => { if (ttsSupported) window.speechSynthesis.cancel(); };
-  }, [ttsSupported]);
+    return () => {
+      if (ttsSupported) {
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, [ttsSupported, ttsVoiceName]);
 
   // === Text-to-Speech ===
   const speak = useCallback((text) => {
@@ -140,23 +161,25 @@ const FloatingAgent = () => {
       .replace(/\[Contexte Dropbox[^\]]*\]/gi, '')
       .replace(/[#*_~`]/g, '')
       .replace(/⚠️/g, '')
+      .replace(/https?:\/\/\S+/gi, 'lien internet')
+      .replace(/\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/gi, 'identifiant du journal')
       .replace(/\n{2,}/g, '. ')
       .replace(/\n/g, ' ')
       .slice(0, 500);
 
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(cleanText);
-    utter.lang = 'fr-FR';
-    utter.rate = 1.05;
-    utter.pitch = 1.0;
     const voices = window.speechSynthesis.getVoices();
-    const frVoice = voices.find(v => v.lang.startsWith('fr'));
-    if (frVoice) utter.voice = frVoice;
+    const selectedVoice = chooseNovaVoice(voices, ttsVoiceName);
+    utter.lang = selectedVoice?.lang || 'fr-BE';
+    utter.rate = 0.96;
+    utter.pitch = 1.0;
+    if (selectedVoice) utter.voice = selectedVoice;
     utter.onstart = () => setSpeaking(true);
     utter.onend = () => setSpeaking(false);
     utter.onerror = () => setSpeaking(false);
     window.speechSynthesis.speak(utter);
-  }, [ttsSupported, ttsEnabled]);
+  }, [ttsSupported, ttsEnabled, ttsVoiceName]);
 
   const stopSpeaking = useCallback(() => {
     if (ttsSupported) { window.speechSynthesis.cancel(); setSpeaking(false); }
@@ -167,7 +190,7 @@ const FloatingAgent = () => {
     if (!sttSupported) return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SR();
-    recognition.lang = 'fr-FR';
+    recognition.lang = 'fr-BE';
     recognition.continuous = false;
     recognition.interimResults = true;
     recognitionRef.current = recognition;
@@ -422,6 +445,20 @@ const FloatingAgent = () => {
               </div>
             </div>
             <div style={{ display: 'flex', gap: '4px' }}>
+              {ttsEnabled && ttsVoices.length > 0 && (
+                <select
+                  aria-label="Voix de NOVA"
+                  title="Choisir la voix française de NOVA"
+                  value={ttsVoiceName}
+                  onChange={(event) => setTtsVoiceName(event.target.value)}
+                  style={{
+                    maxWidth: '104px', background: '#0F172A', border: '1px solid rgba(100,116,139,0.35)',
+                    borderRadius: '6px', color: '#cbd5e1', fontSize: '10px', padding: '3px 5px',
+                  }}
+                >
+                  {ttsVoices.map((voice) => <option key={`${voice.name}-${voice.lang}`} value={voice.name}>{voice.name}</option>)}
+                </select>
+              )}
               <button
                 onClick={toggleTts}
                 title={ttsEnabled ? 'Lecture vocale ON' : 'Lecture vocale OFF'}

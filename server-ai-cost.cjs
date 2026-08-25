@@ -427,15 +427,24 @@ router.put('/routing', adminGuard, async (req, res) => {
 
 router.post('/authorize', allowIngestOrAdmin, async (req, res) => {
   try {
+    const result = await authorizeUsage(req.body || {});
+    res.json(result);
+  } catch (error) {
+    console.error('[ai-cost] authorize failed:', error.message);
+    res.status(503).json({ error: 'Contrôle budgétaire indisponible' });
+  }
+});
+
+async function authorizeUsage(input = {}) {
     const window = monthWindow();
     const [events, budgets, routing] = await Promise.all([loadMonthEvents(window), loadBudgets(), loadRouting()]);
-    const estimatedCost = toNonNegativeNumber(req.body?.estimated_cost_usd, 0);
-    const model = recommendModel(req.body?.complexity, routing);
+    const estimatedCost = toNonNegativeNumber(input.estimated_cost_usd, 0);
+    const model = recommendModel(input.complexity, routing);
     const checks = budgets
       .filter((budget) => budget.enabled && (
         budget.scope_type === 'global' ||
-        (budget.scope_type === 'project' && budget.scope_key === req.body?.project_key) ||
-        (budget.scope_type === 'client' && budget.scope_key === req.body?.client_key)
+        (budget.scope_type === 'project' && budget.scope_key === input.project_key) ||
+        (budget.scope_type === 'client' && budget.scope_key === input.client_key)
       ))
       .map((budget) => ({ budget, spend: scopeSpend(events, budget) }));
 
@@ -454,12 +463,8 @@ router.post('/authorize', allowIngestOrAdmin, async (req, res) => {
       reason = 'request_cost_limit';
     }
 
-    res.json({ allowed, reason, recommended_model: model, routing, estimated_cost_usd: estimatedCost });
-  } catch (error) {
-    console.error('[ai-cost] authorize failed:', error.message);
-    res.status(503).json({ error: 'Contrôle budgétaire indisponible' });
-  }
-});
+    return { allowed, reason, recommended_model: model, routing, estimated_cost_usd: estimatedCost };
+}
 
 module.exports = {
   router,
@@ -467,6 +472,7 @@ module.exports = {
   normalizeUsage,
   recordUsage,
   evaluateBudget,
+  authorizeUsage,
   recommendModel,
   DEFAULT_PRICING,
   DEFAULT_ROUTING,
