@@ -3,7 +3,8 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import {
   Users, Target, FolderKanban, FileText, Receipt,
-  Shield, TrendingUp, ArrowRight, CheckSquare, MessageSquare, Clock, AlertCircle
+  Shield, TrendingUp, ArrowRight, CheckSquare, MessageSquare, Clock, AlertCircle,
+  PlayCircle, Plus, Sparkles
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
@@ -34,9 +35,13 @@ export default function Dashboard() {
   const caTotal = factures.filter(f => f.statut === "payee").reduce((s, f) => s + (f.montant_ttc || 0), 0);
   const caEnAttente = factures.filter(f => ["envoyee", "en_retard"].includes(f.statut)).reduce((s, f) => s + (f.montant_ttc || 0), 0);
   const commTotal = commissions.filter(c => c.statut === "payee").reduce((s, c) => s + (c.montant || c.montant_commission || 0), 0);
+  const isCompleted = (task) => ["termine", "terminee", "completed"].includes(task?.statut);
+  const isBlocked = (task) => ["bloque", "bloquee", "failed"].includes(task?.statut);
   const leadsActifs = leads.filter(l => !["gagne", "perdu"].includes(l.statut)).length;
   const projetsEnCours = projets.filter(p => p.statut === "en_cours").length;
-  const tachesEnRetard = taches.filter(t => t.date_echeance && new Date(t.date_echeance) < new Date() && t.statut !== "terminee").length;
+  const tachesEnRetard = taches.filter(t => t.date_echeance && new Date(t.date_echeance) < new Date() && !isCompleted(t)).length;
+  const tachesBloquees = taches.filter(isBlocked).length;
+  const tachesActives = taches.filter(t => !isCompleted(t)).length;
   const demandesOuvertes = demandes.filter(d => d.statut === "ouverte").length;
 
   const leadsByStatus = [
@@ -57,7 +62,10 @@ export default function Dashboard() {
   }, []);
 
   const recentLeads = [...leads].sort((a, b) => new Date(b.created_at || b.created_date || 0).getTime() - new Date(a.created_at || a.created_date || 0).getTime()).slice(0, 5);
-  const tachesUrgentes = taches.filter(t => (t.priorite === "urgente" || t.priorite === "haute") && t.statut !== "terminee").slice(0, 4);
+  const tachesUrgentes = taches
+    .filter(t => (t.priorite === "urgente" || t.priorite === "haute" || isBlocked(t)) && !isCompleted(t))
+    .sort((a, b) => Number(isBlocked(b)) - Number(isBlocked(a)))
+    .slice(0, 4);
   const heure = new Date().getHours();
   const salut = heure < 12 ? "Bonjour" : heure < 18 ? "Bon après-midi" : "Bonsoir";
 
@@ -98,6 +106,51 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Centre de travail quotidien */}
+      <section className="workspace-hero">
+        <div className="relative z-10 flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+          <div className="max-w-2xl">
+            <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+              <Sparkles className="h-3.5 w-3.5" /> Centre de pilotage
+            </div>
+            <h2 className="text-xl font-semibold sm:text-2xl">À traiter maintenant</h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Commence par les blocages et retards, puis reprends la production. Les informations secondaires restent accessibles plus bas.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link to="/taches" className="premium-button h-10 gap-2 px-4 text-sm">
+                <CheckSquare className="h-4 w-4" /> Ouvrir le travail du jour
+              </Link>
+              <Link to="/production" className="workspace-secondary-action">
+                <PlayCircle className="h-4 w-4" /> Reprendre la production
+              </Link>
+              <Link to="/clients" className="workspace-secondary-action">
+                <Plus className="h-4 w-4" /> Nouveau client
+              </Link>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:min-w-[520px]">
+            <Link to="/taches" className="workspace-focus-card workspace-focus-danger">
+              <span className="workspace-focus-value">{tachesBloquees}</span>
+              <span className="workspace-focus-label">bloquées</span>
+            </Link>
+            <Link to="/taches" className="workspace-focus-card workspace-focus-warning">
+              <span className="workspace-focus-value">{tachesEnRetard}</span>
+              <span className="workspace-focus-label">en retard</span>
+            </Link>
+            <Link to="/taches" className="workspace-focus-card">
+              <span className="workspace-focus-value">{tachesActives}</span>
+              <span className="workspace-focus-label">à traiter</span>
+            </Link>
+            <Link to="/demandes" className="workspace-focus-card">
+              <span className="workspace-focus-value">{demandesOuvertes}</span>
+              <span className="workspace-focus-label">demandes</span>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3">
         <div className="col-span-2">
@@ -110,7 +163,7 @@ export default function Dashboard() {
         <StatCard title="Leads actifs" value={leadsActifs} icon={Target} color="warning" />
         <StatCard title="Projets" value={projetsEnCours} icon={FolderKanban} color="primary" subtitle="en cours" />
         <StatCard title="Devis" value={devis.filter(d => d.statut === "envoye").length} icon={FileText} color="accent" subtitle="envoyés" />
-        <StatCard title="Tâches" value={taches.filter(t => t.statut !== "terminee").length} icon={CheckSquare} color={tachesEnRetard > 0 ? "destructive" : "primary"} subtitle={tachesEnRetard > 0 ? `${tachesEnRetard} en retard` : "actives"} />
+        <StatCard title="Tâches" value={tachesActives} icon={CheckSquare} color={tachesEnRetard > 0 ? "destructive" : "primary"} subtitle={tachesEnRetard > 0 ? `${tachesEnRetard} en retard` : "actives"} />
       </div>
 
       {/* Charts Row */}
@@ -174,18 +227,13 @@ export default function Dashboard() {
       {/* Bottom Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Recent Leads */}
-        <div className="bg-card rounded-2xl border border-border">
+        {recentLeads.length > 0 && <div className="bg-card rounded-2xl border border-border">
           <div className="flex items-center justify-between px-5 py-4 border-b border-border">
             <h3 className="text-sm font-semibold" style={{fontFamily: "'Space Grotesk', sans-serif"}}>Derniers leads</h3>
             <Link to="/leads" className="text-xs text-primary hover:underline flex items-center gap-1">Voir tout <ArrowRight className="w-3 h-3" /></Link>
           </div>
           <div className="divide-y divide-border">
-            {recentLeads.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
-                <Target className="w-7 h-7 mb-2 opacity-30" />
-                <p className="text-sm">Aucun lead</p>
-              </div>
-            ) : recentLeads.map((lead) => (
+            {recentLeads.map((lead) => (
               <div key={lead.id} className="flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-colors">
                 <div className="flex items-center gap-3">
                   <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold flex-shrink-0">
@@ -203,10 +251,10 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
-        </div>
+        </div>}
 
         {/* Tâches urgentes */}
-        <div className="bg-card rounded-2xl border border-border">
+        <div className={cn("bg-card rounded-2xl border border-border", recentLeads.length === 0 && "lg:col-span-2")}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-border">
             <h3 className="text-sm font-semibold" style={{fontFamily: "'Space Grotesk', sans-serif"}}>Tâches prioritaires</h3>
             <Link to="/taches" className="text-xs text-primary hover:underline flex items-center gap-1">Voir tout <ArrowRight className="w-3 h-3" /></Link>

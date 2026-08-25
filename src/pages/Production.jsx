@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   Clapperboard, Mic, Image, FileText, FolderOpen,
-  Send, Plus, Video, Sparkles, Link2, MonitorPlay,
+  Send, Plus, Video, Sparkles, Link2, MonitorPlay, ArrowRight, PlayCircle,
 } from "lucide-react";
 
 const ACTIONS = [
@@ -32,77 +32,106 @@ export default function Production() {
   const navigate = useNavigate();
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto">
       <PageHeader
         title="Production"
-        subtitle="Centralisation des créations, prompts, assets et publications"
+        subtitle="Créer, reprendre et livrer sans chercher le bon module"
       />
 
+      <section className="workspace-hero overflow-hidden">
+        <div className="relative z-10 grid gap-5 lg:grid-cols-[1.2fr_1fr] lg:items-center">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+              <Clapperboard className="h-3.5 w-3.5" /> Atelier JS-Innov.IA
+            </div>
+            <h2 className="text-2xl font-semibold sm:text-3xl">Que veux-tu produire maintenant ?</h2>
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
+              Les deux services les plus utilisés sont accessibles immédiatement. Les outils complémentaires restent regroupés juste dessous.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button type="button" onClick={() => navigate("/video-studio/new")} className="production-primary-card group">
+              <span className="production-primary-icon"><Video className="h-5 w-5" /></span>
+              <span className="min-w-0 flex-1 text-left">
+                <strong className="block text-sm">Créer une vidéo</strong>
+                <span className="mt-0.5 block text-xs text-muted-foreground">Grok, Sora, ComfyUI et coûts</span>
+              </span>
+              <ArrowRight className="h-4 w-4 text-primary transition-transform group-hover:translate-x-1" />
+            </button>
+            <button type="button" onClick={() => navigate("/ecran-geant")} className="production-primary-card group">
+              <span className="production-primary-icon text-cyan-300"><MonitorPlay className="h-5 w-5" /></span>
+              <span className="min-w-0 flex-1 text-left">
+                <strong className="block text-sm">Piloter l’écran géant</strong>
+                <span className="mt-0.5 block text-xs text-muted-foreground">Contenus, diffusion et aperçu</span>
+              </span>
+              <ArrowRight className="h-4 w-4 text-cyan-300 transition-transform group-hover:translate-x-1" />
+            </button>
+          </div>
+        </div>
+      </section>
+
       {/* Actions rapides */}
-      <div>
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Actions rapides</p>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
-          {ACTIONS.map(action => (
-            <Button
+      <section>
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div>
+            <p className="workspace-eyebrow">Raccourcis</p>
+            <h2 className="text-base font-semibold">Continuer le travail</h2>
+          </div>
+          <span className="text-xs text-muted-foreground">5 outils</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+          {ACTIONS.slice(2).map(action => (
+            <button
+              type="button"
               key={action.label}
-              variant="outline"
-              className="h-auto py-3 flex-col gap-2"
+              className="workspace-card group flex min-h-[108px] flex-col items-start justify-between p-3 text-left"
               onClick={() => navigate(action.route)}
             >
               <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", action.color)}>
                 <action.icon className="w-4 h-4" />
               </div>
-              <span className="text-[11px] font-medium text-center leading-tight">{action.label}</span>
-            </Button>
+              <span className="text-xs font-medium leading-tight group-hover:text-primary">{action.label}</span>
+            </button>
           ))}
         </div>
-      </div>
+      </section>
 
       {/* Catégories */}
-      <div>
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Catégories</p>
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+      <section>
+        <div className="mb-3">
+          <p className="workspace-eyebrow">Bibliothèque</p>
+          <h2 className="text-base font-semibold">Retrouver les créations</h2>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
           {CATEGORIES.map(cat => (
             <button
+              type="button"
               key={cat.label}
               onClick={() => navigate(cat.route)}
-              className="rounded-lg border border-border p-4 text-left transition-all hover:shadow-sm hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              className="workspace-card p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
             >
-              <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center mb-2", cat.color)}>
-                <cat.icon className="w-5 h-5" />
+              <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center mb-3", cat.color)}>
+                <cat.icon className="w-4 h-4" />
               </div>
-              <p className="text-sm font-semibold">{cat.label}</p>
+              <p className="text-xs font-semibold leading-tight">{cat.label}</p>
               <p className="text-xs text-muted-foreground mt-0.5">{cat.count} élément{cat.count > 1 ? "s" : ""}</p>
             </button>
           ))}
         </div>
-      </div>
+      </section>
 
       {/* Hub connecté aux modules existants */}
-      <div className="rounded-lg border border-border bg-card p-8 text-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-            <Clapperboard className="w-6 h-6 text-primary" />
-          </div>
+      <div className="workspace-card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="workspace-metric-icon text-primary"><PlayCircle className="w-4 h-4" /></div>
           <div>
-            <p className="text-sm font-medium">Module Production — Hub fonctionnel</p>
-            <p className="text-xs text-muted-foreground mt-1 max-w-xl">
-              Les actions rapides et catégories ouvrent maintenant les modules déjà disponibles du Cockpit.
-              Les compteurs seront alimentés par les entités de production lors de la prochaine étape de centralisation des données.
-            </p>
-          </div>
-          <div className="flex flex-wrap justify-center gap-2 mt-2">
-            <Button size="sm" variant="outline" onClick={() => navigate("/video-studio/new")} className="text-xs">
-              Ouvrir Video Studio
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => navigate("/portfolio")} className="text-xs">
-              Voir Portfolio
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => navigate("/automations")} className="text-xs">
-              Voir Automatisations
-            </Button>
+            <p className="text-sm font-medium">Besoin d’une vue d’ensemble ?</p>
+            <p className="text-xs text-muted-foreground">Le portfolio rassemble les livrables prêts à montrer ou valider.</p>
           </div>
         </div>
+        <Button size="sm" variant="outline" onClick={() => navigate("/portfolio")} className="text-xs">
+          Ouvrir le portfolio <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+        </Button>
       </div>
     </div>
   );
