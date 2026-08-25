@@ -22,6 +22,13 @@ test('route Synergie Dour vers son agent Base44 dédié', () => {
   assert.equal(plan[0].agent.provider_agent_id, '6a0208edd1e235b62b4bda38');
 });
 
+test('route Assurances-Dour vers son agent Base44 exclusif', () => {
+  const plan = resolveAgentPlan('Contrôle le DNS, le TLS et le SEO de assurances-dour.be');
+  assert.equal(plan.length, 1);
+  assert.equal(plan[0].agent.name, 'Agent Assurances-Dour.be');
+  assert.equal(plan[0].agent.provider_agent_id, '6a008b3e1571ea9f6ac3839d');
+});
+
 test('MiniMax local reste sous NOVA sans appel Base44 générique', () => {
   const plan = resolveAgentPlan('Continue Video Studio et vérifie MiniMax H3 dans ComfyUI');
   assert.equal(plan.length, 0);
@@ -111,8 +118,8 @@ test('Docker embarque les modules d’orchestration', () => {
 test('le proxy et NOVA utilisent un registre Base44 unique', () => {
   const registry = require(path.join(root, 'server-agent-registry.cjs')).AGENT_REGISTRY;
   const active = registry.filter((agent) => agent.status === 'active');
-  assert.equal(active.length, 10);
-  assert.equal(new Set(active.map((agent) => agent.provider_agent_id)).size, 10);
+  assert.equal(active.length, 11);
+  assert.equal(new Set(active.map((agent) => agent.provider_agent_id)).size, 11);
   assert.ok(orchestrator.SITE_AGENT_REGISTRY.length < active.length);
   assert.ok(orchestrator.SITE_AGENT_REGISTRY.every((agent) => agent.domains.length > 0));
   assert.ok(orchestrator.SITE_AGENT_REGISTRY.every((agent) => !['nova', 'creative-director'].includes(agent.key)));

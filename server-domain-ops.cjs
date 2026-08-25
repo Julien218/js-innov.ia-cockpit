@@ -15,7 +15,7 @@ const MANAGED_DOMAINS = Object.freeze({
   'jsinnovia.com': { app: 'JS-INNOV.IA', agent_hint: 'JsInnov-Agent' },
   'cockpit.jsinnovia.com': { app: 'cockpit-v3', agent_hint: 'JsInnov-Agent' },
   'jsinnovia.store': { app: 'JS-INNOV.IA', agent_hint: 'JsInnov-Agent' },
-  'assurances-dour.be': { app: 'assurances-dour.be', agent_hint: 'JsInnov-Agent' },
+  'assurances-dour.be': { app: 'assurances-dour.be', agent_hint: 'Agent Assurances-Dour.be' },
   'letourdedour.com': { app: 'Multi site', agent_hint: 'Site Olivier landing Page' },
   'oliviertrevis.be': { app: 'Multi site', agent_hint: 'Site Olivier landing Page' },
   'synergiedour.be': { app: 'SynergieDour.be', agent_hint: 'Synergie Dour Assistant' },
@@ -199,6 +199,18 @@ function agentForDomain(domain) {
     || null;
 }
 
+function base44ErrorMessage(payload, status, operation = 'agent') {
+  const detail = payload?.error ?? payload?.message ?? payload?.detail ?? payload?.details;
+  let text = '';
+  if (typeof detail === 'string') text = detail;
+  else if (detail && typeof detail === 'object') {
+    try { text = JSON.stringify(detail); }
+    catch { text = String(detail); }
+  }
+  text = text.replace(/\s+/g, ' ').trim().slice(0, 800);
+  return `Base44 ${operation} HTTP ${status}${text ? `: ${text}` : ''}`;
+}
+
 async function jsAgentRequest(path, options = {}) {
   if (!JS_AGENT_KEY) throw new Error('JSINNOVIA_AGENT_KEY non configurée.');
   const response = await fetch(`${JS_AGENT_URL}${path}`, {
@@ -280,7 +292,7 @@ async function executeBase44Agent(agent, domain, kind, before) {
     method: 'POST', headers, body: JSON.stringify({}), signal: AbortSignal.timeout(15000),
   });
   const conv = await convResponse.json().catch(() => ({}));
-  if (!convResponse.ok || !conv?.id) throw new Error(conv?.error || `Base44 conversation HTTP ${convResponse.status}`);
+  if (!convResponse.ok || !conv?.id) throw new Error(base44ErrorMessage(conv, convResponse.status, 'conversation'));
 
   const issues = (before.issues || []).map((item) => `- ${item.code}: ${item.label}`).join('\n') || '- optimisation proactive';
   const seo = (before.seo?.recommendations || []).map((item) => `- ${item}`).join('\n') || '- aucune recommandation SEO';
@@ -305,7 +317,7 @@ async function executeBase44Agent(agent, domain, kind, before) {
     method: 'POST', headers, body: JSON.stringify({ role: 'user', content: prompt }), signal: AbortSignal.timeout(120000),
   });
   const answer = await answerResponse.json().catch(() => ({}));
-  if (!answerResponse.ok) throw new Error(answer?.error || `Base44 agent HTTP ${answerResponse.status}`);
+  if (!answerResponse.ok) throw new Error(base44ErrorMessage(answer, answerResponse.status, 'agent'));
   return { conversationId: conv.id, content: String(answer?.content || answer?.response || answer?.message || '').trim() };
 }
 
@@ -452,3 +464,4 @@ module.exports.MANAGED_DOMAINS = MANAGED_DOMAINS;
 module.exports.verifiedImprovement = verifiedImprovement;
 module.exports.agentForDomain = agentForDomain;
 module.exports.executeBase44Agent = executeBase44Agent;
+module.exports.base44ErrorMessage = base44ErrorMessage;

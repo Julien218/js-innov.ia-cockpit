@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { resolveNovaExecutor, siteExecutorForTask } = require('../server-nova-executors.cjs');
+const { base44ErrorMessage } = require('../server-domain-ops.cjs');
 const { executeTaskBatch, sanitizeTaskBatchPayload } = require('../server-task-batch.cjs');
 
 function jsonResponse(data, status = 200) {
@@ -50,14 +51,25 @@ function memoryAgent() {
 
 test('NOVA réserve chaque agent Base44 au site dont il est responsable', () => {
   const js = siteExecutorForTask({ titre: 'Réparation IA — jsinnovia.com' });
+  const assurances = siteExecutorForTask({ titre: 'SEO automatique — assurances-dour.be' });
   const synergie = siteExecutorForTask({ titre: 'SEO — synergiedour.be' });
   assert.equal(js.provider, 'base44');
   assert.equal(js.id, 'base44-site:jsinnov-agent');
   assert.equal(js.domain, 'jsinnovia.com');
+  assert.equal(assurances.id, 'base44-site:assurances-dour');
+  assert.equal(assurances.provider_agent_id, '6a008b3e1571ea9f6ac3839d');
+  assert.equal(assurances.domain, 'assurances-dour.be');
   assert.equal(synergie.id, 'base44-site:synergie-dour');
   assert.equal(siteExecutorForTask({ titre: 'Mettre à jour tous les clients' }), null);
   assert.equal(siteExecutorForTask({ titre: 'Contrôler MiniMax dans ComfyUI' }), null);
   assert.equal(siteExecutorForTask({ titre: 'Contrôler video-studio.jsinnovia.com' }).id, 'base44-site:generatvideopro');
+});
+
+test('les erreurs Base44 conservent le détail exploitable du fournisseur', () => {
+  assert.equal(
+    base44ErrorMessage({ message: 'Agent tools are not enabled for this operation' }, 400, 'agent'),
+    'Base44 agent HTTP 400: Agent tools are not enabled for this operation',
+  );
 });
 
 test('NOVA attribue Windows et les données métier à ses exécuteurs internes', () => {

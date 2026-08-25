@@ -17,6 +17,7 @@ const BASE44_API_KEY = String(process.env.BASE44_API_KEY || process.env.BASE44_S
 // NOVA, Creative Director et GeneratVideoPro ne sont pas utilisés comme workers génériques.
 const SITE_AGENT_KEYS = new Set([
   'jsinnov-agent',
+  'assurances-dour',
   'synergie-dour',
   'site-olivier',
   'dourconnect',

@@ -7,7 +7,7 @@ const JS_AGENT_KEY = String(process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT
 const MAX_DELEGATES = Math.max(1, Math.min(3, Number(process.env.COMPANION_MAX_SPECIALISTS || 2)));
 
 /* Le proxy UI et l'orchestrateur consomment exactement le même registre. */
-const SITE_AGENT_KEYS = new Set(['jsinnov-agent', 'synergie-dour', 'site-olivier', 'dourconnect', 'villeconnect', 'fashionistart', 'miss-mister-dour', 'generatvideopro']);
+const SITE_AGENT_KEYS = new Set(['jsinnov-agent', 'assurances-dour', 'synergie-dour', 'site-olivier', 'dourconnect', 'villeconnect', 'fashionistart', 'miss-mister-dour', 'generatvideopro']);
 const SITE_AGENT_REGISTRY = Object.freeze(AGENT_REGISTRY.filter((agent) => agent.status === 'active' && SITE_AGENT_KEYS.has(agent.key)));
 /*
   {
