@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 const useMutationAny = /** @type {any} */ (useMutation);
@@ -70,13 +71,18 @@ const CONFIRM_ACTIONS = {
 };
 
 export default function Portfolio() {
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [filterStatut, setFilterStatut] = useState("");
-  const [librarySource, setLibrarySource] = useState("cockpit");
+  const [librarySource, setLibrarySource] = useState(searchParams.get("source") === "dropbox" ? "dropbox" : "cockpit");
   const [dropboxSearch, setDropboxSearch] = useState("");
-  const [dropboxType, setDropboxType] = useState("all");
+  const [dropboxType, setDropboxType] = useState(["image", "video"].includes(searchParams.get("type")) ? searchParams.get("type") : "all");
+  const [onlyUnclassified, setOnlyUnclassified] = useState(searchParams.get("client") === "unclassified");
+  const [assigningAsset, setAssigningAsset] = useState(null);
+  const [selectedClientId, setSelectedClientId] = useState("");
+  const [clientSearch, setClientSearch] = useState("");
   const [historyAsset, setHistoryAsset] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null); // { type, asset }
 
@@ -161,6 +167,34 @@ export default function Portfolio() {
     },
   });
 
+  const assignClientMutation = useMutationAny({
+    mutationFn: async ({ asset, clientId }) => {
+      const client = clients.find((item) => String(item.id) === String(clientId));
+      if (!client) throw new Error("Sélectionne un client valide");
+      const clientName = client.denomination_legale || client.entreprise || client.nom || client.name || "Client";
+      const response = await fetch(`/api/documents/portfolio-assets/${encodeURIComponent(asset.id)}/client`, {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: String(client.id), clientName }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.error || "Rattachement impossible");
+      return { ...data, clientName };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["portfolio-dropbox-assets"] });
+      toast({
+        title: "Média rattaché",
+        description: `${data.clientName} · journal ${data.journalId || "enregistré"}`,
+      });
+      setAssigningAsset(null);
+      setSelectedClientId("");
+      setClientSearch("");
+    },
+    onError: (error) => toast({ title: "Rattachement impossible", description: error.message, variant: "destructive" }),
+  });
+
   const filtered = useMemo(() => {
     if (!filterStatut) return assets;
     return assets.filter(a => a.statut === filterStatut);
@@ -184,13 +218,25 @@ export default function Portfolio() {
     return dropboxAssets.filter((asset) => {
       const mediaType = dropboxMediaType(asset);
       if (dropboxType !== "all" && mediaType !== dropboxType) return false;
+      if (onlyUnclassified && asset.client_id) return false;
       if (!query) return true;
       const client = asset.client_id ? clientNames.get(String(asset.client_id)) : "à classer";
       return [asset.filename, asset.category, asset.brand, asset.source, asset.dropbox_path, client]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
     });
-  }, [dropboxAssets, dropboxSearch, dropboxType, clientNames]);
+  }, [dropboxAssets, dropboxSearch, dropboxType, onlyUnclassified, clientNames]);
+
+  const assignableClients = useMemo(() => {
+    const query = clientSearch.trim().toLowerCase();
+    return clients
+      .map((client) => ({
+        id: String(client.id),
+        name: client.denomination_legale || client.entreprise || client.nom || client.name || "Client",
+      }))
+      .filter((client) => !query || client.name.toLowerCase().includes(query))
+      .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  }, [clients, clientSearch]);
 
   const dropboxStats = useMemo(() => ({
     total: dropboxAssets.length,
@@ -217,9 +263,18 @@ export default function Portfolio() {
               {statutOptions.filter(Boolean).map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           ) : (
-            <Button variant="outline" size="sm" onClick={() => refreshDropbox()} disabled={dropboxRefreshing}>
-              <RefreshCw className={cn("w-3.5 h-3.5 mr-1.5", dropboxRefreshing && "animate-spin")} /> Actualiser Dropbox
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant={onlyUnclassified ? "default" : "outline"}
+                size="sm"
+                onClick={() => setOnlyUnclassified((value) => !value)}
+              >
+                <AlertTriangle className="w-3.5 h-3.5 mr-1.5" /> À classer
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => refreshDropbox()} disabled={dropboxRefreshing}>
+                <RefreshCw className={cn("w-3.5 h-3.5 mr-1.5", dropboxRefreshing && "animate-spin")} /> Actualiser Dropbox
+              </Button>
+            </div>
           )
         }
       />
@@ -380,14 +435,27 @@ export default function Portfolio() {
                 <div className="p-4 flex-1 flex flex-col gap-2">
                   <div className="flex items-start justify-between gap-2">
                     <h3 className="text-sm font-semibold text-foreground line-clamp-2" title={asset.filename}>{asset.filename}</h3>
-                    <Cloud className="w-4 h-4 text-blue-500 flex-shrink-0" title="Stocké dans Dropbox" />
+                    <span title="Stocké dans Dropbox"><Cloud className="w-4 h-4 text-blue-500 flex-shrink-0" /></span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline" className="text-[10px]">{mediaType === "video" ? "Vidéo" : "Image"}</Badge>
                     <Badge variant="outline" className="text-[10px]">{asset.category}</Badge>
-                    <Badge className={cn("text-[10px]", clientName ? "bg-emerald-600" : "bg-amber-600")}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssigningAsset(asset);
+                        setSelectedClientId(asset.client_id ? String(asset.client_id) : "");
+                        setClientSearch("");
+                      }}
+                      className={cn(
+                        "inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold text-white transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                        clientName ? "bg-emerald-600" : "bg-amber-600",
+                      )}
+                      aria-label={`${clientName ? "Modifier le client" : "Identifier le client"} de ${asset.filename}`}
+                      title="Cliquer pour choisir le client"
+                    >
                       {clientName || "Client à identifier"}
-                    </Badge>
+                    </button>
                   </div>
                   <p className="text-xs text-muted-foreground">{formatBytes(asset.size_bytes)} · source : {asset.source}</p>
                   <p className="text-[10px] text-muted-foreground break-all line-clamp-2" title={asset.dropbox_path || ""}>{asset.dropbox_path || "Chemin Dropbox indexé"}</p>
@@ -405,6 +473,45 @@ export default function Portfolio() {
           })}
         </div>
       )}
+
+      <Dialog open={!!assigningAsset} onOpenChange={(open) => !open && setAssigningAsset(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rattacher ce média à un client</DialogTitle>
+            <DialogDescription>
+              {assigningAsset?.filename}. Le fichier reste dans Dropbox ; son index Cockpit sera relié au client choisi.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <input
+              value={clientSearch}
+              onChange={(event) => setClientSearch(event.target.value)}
+              placeholder="Rechercher un client…"
+              className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/25"
+            />
+            <select
+              value={selectedClientId}
+              onChange={(event) => setSelectedClientId(event.target.value)}
+              className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm"
+              aria-label="Client à rattacher"
+            >
+              <option value="">Choisir un client</option>
+              {assignableClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+            </select>
+            {assignableClients.length === 0 && <p className="text-xs text-amber-600">Aucun client ne correspond à cette recherche.</p>}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setAssigningAsset(null)}>Annuler</Button>
+              <Button
+                onClick={() => assignClientMutation.mutate({ asset: assigningAsset, clientId: selectedClientId })}
+                disabled={!selectedClientId || assignClientMutation.isPending}
+              >
+                {assignClientMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Enregistrer le client
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal historique */}
       <Dialog open={!!historyAsset} onOpenChange={(open) => !open && setHistoryAsset(null)}>

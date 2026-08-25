@@ -9,6 +9,7 @@ import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, CheckCircle2, CircleDot, Clock3, Pencil, Trash2 } from "lucide-react";
 import { isTaskBlocked, isTaskCompleted, normalizeTaskStatus } from "@/lib/taskStatus";
+import { groupTasks } from "@/lib/taskGrouping";
 
 const formFields = [
   { name: "titre",         label: "Titre",         type: "text",   required: true },
@@ -24,7 +25,16 @@ const formFields = [
 ];
 
 const columns = [
-  { key: "titre",         label: "Tâche" },
+  { key: "titre",         label: "Tâche", render: (value, row) => (
+    <div className="flex items-center gap-2">
+      <span>{value}</span>
+      {row.duplicate_count > 1 && (
+        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-600" title={`${row.duplicate_count} enregistrements regroupés`}>
+          ×{row.duplicate_count}
+        </span>
+      )}
+    </div>
+  ) },
   { key: "client_nom",    label: "Client" },
   { key: "projet_nom",    label: "Projet" },
   { key: "priorite",      label: "Priorité",  render: v => <StatusBadge status={v} /> },
@@ -39,6 +49,7 @@ export default function Taches() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("actives");
   const [visibleCount, setVisibleCount] = useState(25);
+  const [groupDuplicates, setGroupDuplicates] = useState(true);
 
   const { data: taches = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["Tache"],
@@ -57,20 +68,21 @@ export default function Taches() {
   });
 
   const rows = Array.isArray(taches) ? taches : [];
+  const displayRows = useMemo(() => groupDuplicates ? groupTasks(rows) : rows, [rows, groupDuplicates]);
   const isLate = (task) => task?.date_echeance && new Date(task.date_echeance) < new Date() && !isTaskCompleted(task);
 
   const counters = useMemo(() => ({
-    actives: rows.filter((task) => !isTaskCompleted(task)).length,
-    en_cours: rows.filter((task) => normalizeTaskStatus(task.statut ?? task.status) === "en_cours").length,
-    bloquees: rows.filter(isTaskBlocked).length,
-    retard: rows.filter(isLate).length,
-    terminees: rows.filter(isTaskCompleted).length,
-  }), [rows]);
+    actives: displayRows.filter((task) => !isTaskCompleted(task)).length,
+    en_cours: displayRows.filter((task) => normalizeTaskStatus(task.statut ?? task.status) === "en_cours").length,
+    bloquees: displayRows.filter(isTaskBlocked).length,
+    retard: displayRows.filter(isLate).length,
+    terminees: displayRows.filter(isTaskCompleted).length,
+  }), [displayRows]);
 
   const filteredTasks = useMemo(() => {
     const term = search.trim().toLowerCase();
     const priorityRank = { urgente: 0, haute: 1, normale: 2, basse: 3 };
-    return rows
+    return displayRows
       .filter((task) => {
         if (statusFilter === "actives" && isTaskCompleted(task)) return false;
         if (statusFilter === "bloquees" && !isTaskBlocked(task)) return false;
@@ -78,7 +90,7 @@ export default function Taches() {
         if (statusFilter === "en_cours" && normalizeTaskStatus(task.statut ?? task.status) !== "en_cours") return false;
         if (statusFilter === "terminees" && !isTaskCompleted(task)) return false;
         if (!term) return true;
-        return [task.titre, task.description, task.client_nom, task.projet_nom]
+        return [task._search_text, task.titre, task.description, task.client_nom, task.projet_nom]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(term));
       })
@@ -88,7 +100,7 @@ export default function Taches() {
         if (stateA !== stateB) return stateA - stateB;
         return (priorityRank[a.priorite] ?? 9) - (priorityRank[b.priorite] ?? 9);
       });
-  }, [rows, search, statusFilter]);
+  }, [displayRows, search, statusFilter]);
 
   const filters = [
     { id: "actives", label: "À traiter", count: counters.actives, icon: CircleDot },
@@ -96,7 +108,7 @@ export default function Taches() {
     { id: "bloquees", label: "Bloquées", count: counters.bloquees, icon: AlertTriangle },
     { id: "retard", label: "En retard", count: counters.retard, icon: AlertTriangle },
     { id: "terminees", label: "Terminées", count: counters.terminees, icon: CheckCircle2 },
-    { id: "toutes", label: "Toutes", count: rows.length, icon: CircleDot },
+    { id: "toutes", label: "Toutes", count: displayRows.length, icon: CircleDot },
   ];
 
   const actions = (row) => (
@@ -125,7 +137,7 @@ export default function Taches() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Tâches" subtitle={`${filteredTasks.length} résultat(s) · ${counters.actives} à traiter`}
+      <PageHeader title="Tâches" subtitle={`${filteredTasks.length} tâche(s) affichée(s) · ${rows.length} enregistrement(s) conservé(s)`}
         search={search} onSearch={(value) => { setSearch(value); setVisibleCount(25); }}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouvelle tâche</Button>} />
 
@@ -150,8 +162,17 @@ export default function Taches() {
           })}
         </div>
         <p className="text-xs text-muted-foreground">
-          Les tâches bloquées, en retard et urgentes sont affichées en premier.
+          Les tâches bloquées, en retard et urgentes sont affichées en premier. Aucun doublon n’est supprimé.
         </p>
+        <Button
+          type="button"
+          size="sm"
+          variant={groupDuplicates ? "default" : "outline"}
+          onClick={() => { setGroupDuplicates((value) => !value); setVisibleCount(25); }}
+          className="shrink-0"
+        >
+          {groupDuplicates ? "Doublons regroupés" : "Regrouper les doublons"}
+        </Button>
       </section>
 
       <div className="data-surface">

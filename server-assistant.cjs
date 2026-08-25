@@ -45,6 +45,13 @@ const ALLOWED_ACTIONS = {
     roles: ADMIN_ROLES,
     fields: ['provider', 'client_id', 'client_name', 'project_id', 'cost_center_id', 'campaign_name', 'prompt', 'sector', 'rights_confirmed', 'usage_rights', 'version', 'source_document_id'],
   },
+  assign_media_client: {
+    clientAction: '/api/documents/portfolio-assets/:id/client',
+    clientMethod: 'PATCH',
+    roles: ADMIN_ROLES,
+    fields: ['clientId', 'clientName'],
+    requiresId: true,
+  },
   update_task_status: { method: 'PATCH', table: 'Tache', roles: STAFF_ROLES, fields: ['statut'], requiresId: true },
   create_lead: { method: 'POST', table: 'Lead', roles: ADMIN_ROLES, fields: ['nom', 'prenom', 'email', 'telephone', 'entreprise', 'source', 'notes'] },
   create_project: { method: 'POST', table: 'Projet', roles: ADMIN_ROLES, fields: ['nom', 'client_id', 'client_nom', 'organisation_id', 'description', 'statut', 'date_debut', 'date_fin_prevue', 'budget', 'progression', 'priorite', 'notes'] },
@@ -354,6 +361,10 @@ function sanitizeAction(raw, user) {
     if (!String(payload.campaign_name || '').trim() || String(payload.prompt || '').trim().length < 20) return null;
     if (payload.source_document_id && !/^[a-zA-Z0-9_-]{1,180}$/.test(String(payload.source_document_id))) return null;
   }
+  if (raw.type === 'assign_media_client') {
+    if (!/^[A-Za-z0-9:_-]{1,160}$/.test(String(payload.clientId || ''))) return null;
+    if (!String(payload.clientName || '').trim()) return null;
+  }
   if (raw.type === 'update_task_status' && !['a_faire', 'en_cours', 'terminee', 'bloquee'].includes(payload.statut)) return null;
 
   if (['create_project', 'update_project'].includes(raw.type)) {
@@ -407,6 +418,9 @@ function recoverProposedAction(raw, assistantData = {}, recentMedia = null) {
   }
   if (recovered.type === 'create_video_generation' && recentMedia?.documentId && !recovered.payload.source_document_id) {
     recovered.payload.source_document_id = recentMedia.documentId;
+  }
+  if (recovered.type === 'assign_media_client' && recentMedia?.documentId && !recovered.id) {
+    recovered.id = recentMedia.documentId;
   }
   return recovered;
 }
@@ -596,6 +610,7 @@ router.post('/chat', async (req, res) => {
           requirements: {
             create_task: 'payload.titre est obligatoire et doit reprendre exactement le titre annoncé à l’utilisateur.',
             create_video_generation: 'Pour créer une vidéo depuis le média récent, utiliser payload { provider:"auto", client_name ou client_id, campaign_name, prompt, source_document_id }. Durée 8 s et 16:9 sont imposés par le serveur.',
+            assign_media_client: 'Pour rattacher le média actif, utiliser son document id avec payload { clientId, clientName }. Le client doit provenir du contexte intégrité Cockpit.',
           },
         },
         available_actions: availableActionsFor(req.user),
@@ -695,7 +710,7 @@ router.post('/confirm', async (req, res) => {
       action_type: action.type,
       action_summary: summary,
       client_action: {
-        method: 'POST',
+        method: action.definition.clientMethod || 'POST',
         url: action.definition.clientAction.replace(':id', action.id || ''),
         body: action.payload,
       },
