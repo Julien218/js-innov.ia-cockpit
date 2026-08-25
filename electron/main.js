@@ -147,6 +147,185 @@ ipcMain.handle("video-local-queue", async (_event, payload = {}) => {
   });
 });
 
+const MAX_LOCAL_VIDEO_BATCH = 32;
+const localVideoBatches = new Map();
+let localVideoBatchesLoaded = false;
+
+function localVideoBatchStorePath() {
+  return path.join(app.getPath("userData"), "local-video-batches.json");
+}
+
+function loadLocalVideoBatches() {
+  if (localVideoBatchesLoaded) return;
+  localVideoBatchesLoaded = true;
+  try {
+    const records = JSON.parse(fs.readFileSync(localVideoBatchStorePath(), "utf8"));
+    if (Array.isArray(records)) {
+      records.forEach((batch) => {
+        if (batch?.id && Array.isArray(batch.jobs)) localVideoBatches.set(batch.id, batch);
+      });
+    }
+  } catch (_) { /* premier démarrage */ }
+}
+
+function saveLocalVideoBatches() {
+  fs.writeFileSync(localVideoBatchStorePath(), JSON.stringify([...localVideoBatches.values()], null, 2), "utf8");
+}
+
+function comfyQueuePromptIds(items = []) {
+  return new Set(items.map((item) => String(Array.isArray(item) ? item[1] : item?.prompt_id || "")).filter(Boolean));
+}
+
+function comfyHistoryOutputs(payload, promptId) {
+  const history = payload?.[promptId] || payload?.history?.[promptId] || payload || {};
+  const outputs = history?.outputs || {};
+  const files = [];
+  Object.values(outputs).forEach((nodeOutput) => {
+    ["videos", "gifs", "images", "audio"].forEach((kind) => {
+      const values = nodeOutput?.[kind];
+      if (Array.isArray(values)) values.forEach((item) => {
+        if (item?.filename) files.push({ kind, ...item });
+      });
+    });
+  });
+  return { files, completed: files.length > 0 || history?.status?.completed === true };
+}
+
+async function refreshLocalVideoBatch(batch) {
+  let queue = { queue_running: [], queue_pending: [] };
+  try { queue = await comfyRequest("/queue", { timeoutMs: 10000 }); } catch (_) { /* historique encore exploitable */ }
+  const running = comfyQueuePromptIds(queue.queue_running);
+  const pending = comfyQueuePromptIds(queue.queue_pending);
+
+  await Promise.all(batch.jobs.map(async (job) => {
+    if (!job.promptId || ["failed", "cancelled", "completed"].includes(job.status)) return;
+    try {
+      const history = await comfyRequest(`/history/${encodeURIComponent(job.promptId)}`, { timeoutMs: 10000 });
+      const result = comfyHistoryOutputs(history, job.promptId);
+      if (result.completed) {
+        job.status = "completed";
+        job.outputs = result.files;
+        job.completedAt = new Date().toISOString();
+      } else if (running.has(job.promptId)) {
+        job.status = "running";
+      } else if (pending.has(job.promptId)) {
+        job.status = "queued";
+      }
+    } catch (error) {
+      job.lastError = String(error.message || error).slice(0, 500);
+    }
+  }));
+
+  const terminal = batch.jobs.filter((job) => ["completed", "failed", "cancelled"].includes(job.status)).length;
+  batch.progress = batch.jobs.length ? Math.round((terminal / batch.jobs.length) * 100) : 0;
+  batch.status = terminal === batch.jobs.length ? "completed" : "running";
+  batch.updatedAt = new Date().toISOString();
+  saveLocalVideoBatches();
+  return batch;
+}
+
+ipcMain.handle("video-local-batch-queue", async (_event, payload = {}) => {
+  loadLocalVideoBatches();
+  const jobs = Array.isArray(payload.jobs) ? payload.jobs : [];
+  if (!jobs.length) throw new Error("Ajoute au moins une vidéo au lot local.");
+  if (jobs.length > MAX_LOCAL_VIDEO_BATCH) throw new Error(`Maximum ${MAX_LOCAL_VIDEO_BATCH} vidéos par lot local.`);
+
+  const batchId = String(payload.batchId || `batch-${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}`);
+  if (localVideoBatches.has(batchId)) throw new Error("Cet identifiant de lot existe déjà.");
+  const batch = {
+    id: batchId,
+    title: String(payload.title || "Production écran géant"),
+    clientName: String(payload.clientName || ""),
+    campaignName: String(payload.campaignName || ""),
+    status: "queueing",
+    progress: 0,
+    concurrency: 1,
+    maxJobs: MAX_LOCAL_VIDEO_BATCH,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    jobs: [],
+  };
+  localVideoBatches.set(batchId, batch);
+  saveLocalVideoBatches();
+
+  for (let index = 0; index < jobs.length; index += 1) {
+    const source = jobs[index] || {};
+    const record = {
+      id: String(source.id || `video-${index + 1}`),
+      title: String(source.title || `Vidéo ${index + 1}`),
+      prompt: String(source.prompt || ""),
+      metadata: source.metadata && typeof source.metadata === "object" ? source.metadata : {},
+      status: "queueing",
+      position: index + 1,
+      promptId: "",
+      outputs: [],
+    };
+    batch.jobs.push(record);
+    try {
+      if (!source.workflow || typeof source.workflow !== "object" || Array.isArray(source.workflow)) {
+        throw new Error("Workflow ComfyUI API invalide.");
+      }
+      const queued = await comfyRequest("/prompt", {
+        method: "POST",
+        json: {
+          prompt: source.workflow,
+          client_id: String(source.clientId || "jsinnovia-signage-factory"),
+        },
+        timeoutMs: 15000,
+      });
+      record.promptId = String(queued?.prompt_id || queued?.promptId || "");
+      if (!record.promptId) throw new Error("ComfyUI n’a pas retourné de prompt_id.");
+      record.status = "queued";
+      record.queuedAt = new Date().toISOString();
+    } catch (error) {
+      record.status = "failed";
+      record.error = String(error.message || error).slice(0, 1000);
+      record.completedAt = new Date().toISOString();
+    }
+    batch.updatedAt = new Date().toISOString();
+    saveLocalVideoBatches();
+  }
+
+  batch.status = batch.jobs.some((job) => ["queued", "running"].includes(job.status)) ? "running" : "completed";
+  saveLocalVideoBatches();
+  return refreshLocalVideoBatch(batch);
+});
+
+ipcMain.handle("video-local-batch-status", async (_event, batchId) => {
+  loadLocalVideoBatches();
+  const batch = localVideoBatches.get(String(batchId || ""));
+  if (!batch) throw new Error("Lot vidéo local introuvable.");
+  return refreshLocalVideoBatch(batch);
+});
+
+ipcMain.handle("video-local-batch-list", async () => {
+  loadLocalVideoBatches();
+  const batches = [...localVideoBatches.values()].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  return { batches: batches.slice(0, 50), maxJobs: MAX_LOCAL_VIDEO_BATCH };
+});
+
+ipcMain.handle("video-local-batch-cancel", async (_event, batchId) => {
+  loadLocalVideoBatches();
+  const batch = localVideoBatches.get(String(batchId || ""));
+  if (!batch) throw new Error("Lot vidéo local introuvable.");
+  const ids = batch.jobs.filter((job) => ["queueing", "queued", "running"].includes(job.status) && job.promptId).map((job) => job.promptId);
+  try { await comfyRequest("/interrupt", { method: "POST", json: {}, timeoutMs: 5000 }); } catch (_) {}
+  if (ids.length) {
+    try { await comfyRequest("/queue", { method: "POST", json: { delete: ids }, timeoutMs: 10000 }); } catch (_) {}
+  }
+  batch.jobs.forEach((job) => {
+    if (["queueing", "queued", "running"].includes(job.status)) {
+      job.status = "cancelled";
+      job.completedAt = new Date().toISOString();
+    }
+  });
+  batch.status = "cancelled";
+  batch.progress = 100;
+  batch.updatedAt = new Date().toISOString();
+  saveLocalVideoBatches();
+  return batch;
+});
+
 ipcMain.handle("video-local-history", async (_event, promptId) => {
   const id = encodeURIComponent(String(promptId || ""));
   if (!id) throw new Error("promptId manquant.");
