@@ -61,6 +61,7 @@ import Twilio from "@/pages/Twilio";
 import AppErrorBoundary from "@/components/shared/AppErrorBoundary";
 import MobileHub from "@/pages/MobileHub";
 import DigitalSignage from "@/pages/DigitalSignage";
+import LocalVideoFactory from "@/pages/LocalVideoFactory";
 
 const PageBoundary = ({ children }) => <AppErrorBoundary>{children}</AppErrorBoundary>;
 
@@ -138,6 +139,7 @@ const AppRoutes = () => {
           <Route path="/apps-agents" element={<PageBoundary><AppsAgents /></PageBoundary>} />
           <Route path="/production" element={<PageBoundary><Production /></PageBoundary>} />
           <Route path="/ecran-geant" element={isAdmin ? <PageBoundary><DigitalSignage /></PageBoundary> : <Navigate to="/" replace />} />
+          <Route path="/video-factory-local" element={isAdmin ? <PageBoundary><LocalVideoFactory /></PageBoundary> : <Navigate to="/" replace />} />
           <Route path="/domaines" element={<PageBoundary><Domaines /></PageBoundary>} />
           <Route path="/rangement" element={<PageBoundary><Rangement /></PageBoundary>} />
         </Route>
