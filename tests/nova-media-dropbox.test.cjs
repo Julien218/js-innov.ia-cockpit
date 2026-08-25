@@ -11,7 +11,15 @@ const {
   normalizeMediaMetadata,
   safeUploadFilename,
   isExistingFolderConflict,
+  dropboxApiArg,
 } = require('../server-dropbox-helper.cjs');
+
+test('les chemins Dropbox Unicode sont encodés dans un en-tête ASCII valide', () => {
+  const header = dropboxApiArg({ path: '/Cockpit/Identité JS-Innov.IA — Test Grok/été.mp4' });
+  assert.equal([...header].every((character) => character.charCodeAt(0) >= 32 && character.charCodeAt(0) <= 126), true);
+  assert.deepEqual(JSON.parse(header), { path: '/Cockpit/Identité JS-Innov.IA — Test Grok/été.mp4' });
+  assert.match(header, /\\u2014/);
+});
 
 test('NOVA classe une vidéo dans le client et le projet indiqués', async () => {
   const clients = [{ id: 'client-1', denomination_legale: 'Synergie Dour ASBL' }];
