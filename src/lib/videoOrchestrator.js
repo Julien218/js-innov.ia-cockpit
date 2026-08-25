@@ -127,6 +127,22 @@ export async function cancelLocalVideoBatch(batchId) {
   return bridge().batchCancel(batchId);
 }
 
+export async function createLocalReviewVideo(batchId) {
+  if (!batchId) throw new Error('Identifiant de lot vidéo manquant.');
+  if (typeof bridge().createReview !== 'function') {
+    throw new Error('Le montage comparatif nécessite la dernière application desktop JS-Innov.IA.');
+  }
+  return bridge().createReview(batchId);
+}
+
+export async function openLocalReviewFolder(reviewPath) {
+  if (!reviewPath) throw new Error('Chemin du montage de validation manquant.');
+  if (typeof bridge().openReviewFolder !== 'function') {
+    throw new Error('La dernière application desktop JS-Innov.IA est nécessaire.');
+  }
+  return bridge().openReviewFolder(reviewPath);
+}
+
 export async function getLocalHistory(promptId) {
   if (!promptId) throw new Error('promptId manquant.');
   return bridge().history(promptId);
