@@ -9,7 +9,7 @@ const taskBatchSource = fs.readFileSync(path.join(root, 'server-task-batch.cjs')
 const serverSource = fs.readFileSync(path.join(root, 'server.cjs'), 'utf8');
 const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
 
-const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage, executionProof, directAutopilotSignal, autopilotMessage } = require(path.join(root, 'server-assistant-batch.cjs'));
+const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage, executionProof, directAutopilotSignal, autopilotMessage, directEntityMutationSignal } = require(path.join(root, 'server-assistant-batch.cjs'));
 const { canonicalTaskTitle, latestActiveRun, sanitizeTaskBatchPayload } = require(path.join(root, 'server-task-batch.cjs'));
 
 test('les demandes multi-tâches et d’exécution sont reconnues sans intercepter un chat banal', () => {
@@ -19,6 +19,13 @@ test('les demandes multi-tâches et d’exécution sont reconnues sans intercept
   assert.equal(batchSignals('bonjour'), false);
   assert.equal(batchSignals('analyse MiniMax H3'), false);
   assert.equal(batchSignals('Analyse les trois actions puis délègue chaque diagnostic à l’agent responsable'), true);
+});
+
+test('une modification de fiche projet passe au CRUD réel et jamais au batch de tâches', () => {
+  assert.equal(directEntityMutationSignal('Complète la fiche projet VilleConnectOs'), true);
+  assert.equal(directEntityMutationSignal('Mets à jour le projet VilleConnectOs avec ces informations'), true);
+  assert.equal(directEntityMutationSignal('Mets à jour tous les projets'), false);
+  assert.match(batchSource, /if \(directEntityMutationSignal\(message\)\) return false/);
 });
 
 test('une demande explicite d’exécution autorise le lot sans seconde confirmation', () => {

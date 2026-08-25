@@ -63,6 +63,14 @@ function directAutopilotSignal(message) {
     || /toutes?\s+les\s+t[aâ]ches?.*(effectue|ex[eé]cute|lance|traite|r[eé]alise)/.test(source);
 }
 
+function directEntityMutationSignal(message) {
+  const source = String(message || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const mutation = /(complete|completer|mets? a jour|mettre a jour|modifie|modifier|corrige|corriger|renseigne|renseigner|ajoute|ajouter)/.test(source);
+  const entity = /(fiche\s+projet|projet\s+[a-z0-9]|informations?\s+(?:du|de ce)\s+projet)/.test(source);
+  const explicitBatch = /(plusieurs|tous|toutes|chaque|lot|batch|liste)\s+(?:les\s+)?(?:fiches?\s+)?projets?/.test(source);
+  return mutation && entity && !explicitBatch;
+}
+
 function autopilotMessage(result) {
   if (result?.skipped) return `Autopilote déjà en cours (${result.reason}).`;
   const executed = Array.isArray(result?.executed) ? result.executed : [];
@@ -111,11 +119,13 @@ async function recentContext(req) {
 
 async function shouldHandleBatch(req, message) {
   if (!canBatch(req.user)) return false;
+  if (directEntityMutationSignal(message)) return false;
   if (batchSignals(message)) return true;
   const normalized = String(message || '').trim().toLowerCase();
   if (!/^(oui|ok|oki|go|confirme|confirmer|je confirme|confirm)$/i.test(normalized)) return false;
   const history = await recentContext(req);
   const contextText = history.slice(-8).map((item) => item?.content || '').join('\n');
+  if (directEntityMutationSignal(contextText)) return false;
   return batchSignals(contextText);
 }
 
@@ -286,3 +296,4 @@ module.exports.removeStaleConfirmationLanguage = removeStaleConfirmationLanguage
 module.exports.executionProof = executionProof;
 module.exports.directAutopilotSignal = directAutopilotSignal;
 module.exports.autopilotMessage = autopilotMessage;
+module.exports.directEntityMutationSignal = directEntityMutationSignal;

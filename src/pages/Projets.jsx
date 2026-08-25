@@ -9,9 +9,11 @@ import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
 import { Pencil, Trash2 } from "lucide-react";
 
+const INTERNAL_PROJECT_VALUE = "__jsinnovia_internal__";
+
 const formFields = [
   { name: "nom",             label: "Nom du projet",     type: "text",   required: true },
-  { name: "client_id",       label: "Client du Cockpit", type: "select", required: true, options: [] },
+  { name: "client_id",       label: "Propriétaire du projet", type: "select", required: true, options: [] },
   { name: "description",     label: "Description",       type: "textarea" },
   { name: "statut",          label: "Statut",            type: "select",
     options: ["en_attente","en_cours","pause","termine","annule"] },
@@ -23,9 +25,13 @@ const formFields = [
 
 const columns = [
   { key: "nom",             label: "Projet" },
-  { key: "client_nom",      label: "Client", render: (v, row) => row.client_id
-    ? (v || "Client rattaché")
-    : <span className="text-red-400">Anomalie — aucun client</span> },
+  { key: "client_nom",      label: "Propriétaire", render: (v, row) => {
+    if (row.client_id) return v || "Client rattaché";
+    if (String(row.organisation_id || "").toLowerCase() === "jsinnovia") {
+      return <span className="text-cyan-300">JS-Innov.IA — projet interne</span>;
+    }
+    return <span className="text-amber-300">À classer — interne ou client</span>;
+  } },
   { key: "statut",          label: "Statut",   render: v => <StatusBadge status={v} /> },
   { key: "budget",          label: "Budget",   render: v => v ? `${v.toLocaleString("fr-BE")} €` : "—" },
   { key: "date_fin_prevue", label: "Fin prévue", render: v => v ? new Date(v).toLocaleDateString("fr-BE") : "—" },
@@ -48,10 +54,13 @@ export default function Projets() {
   const resolvedFormFields = formFields.map((field) => field.name === "client_id"
     ? {
         ...field,
-        options: safeClients.map((client) => ({
-          value: client.id,
-          label: client.denomination_legale || client.entreprise || [client.prenom, client.nom].filter(Boolean).join(" ") || client.email,
-        })),
+        options: [
+          { value: INTERNAL_PROJECT_VALUE, label: "JS-Innov.IA — projet interne" },
+          ...safeClients.map((client) => ({
+            value: client.id,
+            label: client.denomination_legale || client.entreprise || [client.prenom, client.nom].filter(Boolean).join(" ") || client.email,
+          })),
+        ],
       }
     : field);
 
@@ -61,9 +70,15 @@ export default function Projets() {
       const payload = Object.fromEntries(
         Object.entries(data || {}).filter(([key]) => editableFields.has(key))
       );
-      const selectedClient = safeClients.find((client) => client.id === payload.client_id);
-      if (!selectedClient) throw new Error("Sélectionnez un client existant dans le Cockpit.");
-      payload.client_nom = selectedClient.denomination_legale || selectedClient.entreprise || [selectedClient.prenom, selectedClient.nom].filter(Boolean).join(" ");
+      if (payload.client_id === INTERNAL_PROJECT_VALUE) {
+        payload.client_id = null;
+        payload.client_nom = "JS-Innov.IA — projet interne";
+        payload.organisation_id = "jsinnovia";
+      } else {
+        const selectedClient = safeClients.find((client) => client.id === payload.client_id);
+        if (!selectedClient) throw new Error("Sélectionnez un client existant ou le propriétaire interne JS-Innov.IA.");
+        payload.client_nom = selectedClient.denomination_legale || selectedClient.entreprise || [selectedClient.prenom, selectedClient.nom].filter(Boolean).join(" ");
+      }
       return editing
         ? base44.entities.Projet.update(editing.id, payload)
         : base44.entities.Projet.create(payload);
@@ -112,7 +127,9 @@ export default function Projets() {
       <DataTable columns={columns} data={Array.isArray(projets) ? projets : []} loading={isLoading} actions={actions} />
       <FormModal open={open} onClose={() => { setOpen(false); setEditing(null); }}
         title={editing ? "Modifier le projet" : "Nouveau projet"}
-        fields={resolvedFormFields} initialData={editing}
+        fields={resolvedFormFields} initialData={editing
+          ? { ...editing, client_id: editing.client_id || INTERNAL_PROJECT_VALUE }
+          : { client_id: INTERNAL_PROJECT_VALUE, statut: "en_cours" }}
         onSubmit={(data) => save.mutate(data)} loading={save.isPending} />
     </div>
   );
