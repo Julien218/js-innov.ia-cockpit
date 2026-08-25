@@ -8,10 +8,13 @@
  * Tourne entièrement sur Railway, zéro dépendance Base44.
  */
 
+const crypto = require('node:crypto');
+
 const APP_KEY = process.env.DROPBOX_APP_KEY || '';
 const APP_SECRET = process.env.DROPBOX_APP_SECRET || '';
 const REFRESH_TOKEN = process.env.DROPBOX_REFRESH_TOKEN || '';
 const ROOT_PATH = process.env.DROPBOX_ROOT_PATH || '/Cockpit';
+const MEDIA_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif', '.mp4', '.mov', '.webm', '.avi', '.mkv', '.m4v']);
 
 let cachedToken = null;
 let tokenExpiry = 0;
@@ -224,14 +227,69 @@ async function buildDropboxContext(message) {
 }
 
 // === Classify a document and determine its Dropbox path ===
-// Uses AI to determine: client, document type, project
-async function classifyDocument(fileName, mimeType, fileSize, clients, message) {
-  const clientNames = clients.map(c => `"${c.nom || c.entreprise || c.name || ''}"`).filter(Boolean).join(', ');
+// Détermine de façon vérifiable le client, le projet et la catégorie depuis le nom et le contexte fourni.
+function normalizeMatch(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
 
-  // Determine document type from filename
-  const lowerName = fileName.toLowerCase();
+async function ensureFolderTree(folderPath) {
+  const parts = String(folderPath || '').split('/').filter(Boolean);
+  let current = '';
+  for (const part of parts) {
+    current += `/${part}`;
+    const result = await ensureFolder(current);
+    if (result?.error) return result;
+  }
+  return { success: true, path: current || '/' };
+}
+
+function safePathSegment(value, fallback = 'Inconnu') {
+  const result = String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\\/<>:"|?*\u0000-\u001f]/g, '-').replace(/\s+/g, ' ').trim().slice(0, 100);
+  return result || fallback;
+}
+
+function safeUploadFilename(value) {
+  const base = String(value || 'fichier').split(/[\\/]/).pop();
+  return safePathSegment(base, 'fichier').slice(0, 180);
+}
+
+function clientName(client = {}) {
+  return client.denomination_legale || client.entreprise || client.nom || client.name || '';
+}
+
+function projectName(project = {}) {
+  return project.nom || project.name || project.titre || project.title || '';
+}
+
+function bestEntityMatch(rows, nameFor, context) {
+  const haystack = normalizeMatch(context);
+  const scored = (Array.isArray(rows) ? rows : []).map((row) => {
+    const name = normalizeMatch(nameFor(row));
+    if (!name) return { row, score: 0 };
+    if (haystack.includes(name)) return { row, score: 1000 + name.length };
+    const tokens = name.split(' ').filter((token) => token.length >= 4);
+    const hits = tokens.filter((token) => haystack.includes(token)).length;
+    return { row, score: tokens.length && hits >= Math.min(2, tokens.length) ? hits * 100 + name.length : 0 };
+  }).sort((a, b) => b.score - a.score);
+  return scored[0]?.score > 0 ? scored[0].row : null;
+}
+
+function isSupportedMedia(fileName, mimeType) {
+  const lower = String(fileName || '').toLowerCase();
+  const ext = lower.includes('.') ? `.${lower.split('.').pop()}` : '';
+  const type = String(mimeType || 'application/octet-stream');
+  return MEDIA_EXTENSIONS.has(ext) && (/^(image|video)\//i.test(type) || type === 'application/octet-stream');
+}
+
+async function classifyDocument(fileName, mimeType, fileSize, clients, message, projects = []) {
+  const safeFileName = safeUploadFilename(fileName);
+  const lowerName = safeFileName.toLowerCase();
+  const context = `${safeFileName}\n${message || ''}`;
   let docType = 'document';
-  if (lowerName.includes('facture') || lowerName.includes('invoice')) docType = 'Factures';
+  if (/^video\//i.test(mimeType) || /\.(mp4|mov|webm|avi|mkv|m4v)$/.test(lowerName)) docType = 'Videos';
+  else if (/^image\//i.test(mimeType) || /\.(jpe?g|png|webp|gif|heic|heif)$/.test(lowerName)) docType = 'Images';
+  else if (lowerName.includes('facture') || lowerName.includes('invoice')) docType = 'Factures';
   else if (lowerName.includes('devis') || lowerName.includes('quote')) docType = 'Devis';
   else if (lowerName.includes('contrat') || lowerName.includes('contract')) docType = 'Contrats';
   else if (lowerName.includes('projet') || lowerName.includes('project')) docType = 'Projets';
@@ -239,44 +297,36 @@ async function classifyDocument(fileName, mimeType, fileSize, clients, message) 
   else if (lowerName.includes('video') || lowerName.includes('spot')) docType = 'Videos';
   else if (lowerName.includes('rapport') || lowerName.includes('report')) docType = 'Rapports';
 
-  // Try to match a client from filename
-  let matchedClient = null;
-  for (const c of clients) {
-    const cname = (c.nom || c.entreprise || c.name || '').toLowerCase();
-    if (cname && lowerName.includes(cname.split(' ')[0].toLowerCase())) {
-      matchedClient = c;
-      break;
-    }
+  let matchedClient = bestEntityMatch(clients, clientName, context);
+  let matchedProject = bestEntityMatch(projects, projectName, context);
+  if (matchedProject?.client_id && !matchedClient) {
+    matchedClient = (clients || []).find((client) => String(client.id) === String(matchedProject.client_id)) || null;
   }
-
-  // If message contains context, try to match client from message
-  if (!matchedClient && message) {
-    const lowerMsg = message.toLowerCase();
-    for (const c of clients) {
-      const cname = (c.nom || c.entreprise || c.name || '').toLowerCase();
-      if (cname && lowerMsg.includes(cname)) {
-        matchedClient = c;
-        break;
-      }
-    }
-  }
+  if (matchedClient && matchedProject?.client_id && String(matchedProject.client_id) !== String(matchedClient.id)) matchedProject = null;
 
   // Build the suggested path
   let folderPath;
   if (matchedClient) {
-    const clientFolder = (matchedClient.nom || matchedClient.entreprise || matchedClient.name || 'Inconnu').replace(/[^a-zA-Z0-9_-]/g, '_');
-    folderPath = `${ROOT_PATH}/Clients/${clientFolder}/${docType}`;
+    const clientFolder = safePathSegment(clientName(matchedClient));
+    if (matchedProject) folderPath = `${ROOT_PATH}/Clients/${clientFolder}/Projets/${safePathSegment(projectName(matchedProject))}/${docType}`;
+    else if (['Images', 'Videos'].includes(docType)) folderPath = `${ROOT_PATH}/Clients/${clientFolder}/Media/${docType}`;
+    else folderPath = `${ROOT_PATH}/Clients/${clientFolder}/${docType}`;
+  } else if (matchedProject) {
+    folderPath = `${ROOT_PATH}/Projets/${safePathSegment(projectName(matchedProject))}/${docType}`;
   } else {
-    folderPath = `${ROOT_PATH}/A_Classer`;
+    folderPath = `${ROOT_PATH}/A_Classer/${docType}`;
   }
+
+  const stamp = `${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomUUID().slice(0, 8)}`;
 
   return {
     docType,
     matchedClient: matchedClient ? {
       id: matchedClient.id,
-      name: matchedClient.nom || matchedClient.entreprise || matchedClient.name,
+      name: clientName(matchedClient),
     } : null,
-    suggestedPath: `${folderPath}/${fileName}`,
+    matchedProject: matchedProject ? { id: matchedProject.id, name: projectName(matchedProject) } : null,
+    suggestedPath: `${folderPath}/${stamp}-${safeFileName}`,
     folderPath,
     fileSize,
     mimeType,
@@ -315,6 +365,7 @@ module.exports = {
   listFolder,
   uploadFile,
   ensureFolder,
+  ensureFolderTree,
   downloadFile,
   getInvoiceFiles,
   getInvoiceSyncStatus,
@@ -323,4 +374,6 @@ module.exports = {
   classifyDocument,
   extractTextFromPDF,
   extractTextFromBuffer,
+  isSupportedMedia,
+  safeUploadFilename,
 };

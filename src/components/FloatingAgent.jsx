@@ -38,7 +38,6 @@ const FloatingAgent = () => {
   const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('agent_tts_enabled') === 'true');
   const [speaking, setSpeaking] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadResult, setUploadResult] = useState(null);
   const fileInputRef = useRef(null);
 
   const messagesEndRef = useRef(null);
@@ -296,67 +295,56 @@ const FloatingAgent = () => {
   }, [stopSpeaking]);
 
   // === File Upload → Classify → Dropbox ===
-  const handleFileUpload = useCallback(async (file) => {
-    if (!file || uploading) return;
-    // Max 20MB
-    if (file.size > 20 * 1024 * 1024) {
-      setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ Fichier trop volumineux (max 20 Mo).', ts: Date.now(), isError: true }]);
+  const handleFileUpload = useCallback(async (incomingFiles) => {
+    const files = Array.from(incomingFiles || []);
+    if (!files.length || uploading) return;
+    const oversized = files.find((file) => file.size > 100 * 1024 * 1024);
+    if (oversized) {
+      setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ ${oversized.name} dépasse la limite de 100 Mo.`, ts: Date.now(), isError: true }]);
       return;
     }
 
     setUploading(true);
-    setMessages(prev => [...prev, { role: 'user', content: `📎 ${file.name} (${(file.size / 1024).toFixed(0)} Ko)`, ts: Date.now(), isFile: true }]);
-    setMessages(prev => [...prev, { role: 'assistant', content: '🔄 Analyse et classification du document...', ts: Date.now(), isSystem: true }]);
+    const context = input.trim();
+    for (const file of files) {
+      const uploadId = `upload-${Date.now()}-${file.name}`;
+      const sizeLabel = file.size >= 1024 * 1024 ? `${(file.size / 1024 / 1024).toFixed(1)} Mo` : `${(file.size / 1024).toFixed(0)} Ko`;
+      setMessages(prev => [...prev,
+        { role: 'user', content: `📎 ${file.name} (${sizeLabel})${context ? `\n${context}` : ''}`, ts: Date.now(), isFile: true },
+        { role: 'assistant', content: '🔄 NOVA classe et archive le média dans Dropbox…', ts: Date.now(), isSystem: true, uploadId },
+      ]);
+      try {
+        const resp = await fetch('/api/assistant/upload-media', {
+          method: 'POST',
+          headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+            'x-nova-file-name': encodeURIComponent(file.name),
+            'x-nova-file-type': encodeURIComponent(file.type || 'application/octet-stream'),
+            'x-nova-file-context': encodeURIComponent(context.slice(0, 1000)),
+          },
+          credentials: 'include',
+          body: file,
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.error || `Archivage impossible (HTTP ${resp.status})`);
 
-    try {
-      // Convert to base64
-      const reader = new FileReader();
-      const base64 = await new Promise((resolve, reject) => {
-        reader.onload = () => {
-          const result = reader.result;
-          resolve(result.split(',')[1]); // strip data:mime;base64, prefix
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      const resp = await fetch('/api/assistant/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          fileName: file.name,
-          mimeType: file.type || 'application/octet-stream',
-          fileData: base64,
-          message: input || '',
-        }),
-      });
-
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || 'Erreur upload');
-
-      // Remove the "analysis" system message
-      setMessages(prev => prev.filter(m => !m.isSystem));
-
-      const cl = data.classification || {};
-      const clientInfo = cl.matchedClient ? `\n👤 Client: ${cl.matchedClient.name}` : '\n👤 Client: non identifié (A_Classer)';
-      const typeInfo = `\n📁 Type: ${cl.docType}`;
-      const pathInfo = `\n📂 Chemin Dropbox: ${data.dropboxPath}`;
-
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: `✅ Document sauvegardé !\n\n📄 ${data.fileName}${typeInfo}${clientInfo}${pathInfo}`,
-        ts: Date.now(),
-      }]);
-
-      speak(`Document ${data.fileName} classé et sauvegardé dans Dropbox`);
-    } catch (err) {
-      setMessages(prev => prev.filter(m => !m.isSystem));
-      setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ ' + err.message, ts: Date.now(), isError: true }]);
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+        const cl = data.classification || {};
+        const clientInfo = cl.matchedClient ? `\n👤 Client: ${cl.matchedClient.name}` : '\n👤 Client: non identifié — rangé dans A_Classer';
+        const projectInfo = cl.matchedProject ? `\n📌 Projet: ${cl.matchedProject.name}` : '';
+        const indexInfo = data.indexed ? `\n🗂️ Index Cockpit: ${data.documentId}` : `\n🗂️ Index Cockpit: non créé${data.indexWarning ? ` (${data.indexWarning})` : ''}`;
+        setMessages(prev => prev.filter((message) => message.uploadId !== uploadId).concat({
+          role: 'assistant',
+          content: `✅ Média archivé dans Dropbox\n\n📄 ${data.fileName}\n🎞️ Type: ${cl.mediaType || 'Média'}${clientInfo}${projectInfo}\n📂 ${data.dropboxPath}${indexInfo}\n🧾 Journal: ${data.journalId}\n🕒 ${data.storedAt}`,
+          ts: Date.now(),
+        }));
+        speak(`Média ${data.fileName} classé et sauvegardé dans Dropbox`);
+      } catch (err) {
+        setMessages(prev => prev.filter((message) => message.uploadId !== uploadId).concat({ role: 'assistant', content: '⚠️ ' + err.message, ts: Date.now(), isError: true }));
+      }
     }
+    setUploading(false);
+    setInput('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }, [uploading, input, speak]);
 
   const toggleVoice = useCallback(() => {
@@ -467,7 +455,7 @@ const FloatingAgent = () => {
                   margin: '0 auto 12px', display: 'block', opacity: 0.8,
                 }} />
                 <p style={{ margin: 0 }}>Salut Julien !</p>
-                <p style={{ marginTop: '8px' }}>Pose ta question, parle-moi, ou clique sur le micro.</p>
+                <p style={{ marginTop: '8px' }}>Pose ta question, parle-moi, ou joins une image/vidéo à classer dans Dropbox.</p>
                 <p style={{ marginTop: '12px', fontSize: '11px', color: '#334155' }}>
                   {sttSupported ? '🎤 Micro disponible' : 'Micro non supporté'} · {ttsSupported ? '🔊 Voix disponible' : 'Voix non supportée'}
                 </p>
@@ -508,6 +496,27 @@ const FloatingAgent = () => {
             padding: '10px 12px', borderTop: '1px solid rgba(212,175,55,0.2)',
             display: 'flex', gap: '6px', alignItems: 'flex-end',
           }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,video/mp4,video/quicktime,video/webm,video/x-msvideo,video/x-matroska,.m4v"
+              onChange={(event) => handleFileUpload(event.target.files)}
+              style={{ display: 'none' }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              title="Envoyer des images ou vidéos à NOVA"
+              disabled={loading || uploading}
+              style={{
+                background: '#1e293b', border: '1px solid rgba(100,116,139,0.3)',
+                borderRadius: '10px', padding: '10px', cursor: (loading || uploading) ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                minWidth: '40px', height: '40px', fontSize: '16px', opacity: (loading || uploading) ? 0.5 : 1,
+              }}
+            >
+              {uploading ? '⏳' : '📎'}
+            </button>
             {sttSupported && (
               <button
                 onClick={toggleVoice}

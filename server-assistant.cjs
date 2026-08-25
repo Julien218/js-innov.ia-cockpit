@@ -7,11 +7,14 @@ const { buildHistoricalMemoryContext, searchHistoricalMemory, getMemoryStatus } 
 const {
   buildDropboxContext,
   uploadFile,
-  ensureFolder,
+  ensureFolderTree,
   classifyDocument,
   extractTextFromPDF,
   extractTextFromBuffer,
+  isSupportedMedia,
+  safeUploadFilename,
 } = require('./server-dropbox-helper.cjs');
+const { indexDocument } = require('./server-documents.cjs');
 
 const router = express.Router();
 const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
@@ -20,6 +23,7 @@ const pending = new Map();
 const pendingCompletions = new Map();
 const requestWindows = new Map();
 let integrityCache = { expiresAt: 0, context: '' };
+const MAX_NOVA_MEDIA_BYTES = 100 * 1024 * 1024;
 
 const STAFF_ROLES = ['collaborateur', 'admin', 'superadmin'];
 const ADMIN_ROLES = ['admin', 'superadmin'];
@@ -543,6 +547,86 @@ router.post('/complete', async (req, res) => {
   res.json({ success: true, action_type: item.actionType, action_summary: item.summary });
 });
 
+function decodedHeader(req, name, max = 500) {
+  const raw = String(req.get(name) || '').slice(0, max * 3);
+  try { return decodeURIComponent(raw).slice(0, max); }
+  catch { return raw.slice(0, max); }
+}
+
+router.post('/upload-media', express.raw({ type: () => true, limit: MAX_NOVA_MEDIA_BYTES }), async (req, res) => {
+  if (req.user?.role === 'client') {
+    return res.status(403).json({ error: 'Le dépôt média interne n’est pas accessible depuis un espace client.' });
+  }
+
+  try {
+    const requestedFileName = decodedHeader(req, 'x-nova-file-name', 200);
+    const fileName = safeUploadFilename(requestedFileName);
+    const mimeType = decodedHeader(req, 'x-nova-file-type', 100) || String(req.get('content-type') || 'application/octet-stream').slice(0, 100);
+    const message = decodedHeader(req, 'x-nova-file-context', 1000);
+    const buffer = req.body;
+    if (!requestedFileName || !Buffer.isBuffer(buffer) || buffer.length === 0) {
+      return res.status(400).json({ error: 'Fichier média vide ou nom absent.' });
+    }
+    if (buffer.length > MAX_NOVA_MEDIA_BYTES) return res.status(413).json({ error: 'Fichier trop volumineux (maximum 100 Mo).' });
+    if (!isSupportedMedia(fileName, mimeType)) return res.status(415).json({ error: 'Format non autorisé. Utilisez une image ou une vidéo prise en charge.' });
+
+    const [clients, projects] = await Promise.all([
+      fetchTableRows('Client').catch((error) => { console.warn('[assistant] Client fetch failed:', error.message); return []; }),
+      fetchTableRows('Projet').catch((error) => { console.warn('[assistant] Project fetch failed:', error.message); return []; }),
+    ]);
+    const classification = await classifyDocument(fileName, mimeType, buffer.length, clients, message, projects);
+    const folderResult = await ensureFolderTree(classification.folderPath);
+    if (folderResult?.error) throw new Error(`Dropbox dossier: ${folderResult.error}`);
+    const uploadResult = await uploadFile(classification.suggestedPath, buffer);
+    if (uploadResult.error) throw new Error(`Dropbox: ${uploadResult.error}`);
+
+    let document = null;
+    let indexWarning = null;
+    try {
+      document = await indexDocument({
+        user: req.user,
+        organisation: cleanTenant(req.user?.organisation) || 'jsinnovia',
+        brand: 'nova-media',
+        clientId: classification.matchedClient?.id || null,
+        category: classification.docType,
+        filename: fileName,
+        mimeType,
+        sizeBytes: buffer.length,
+        dropboxMeta: { id: uploadResult.id, path_display: uploadResult.path, size: uploadResult.size },
+        source: 'nova-assistant',
+      });
+    } catch (error) {
+      indexWarning = `Index Cockpit non créé: ${String(error.message || error).slice(0, 300)}`;
+      console.warn('[assistant] Media index failed:', error.message);
+    }
+
+    await logAction(req.user, 'upload media', 'succes', `${fileName} → ${uploadResult.path}`);
+    return res.status(201).json({
+      success: true,
+      fileName,
+      mimeType,
+      size: uploadResult.size,
+      dropboxPath: uploadResult.path,
+      dropboxId: uploadResult.id,
+      documentId: document?.id || null,
+      indexed: Boolean(document?.id),
+      indexWarning,
+      classification: {
+        mediaType: classification.docType,
+        matchedClient: classification.matchedClient,
+        matchedProject: classification.matchedProject,
+        folderPath: classification.folderPath,
+      },
+      journalId: `dropbox-${crypto.randomUUID()}`,
+      storedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('[assistant] Media upload error:', error.message);
+    await logAction(req.user, 'upload media', 'erreur', error.message);
+    return res.status(502).json({ error: `Archivage média impossible: ${String(error.message || error).slice(0, 500)}` });
+  }
+});
+
 router.post('/upload', async (req, res) => {
   if (req.user?.role === 'client') {
     return res.status(403).json({ error: 'Le dépôt documentaire interne n’est pas accessible depuis un espace client.' });
@@ -564,8 +648,9 @@ router.post('/upload', async (req, res) => {
     }
 
     let clients = [];
+    let projects = [];
     try {
-      clients = await fetchTableRows('Client');
+      [clients, projects] = await Promise.all([fetchTableRows('Client'), fetchTableRows('Projet')]);
     } catch (error) {
       console.warn('[assistant] Client fetch failed:', error.message);
     }
@@ -586,13 +671,14 @@ router.post('/upload', async (req, res) => {
       buffer.length,
       clients,
       message + (extractedText ? `\n[Contenu extrait]: ${extractedText.slice(0, 2000)}` : ''),
+      projects,
     );
 
     const rootPath = process.env.DROPBOX_ROOT_PATH || '/Cockpit';
     if (classification.folderPath && classification.folderPath !== `${rootPath}/A_Classer`) {
-      await ensureFolder(classification.folderPath);
+      await ensureFolderTree(classification.folderPath);
     } else {
-      await ensureFolder(`${rootPath}/A_Classer`);
+      await ensureFolderTree(`${rootPath}/A_Classer`);
     }
 
     const uploadResult = await uploadFile(classification.suggestedPath, buffer);
@@ -611,6 +697,7 @@ router.post('/upload', async (req, res) => {
       classification: {
         docType: classification.docType,
         matchedClient: classification.matchedClient,
+        matchedProject: classification.matchedProject,
         folderPath: classification.folderPath,
         extractedText: extractedText.slice(0, 500),
         pdfPages: pdfInfo.pages || 0,

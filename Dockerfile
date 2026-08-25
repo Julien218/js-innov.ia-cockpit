@@ -108,6 +108,7 @@ server {
     add_header X-Frame-Options "DENY" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    client_max_body_size 105m;
 
     if ($host = documents.jsinnovia.com) {
         return 302 https://cockpit.jsinnovia.com/documents;
@@ -115,6 +116,7 @@ server {
 
     location /api/ {
         proxy_pass http://127.0.0.1:3001;
+        proxy_request_buffering off;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
