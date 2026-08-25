@@ -3,13 +3,14 @@ import { Bot, Check, Send, ShieldCheck, Trash2, User, Loader2, Sparkles, X, Cpu,
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
+import { shouldUseLocalFirst } from "@/lib/nova-routing";
 
 const LOCAL_AGENT_URL = "http://127.0.0.1:8787";
 const STORAGE_KEY = "jsinnovia_ai_provider";
 const STORAGE_MODEL = "jsinnovia_ai_model";
 const CONVERSATION_ID = "main";
 
-const GREETING = "Bonjour Julien 👋 Je suis Julien AI Companion by JS-Innov.IA. Ta conversation est mémorisée. J’utilise le Cloud en continu et l’Agent Local quand il est disponible pour Ollama, les fichiers et les outils locaux.";
+const GREETING = "Bonjour Julien 👋 Je suis NOVA, l’assistante unique du Cockpit JS-Innov.IA. J’utilise le Cloud pour l’orchestration et les tâches complexes, et l’IA locale pour les outils Windows, les fichiers et le mode hors connexion.";
 
 const SUGGESTIONS = [
   "Résume mes projets en cours",
@@ -18,10 +19,11 @@ const SUGGESTIONS = [
   "Crée une tâche urgente pour un projet",
 ];
 
-const SYSTEM_PROMPT = `Tu es Julien AI Companion, le compagnon IA personnel de Julien Pagin et du Cockpit JS-Innov.IA.
+const SYSTEM_PROMPT = `Tu es NOVA, l’unique assistante et architecte du Cockpit JS-Innov.IA.
 Tu aides avec clients, projets, tâches, leads, devis, factures, automatisation, création web, branding et IA.
 Conserve le contexte des messages précédents, notamment les références courtes comme « lui », « ajoute-le », « sur le net BCE ».
-Ne prétends jamais qu’une action est exécutée sans confirmation réelle. Réponds en français, précisément et naturellement.`;
+Avant de poser une question, exploite les données, outils et valeurs internes par défaut déjà disponibles. Ne transforme jamais une demande d’architecture en questionnaire générique.
+Ne prétends jamais qu’une action est exécutée sans confirmation réelle. Réponds en français naturel de Belgique, précisément et sans jargon inutile.`;
 
 function initialProvider() {
   const stored = localStorage.getItem(STORAGE_KEY);
@@ -187,8 +189,9 @@ export default function AgentPage() {
       return result;
     }
 
-    // Mode Companion automatique : local s'il est disponible, Cloud sinon. Jamais de blocage 8787.
-    if (agentStatus === "online") {
+    // Mode NOVA automatique : le Cloud orchestre les demandes métier/complexes.
+    // Le local est prioritaire uniquement pour une opération locale explicite ou un échange très simple.
+    if (shouldUseLocalFirst(msg, agentStatus === "online")) {
       try {
         const result = await sendToLocal(msg);
         await persistMessages([{ role: 'user', content: msg }, { role: 'assistant', content: result.response }]);
@@ -248,7 +251,7 @@ export default function AgentPage() {
     try {
       await fetch(`/api/assistant/history?conversation_id=${CONVERSATION_ID}`, { method: 'DELETE', credentials: 'same-origin' });
     } finally {
-      setMessages([{ role: "assistant", content: "Conversation réinitialisée. Je reste ton Julien AI Companion. Comment puis-je t'aider ?", ts: new Date() }]);
+      setMessages([{ role: "assistant", content: "Conversation réinitialisée. Je reste NOVA, ton assistante unique. Comment puis-je t’aider ?", ts: new Date() }]);
       setConfirmation(null);
     }
   };
@@ -374,7 +377,7 @@ export default function AgentPage() {
 
       <div className="px-3 sm:px-6 py-3 border-t border-border bg-card shrink-0 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
         <form onSubmit={(event) => { event.preventDefault(); send(); }} className="flex gap-2 items-end">
-          <input ref={inputRef} type="text" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Écrire à Julien AI Companion…" disabled={loading} className="flex-1 bg-background border border-border rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 disabled:opacity-50" />
+          <input ref={inputRef} type="text" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Écrire à NOVA…" disabled={loading} className="flex-1 bg-background border border-border rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 disabled:opacity-50" />
           <button type="submit" disabled={loading || !input.trim()} className="rounded-2xl gradient-primary p-2.5 text-white disabled:opacity-40 hover:opacity-90 transition-opacity shrink-0">{loading ? <Loader2 className="w-4 h-4 text-white animate-spin" /> : <Send className="w-4 h-4 text-white" />}</button>
         </form>
         <p className="text-center text-[10px] text-muted-foreground mt-2 hidden sm:block">Mémoire persistante · Cloud JS-Innov.IA · Agent Local 8787 optionnel · actions sensibles confirmées</p>

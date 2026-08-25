@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
-const { recordUsage } = require('./server-ai-cost.cjs');
+const { recordUsage, authorizeUsage } = require('./server-ai-cost.cjs');
+const { evaluateNovaRequest, resolveCostAttribution, buildRoutingContext } = require('./server-nova-routing.cjs');
 const { cleanTenant } = require('./server-tenant.cjs');
 const { buildAdaptiveAudienceContext, assistantModeFor } = require('./server-companion-audience.cjs');
 const { buildHistoricalMemoryContext, searchHistoricalMemory, getMemoryStatus } = require('./server-companion-memory.cjs');
@@ -356,8 +357,30 @@ router.post('/chat', async (req, res) => {
   const sessionId = sessionIdFor(req);
   try {
     const audience = await buildAdaptiveAudienceContext(req.user);
+    const routingDecision = evaluateNovaRequest(message);
+    const costAttribution = resolveCostAttribution({ body: req.body, audience, user: req.user });
+    let budgetDecision = { allowed: null, reason: 'budget_check_unavailable' };
+    try {
+      budgetDecision = await authorizeUsage({
+        complexity: routingDecision.complexity,
+        estimated_cost_usd: routingDecision.estimated_cost_usd,
+        client_key: costAttribution.client_key,
+        project_key: costAttribution.project_key,
+      });
+    } catch (error) {
+      console.warn('[assistant] AI budget check failed:', error.message);
+    }
+    if (budgetDecision.allowed === false) {
+      return res.status(402).json({
+        error: 'Budget IA atteint pour ce client ou ce projet',
+        reason: budgetDecision.reason,
+        routing: routingDecision,
+        attribution: costAttribution,
+      });
+    }
     const contextBlocks = [
       audience.context,
+      buildRoutingContext(routingDecision, costAttribution, budgetDecision),
       [
         '[CONTRAT DE CAPACITÉS NOVA — état courant du serveur]',
         `Actions Cockpit autorisées pour cette session: ${availableActionsFor(req.user).join(', ') || 'aucune action d’écriture'}.`,
@@ -408,6 +431,8 @@ router.post('/chat', async (req, res) => {
           role: req.user.role,
           organisation: req.user.organisation,
         },
+        cost_attribution: costAttribution,
+        routing_decision: routingDecision,
         security: { assistant: audience.mode, require_confirmation_for_actions: true },
         action_protocol: {
           proposed_action: { type: 'one available action', id: 'required for updates/sends', payload: {} },
@@ -434,7 +459,14 @@ router.post('/chat', async (req, res) => {
           conversation_id: conversationIdFrom(req),
           assistant_mode: audience.mode,
           organisation: req.user.organisation || null,
+          routing_complexity: routingDecision.complexity,
+          routing_confidentiality: routingDecision.confidentiality,
+          attribution_source: costAttribution.attribution_source,
         },
+        client_key: costAttribution.client_key,
+        client_name: costAttribution.client_name,
+        project_key: costAttribution.project_key,
+        project_name: costAttribution.project_name,
       }, req.user.email).catch((error) => console.warn('[assistant] AI cost logging failed:', error.message));
     }
 
@@ -471,6 +503,8 @@ router.post('/chat', async (req, res) => {
       model_used: data.model_used || data.model,
       assistant_mode: audience.mode,
       display: audience.display,
+      routing: routingDecision,
+      cost_attribution: costAttribution,
     });
   } catch (error) {
     await logAction(req.user, 'conversation assistant', 'erreur', error.message);
