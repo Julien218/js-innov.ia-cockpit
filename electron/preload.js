@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     batchStatus: (batchId) => ipcRenderer.invoke("video-local-batch-status", batchId),
     batchList: () => ipcRenderer.invoke("video-local-batch-list"),
     batchCancel: (batchId) => ipcRenderer.invoke("video-local-batch-cancel", batchId),
+    createReview: (batchId) => ipcRenderer.invoke("video-local-batch-review", batchId),
+    openReviewFolder: (reviewPath) => ipcRenderer.invoke("video-local-review-open-folder", reviewPath),
 
     interrupt: () => ipcRenderer.invoke("video-local-interrupt"),
     uploadImage: ({ name, dataUrl }) => ipcRenderer.invoke("video-local-upload-image", { name, dataUrl }),
