@@ -5,7 +5,7 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
-const { applyBillingRule, summarize, buildInvoiceLines, monthWindow } = require('../server-client-costs.cjs');
+const { applyBillingRule, summarize, buildInvoiceLines, monthWindow, costEventLookupPath } = require('../server-client-costs.cjs');
 
 test('un oui/ok/confirme consomme la confirmation existante sans repasser par le LLM', () => {
   const source = read('src/lib/assistantConfirmationBridge.js');
@@ -74,6 +74,14 @@ test('monthWindow borne correctement une période mensuelle', () => {
   const window = monthWindow('2026-08');
   assert.equal(window.start.toISOString(), '2026-08-01T00:00:00.000Z');
   assert.equal(window.end.toISOString(), '2026-09-01T00:00:00.000Z');
+});
+
+test('une reprise vidéo retrouve le coût idempotent existant avec sa vraie clé', () => {
+  const path = costEventLookupPath('media_ai', 'video-generation:openai:video_123');
+  assert.equal(path, 'client_cost_events?select=*&source_type=eq.media_ai&external_ref=eq.video-generation%3Aopenai%3Avideo_123&limit=1');
+  const source = read('server-client-costs.cjs');
+  assert.match(source, /if \(inserted\?\.\[0\]\) return inserted\[0\]/);
+  assert.match(source, /crmSelect\(costEventLookupPath\(type, row\.external_ref\)\)/);
 });
 
 test('le coût LLM client est attribué au Client.id canonique, jamais à un simple nom', () => {

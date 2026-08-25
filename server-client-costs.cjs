@@ -196,6 +196,10 @@ function applyBillingRule(actualMinor, rule) {
   return { actual, billable, markupPercent, billableEnabled: true, mode: rule?.billing_mode || 'percent' };
 }
 
+function costEventLookupPath(sourceType, externalRef) {
+  return `client_cost_events?select=*&source_type=eq.${encodeURIComponent(sourceType)}&external_ref=eq.${encodeURIComponent(externalRef)}&limit=1`;
+}
+
 async function createCostEvent({
   clientId,
   projectId = null,
@@ -252,7 +256,13 @@ async function createCostEvent({
     },
   };
   const inserted = await crmInsert('client_cost_events', row, externalRef ? 'source_type,external_ref' : null);
-  return inserted?.[0] || row;
+  if (inserted?.[0]) return inserted[0];
+  if (row.external_ref) {
+    const existing = await crmSelect(costEventLookupPath(type, row.external_ref));
+    if (existing?.[0]) return existing[0];
+    throw new Error('Coût idempotent ignoré mais événement existant introuvable.');
+  }
+  return row;
 }
 
 async function collectMapping(mapping, window) {
@@ -821,6 +831,7 @@ router.post('/clients/:clientId/generate-draft', async (req, res) => {
 module.exports = {
   router,
   createCostEvent,
+  costEventLookupPath,
   applyBillingRule,
   summarize,
   buildInvoiceLines,
