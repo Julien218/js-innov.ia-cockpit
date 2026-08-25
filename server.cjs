@@ -245,6 +245,8 @@ app.get('/api/health', (req, res) => res.json({
     examined: taskAutopilotState.last_result?.examined ?? null,
     unique: taskAutopilotState.last_result?.unique ?? null,
     executed: taskAutopilotState.last_result?.executed?.length ?? null,
+    queued: taskAutopilotState.last_result?.queued?.length ?? null,
+    awaiting_authorization: taskAutopilotState.last_result?.awaiting_authorization?.length ?? null,
     blocked: taskAutopilotState.last_result?.blocked?.length ?? null,
     duplicate_groups: taskAutopilotState.last_result?.duplicates?.length ?? null,
   } : { available: false },

@@ -37,6 +37,12 @@ function taskText(task) {
   return `${task?.titre || task?.title || ''}\n${task?.description || ''}`;
 }
 
+function recordedExecutionFailure(task) {
+  const notes = String(task?.notes || '');
+  const matches = [...notes.matchAll(/Blocage d[’']exécution réel\s*:\s*([^\n]+)/gi)];
+  return matches.length ? matches[matches.length - 1][1].trim().slice(0, 500) : null;
+}
+
 function managedDomainForTask(task) {
   const text = norm(taskText(task));
   return Object.keys(MANAGED_DOMAINS).find((domain) => text.includes(domain)) || null;
@@ -204,7 +210,7 @@ function safeScheduledTask(task, executor) {
   return false;
 }
 
-async function runAutopilot({ allowWrites = false, requestedBy = 'companion-autopilot' } = {}) {
+async function runAutopilot({ allowWrites = false, requestedBy = 'companion-autopilot', user = null } = {}) {
   if (state.running) return { skipped: true, reason: 'already_running' };
   state.running = true;
   state.last_started_at = new Date().toISOString();
@@ -221,13 +227,30 @@ async function runAutopilot({ allowWrites = false, requestedBy = 'companion-auto
 
     const executableTasks = [];
     const blocked = [];
+    const awaitingAuthorization = [];
     const duplicates = [];
     for (const group of groups.values()) {
       const [task, ...copies] = group;
       if (copies.length) duplicates.push({ canonical_task_id: task.id, duplicate_ids: copies.map((item) => item.id), count: group.length });
       const executor = resolveNovaExecutor(task);
-      if (executor.kind === 'unsupported' || (!allowWrites && !safeScheduledTask(task, executor))) {
+      if (executor.kind === 'unsupported') {
         blocked.push({ task_id: task.id, title: task.titre || task.title, kind: executor.kind, executable: false, reason: executor.reason || 'autorisation_explicite_requise' });
+        continue;
+      }
+      if (!allowWrites && !safeScheduledTask(task, executor)) {
+        const priorFailure = recordedExecutionFailure(task);
+        if (priorFailure) {
+          blocked.push({ task_id: task.id, title: task.titre || task.title, kind: executor.kind, executor: executor.id, executable: false, reason: priorFailure });
+          continue;
+        }
+        awaitingAuthorization.push({
+          task_id: task.id,
+          title: task.titre || task.title,
+          kind: executor.kind,
+          executor: executor.id,
+          domain: executor.domain || null,
+          reason: 'autorisation_explicite_requise',
+        });
         continue;
       }
       executableTasks.push({
@@ -247,7 +270,7 @@ async function runAutopilot({ allowWrites = false, requestedBy = 'companion-auto
       batch = await executeTaskBatch({
         payload,
         token: `autopilot-${crypto.randomUUID()}`,
-        user: { id: requestedBy, email: requestedBy },
+        user: user || { id: requestedBy, email: requestedBy, role: 'admin', organisation: 'jsinnovia' },
         tenant: 'jsinnovia',
         agentFetch,
       });
@@ -259,7 +282,7 @@ async function runAutopilot({ allowWrites = false, requestedBy = 'companion-auto
       const canonicalTask = tasks.find((task) => String(task.id) === String(execution.task_id));
       if (canonicalTask) execution.duplicate_task_ids = await closeVerifiedDuplicates(canonicalTask, duplicateTasksForCanonical(tasks, canonicalTask), [execution.run_id].filter(Boolean));
     }
-    const result = { run_id: `autopilot-${crypto.randomUUID()}`, examined: tasks.length, unique: groups.size, executed, queued, blocked, duplicates, allow_writes: allowWrites };
+    const result = { run_id: `autopilot-${crypto.randomUUID()}`, examined: tasks.length, unique: groups.size, executed, queued, blocked, awaiting_authorization: awaitingAuthorization, duplicates, allow_writes: allowWrites };
     state.last_result = result;
     return result;
   } catch (error) {
@@ -273,7 +296,7 @@ async function runAutopilot({ allowWrites = false, requestedBy = 'companion-auto
 
 router.get('/status', (_req, res) => res.json({ enabled: AUTOPILOT_ENABLED, interval_ms: AUTOPILOT_INTERVAL_MS, ...state }));
 router.post('/run', async (req, res) => {
-  try { res.json(await runAutopilot({ allowWrites: req.body?.allow_writes === true, requestedBy: req.user?.email || req.user?.id || 'cockpit-admin' })); }
+  try { res.json(await runAutopilot({ allowWrites: req.body?.allow_writes === true, requestedBy: req.user?.email || req.user?.id || 'cockpit-admin', user: req.user })); }
   catch (error) { res.status(502).json({ error: error.message, state }); }
 });
 
@@ -331,4 +354,4 @@ function startTaskAutopilotScheduler() {
   return { started: true, interval_ms: AUTOPILOT_INTERVAL_MS };
 }
 
-module.exports = { router, canonicalTaskTitle, duplicateTasksForCanonical, classifyTask, rowsFrom, summarizeBusinessData, runAutopilot, startTaskAutopilotScheduler, state };
+module.exports = { router, canonicalTaskTitle, duplicateTasksForCanonical, classifyTask, recordedExecutionFailure, rowsFrom, summarizeBusinessData, runAutopilot, startTaskAutopilotScheduler, state };

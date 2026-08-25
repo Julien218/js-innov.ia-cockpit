@@ -15,3 +15,14 @@ test('le Cockpit regroupe les doublons sans supprimer les enregistrements', asyn
   assert.deepEqual(seo.duplicate_ids.sort(), ['1', '2']);
   assert.equal(seo.statut, 'en_cours');
 });
+
+test('la vue Tâches sépare les permissions des vrais blocages et permet une relance contrôlée', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'pages', 'Taches.jsx'), 'utf8');
+  assert.match(source, /Pilotage NOVA/);
+  assert.match(source, /awaiting_authorization/);
+  assert.match(source, /Exécuter les tâches autorisées/);
+  assert.match(source, /allow_writes: allowWrites/);
+  assert.match(source, /Aucune suppression ni facturation/);
+});

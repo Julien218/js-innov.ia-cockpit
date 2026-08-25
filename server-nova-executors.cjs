@@ -42,6 +42,20 @@ const INTERNAL_EXECUTORS = Object.freeze({
     role: 'business_data_execution',
     execution_mode: 'autonomous',
   },
+  project_data: {
+    id: 'nova-project-data',
+    name: 'NOVA Projets',
+    provider: 'cockpit-server',
+    role: 'project_data_execution',
+    execution_mode: 'autonomous',
+  },
+  video_production: {
+    id: 'nova-video-production',
+    name: 'NOVA Production Vidéo',
+    provider: 'cockpit-server',
+    role: 'video_generation_execution',
+    execution_mode: 'autonomous',
+  },
 });
 
 function clean(value, max = 1000) {
@@ -92,15 +106,21 @@ function siteExecutorForTask(task = {}) {
 }
 
 function resolveNovaExecutor(task = {}) {
+  const text = normalized(taskText(task));
+  if (/(creer|creation|generer|generation|produire|production).*(video|ecran geant)/.test(text)) {
+    return { kind: 'video', ...INTERNAL_EXECUTORS.video_production };
+  }
   const site = siteExecutorForTask(task);
   if (site) return site;
 
-  const text = normalized(taskText(task));
   if (/(comfyui|minimax|workflow|ffmpeg|ffprobe|video ia|module video|avatar.*local|documentation.*workflow)/.test(text)) {
     return { kind: 'local', ...INTERNAL_EXECUTORS.local_windows };
   }
   if (/(client|facture|tva|societe|asbl|rattachement|bce|banque carrefour)/.test(text)) {
     return { kind: 'business', ...INTERNAL_EXECUTORS.business_data };
+  }
+  if (/(fiche\s+projet|projet\s+[a-z0-9]|villeconnect\s*os|villeconnectos)/.test(text)) {
+    return { kind: 'project', ...INTERNAL_EXECUTORS.project_data };
   }
   return {
     kind: 'unsupported',
@@ -110,6 +130,168 @@ function resolveNovaExecutor(task = {}) {
     role: 'orchestration',
     execution_mode: 'prepare_only',
     reason: 'aucun_executeur_reel_enregistre_pour_ce_type_de_tache',
+  };
+}
+
+function projectName(project = {}) {
+  return clean(project.nom || project.name || project.titre || project.title, 240);
+}
+
+function explicitLine(source, labels) {
+  const labelPattern = labels.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const match = String(source || '').match(new RegExp(`(?:^|\\n)\\s*[-*]?\\s*(?:${labelPattern})\\s*:\\s*([^\\n]+)`, 'i'));
+  return clean(match?.[1], 4000);
+}
+
+function isoDateFromExplicit(value) {
+  const source = clean(value, 100).toLowerCase().replace(/^1er\b/, '1');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(source)) return source;
+  const months = { janvier: 1, fevrier: 2, mars: 3, avril: 4, mai: 5, juin: 6, juillet: 7, aout: 8, septembre: 9, octobre: 10, novembre: 11, decembre: 12 };
+  const normalizedDate = normalized(source);
+  const match = normalizedDate.match(/^(\d{1,2})\s+([a-z]+)\s+(\d{4})$/);
+  if (!match || !months[match[2]]) return null;
+  const day = Number(match[1]);
+  const month = months[match[2]];
+  if (day < 1 || day > 31) return null;
+  return `${match[3]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function projectPatchFromTask(task = {}, current = {}) {
+  const source = `${task.description || ''}\n${task.notes || ''}`;
+  const patch = {};
+  const status = explicitLine(source, ['statut']);
+  const priority = explicitLine(source, ['priorité', 'priorite']);
+  const startDate = isoDateFromExplicit(explicitLine(source, ['date de début', 'date de debut']));
+  const targetDate = isoDateFromExplicit(explicitLine(source, ['objectif de lancement', 'date de fin prévue', 'date de fin prevue']));
+  const description = explicitLine(source, ['description']);
+  const notes = explicitLine(source, ['notes']);
+  const creator = explicitLine(source, ['créateur/concepteur', 'createur/concepteur', 'créateur', 'createur', 'concepteur']);
+  const progress = explicitLine(source, ['progression']);
+  const budget = explicitLine(source, ['budget']);
+
+  if (status) patch.statut = normalized(status).replace(/\s+/g, '_');
+  if (priority) patch.priorite = normalized(priority).replace(/\s+/g, '_');
+  if (startDate) patch.date_debut = startDate;
+  if (targetDate) patch.date_fin_prevue = targetDate;
+  if (description) patch.description = description;
+  if (progress && Number.isFinite(Number(progress.replace(',', '.')))) patch.progression = Math.max(0, Math.min(100, Number(progress.replace(',', '.'))));
+  if (budget && Number.isFinite(Number(budget.replace(/[^0-9,.-]/g, '').replace(',', '.')))) patch.budget = Number(budget.replace(/[^0-9,.-]/g, '').replace(',', '.'));
+
+  const additions = [notes, creator ? `Créateur/concepteur: ${creator}` : ''].filter(Boolean);
+  if (additions.length) {
+    const existing = clean(current.notes, 3000);
+    patch.notes = [existing, ...additions.filter((item) => !existing.includes(item))].filter(Boolean).join('\n').slice(0, 4000);
+  }
+  return patch;
+}
+
+function projectForTask(task, projects = []) {
+  if (task?.projet_id) return projects.find((project) => String(project.id) === String(task.projet_id)) || null;
+  const text = normalized(taskText(task));
+  const candidates = projects
+    .filter((project) => normalized(projectName(project)).length >= 3)
+    .filter((project) => text.includes(normalized(projectName(project))))
+    .sort((a, b) => projectName(b).length - projectName(a).length);
+  if (!candidates.length) return null;
+  const bestName = normalized(projectName(candidates[0]));
+  return candidates.filter((project) => normalized(projectName(project)) === bestName).length === 1 ? candidates[0] : null;
+}
+
+async function executeProjectTask(task, agentRequest) {
+  const projects = rowsFrom(await agentRequest('/data/Projet?limit=500'));
+  const project = projectForTask(task, projects);
+  if (!project?.id) {
+    return {
+      completed: false,
+      awaiting_review: true,
+      provider: 'cockpit-server',
+      result: { checked_at: new Date().toISOString(), candidates: projects.map((item) => ({ id: item.id, nom: projectName(item) })).slice(0, 100) },
+      report: 'Projet cible absent ou ambigu; aucune modification appliquée.',
+      reason: 'projet_cible_absent_ou_ambigu',
+    };
+  }
+  const patch = projectPatchFromTask(task, project);
+  if (!Object.keys(patch).length) {
+    return {
+      completed: false,
+      awaiting_review: true,
+      provider: 'cockpit-server',
+      result: { checked_at: new Date().toISOString(), project_id: project.id, project_name: projectName(project), updated_fields: [] },
+      report: 'La tâche ne contient aucune valeur structurée explicite à appliquer.',
+      reason: 'donnees_de_mise_a_jour_projet_absentes',
+    };
+  }
+  await agentRequest(`/data/Projet/${encodeURIComponent(project.id)}`, { method: 'PATCH', body: patch });
+  const result = {
+    update_id: `project-${crypto.randomUUID()}`,
+    updated_at: new Date().toISOString(),
+    project_id: project.id,
+    project_name: projectName(project),
+    updated_fields: Object.keys(patch),
+  };
+  return { completed: true, provider: 'cockpit-server', result, report: JSON.stringify(result) };
+}
+
+function sourceDocumentIdFromTask(task = {}) {
+  const direct = clean(task.source_document_id, 180);
+  if (direct) return direct;
+  const source = `${task.description || ''}\n${task.notes || ''}`;
+  const match = source.match(/(?:source_document_id|index cockpit|document source|m[eé]dia source)\s*[:=]\s*([A-Za-z0-9_-]{8,180})/i);
+  return clean(match?.[1], 180) || null;
+}
+
+function videoClientForTask(task, clients = []) {
+  if (task?.client_id) return clients.find((client) => String(client.id) === String(task.client_id)) || null;
+  const text = normalized(taskText(task));
+  const matches = clients.filter((client) => {
+    const name = normalized(clientName(client));
+    return name.length >= 3 && text.includes(name);
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
+
+async function executeVideoTask(task, agentRequest, createJob = null, context = {}) {
+  const clients = rowsFrom(await agentRequest('/data/Client?limit=500'));
+  const client = videoClientForTask(task, clients);
+  const prompt = clean(task.description, 20_000);
+  const sourceDocumentId = sourceDocumentIdFromTask(task);
+  const sourceRequired = /(?:image|m[eé]dia|fichier|dropbox).*(?:fourni|source|joint)|(?:partir|depuis)\s+de\s+(?:l['’])?image/i.test(`${task.description || ''}\n${task.notes || ''}`);
+  const missingFields = [];
+  if (!client?.id) missingFields.push('client_id');
+  if (prompt.length < 20) missingFields.push('prompt');
+  if (sourceRequired && !sourceDocumentId) missingFields.push('source_document_id');
+  if (missingFields.length) {
+    return {
+      completed: false,
+      awaiting_review: true,
+      provider: 'cockpit-server',
+      result: { checked_at: new Date().toISOString(), missing_fields: missingFields, source_required: sourceRequired },
+      report: `Génération non lancée: champs vérifiables manquants (${missingFields.join(', ')}).`,
+      reason: `generation_video_incomplete:${missingFields.join(',')}`,
+    };
+  }
+  const create = createJob || require('./server-video-generation.cjs').createVideoGenerationJob;
+  const response = await create({
+    provider: 'auto',
+    client_id: client.id,
+    client_name: clientName(client),
+    project_id: task.projet_id || null,
+    campaign_name: clean(task.titre || task.title, 180),
+    prompt,
+    source_document_id: sourceDocumentId,
+    task_id: context.taskId || task.id || null,
+    agent_run_id: context.runId || null,
+    rights_confirmed: false,
+    usage_rights: 'À valider contractuellement avant diffusion finale.',
+    version: 'v01',
+  }, context.user || { id: 'nova-video-production', role: 'admin', organisation: context.organisation || 'jsinnovia' });
+  return {
+    completed: false,
+    awaiting_review: true,
+    provider: 'cockpit-server',
+    result: { video_job_id: response.job?.id || null, journal_id: response.journal_id, status: response.job?.status || 'queued' },
+    report: `Génération vidéo lancée et suivie: ${response.journal_id}.`,
+    reason: 'generation_video_en_cours',
   };
 }
 
@@ -303,10 +485,16 @@ module.exports = {
   bcePatch,
   clientName,
   executeBusinessTask,
+  executeProjectTask,
   executeSiteTask,
+  executeVideoTask,
   isBase44QuotaError,
   isReadOnlySiteTask,
   missingLegalFields,
+  projectForTask,
+  projectPatchFromTask,
+  sourceDocumentIdFromTask,
+  videoClientForTask,
   resolveNovaExecutor,
   siteExecutorForTask,
 };

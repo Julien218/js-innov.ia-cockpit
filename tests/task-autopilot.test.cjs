@@ -77,3 +77,21 @@ test('les preuves locales sont synchronisées sans accepter de commande arbitrai
   assert.match(source, /task_id absent du Cockpit/);
   assert.match(source, /Doublon regroupé avec la tâche/);
 });
+
+test('une tâche supportée en attente de permission n’est plus comptée comme panne technique', () => {
+  const source = fs.readFileSync(path.join(root, 'server-task-autopilot.cjs'), 'utf8');
+  const assistantBatch = fs.readFileSync(path.join(root, 'server-assistant-batch.cjs'), 'utf8');
+  const server = fs.readFileSync(path.join(root, 'server.cjs'), 'utf8');
+  assert.match(source, /awaitingAuthorization\.push/);
+  assert.match(source, /awaiting_authorization: awaitingAuthorization/);
+  assert.match(assistantBatch, /statut=en_attente_autorisation/);
+  assert.match(server, /awaiting_authorization:/);
+});
+
+test('un échec technique déjà enregistré reste un vrai blocage', () => {
+  assert.equal(
+    autopilot.recordedExecutionFailure({ notes: 'Blocage d’exécution réel: Base44 quota exhausted\nAutre note' }),
+    'Base44 quota exhausted',
+  );
+  assert.equal(autopilot.recordedExecutionFailure({ notes: 'Blocage NOVA: ancien exécuteur absent.' }), null);
+});

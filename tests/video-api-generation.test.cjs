@@ -84,6 +84,17 @@ test('le backend peut utiliser les clés serveur protégées sans les exposer au
   assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '..', 'src', 'pages', 'ApiVideoFactory.jsx'), 'utf8'), /SUPABASE_(CRM_KEY|SERVICE_ROLE_KEY|SECRET_KEY)/);
 });
 
+test('un job vidéo NOVA clôt ou bloque sa tâche liée avec une preuve réelle', () => {
+  const server = fs.readFileSync(path.join(__dirname, '..', 'server-video-generation.cjs'), 'utf8');
+  assert.match(server, /completeLinkedExecution/);
+  assert.match(server, /failLinkedExecution/);
+  assert.match(server, /agent_run_id/);
+  assert.match(server, /Génération vidéo finalisée avec preuve/);
+  assert.match(server, /Blocage d’exécution réel/);
+  assert.match(server, /async function submit[\s\S]*?return patchJob\(job\.id,[\s\S]*?async function poll/);
+  assert.match(server, /async function complete[\s\S]*?const finalJob = await patchJob\(job\.id,[\s\S]*?await completeLinkedExecution\(job, finalJob\)[\s\S]*?return finalJob/);
+});
+
 test('le relais CRM est authentifié et limité aux tables comptables', () => {
   const proxy = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'crm-server-proxy', 'index.ts'), 'utf8');
   assert.match(proxy, /x-cockpit-proxy-token/);

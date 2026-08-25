@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { executeSiteTask, isBase44QuotaError, isReadOnlySiteTask, resolveNovaExecutor, siteExecutorForTask } = require('../server-nova-executors.cjs');
+const { executeProjectTask, executeSiteTask, executeVideoTask, isBase44QuotaError, isReadOnlySiteTask, projectPatchFromTask, resolveNovaExecutor, siteExecutorForTask } = require('../server-nova-executors.cjs');
 const { base44ErrorMessage } = require('../server-domain-ops.cjs');
 const { executeTaskBatch, sanitizeTaskBatchPayload } = require('../server-task-batch.cjs');
 
@@ -38,6 +38,12 @@ function memoryAgent() {
       Object.assign(task, body);
       return jsonResponse(task);
     }
+    const projectMatch = path.match(/^\/data\/Projet\/([^/]+)$/);
+    if (projectMatch && method === 'PATCH') {
+      const project = state.projects.find((item) => item.id === projectMatch[1]);
+      Object.assign(project, body);
+      return jsonResponse(project);
+    }
     const runMatch = path.match(/^\/agent-runs\/([^/]+)$/);
     if (runMatch && method === 'PATCH') {
       const run = state.runs.find((item) => item.id === runMatch[1]);
@@ -56,6 +62,7 @@ test('NOVA réserve chaque agent Base44 au site dont il est responsable', () => 
   assert.equal(js.provider, 'base44');
   assert.equal(js.id, 'base44-site:jsinnov-agent');
   assert.equal(js.domain, 'jsinnovia.com');
+  assert.equal(siteExecutorForTask({ titre: 'SEO automatique — jsinnovia.store' }).id, 'base44-site:jsinnov-agent');
   assert.equal(assurances.id, 'base44-site:assurances-dour');
   assert.equal(assurances.provider_agent_id, '6a008b3e1571ea9f6ac3839d');
   assert.equal(assurances.domain, 'assurances-dour.be');
@@ -94,7 +101,79 @@ test('le quota Base44 déclenche un diagnostic Cockpit prouvé sans simuler une 
 test('NOVA attribue Windows et les données métier à ses exécuteurs internes', () => {
   assert.equal(resolveNovaExecutor({ titre: 'Contrôler ComfyUI et les workflows MiniMax' }).id, 'nova-windows-local');
   assert.equal(resolveNovaExecutor({ titre: 'Compléter les numéros BCE des clients' }).id, 'nova-business-data');
+  assert.equal(resolveNovaExecutor({ titre: 'Compléter les détails du projet VilleConnectOs' }).id, 'nova-project-data');
+  assert.equal(resolveNovaExecutor({ titre: 'Création vidéo Proxiled — écran géant' }).id, 'nova-video-production');
+  assert.equal(resolveNovaExecutor({ titre: 'Créer une vidéo pour jsinnovia.com' }).id, 'nova-video-production');
   assert.equal(resolveNovaExecutor({ titre: 'Écrire une nouvelle application inconnue' }).kind, 'unsupported');
+});
+
+test('l’exécuteur vidéo exige le client et la source annoncée avant lancement', async () => {
+  const agentRequest = async () => [{ id: 'client-proxiled', denomination_legale: 'Proxiled' }];
+  const result = await executeVideoTask({
+    titre: 'Création vidéo Proxiled — écran géant',
+    description: 'Créer une vidéo de huit secondes à partir de l’image fournie pour l’écran géant.',
+  }, agentRequest, async () => { throw new Error('ne doit pas être appelée'); });
+  assert.equal(result.completed, false);
+  assert.deepEqual(result.result.missing_fields, ['source_document_id']);
+});
+
+test('l’exécuteur vidéo lance un job traçable quand les entrées sont complètes', async () => {
+  const agentRequest = async () => [{ id: 'client-proxiled', denomination_legale: 'Proxiled' }];
+  let payload = null;
+  const result = await executeVideoTask({
+    titre: 'Création vidéo Proxiled — écran géant',
+    client_id: 'client-proxiled',
+    description: 'Créer une vidéo de huit secondes à partir de l’image fournie. Index Cockpit: media-source-1234',
+  }, agentRequest, async (input) => {
+    payload = input;
+    return { job: { id: 'video-job-1', status: 'queued' }, journal_id: 'video-generation-video-job-1' };
+  }, { taskId: 'task-video-1', runId: 'run-video-1' });
+  assert.equal(payload.source_document_id, 'media-source-1234');
+  assert.equal(payload.client_id, 'client-proxiled');
+  assert.equal(payload.task_id, 'task-video-1');
+  assert.equal(payload.agent_run_id, 'run-video-1');
+  assert.equal(result.reason, 'generation_video_en_cours');
+  assert.equal(result.result.journal_id, 'video-generation-video-job-1');
+});
+
+test('NOVA extrait uniquement les champs projet explicitement fournis', () => {
+  const patch = projectPatchFromTask({
+    description: 'Statut: en cours\nPriorité: haute\nObjectif de lancement: 1er octobre 2026\nCréateur/concepteur: Julien\nProgression: 40',
+  }, { notes: 'Projet interne' });
+  assert.deepEqual(patch, {
+    statut: 'en_cours',
+    priorite: 'haute',
+    date_fin_prevue: '2026-10-01',
+    progression: 40,
+    notes: 'Projet interne\nCréateur/concepteur: Julien',
+  });
+  assert.deepEqual(projectPatchFromTask({ description: 'Complète ce projet au mieux.' }), {});
+});
+
+test('l’exécuteur Projet met à jour une cible unique et journalise les champs', async () => {
+  const { state, fetcher } = memoryAgent();
+  state.projects.push({ id: 'project-ville', nom: 'VilleConnectOs', statut: 'a_faire', notes: '' });
+  const agentRequest = async (path, options = {}) => {
+    const response = await fetcher(path, { ...options, body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body });
+    return response.json();
+  };
+  const result = await executeProjectTask({
+    titre: 'Compléter les détails du projet VilleConnectOs',
+    description: 'Statut: en cours\nPriorité: haute\nObjectif de lancement: 1er octobre 2026',
+  }, agentRequest);
+  assert.equal(result.completed, true);
+  assert.deepEqual(result.result.updated_fields, ['statut', 'priorite', 'date_fin_prevue']);
+  assert.equal(state.projects[0].date_fin_prevue, '2026-10-01');
+});
+
+test('l’exécuteur Projet refuse une mise à jour sans valeurs explicites', async () => {
+  const { state, fetcher } = memoryAgent();
+  state.projects.push({ id: 'project-ville', nom: 'VilleConnectOs', statut: 'a_faire' });
+  const agentRequest = async (path, options = {}) => (await fetcher(path, options)).json();
+  const result = await executeProjectTask({ titre: 'Compléter les détails du projet VilleConnectOs' }, agentRequest);
+  assert.equal(result.completed, false);
+  assert.equal(result.reason, 'donnees_de_mise_a_jour_projet_absentes');
+  assert.equal(state.projects[0].statut, 'a_faire');
 });
 
 test('une proposition Base44 ne peut pas détourner une tâche Windows vers Base44', () => {
