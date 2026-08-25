@@ -19,6 +19,10 @@ const MEDIA_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.he
 let cachedToken = null;
 let tokenExpiry = 0;
 
+function dropboxApiArg(value) {
+  return JSON.stringify(value).replace(/[^\x20-\x7E]/g, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
 // === Token management ===
 async function getAccessToken() {
   if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
@@ -71,7 +75,7 @@ async function uploadFile(dropboxPath, buffer) {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/octet-stream',
-        'Dropbox-API-Arg': JSON.stringify({
+        'Dropbox-API-Arg': dropboxApiArg({
           path: dropboxPath,
           mode: 'overwrite',
           autorename: false,
@@ -138,7 +142,7 @@ async function downloadFile(dropboxPath) {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
-        'Dropbox-API-Arg': JSON.stringify({ path: dropboxPath }),
+        'Dropbox-API-Arg': dropboxApiArg({ path: dropboxPath }),
       },
     });
     if (!resp.ok) {
@@ -518,4 +522,5 @@ module.exports = {
   isExistingFolderConflict,
   buildMediaReference,
   normalizeMediaMetadata,
+  dropboxApiArg,
 };
