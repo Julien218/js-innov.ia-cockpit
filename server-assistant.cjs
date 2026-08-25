@@ -317,6 +317,12 @@ function sanitizeAction(raw, user) {
   const payload = { ...(definition.fixed || {}) };
   for (const field of definition.fields) {
     const value = raw.payload?.[field];
+    if (['date_debut', 'date_fin_prevue', 'date_echeance', 'date_validite', 'date_paiement'].includes(field)
+      && typeof value === 'string' && !value.trim()) continue;
+    if (field === 'client_id' && value === null && ['create_project', 'update_project'].includes(raw.type)) {
+      payload.client_id = null;
+      continue;
+    }
     if (field === 'lignes') {
       const lines = sanitizeLines(value);
       if (lines) payload.lignes = lines;
@@ -681,7 +687,9 @@ router.post('/confirm', async (req, res) => {
     });
   } catch (error) {
     await logAction(req.user, `action assistant: ${action.type}`, 'erreur', error.message);
-    res.status(502).json({ error: 'Action non exécutée' });
+    console.error(`[assistant] confirmed action ${action.type} failed:`, error.message);
+    const reason = String(error.message || 'erreur inconnue').replace(/[\r\n<>]/g, ' ').slice(0, 300);
+    res.status(502).json({ error: `Action ${action.type} non exécutée: ${reason}`, action_type: action.type });
   }
 });
 

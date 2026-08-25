@@ -26,6 +26,8 @@ const RECENT_MEDIA_KEY = 'nova_recent_media_v1';
 const TTS_VOICE_KEY = 'nova_tts_voice_name';
 const LOCAL_TOOL_REQUEST = /\b(?:find_local_workflows|comfyui_health|avatar_factory_status|ffmpeg_version|ffprobe_file|list_directory|http_diagnose)\b|(?:ex[eé]cut|diagnosti|contr[oô]l|v[eé]rifi|recherch).*(?:comfyui|port\s*(?:8188|8791)|workflow|minimax|avatar|ffmpeg|ffprobe|dossier\s+local)/i;
 const LOCAL_NOVA_PROMPT = `Tu es NOVA, l’unique assistant visible du Cockpit JS-Innov.IA. Tu conserves le même nom et le même rôle en mode cloud et en mode local. Vérifie les outils réellement disponibles avant toute affirmation de capacité. Ne dis jamais que tu es une simple IA textuelle ni que tu ne peux rien exécuter uniquement parce qu’Internet est coupé.`;
+const AFFIRMATIVE_CONFIRMATION = /^(oui|ok|oki|okay|confirme|je confirme|vas[- ]?y|go|ex[eé]cute)(?:\b|[,.!])/i;
+const NEGATIVE_CONFIRMATION = /^(non|annule|annuler|stop)(?:\b|[,.!])/i;
 
 const FloatingAgent = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -44,6 +46,7 @@ const FloatingAgent = () => {
   const [ttsVoiceName, setTtsVoiceName] = useState(() => localStorage.getItem(TTS_VOICE_KEY) || '');
   const [speaking, setSpeaking] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [confirmation, setConfirmation] = useState(null);
   const fileInputRef = useRef(null);
 
   const messagesEndRef = useRef(null);
@@ -223,10 +226,75 @@ const FloatingAgent = () => {
     if (recognitionRef.current) { recognitionRef.current.stop(); setIsListening(false); }
   }, []);
 
+  const executeConfirmation = useCallback(async (userMessage = '') => {
+    if (!confirmation || loading) return;
+    if (userMessage) setMessages(prev => [...prev, { role: 'user', content: userMessage, ts: Date.now() }]);
+    setLoading(true);
+    stopSpeaking();
+    try {
+      const response = await fetch('/api/assistant/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ token: confirmation.token }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Action non exécutée par le Cockpit');
+
+      if (data.client_action) {
+        const actionResponse = await fetch(data.client_action.url, {
+          method: data.client_action.method || 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(data.client_action.body || {}),
+        });
+        const actionData = await actionResponse.json().catch(() => ({}));
+        if (data.completion_token) {
+          await fetch('/api/assistant/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              token: data.completion_token,
+              success: actionResponse.ok,
+              details: actionResponse.ok ? 'Action exécutée depuis NOVA flottante' : (actionData.error || `HTTP ${actionResponse.status}`),
+            }),
+          }).catch(() => null);
+        }
+        if (!actionResponse.ok) throw new Error(actionData.error || 'Action métier non exécutée');
+      }
+
+      const target = data.execution?.target ? ` · cible=${data.execution.target}` : '';
+      const success = `✅ Action ${data.action_type || confirmation.type || 'Cockpit'} réellement exécutée et journalisée${target}.`;
+      setMessages(prev => [...prev, { role: 'assistant', content: success, ts: Date.now() }]);
+      speak(success);
+    } catch (error) {
+      const failure = `❌ ${error.message}`;
+      setMessages(prev => [...prev, { role: 'assistant', content: failure, ts: Date.now(), isError: true }]);
+    } finally {
+      setConfirmation(null);
+      setLoading(false);
+    }
+  }, [confirmation, loading, speak, stopSpeaking]);
+
   // === Chat ===
   const doSend = useCallback(async (text) => {
     const msg = (text || input).trim();
     if (!msg || loading) return;
+    if (confirmation && AFFIRMATIVE_CONFIRMATION.test(msg)) {
+      setInput('');
+      await executeConfirmation(msg);
+      return;
+    }
+    if (confirmation && NEGATIVE_CONFIRMATION.test(msg)) {
+      setInput('');
+      setMessages(prev => [...prev,
+        { role: 'user', content: msg, ts: Date.now() },
+        { role: 'assistant', content: 'Action annulée. Aucune modification n’a été exécutée.', ts: Date.now() },
+      ]);
+      setConfirmation(null);
+      return;
+    }
     const requiresLocalTool = LOCAL_TOOL_REQUEST.test(msg);
 
     setInput('');
@@ -246,7 +314,9 @@ const FloatingAgent = () => {
         });
         if (!resp.ok) {
           const errData = await resp.json().catch(() => ({}));
-          throw new Error(errData.error || 'Cockpit cloud indisponible');
+          const error = new Error(errData.error || 'Le Cockpit a refusé la demande');
+          error.cockpitResponse = true;
+          throw error;
         }
         return resp.json();
       };
@@ -286,7 +356,8 @@ const FloatingAgent = () => {
       } else {
         try {
           data = await sendCloud();
-        } catch {
+        } catch (error) {
+          if (error?.cockpitResponse) throw error;
           data = await sendLocal();
         }
       }
@@ -295,17 +366,20 @@ const FloatingAgent = () => {
       if (data.local_fallback) content = `Mode local · ${content}`;
       if (data.confirmation) {
         content += '\n\n⚠️ Action proposée: ' + (data.confirmation.type || 'Action') + '. Confirme pour exécuter.';
+        setConfirmation(data.confirmation);
       }
 
       setMessages(prev => [...prev, { role: 'assistant', content, ts: Date.now() }]);
       speak(content);
     } catch (err) {
-      const prefix = requiresLocalTool ? '⚠️ L’agent local requis est injoignable : ' : '⚠️ NOVA cloud et locale sont injoignables : ';
+      const prefix = err?.cockpitResponse
+        ? '⚠️ Le Cockpit a répondu : '
+        : requiresLocalTool ? '⚠️ L’agent local requis est injoignable : ' : '⚠️ NOVA cloud et locale sont injoignables : ';
       setMessages(prev => [...prev, { role: 'assistant', content: prefix + err.message, ts: Date.now(), isError: true }]);
     } finally {
       setLoading(false);
     }
-  }, [input, loading, conversationId, messages, speak, stopSpeaking]);
+  }, [input, loading, confirmation, executeConfirmation, conversationId, messages, speak, stopSpeaking]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -317,6 +391,7 @@ const FloatingAgent = () => {
   const resetConversation = useCallback(async () => {
     stopSpeaking();
     setMessages([]);
+    setConfirmation(null);
     localStorage.removeItem('agent_chat_messages');
     localStorage.removeItem(RECENT_MEDIA_KEY);
     try {
@@ -555,6 +630,22 @@ const FloatingAgent = () => {
             )}
             <div ref={messagesEndRef} />
           </div>
+
+          {confirmation && (
+            <div style={{
+              margin: '0 12px 8px', padding: '10px 12px', borderRadius: '10px',
+              border: '1px solid rgba(245,158,11,0.45)', background: 'rgba(245,158,11,0.08)',
+            }}>
+              <p style={{ margin: 0, color: '#fbbf24', fontSize: '11px', fontWeight: 600 }}>Confirmation sécurisée requise</p>
+              <p style={{ margin: '5px 0 9px', color: '#cbd5e1', fontSize: '11px' }}>{confirmation.summary || confirmation.type || 'Action Cockpit'}</p>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button type="button" onClick={() => executeConfirmation('Je confirme')} disabled={loading} style={{ border: 0, borderRadius: '7px', padding: '7px 10px', background: '#D4AF37', color: '#0B0B0F', fontSize: '11px', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}>
+                  {loading ? 'Exécution…' : 'Confirmer et exécuter'}
+                </button>
+                <button type="button" onClick={() => setConfirmation(null)} disabled={loading} style={{ border: '1px solid #475569', borderRadius: '7px', padding: '7px 10px', background: 'transparent', color: '#cbd5e1', fontSize: '11px', cursor: loading ? 'not-allowed' : 'pointer' }}>Annuler</button>
+              </div>
+            </div>
+          )}
 
           {/* Zone de saisie */}
           <div style={{

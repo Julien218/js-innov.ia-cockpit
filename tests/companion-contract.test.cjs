@@ -9,6 +9,7 @@ const appSource = fs.readFileSync(path.join(root, 'src/App.jsx'), 'utf8');
 const clientDashboard = fs.readFileSync(path.join(root, 'src/pages/ClientDashboard.jsx'), 'utf8');
 const clientRecords = fs.readFileSync(path.join(root, 'src/pages/ClientRecords.jsx'), 'utf8');
 const clientCompanion = fs.readFileSync(path.join(root, 'src/components/ClientCompanion.jsx'), 'utf8');
+const floatingCompanion = fs.readFileSync(path.join(root, 'src/components/FloatingAgent.jsx'), 'utf8');
 const rolesSource = fs.readFileSync(path.join(root, 'src/lib/roles.js'), 'utf8');
 const assistantServer = fs.readFileSync(path.join(root, 'server-assistant.cjs'), 'utf8');
 const audienceServer = fs.readFileSync(path.join(root, 'server-companion-audience.cjs'), 'utf8');
@@ -51,6 +52,14 @@ test('le client consomme une confirmation existante au lieu de repartir au LLM',
   assert.match(clientCompanion, /await executeConfirmation\(text\)/);
   assert.match(clientCompanion, /Vous n’avez rien d’autre à confirmer/);
   assert.match(clientCompanion, /Confirmer une fois/);
+});
+
+test('NOVA flottante conserve et exécute la confirmation au lieu de la renvoyer au modèle local', () => {
+  assert.match(floatingCompanion, /setConfirmation\(data\.confirmation\)/);
+  assert.match(floatingCompanion, /confirmation && AFFIRMATIVE_CONFIRMATION\.test\(msg\)/);
+  assert.match(floatingCompanion, /\/api\/assistant\/confirm/);
+  assert.match(floatingCompanion, /Confirmer et exécuter/);
+  assert.match(floatingCompanion, /if \(error\?\.cockpitResponse\) throw error/);
 });
 
 test('les sessions client sont séparées par organisation et utilisateur', () => {
