@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   Clapperboard, Mic, Image, FileText, FolderOpen,
-  Send, Plus, Video, Sparkles, Link2,
+  Send, Plus, Video, Sparkles, Link2, MonitorPlay,
 } from "lucide-react";
 
 const ACTIONS = [
+  { label: "Piloter écran géant", icon: MonitorPlay, color: "text-cyan-600 bg-cyan-500/10", route: "/ecran-geant" },
   { label: "Créer prompt vidéo", icon: Video, color: "text-blue-600 bg-blue-500/10", route: "/video-studio/new" },
   { label: "Créer script voix-off", icon: Mic, color: "text-purple-600 bg-purple-500/10", route: "/ai-video" },
   { label: "Ajouter asset", icon: Plus, color: "text-emerald-600 bg-emerald-500/10", route: "/documents" },

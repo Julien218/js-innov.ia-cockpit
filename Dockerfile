@@ -50,6 +50,7 @@ COPY --from=builder /app/server-agent-orchestrator.cjs ./server-agent-orchestrat
 COPY --from=builder /app/server-agent-orchestrator-resilient.cjs ./server-agent-orchestrator-resilient.cjs
 COPY --from=builder /app/server-agent-run-log.cjs ./server-agent-run-log.cjs
 COPY --from=builder /app/server-domain-ops.cjs ./server-domain-ops.cjs
+COPY --from=builder /app/server-signage.cjs ./server-signage.cjs
 COPY --from=builder /app/server-dropbox-helper.cjs ./server-dropbox-helper.cjs
 COPY --from=builder /app/server-ai-cost.cjs ./server-ai-cost.cjs
 COPY --from=builder /app/server-nova-routing.cjs ./server-nova-routing.cjs
@@ -78,6 +79,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-agent-orchestrator-resilient.cjs \
  && test -f /app/server-agent-run-log.cjs \
  && test -f /app/server-domain-ops.cjs \
+ && test -f /app/server-signage.cjs \
  && test -f /app/server-assistant-batch.cjs \
  && test -f /app/server-task-batch.cjs \
  && test -f /app/server-nova-executors.cjs \
@@ -93,6 +95,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-agent-orchestrator-resilient.cjs \
  && node --check /app/server-agent-run-log.cjs \
  && node --check /app/server-domain-ops.cjs \
+ && node --check /app/server-signage.cjs \
  && node --check /app/server-assistant-batch.cjs \
  && node --check /app/server-task-batch.cjs \
  && node --check /app/server-nova-executors.cjs \

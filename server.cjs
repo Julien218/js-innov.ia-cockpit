@@ -136,6 +136,15 @@ try {
   console.warn('⚠️ Route domain-ops indisponible:', e.message);
 }
 
+// ── Pilotage Écran géant Olivier Signage ──────────────────
+try {
+  const signageRouter = require('./server-signage.cjs');
+  app.use('/api/signage', requireSession('admin'), signageRouter.router);
+  console.log('✅ Route /api/signage activée (état Olivier Signage)');
+} catch (e) {
+  console.warn('⚠️ Route Écran géant indisponible:', e.message);
+}
+
 // ── Companion batch : création multi-tâches + délégation ───
 try {
   const taskAutopilot = require('./server-task-autopilot.cjs');
