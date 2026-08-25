@@ -16,7 +16,8 @@ import {
 } from "@/components/ui/dialog";
 import {
   Image as ImageIcon, Video, FileText, CheckCircle2, XCircle, Eye, EyeOff,
-  Archive, Sparkles, History, Package, AlertTriangle, Loader2,
+  Archive, Sparkles, History, Package, AlertTriangle, Loader2, Cloud,
+  Download, RefreshCw, Search, FolderOpen,
 } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -25,6 +26,18 @@ import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 
 const typeIcons = { image: ImageIcon, video: Video, document: FileText };
+
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (value < 1024) return `${value} o`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} Ko`;
+  return `${(value / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
+function dropboxMediaType(asset) {
+  const mime = String(asset?.mime_type || "").toLowerCase();
+  return mime.startsWith("video/") || /\.(mp4|mov|webm|avi|mkv|m4v)$/i.test(asset?.filename || "") ? "video" : "image";
+}
 
 function ScoreBadge({ score }) {
   if (score === null || score === undefined) return <span className="text-xs text-muted-foreground">—</span>;
@@ -61,6 +74,9 @@ export default function Portfolio() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [filterStatut, setFilterStatut] = useState("");
+  const [librarySource, setLibrarySource] = useState("cockpit");
+  const [dropboxSearch, setDropboxSearch] = useState("");
+  const [dropboxType, setDropboxType] = useState("all");
   const [historyAsset, setHistoryAsset] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null); // { type, asset }
 
@@ -68,6 +84,29 @@ export default function Portfolio() {
     queryKey: ["assets"],
     queryFn: () => base44.entities.Asset.list("-created_date"),
     staleTime: 15000,
+  });
+
+  const { data: clients = [] } = useQuery({
+    queryKey: ["portfolio-clients"],
+    queryFn: () => base44.entities.Client.list("entreprise"),
+    staleTime: 60_000,
+  });
+
+  const {
+    data: dropboxLibrary = { assets: [], dropboxConfigured: false },
+    isLoading: dropboxLoading,
+    isFetching: dropboxRefreshing,
+    error: dropboxError,
+    refetch: refreshDropbox,
+  } = useQuery({
+    queryKey: ["portfolio-dropbox-assets"],
+    queryFn: async () => {
+      const response = await fetch("/api/documents/portfolio-assets?limit=500", { credentials: "same-origin" });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || "Bibliothèque Dropbox indisponible");
+      return data;
+    },
+    staleTime: 30_000,
   });
 
   const { data: history = [] } = useQuery({
@@ -134,33 +173,106 @@ export default function Portfolio() {
     visibles: assets.filter(a => a.portfolio_visible).length,
   }), [assets]);
 
+  const clientNames = useMemo(() => new Map(clients.map((client) => [
+    String(client.id),
+    client.denomination_legale || client.entreprise || client.nom || client.name || "Client",
+  ])), [clients]);
+
+  const dropboxAssets = dropboxLibrary.assets || [];
+  const filteredDropboxAssets = useMemo(() => {
+    const query = dropboxSearch.trim().toLowerCase();
+    return dropboxAssets.filter((asset) => {
+      const mediaType = dropboxMediaType(asset);
+      if (dropboxType !== "all" && mediaType !== dropboxType) return false;
+      if (!query) return true;
+      const client = asset.client_id ? clientNames.get(String(asset.client_id)) : "à classer";
+      return [asset.filename, asset.category, asset.brand, asset.source, asset.dropbox_path, client]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query));
+    });
+  }, [dropboxAssets, dropboxSearch, dropboxType, clientNames]);
+
+  const dropboxStats = useMemo(() => ({
+    total: dropboxAssets.length,
+    images: dropboxAssets.filter((asset) => dropboxMediaType(asset) === "image").length,
+    videos: dropboxAssets.filter((asset) => dropboxMediaType(asset) === "video").length,
+    unclassified: dropboxAssets.filter((asset) => !asset.client_id).length,
+  }), [dropboxAssets]);
+
   const statutOptions = ["", "brouillon", "analyse_ia", "en_attente_validation", "valide", "a_retravailler", "publie", "archive"];
 
   return (
     <div>
       <PageHeader
         title="Portfolio — Bibliothèque Asset"
-        subtitle="Toutes les créations JS-Innov.IA : validation, publication et historique complet"
+        subtitle="Créations Cockpit et médias Dropbox réunis dans une seule bibliothèque"
         actions={
-          <select
-            value={filterStatut}
-            onChange={(e) => setFilterStatut(e.target.value)}
-            className="h-8 text-xs border border-border rounded-md px-2 bg-background"
-          >
-            <option value="">Tous les statuts</option>
-            {statutOptions.filter(Boolean).map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+          librarySource === "cockpit" ? (
+            <select
+              value={filterStatut}
+              onChange={(e) => setFilterStatut(e.target.value)}
+              className="h-8 text-xs border border-border rounded-md px-2 bg-background"
+            >
+              <option value="">Tous les statuts</option>
+              {statutOptions.filter(Boolean).map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => refreshDropbox()} disabled={dropboxRefreshing}>
+              <RefreshCw className={cn("w-3.5 h-3.5 mr-1.5", dropboxRefreshing && "animate-spin")} /> Actualiser Dropbox
+            </Button>
+          )
         }
       />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Assets total" value={stats.total} icon={Package} color="primary" />
-        <StatCard title="En attente de validation" value={stats.enAttente} icon={AlertTriangle} color="warning" />
-        <StatCard title="Publiés" value={stats.publies} icon={CheckCircle2} color="success" />
-        <StatCard title="Visibles Portfolio" value={stats.visibles} icon={Eye} color="accent" />
+      <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-muted/50 p-1 mb-5">
+        <Button size="sm" variant={librarySource === "cockpit" ? "default" : "ghost"} onClick={() => setLibrarySource("cockpit")}>
+          <Package className="w-4 h-4 mr-1.5" /> Assets Cockpit
+        </Button>
+        <Button size="sm" variant={librarySource === "dropbox" ? "default" : "ghost"} onClick={() => setLibrarySource("dropbox")}>
+          <Cloud className="w-4 h-4 mr-1.5" /> Médias Dropbox
+          {dropboxLibrary.dropboxConfigured && <span className="ml-2 h-2 w-2 rounded-full bg-emerald-400" title="Dropbox connecté" />}
+        </Button>
       </div>
 
-      {isLoading ? (
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {librarySource === "cockpit" ? <>
+          <StatCard title="Assets total" value={stats.total} icon={Package} color="primary" />
+          <StatCard title="En attente de validation" value={stats.enAttente} icon={AlertTriangle} color="warning" />
+          <StatCard title="Publiés" value={stats.publies} icon={CheckCircle2} color="success" />
+          <StatCard title="Visibles Portfolio" value={stats.visibles} icon={Eye} color="accent" />
+        </> : <>
+          <StatCard title="Médias Dropbox" value={dropboxStats.total} icon={Cloud} color="primary" />
+          <StatCard title="Images" value={dropboxStats.images} icon={ImageIcon} color="accent" />
+          <StatCard title="Vidéos" value={dropboxStats.videos} icon={Video} color="success" />
+          <StatCard title="À classer" value={dropboxStats.unclassified} icon={FolderOpen} color="warning" />
+        </>}
+      </div>
+
+      {librarySource === "dropbox" && (
+        <div className="rounded-2xl border border-border bg-card p-4 mb-5">
+          <div className="flex flex-col md:flex-row gap-3 md:items-center">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                value={dropboxSearch}
+                onChange={(event) => setDropboxSearch(event.target.value)}
+                placeholder="Rechercher un fichier, un client, une campagne…"
+                className="w-full h-10 rounded-xl border border-border bg-background pl-9 pr-3 text-sm"
+              />
+            </div>
+            <select value={dropboxType} onChange={(event) => setDropboxType(event.target.value)} className="h-10 rounded-xl border border-border bg-background px-3 text-sm">
+              <option value="all">Images et vidéos</option>
+              <option value="image">Images seulement</option>
+              <option value="video">Vidéos seulement</option>
+            </select>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Les fichiers restent dans Dropbox. Le Cockpit affiche l’index sécurisé créé par NOVA et les générateurs vidéo.
+          </p>
+        </div>
+      )}
+
+      {librarySource === "cockpit" ? (isLoading ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
           <Loader2 className="w-5 h-5 animate-spin mr-2" /> Chargement...
         </div>
@@ -233,6 +345,62 @@ export default function Portfolio() {
                   </div>
                 </div>
               </div>
+            );
+          })}
+        </div>
+      )) : dropboxLoading ? (
+        <div className="flex items-center justify-center py-20 text-muted-foreground">
+          <Loader2 className="w-5 h-5 animate-spin mr-2" /> Lecture de la bibliothèque Dropbox…
+        </div>
+      ) : dropboxError ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
+          Dropbox ne peut pas être affiché : {dropboxError.message}
+        </div>
+      ) : !dropboxLibrary.dropboxConfigured ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
+          Dropbox n’est pas configuré sur le Cockpit. Aucun fichier local n’est supprimé ou déplacé.
+        </div>
+      ) : filteredDropboxAssets.length === 0 ? (
+        <div className="text-center py-20 text-muted-foreground text-sm">Aucun média Dropbox ne correspond à cette recherche.</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredDropboxAssets.map((asset) => {
+            const mediaType = dropboxMediaType(asset);
+            const contentUrl = `/api/documents/${encodeURIComponent(asset.id)}/content`;
+            const clientName = asset.client_id ? clientNames.get(String(asset.client_id)) : null;
+            return (
+              <article key={asset.id} className="bg-card rounded-2xl border border-border overflow-hidden card-hover flex flex-col">
+                <div className="aspect-video bg-slate-950 flex items-center justify-center overflow-hidden">
+                  {mediaType === "image" ? (
+                    <img src={contentUrl} alt={asset.filename} loading="lazy" className="w-full h-full object-contain" />
+                  ) : (
+                    <video src={contentUrl} controls preload="metadata" className="w-full h-full object-contain" aria-label={asset.filename} />
+                  )}
+                </div>
+                <div className="p-4 flex-1 flex flex-col gap-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-foreground line-clamp-2" title={asset.filename}>{asset.filename}</h3>
+                    <Cloud className="w-4 h-4 text-blue-500 flex-shrink-0" title="Stocké dans Dropbox" />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline" className="text-[10px]">{mediaType === "video" ? "Vidéo" : "Image"}</Badge>
+                    <Badge variant="outline" className="text-[10px]">{asset.category}</Badge>
+                    <Badge className={cn("text-[10px]", clientName ? "bg-emerald-600" : "bg-amber-600")}>
+                      {clientName || "Client à identifier"}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{formatBytes(asset.size_bytes)} · source : {asset.source}</p>
+                  <p className="text-[10px] text-muted-foreground break-all line-clamp-2" title={asset.dropbox_path || ""}>{asset.dropbox_path || "Chemin Dropbox indexé"}</p>
+                  <div className="mt-auto pt-2 border-t border-border flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-muted-foreground">
+                      {asset.created_at ? format(new Date(asset.created_at), "d MMM yyyy à HH:mm", { locale: fr }) : "Date inconnue"}
+                    </span>
+                    <Button asChild size="sm" variant="outline" className="h-7 text-[11px]">
+                      <a href={contentUrl} download={asset.filename}><Download className="w-3 h-3 mr-1" /> Télécharger</a>
+                    </Button>
+                  </div>
+                </div>
+              </article>
             );
           })}
         </div>

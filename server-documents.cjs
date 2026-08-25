@@ -1,5 +1,7 @@
 const express = require('express');
 const path = require('path');
+const { Readable } = require('node:stream');
+const { dropboxApiArg } = require('./server-dropbox-helper.cjs');
 
 const router = express.Router();
 
@@ -15,6 +17,10 @@ const AGENT_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY |
 const ALLOWED_EXTENSIONS = new Set([
   '.pdf', '.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif',
   '.doc', '.docx', '.xls', '.xlsx', '.csv', '.txt'
+]);
+const PORTFOLIO_MEDIA_EXTENSIONS = new Set([
+  '.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif',
+  '.mp4', '.mov', '.webm', '.avi', '.mkv', '.m4v',
 ]);
 
 let tokenCache = { token: '', expiresAt: 0 };
@@ -209,16 +215,29 @@ async function deleteFromDropbox(reference) {
 }
 
 async function downloadFromDropbox(reference) {
+  const response = await openDropboxDownload(reference);
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function openDropboxDownload(reference, { range = '' } = {}) {
   const token = await getDropboxAccessToken();
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'Dropbox-API-Arg': dropboxApiArg({ path: reference }),
+  };
+  if (/^bytes=(?:\d+-\d*|-\d+)$/i.test(String(range || ''))) headers.Range = range;
   const response = await fetch('https://content.dropboxapi.com/2/files/download', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Dropbox-API-Arg': JSON.stringify({ path: reference }),
-    },
+    headers,
   });
   if (!response.ok) throw new Error(`Dropbox download HTTP ${response.status}`);
-  return Buffer.from(await response.arrayBuffer());
+  return response;
+}
+
+function isPortfolioMedia(record = {}) {
+  const mime = String(record.mime_type || '').toLowerCase();
+  const extension = path.extname(String(record.filename || '')).toLowerCase();
+  return mime.startsWith('image/') || mime.startsWith('video/') || PORTFOLIO_MEDIA_EXTENSIONS.has(extension);
 }
 
 async function indexDocument({ user, organisation, brand, clientId, category, filename, mimeType, sizeBytes, dropboxMeta, source = 'cockpit', emailMessageId = null }) {
@@ -367,6 +386,72 @@ router.post('/upload', async (req, res) => {
   }
 });
 
+// Bibliothèque Asset : fichiers médias réellement archivés et indexés dans Dropbox.
+// Aucun lien Dropbox public ni jeton n'est transmis au navigateur.
+router.get('/portfolio-assets', async (req, res) => {
+  try {
+    if (!isDropboxConfigured()) {
+      return res.json({ success: true, dropboxConfigured: false, assets: [] });
+    }
+    const organisation = resolveOrganisation(req.user, req.query.organisation);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 300, 1), 500);
+    const filters = [
+      'select=id,organisation,brand,client_id,category,filename,mime_type,size_bytes,dropbox_path,dropbox_file_id,content_hash,source,uploaded_by,created_at',
+      `organisation=eq.${encodeURIComponent(organisation)}`,
+      'deleted_at=is.null',
+      'order=created_at.desc',
+      `limit=${limit}`,
+    ];
+    const rows = await supabaseRequest(`DocumentIndex?${filters.join('&')}`);
+    const assets = (Array.isArray(rows) ? rows : [])
+      .filter(isPortfolioMedia)
+      .map((record) => ({
+        id: record.id,
+        filename: record.filename,
+        mime_type: record.mime_type,
+        size_bytes: Number(record.size_bytes || 0),
+        client_id: record.client_id || null,
+        category: record.category || 'Media',
+        brand: record.brand || 'general',
+        source: record.source || 'dropbox',
+        created_at: record.created_at || null,
+        dropbox_path: record.dropbox_path || null,
+        content_hash: record.content_hash || null,
+      }));
+    return res.json({ success: true, dropboxConfigured: true, assets });
+  } catch (error) {
+    console.error('[documents] portfolio assets:', error.message);
+    return res.status(503).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/:id/content', async (req, res) => {
+  try {
+    const record = await getDocumentRecord(req.params.id);
+    assertDocumentAccess(req.user, record);
+    if (!isPortfolioMedia(record)) return res.status(415).json({ success: false, error: 'Ce fichier n’est pas un média du Portfolio' });
+    const response = await openDropboxDownload(record.dropbox_file_id || record.dropbox_path, { range: req.headers.range });
+    if (response.status === 206) res.status(206);
+    res.setHeader('Content-Type', record.mime_type || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(record.filename)}`);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    const length = response.headers.get('content-length');
+    if (length) res.setHeader('Content-Length', length);
+    const contentRange = response.headers.get('content-range');
+    if (contentRange) res.setHeader('Content-Range', contentRange);
+    res.setHeader('Accept-Ranges', response.headers.get('accept-ranges') || 'bytes');
+    if (!response.body) return res.status(502).json({ success: false, error: 'Flux Dropbox indisponible' });
+    Readable.fromWeb(response.body).on('error', (error) => {
+      console.error('[documents] portfolio stream:', error.message);
+      if (!res.headersSent) res.status(502).end();
+      else res.destroy(error);
+    }).pipe(res);
+  } catch (error) {
+    console.error('[documents] portfolio content:', error.message);
+    res.status(error.message.includes('autorisé') ? 403 : 404).json({ success: false, error: error.message });
+  }
+});
+
 router.get('/:id/download', async (req, res) => {
   try {
     const { record, buffer } = await getDocumentBufferForUser(req.user, req.params.id);
@@ -388,3 +473,4 @@ module.exports.isDropboxConfigured = isDropboxConfigured;
 module.exports.MAX_FILE_BYTES = MAX_FILE_BYTES;
 module.exports.firstDocumentRecord = firstDocumentRecord;
 module.exports.indexDocument = indexDocument;
+module.exports.isPortfolioMedia = isPortfolioMedia;
