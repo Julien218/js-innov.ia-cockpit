@@ -113,15 +113,20 @@ test('guardian remains visible to the server even when playback activity is stop
 });
 
 test('cockpit serves the signed metadata-selected Player and keeps legacy explicit only', () => {
+  const signedHandler = apkRoute.slice(
+    apkRoute.indexOf('function downloadSignedPlayer'),
+    apkRoute.indexOf('function downloadLegacyPlayer'),
+  );
+
   assert.match(apkRoute, /pixelium-player-release\.json/);
   assert.match(apkRoute, /`Pixelium-Player-Olivier-\$\{version\}\.apk`/);
   assert.match(apkRoute, /Pixelium-Player-Olivier-0\.3\.0-pilot\.apk/);
   assert.match(apkRoute, /res\.sendFile\(apk\.path/);
-  assert.match(apkRoute, /Cache-Control': 'no-store'/);
+  assert.match(apkRoute, /Cache-Control': 'no-store, max-age=0'/);
   assert.match(apkRoute, /signed-release/);
   assert.match(apkRoute, /legacy-explicit/);
   assert.match(apkRoute, /router\.get\('\/latest', downloadSignedPlayer\)/);
-  assert.doesNotMatch(apkRoute, /downloadSignedPlayer[\s\S]*resolveLegacyApk\(\)/);
+  assert.doesNotMatch(signedHandler, /resolveLegacyApk\(\)/);
   assert.doesNotMatch(apkRoute, /Buffer\.from/);
   assert.match(signagePage, /href="\/api\/player-download\/android"/);
   assert.match(signagePage, /Générer un nouveau jeton d’association/);

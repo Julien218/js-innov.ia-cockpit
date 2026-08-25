@@ -25,7 +25,7 @@ test('TVBOX receives the metadata-selected signed release through stable endpoin
   assert.match(route, /router\.get\('\/legacy', downloadLegacyPlayer\)/);
   assert.match(route, /res\.sendFile\(apk\.path/);
   assert.match(dockerfile, /location = \/player/);
-  assert.match(dockerfile, /return 302 \/api\/player-download\/android/);
+  assert.match(dockerfile, /proxy_pass http:\/\/127\.0\.0\.1:3001\/api\/player-download\/android/);
 });
 
 test('release signing uses repository secrets without committing private material', () => {

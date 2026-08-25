@@ -29,7 +29,7 @@ test('admin cockpit provides a client selector and scopes every operation', () =
   assert.match(page, /\.endsWith\("\.invalid"\)/);
   assert.match(page, /localStorage\.setItem\(managedClientKey, email\)/);
   assert.match(page, /!stored\.endsWith\("\.invalid"\)/);
-  assert.match(page, /Diagnostic des Players/);
+  assert.match(page, /Outils techniques et diagnostic/);
   assert.match(page, /queryKey: \["signage-player-diagnostics"\]/);
 });
 

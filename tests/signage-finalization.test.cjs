@@ -34,15 +34,15 @@ test('failed candidate playback automatically preserves the previous publication
   assert.match(signage, /Retour à la dernière diffusion valide/);
 });
 
-test('playlist ordering, preview and audit history are exposed in the cockpit', () => {
+test('playlist ordering, preview and technical audit remain available in the simplified cockpit', () => {
   assert.match(server, /router\.patch\('\/manage\/playlists\/:id'/);
   assert.match(server, /signage_audit_events/);
   assert.match(signage, /moveMedia/);
-  assert.match(signage, /Prévisualisation/);
+  assert.match(signage, /Aperçu/);
   assert.match(dockerfile, /media-src 'self' blob: https:\/\/\*\.dropboxusercontent\.com https:\/\/\*\.dropbox\.com/);
   assert.match(signage, /onCanPlay/);
   assert.match(signage, /La vidéo ne peut pas être lue dans ce navigateur/);
-  assert.match(signage, /Journal d’activité/);
+  assert.match(signage, /Journal technique/);
 });
 
 test('camera credentials remain local and browser receives only authenticated snapshots', () => {
