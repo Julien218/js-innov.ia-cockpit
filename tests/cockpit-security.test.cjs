@@ -61,6 +61,24 @@ test('assistant business actions retain role, input and automation safeguards', 
   assert.doesNotMatch(source, /service_role|SUPABASE_SERVICE_ROLE/);
 });
 
+test('NOVA peut modifier une fiche projet confirmée sans inventer un exécuteur', () => {
+  const assistant = read('server-assistant.cjs');
+  const projects = read('src/pages/Projets.jsx');
+  assert.match(assistant, /update_project:/);
+  assert.match(assistant, /Règle d’action: pour compléter ou modifier UNE fiche existante/);
+  assert.match(assistant, /'notes'/);
+  assert.match(projects, /JS-Innov\.IA — projet interne/);
+  assert.match(projects, /payload\.organisation_id = "jsinnovia"/);
+  assert.doesNotMatch(projects, /Anomalie — aucun client/);
+});
+
+test('un refus Dropbox mensonger est neutralisé quand la mémoire est connectée', () => {
+  const { guardUnverifiedCapabilityRefusal } = require(path.join(root, 'server-assistant.cjs'));
+  const guarded = guardUnverifiedCapabilityRefusal("Je n’ai actuellement pas d’accès direct à Dropbox.", { dropboxMemoryConnected: true });
+  assert.match(guarded, /mémoire historique ChatGPT stockée dans Dropbox est connectée/i);
+  assert.doesNotMatch(guarded, /pas d’accès direct/i);
+});
+
 test('owner, staff and client assistant boundaries are enforced by authenticated role', () => {
   const assistant = read('server-assistant.cjs');
   const audience = read('server-companion-audience.cjs');

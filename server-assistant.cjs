@@ -42,8 +42,8 @@ const ALLOWED_ACTIONS = {
   create_task: { method: 'POST', table: 'Tache', roles: STAFF_ROLES, fields: ['titre', 'description', 'priorite', 'date_echeance', 'projet_id', 'client_id', 'assigne_a'] },
   update_task_status: { method: 'PATCH', table: 'Tache', roles: STAFF_ROLES, fields: ['statut'], requiresId: true },
   create_lead: { method: 'POST', table: 'Lead', roles: ADMIN_ROLES, fields: ['nom', 'prenom', 'email', 'telephone', 'entreprise', 'source', 'notes'] },
-  create_project: { method: 'POST', table: 'Projet', roles: ADMIN_ROLES, fields: ['nom', 'client_id', 'client_nom', 'organisation_id', 'description', 'statut', 'date_debut', 'date_fin_prevue', 'budget', 'progression', 'priorite'] },
-  update_project: { method: 'PATCH', table: 'Projet', roles: ADMIN_ROLES, fields: ['nom', 'client_id', 'client_nom', 'organisation_id', 'description', 'statut', 'date_debut', 'date_fin_prevue', 'budget', 'progression', 'priorite'], requiresId: true },
+  create_project: { method: 'POST', table: 'Projet', roles: ADMIN_ROLES, fields: ['nom', 'client_id', 'client_nom', 'organisation_id', 'description', 'statut', 'date_debut', 'date_fin_prevue', 'budget', 'progression', 'priorite', 'notes'] },
+  update_project: { method: 'PATCH', table: 'Projet', roles: ADMIN_ROLES, fields: ['nom', 'client_id', 'client_nom', 'organisation_id', 'description', 'statut', 'date_debut', 'date_fin_prevue', 'budget', 'progression', 'priorite', 'notes'], requiresId: true },
   create_client: { method: 'POST', table: 'Client', roles: ADMIN_ROLES, fields: ['nom', 'prenom', 'email', 'telephone', 'entreprise', 'denomination_legale', 'numero_entreprise', 'numero_tva', 'adresse', 'ville', 'code_postal', 'pays', 'email_facturation', 'facturation_statut', 'type_client', 'statut', 'notes'] },
   update_client: { method: 'PATCH', table: 'Client', roles: ADMIN_ROLES, fields: ['nom', 'prenom', 'email', 'telephone', 'entreprise', 'denomination_legale', 'numero_entreprise', 'numero_tva', 'adresse', 'ville', 'code_postal', 'pays', 'email_facturation', 'facturation_statut', 'type_client', 'statut', 'notes'], requiresId: true },
   create_quote: { method: 'POST', table: 'Devis', roles: ADMIN_ROLES, fields: ['numero', 'objet', 'client_id', 'client_nom', 'projet_id', 'lignes', 'montant_ht', 'tva', 'montant_ttc', 'statut', 'date_validite', 'notes'] },
@@ -138,6 +138,48 @@ async function buildIntegrityContext() {
   ];
   integrityCache = { expiresAt: Date.now() + 60_000, context: lines.join('\n') };
   return integrityCache.context;
+}
+
+function projectInventoryRequested(message) {
+  return /projet|villeconnect|portfolio|portefeuille/i.test(String(message || ''));
+}
+
+async function buildProjectInventoryContext(message, user) {
+  if (!ADMIN_ROLES.includes(user?.role) || !projectInventoryRequested(message)) return '';
+  const projects = await fetchTableRows('Projet');
+  const terms = String(message || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ').split(/\s+/).filter((term) => term.length >= 4);
+  const relevant = projects.filter((project) => {
+    if (!terms.length) return true;
+    const haystack = [project.nom, project.client_nom, project.description, project.notes]
+      .map((value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()).join(' ');
+    return terms.some((term) => haystack.includes(term));
+  });
+  const selected = (relevant.length ? relevant : projects).slice(0, 30);
+  const lines = [
+    '[INVENTAIRE PROJETS COCKPIT — données serveur actuelles]',
+    `Projets trouvés: ${projects.length}. Résultats pertinents: ${selected.length}.`,
+    ...selected.map((project) => JSON.stringify({
+      id: project.id,
+      nom: project.nom,
+      client_id: project.client_id || null,
+      client_nom: project.client_nom || null,
+      organisation_id: project.organisation_id || null,
+      description: project.description || null,
+      statut: project.statut || null,
+      date_debut: project.date_debut || null,
+      date_fin_prevue: project.date_fin_prevue || null,
+      budget: project.budget ?? null,
+      progression: project.progression ?? null,
+      priorite: project.priorite || null,
+      notes: project.notes || null,
+    })),
+    'Règle d’action: pour compléter ou modifier UNE fiche existante, proposer update_project avec son id exact. Ne jamais créer une Tache ou un create_task_batch à la place.',
+    'Un projet interne appartient à organisation_id=jsinnovia, peut avoir client_id=null et doit être présenté comme « JS-Innov.IA — projet interne », jamais comme une anomalie client.',
+    'Ne jamais inventer une date exacte à partir d’une formulation approximative; demander ou conserver explicitement le caractère approximatif dans les notes.',
+    '[/INVENTAIRE PROJETS COCKPIT]',
+  ];
+  return lines.join('\n');
 }
 
 function needsIntegrityContext(message, mode) {
@@ -251,9 +293,13 @@ function validEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || ''));
 }
 
-function guardUnverifiedCapabilityRefusal(value) {
+function guardUnverifiedCapabilityRefusal(value, capabilities = {}) {
   const text = String(value || '');
   const staleRefusal = /(je ne peux pas ex[eé]cuter(?: de t[aâ]ches?)? directement|je suis une ia textuelle|l['’]agent local[^.\n]*(?:hors ligne|offline)[^.\n]*donc)/i;
+  const falseDropboxRefusal = /(je n['’]\s*ai[^.\n]{0,80}pas d['’]?acc[eè]s[^.\n]{0,40}dropbox|outil d['’]?acc[eè]s [àa] dropbox[^.\n]{0,60}(?:activ[eé]|disponible)|je n['’]\s*ai pas la capacit[eé] d['’]?ajouter des fonctions)/i;
+  if (capabilities.dropboxMemoryConnected && falseDropboxRefusal.test(text)) {
+    return 'La mémoire historique ChatGPT stockée dans Dropbox est connectée au Cockpit et accessible en lecture seule pour le compte propriétaire. Je dois la consulter pour cette demande, indiquer la date du snapshot utilisé et distinguer les informations historiques des données actuelles du Cockpit.';
+  }
   if (!staleRefusal.test(text)) return text;
   return [
     'Je ne conclus pas à une indisponibilité sur la base d’un ancien état ou du seul statut de l’Agent Local.',
@@ -292,10 +338,13 @@ function sanitizeAction(raw, user) {
   if (raw.type === 'update_task_status' && !['a_faire', 'en_cours', 'terminee', 'bloquee'].includes(payload.statut)) return null;
 
   if (['create_project', 'update_project'].includes(raw.type)) {
-    if (payload.statut && !['en_attente', 'en_cours', 'termine', 'annule'].includes(payload.statut)) return null;
+    if (payload.statut && !['en_attente', 'en_cours', 'pause', 'termine', 'annule'].includes(payload.statut)) return null;
     if (payload.priorite && !['basse', 'moyenne', 'haute', 'urgente'].includes(payload.priorite)) return null;
     if (payload.progression !== undefined && (payload.progression < 0 || payload.progression > 100)) return null;
-    if (!payload.client_id && user.role === 'superadmin') payload.organisation_id = cleanTenant(user.organisation) || 'jsinnovia';
+    if (!payload.client_id && user.role === 'superadmin') {
+      payload.organisation_id = cleanTenant(user.organisation) || 'jsinnovia';
+      payload.client_nom = payload.client_nom || 'JS-Innov.IA — projet interne';
+    }
   }
 
   if (['create_client', 'update_client'].includes(raw.type)) {
@@ -424,6 +473,7 @@ router.post('/chat', async (req, res) => {
         attribution: costAttribution,
       });
     }
+    let dropboxMemoryConnected = false;
     const contextBlocks = [
       audience.context,
       buildRoutingContext(routingDecision, costAttribution, budgetDecision),
@@ -449,13 +499,24 @@ router.post('/chat', async (req, res) => {
     if (audience.mode === 'owner') {
       try {
         const historicalContext = await buildHistoricalMemoryContext(message, req.user);
-        if (historicalContext) contextBlocks.push(historicalContext);
+        if (historicalContext) {
+          contextBlocks.push(historicalContext);
+          dropboxMemoryConnected = /Snapshot (?:actif|mémoire actif)|Conversations indexées/i.test(historicalContext)
+            && !/Mémoire momentanément indisponible/i.test(historicalContext);
+        }
       } catch (error) {
         console.warn('[assistant] historical memory context failed:', error.message);
       }
     }
 
     if (audience.mode !== 'client') {
+      try {
+        const projectContext = await buildProjectInventoryContext(message, req.user);
+        if (projectContext) contextBlocks.push(projectContext);
+      } catch (error) {
+        console.warn('[assistant] project inventory context failed:', error.message);
+      }
+
       try {
         const dropboxContext = await buildDropboxContext(message);
         if (dropboxContext) contextBlocks.push(dropboxContext);
@@ -552,7 +613,7 @@ router.post('/chat', async (req, res) => {
     );
 
     res.json({
-      message: guardUnverifiedCapabilityRefusal(data.response || data.reply || data.message || 'Réponse vide'),
+      message: guardUnverifiedCapabilityRefusal(data.response || data.reply || data.message || 'Réponse vide', { dropboxMemoryConnected }),
       confirmation,
       conversation_id: conversationIdFrom(req),
       model_used: data.model_used || data.model,
@@ -891,5 +952,6 @@ router.post('/upload', async (req, res) => {
 
 module.exports = router;
 module.exports.guardUnverifiedCapabilityRefusal = guardUnverifiedCapabilityRefusal;
+module.exports.projectInventoryRequested = projectInventoryRequested;
 module.exports.recentMediaFrom = recentMediaFrom;
 module.exports.recentMediaContext = recentMediaContext;
