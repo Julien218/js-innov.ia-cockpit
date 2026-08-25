@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const floatingAgent = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'FloatingAgent.jsx'), 'utf8');
+const localAgentSource = fs.readFileSync(path.join(__dirname, '..', 'local-agent', 'server.js'), 'utf8');
 
 test('NOVA locale reconnaît uniquement les intentions d’outils autorisées', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-tools-'));
@@ -115,6 +116,12 @@ test('les demandes d outils locaux sont routées vers NOVA Windows même avec In
   assert.match(floatingAgent, /LOCAL_TOOL_REQUEST/);
   assert.match(floatingAgent, /requiresLocalTool \|\| \(typeof navigator/);
   assert.match(floatingAgent, /data = await sendLocal\(\)/);
+});
+
+test('NOVA locale reçoit le dernier média actif de la conversation', () => {
+  assert.match(floatingAgent, /recent_media: recentMedia/);
+  assert.match(localAgentSource, /Média récent actif:/);
+  assert.match(localAgentSource, /ne dis pas qu’aucun média n’existe/);
 });
 
 test('une synchronisation locale échouée reste relançable', () => {
