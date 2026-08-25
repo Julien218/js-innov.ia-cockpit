@@ -117,19 +117,145 @@ function comfyOutputCandidates() {
     path.join(os.homedir(), "AI", "ComfyUI_windows_portable", "ComfyUI_windows_portable", "ComfyUI", "output"),
     path.join(os.homedir(), "ComfyUI_windows_portable", "ComfyUI", "output"),
     path.join(os.homedir(), "ComfyUI", "output"),
+    path.join(os.homedir(), "AppData", "Local", "Comfy-Desktop", "ComfyUI-Shared", "output"),
   ].filter(Boolean);
+}
+
+function comfyInputCandidates() {
+  return [
+    process.env.JSINNOVIA_COMFYUI_INPUT_DIR,
+    path.join(os.homedir(), "AI", "ComfyUI_windows_portable", "ComfyUI_windows_portable", "ComfyUI", "input"),
+    path.join(os.homedir(), "ComfyUI_windows_portable", "ComfyUI", "input"),
+    path.join(os.homedir(), "ComfyUI", "input"),
+    path.join(os.homedir(), "AppData", "Local", "Comfy-Desktop", "ComfyUI-Shared", "input"),
+  ].filter(Boolean);
+}
+
+function safeLocalName(value, fallback = "A-Classer") {
+  const cleaned = String(value || "").replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim();
+  return cleaned || fallback;
+}
+
+function resolveComfyOutputFile(output = {}) {
+  const filename = String(output.filename || "");
+  if (!filename) throw new Error("Sortie ComfyUI sans nom de fichier.");
+  const subfolder = String(output.subfolder || "");
+  for (const rootCandidate of comfyOutputCandidates()) {
+    const root = path.resolve(rootCandidate);
+    const candidate = path.resolve(root, subfolder, filename);
+    if (candidate !== root && !candidate.startsWith(`${root}${path.sep}`)) continue;
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+  }
+  throw new Error(`Fichier ComfyUI introuvable: ${filename}. Configure JSINNOVIA_COMFYUI_OUTPUT_DIR si nécessaire.`);
+}
+
+function resolveComfyInputFile(filename) {
+  const name = String(filename || "");
+  if (!name) return "";
+  for (const rootCandidate of comfyInputCandidates()) {
+    const root = path.resolve(rootCandidate);
+    const candidate = path.resolve(root, name);
+    if (!candidate.startsWith(`${root}${path.sep}`)) continue;
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+  }
+  return "";
+}
+
+function reviewDrawtext(label, size = 82) {
+  return `drawtext=${videoProvenanceCore().drawtextFontOption()}text='${label}':fontcolor=white:fontsize=${size}:x=(w-text_w)/2:y=(h-text_h)/2`;
+}
+
+async function createLocalReviewVideo(batch) {
+  await refreshLocalVideoBatch(batch);
+  const completed = batch.jobs
+    .filter((job) => job.status === "completed")
+    .slice(0, 3);
+  if (completed.length < 3) throw new Error("Les trois premières propositions doivent être terminées.");
+
+  const videoPaths = completed.map((job) => {
+    const output = job.outputs.find((item) => item.kind === "videos")
+      || job.outputs.find((item) => item.kind === "gifs")
+      || job.outputs[0];
+    return resolveComfyOutputFile(output);
+  });
+
+  const outputFolder = path.join(
+    app.getPath("videos"),
+    "JS-Innov.IA",
+    "Validations",
+    safeLocalName(batch.clientName),
+    safeLocalName(batch.campaignName, "Ecran-geant"),
+  );
+  fs.mkdirSync(outputFolder, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const outputPath = path.join(outputFolder, `${safeLocalName(batch.clientName)}-3-propositions-${stamp}.mp4`);
+
+  const args = [
+    "-y",
+    "-f", "lavfi", "-t", "3", "-i", "color=c=0x081426:s=1920x1080:r=25",
+    "-f", "lavfi", "-t", "1.5", "-i", "color=c=0x081426:s=1920x1080:r=25",
+    "-t", "8", "-i", videoPaths[0],
+    "-f", "lavfi", "-t", "1.5", "-i", "color=c=0x081426:s=1920x1080:r=25",
+    "-t", "8", "-i", videoPaths[1],
+    "-f", "lavfi", "-t", "1.5", "-i", "color=c=0x081426:s=1920x1080:r=25",
+    "-t", "8", "-i", videoPaths[2],
+    "-f", "lavfi", "-t", "4", "-i", "color=c=0x081426:s=1920x1080:r=25",
+    "-filter_complex",
+    [
+      `[0:v]${reviewDrawtext("3 PROPOSITIONS VISUELLES", 76)},format=yuv420p[v0]`,
+      `[1:v]${reviewDrawtext("PROPOSITION 1")},format=yuv420p[v1]`,
+      "[2:v]trim=duration=8,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=25,format=yuv420p[v2]",
+      `[3:v]${reviewDrawtext("PROPOSITION 2")},format=yuv420p[v3]`,
+      "[4:v]trim=duration=8,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=25,format=yuv420p[v4]",
+      `[5:v]${reviewDrawtext("PROPOSITION 3")},format=yuv420p[v5]`,
+      "[6:v]trim=duration=8,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=25,format=yuv420p[v6]",
+      `[7:v]${reviewDrawtext("CHOISISSEZ 1\\, 2 OU 3", 72)},format=yuv420p[v7]`,
+      "[v0][v1][v2][v3][v4][v5][v6][v7]concat=n=8:v=1:a=0[outv]",
+    ].join(";"),
+    "-map", "[outv]",
+    "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+    "-pix_fmt", "yuv420p", "-r", "25", "-movflags", "+faststart",
+    "-metadata", `title=Validation 3 propositions - ${batch.clientName || "Client"}`,
+    "-metadata", "artist=JS-Innov.IA",
+    "-metadata", "comment=Production locale cockpit; choix client 1, 2 ou 3",
+    outputPath,
+  ];
+  await execFileStrict("ffmpeg", args, 30 * 60 * 1000);
+  batch.review = {
+    status: "ready",
+    duration: 35.5,
+    outputPath,
+    createdAt: new Date().toISOString(),
+    sourceJobIds: completed.map((job) => job.id),
+    metadata: { creator: "JS-Innov.IA", workflow: "local-signage-review-v1" },
+  };
+  batch.updatedAt = new Date().toISOString();
+  saveLocalVideoBatches();
+  return { success: true, batchId: batch.id, ...batch.review };
 }
 
 ipcMain.handle("video-local-status", async () => {
   let comfyui = { online: false };
+  let h3 = { available: false, requiredNode: "MiniMaxH3ImageToVideo", detectedPartnerNodes: [] };
   try {
     const stats = await comfyRequest("/system_stats", { timeoutMs: 3000 });
     comfyui = { online: true, stats };
+    try {
+      const nodes = await comfyRequest("/object_info", { timeoutMs: 15000 });
+      const names = Object.keys(nodes && typeof nodes === "object" ? nodes : {});
+      h3 = {
+        available: names.some((name) => name === "MiniMaxH3ImageToVideo" || name.includes("MiniMaxH3ImageToVideo")),
+        requiredNode: "MiniMaxH3ImageToVideo",
+        detectedPartnerNodes: names.filter((name) => /minimax|hailuo/i.test(name) && !/MiniMaxH3ImageToVideo/.test(name)).slice(0, 20),
+      };
+    } catch (error) {
+      h3 = { ...h3, error: error.message };
+    }
   } catch (error) {
     comfyui = { online: false, error: error.message };
   }
   const ffmpeg = await commandAvailable("ffmpeg", ["-version"]);
-  return { available: comfyui.online, comfyui, ffmpeg, endpoint: `http://${COMFYUI_HOST}:${COMFYUI_PORT}` };
+  return { available: comfyui.online && ffmpeg.online && h3.available, comfyui, ffmpeg, h3, qualification: loadLocalVideoQualification(), endpoint: `http://${COMFYUI_HOST}:${COMFYUI_PORT}` };
 });
 
 ipcMain.handle("video-local-queue", async (_event, payload = {}) => {
@@ -145,6 +271,245 @@ ipcMain.handle("video-local-queue", async (_event, payload = {}) => {
     },
     timeoutMs: 15000,
   });
+});
+
+const MAX_LOCAL_VIDEO_BATCH = 32;
+const localVideoBatches = new Map();
+let localVideoBatchesLoaded = false;
+
+function localVideoBatchStorePath() {
+  return path.join(app.getPath("userData"), "local-video-batches.json");
+}
+
+function localVideoQualificationPath() {
+  return path.join(app.getPath("userData"), "local-video-qualification.json");
+}
+
+function loadLocalVideoQualification() {
+  try {
+    const record = JSON.parse(fs.readFileSync(localVideoQualificationPath(), "utf8"));
+    return record?.qualified === true ? record : { qualified: false };
+  } catch (_) {
+    return { qualified: false };
+  }
+}
+
+function qualifyLocalVideoFactory(batch) {
+  if (loadLocalVideoQualification().qualified) return;
+  const firstThree = batch.jobs.slice(0, 3);
+  if (firstThree.length !== 3 || !firstThree.every((job) => job.status === "completed" && Number(job.runtimeSeconds || 0) > 0)) return;
+  fs.writeFileSync(localVideoQualificationPath(), JSON.stringify({
+    qualified: true,
+    qualifiedAt: new Date().toISOString(),
+    batchId: batch.id,
+    promptIds: firstThree.map((job) => job.promptId),
+  }, null, 2), "utf8");
+}
+
+function loadLocalVideoBatches() {
+  if (localVideoBatchesLoaded) return;
+  localVideoBatchesLoaded = true;
+  try {
+    const records = JSON.parse(fs.readFileSync(localVideoBatchStorePath(), "utf8"));
+    if (Array.isArray(records)) {
+      records.forEach((batch) => {
+        if (batch?.id && Array.isArray(batch.jobs)) localVideoBatches.set(batch.id, batch);
+      });
+    }
+  } catch (_) { /* premier démarrage */ }
+}
+
+function saveLocalVideoBatches() {
+  fs.writeFileSync(localVideoBatchStorePath(), JSON.stringify([...localVideoBatches.values()], null, 2), "utf8");
+}
+
+function comfyQueuePromptIds(items = []) {
+  return new Set(items.map((item) => String(Array.isArray(item) ? item[1] : item?.prompt_id || "")).filter(Boolean));
+}
+
+async function queueNextLocalVideoJob(batch) {
+  if (batch.jobs.some((job) => ["queueing", "queued", "running"].includes(job.status))) return;
+  let record = batch.jobs.find((job) => job.status === "waiting");
+  while (record) {
+    record.status = "queueing";
+    record.attempts = Number(record.attempts || 0) + 1;
+    saveLocalVideoBatches();
+    try {
+      const queued = await comfyRequest("/prompt", {
+        method: "POST",
+        json: {
+          prompt: record.workflow,
+          client_id: String(record.clientId || "jsinnovia-signage-factory"),
+        },
+        timeoutMs: 15000,
+      });
+      record.promptId = String(queued?.prompt_id || queued?.promptId || "");
+      if (!record.promptId) throw new Error("ComfyUI n’a pas retourné de prompt_id.");
+      record.status = "queued";
+      record.queuedAt = new Date().toISOString();
+      batch.status = "running";
+      batch.updatedAt = new Date().toISOString();
+      saveLocalVideoBatches();
+      return;
+    } catch (error) {
+      record.status = "failed";
+      record.error = String(error.message || error).slice(0, 1000);
+      record.completedAt = new Date().toISOString();
+      record = batch.jobs.find((job) => job.status === "waiting");
+    }
+  }
+}
+
+async function refreshLocalVideoBatch(batch) {
+  let queue = { queue_running: [], queue_pending: [] };
+  try { queue = await comfyRequest("/queue", { timeoutMs: 10000 }); } catch (_) { /* historique encore exploitable */ }
+  const running = comfyQueuePromptIds(queue.queue_running);
+  const pending = comfyQueuePromptIds(queue.queue_pending);
+
+  await Promise.all(batch.jobs.map(async (job) => {
+    if (!job.promptId || ["failed", "cancelled", "completed"].includes(job.status)) return;
+    try {
+      const history = await comfyRequest(`/history/${encodeURIComponent(job.promptId)}`, { timeoutMs: 10000 });
+      const result = videoProvenanceCore().parseComfyHistoryState(history, job.promptId);
+      if (result.completed) {
+        job.status = "completed";
+        job.outputs = result.files;
+        job.executionStartedAt = result.startedAt || job.executionStartedAt || null;
+        job.completedAt = result.completedAt || new Date().toISOString();
+        job.runtimeSeconds = result.runtimeSeconds || job.runtimeSeconds || null;
+      } else if (result.failed) {
+        job.status = "failed";
+        job.error = result.error || "La génération ComfyUI a échoué.";
+        job.executionStartedAt = result.startedAt || job.executionStartedAt || null;
+        job.completedAt = result.completedAt || new Date().toISOString();
+        job.runtimeSeconds = result.runtimeSeconds || job.runtimeSeconds || null;
+      } else if (running.has(job.promptId)) {
+        job.status = "running";
+      } else if (pending.has(job.promptId)) {
+        job.status = "queued";
+      } else if (["queued", "running"].includes(job.status) && Date.now() - new Date(job.queuedAt || 0).getTime() > 30_000) {
+        if (Number(job.attempts || 0) < 2) {
+          job.status = "waiting";
+          job.promptId = "";
+          job.error = "File ComfyUI perdue après redémarrage; reprise automatique.";
+        } else {
+          job.status = "failed";
+          job.error = "La file ComfyUI a disparu après deux tentatives.";
+          job.completedAt = new Date().toISOString();
+        }
+      }
+    } catch (error) {
+      job.lastError = String(error.message || error).slice(0, 500);
+    }
+  }));
+
+  await queueNextLocalVideoJob(batch);
+  const terminal = batch.jobs.filter((job) => ["completed", "failed", "cancelled"].includes(job.status)).length;
+  batch.progress = batch.jobs.length ? Math.round((terminal / batch.jobs.length) * 100) : 0;
+  batch.status = terminal === batch.jobs.length ? "completed" : "running";
+  if (batch.status === "completed") qualifyLocalVideoFactory(batch);
+  batch.updatedAt = new Date().toISOString();
+  saveLocalVideoBatches();
+  return batch;
+}
+
+ipcMain.handle("video-local-batch-queue", async (_event, payload = {}) => {
+  loadLocalVideoBatches();
+  const jobs = Array.isArray(payload.jobs) ? payload.jobs : [];
+  if (!jobs.length) throw new Error("Ajoute au moins une vidéo au lot local.");
+  if (jobs.length > MAX_LOCAL_VIDEO_BATCH) throw new Error(`Maximum ${MAX_LOCAL_VIDEO_BATCH} vidéos par lot local.`);
+  if (jobs.length > 3 && !loadLocalVideoQualification().qualified) {
+    throw new Error("Le Dell doit d’abord réussir un lot réel de trois vidéos avant d’autoriser jusqu’à 32 productions.");
+  }
+
+  const batchId = String(payload.batchId || `batch-${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}`);
+  if (localVideoBatches.has(batchId)) throw new Error("Cet identifiant de lot existe déjà.");
+  const batch = {
+    id: batchId,
+    title: String(payload.title || "Production écran géant"),
+    clientName: String(payload.clientName || ""),
+    clientId: String(payload.clientId || ""),
+    projectId: String(payload.projectId || ""),
+    costCenterId: String(payload.costCenterId || ""),
+    campaignName: String(payload.campaignName || ""),
+    sector: String(payload.sector || ""),
+    usageRights: String(payload.usageRights || ""),
+    rightsConfirmed: payload.rightsConfirmed === true,
+    status: "queueing",
+    progress: 0,
+    concurrency: 1,
+    maxJobs: MAX_LOCAL_VIDEO_BATCH,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    jobs: [],
+  };
+  localVideoBatches.set(batchId, batch);
+  saveLocalVideoBatches();
+
+  for (let index = 0; index < jobs.length; index += 1) {
+    const source = jobs[index] || {};
+    const record = {
+      id: String(source.id || `video-${index + 1}`),
+      title: String(source.title || `Vidéo ${index + 1}`),
+      prompt: String(source.prompt || ""),
+      metadata: source.metadata && typeof source.metadata === "object" ? source.metadata : {},
+      workflow: source.workflow,
+      clientId: String(source.clientId || "jsinnovia-signage-factory"),
+      status: "waiting",
+      position: index + 1,
+      promptId: "",
+      attempts: 0,
+      outputs: [],
+    };
+    batch.jobs.push(record);
+    if (!source.workflow || typeof source.workflow !== "object" || Array.isArray(source.workflow)) {
+      record.status = "failed";
+      record.error = "Workflow ComfyUI API invalide.";
+      record.completedAt = new Date().toISOString();
+    }
+    batch.updatedAt = new Date().toISOString();
+    saveLocalVideoBatches();
+  }
+
+  await queueNextLocalVideoJob(batch);
+  batch.status = batch.jobs.every((job) => ["completed", "failed", "cancelled"].includes(job.status)) ? "completed" : "running";
+  saveLocalVideoBatches();
+  return refreshLocalVideoBatch(batch);
+});
+
+ipcMain.handle("video-local-batch-status", async (_event, batchId) => {
+  loadLocalVideoBatches();
+  const batch = localVideoBatches.get(String(batchId || ""));
+  if (!batch) throw new Error("Lot vidéo local introuvable.");
+  return refreshLocalVideoBatch(batch);
+});
+
+ipcMain.handle("video-local-batch-list", async () => {
+  loadLocalVideoBatches();
+  const batches = [...localVideoBatches.values()].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  return { batches: batches.slice(0, 50), maxJobs: MAX_LOCAL_VIDEO_BATCH };
+});
+
+ipcMain.handle("video-local-batch-cancel", async (_event, batchId) => {
+  loadLocalVideoBatches();
+  const batch = localVideoBatches.get(String(batchId || ""));
+  if (!batch) throw new Error("Lot vidéo local introuvable.");
+  const ids = batch.jobs.filter((job) => ["queueing", "queued", "running"].includes(job.status) && job.promptId).map((job) => job.promptId);
+  try { await comfyRequest("/interrupt", { method: "POST", json: {}, timeoutMs: 5000 }); } catch (_) {}
+  if (ids.length) {
+    try { await comfyRequest("/queue", { method: "POST", json: { delete: ids }, timeoutMs: 10000 }); } catch (_) {}
+  }
+  batch.jobs.forEach((job) => {
+    if (["waiting", "queueing", "queued", "running"].includes(job.status)) {
+      job.status = "cancelled";
+      job.completedAt = new Date().toISOString();
+    }
+  });
+  batch.status = "cancelled";
+  batch.progress = 100;
+  batch.updatedAt = new Date().toISOString();
+  saveLocalVideoBatches();
+  return batch;
 });
 
 ipcMain.handle("video-local-history", async (_event, promptId) => {
@@ -181,6 +546,133 @@ ipcMain.handle("video-local-upload-image", async (_event, payload = {}) => {
     headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
     timeoutMs: 30000,
   });
+});
+
+async function publishLocalVideoChoice(batch, position) {
+  await refreshLocalVideoBatch(batch);
+  const selectedPosition = Math.max(1, Math.min(3, Number(position) || 1));
+  const job = batch.jobs[selectedPosition - 1];
+  if (!job || job.status !== "completed") throw new Error(`La proposition ${selectedPosition} n’est pas terminée.`);
+  const sourceOutput = job.outputs.find((item) => item.kind === "videos")
+    || job.outputs.find((item) => item.kind === "gifs")
+    || job.outputs[0];
+  const sourcePath = resolveComfyOutputFile(sourceOutput);
+  const logoPath = resolveComfyInputFile(job.metadata?.firstFrameName);
+  const clientLabel = batch.clientName || job.metadata?.clientName || "CLIENT";
+  const phoneLabel = job.metadata?.phone || "";
+  if (!phoneLabel) throw new Error("Le numéro de téléphone exact est obligatoire pour l’écran final.");
+  if (!batch.clientId) throw new Error("Le client Cockpit est obligatoire pour la traçabilité comptable.");
+
+  const outputFolder = path.join(
+    app.getPath("videos"),
+    "JS-Innov.IA",
+    "Ecran-geant",
+    safeLocalName(batch.clientName),
+    safeLocalName(batch.campaignName, "Campagne"),
+  );
+  fs.mkdirSync(outputFolder, { recursive: true });
+  const core = videoProvenanceCore();
+  const now = new Date();
+  const metadata = core.buildVideoMetadata({
+    clientId: batch.clientId,
+    client: batch.clientName,
+    campaign: batch.campaignName,
+    campaignId: batch.id,
+    creationDate: now.toISOString().slice(0, 10),
+    validationDate: now.toISOString(),
+    version: "v01",
+    durationSeconds: 8,
+    width: 1920,
+    height: 1080,
+    resolutionLabel: "1080p",
+    prompt: job.prompt,
+    sourceMedia: [job.metadata?.firstFrameName, path.basename(sourcePath)].filter(Boolean),
+    sector: batch.sector || job.metadata?.services || "activité locale",
+    usageRights: batch.usageRights,
+    rightsConfirmed: batch.rightsConfirmed === true,
+    exportParameters: { codec: "H.264", pixelFormat: "yuv420p", fps: 25 },
+  });
+  const outputPath = path.join(outputFolder, metadata.filename);
+  const jsonPath = outputPath.replace(/\.mp4$/i, ".json");
+  const args = core.buildSignageMasterArgs({ sourcePath, logoPath, outputPath, metadata, clientLabel, phoneLabel });
+  await execFileStrict("ffmpeg", args, 30 * 60 * 1000);
+  const probeResult = await execFileStrict("ffprobe", ["-v", "error", "-show_format", "-show_streams", "-of", "json", outputPath], 60_000);
+  const probe = JSON.parse(probeResult.stdout);
+  const verification = core.verifyProbe(probe, metadata);
+  if (!verification.ok) {
+    try { fs.unlinkSync(outputPath); } catch (_) {}
+    throw new Error(`Vérification du master refusée: ${[...verification.missing, ...verification.mismatches].join(", ")}`);
+  }
+  const finalBuffer = fs.readFileSync(outputPath);
+  const sha256 = crypto.createHash("sha256").update(finalBuffer).digest("hex");
+  const sidecar = core.buildSidecar(metadata, { sha256, probe, verification });
+  sidecar.production = {
+    batchId: batch.id,
+    jobId: job.id,
+    promptId: job.promptId,
+    selectedPosition,
+    runtimeSeconds: job.runtimeSeconds || null,
+    costCenterId: batch.costCenterId || null,
+    projectId: batch.projectId || null,
+  };
+  fs.writeFileSync(jsonPath, `${JSON.stringify(sidecar, null, 2)}\n`, "utf8");
+  batch.publication = {
+    status: "ready",
+    selectedPosition,
+    outputPath,
+    duration: 8,
+    width: 1920,
+    height: 1080,
+    fps: 25,
+    createdAt: new Date().toISOString(),
+    jsonPath,
+    sha256,
+    uniqueId: metadata.uniqueId,
+    accounting: {
+      status: job.runtimeSeconds > 0 ? "pending" : "blocked",
+      reason: job.runtimeSeconds > 0 ? null : "runtime_comfyui_missing",
+      runtimeSeconds: job.runtimeSeconds || null,
+      externalRef: `local-video:${batch.id}:${job.id}`,
+    },
+    metadata: { ...metadata, phone: job.metadata?.phone || "", workflow: "local-signage-publish-v2" },
+  };
+  batch.updatedAt = new Date().toISOString();
+  saveLocalVideoBatches();
+  return { success: true, batchId: batch.id, ...batch.publication };
+}
+
+ipcMain.handle("video-local-batch-review", async (_event, batchId) => {
+  loadLocalVideoBatches();
+  const batch = localVideoBatches.get(String(batchId || ""));
+  if (!batch) throw new Error("Lot vidéo local introuvable.");
+  return createLocalReviewVideo(batch);
+});
+
+ipcMain.handle("video-local-batch-publish", async (_event, payload = {}) => {
+  loadLocalVideoBatches();
+  const batch = localVideoBatches.get(String(payload.batchId || ""));
+  if (!batch) throw new Error("Lot vidéo local introuvable.");
+  return publishLocalVideoChoice(batch, payload.position);
+});
+
+ipcMain.handle("video-local-generated-open-folder", async (_event, generatedPath) => {
+  const root = path.resolve(app.getPath("videos"), "JS-Innov.IA");
+  const candidate = path.resolve(String(generatedPath || ""));
+  if (!candidate.startsWith(`${root}${path.sep}`)) throw new Error("Chemin de production refusé.");
+  const folder = fs.existsSync(candidate) && fs.statSync(candidate).isDirectory() ? candidate : path.dirname(candidate);
+  const error = await shell.openPath(folder);
+  if (error) throw new Error(error);
+  return { ok: true, folder };
+});
+
+ipcMain.handle("video-local-review-open-folder", async (_event, reviewPath) => {
+  const root = path.resolve(app.getPath("videos"), "JS-Innov.IA", "Validations");
+  const candidate = path.resolve(String(reviewPath || ""));
+  if (!candidate.startsWith(`${root}${path.sep}`)) throw new Error("Chemin de validation refusé.");
+  const folder = fs.existsSync(candidate) && fs.statSync(candidate).isDirectory() ? candidate : path.dirname(candidate);
+  const error = await shell.openPath(folder);
+  if (error) throw new Error(error);
+  return { ok: true, folder };
 });
 
 ipcMain.handle("video-local-open-output", async () => {

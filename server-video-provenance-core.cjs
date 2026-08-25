@@ -1,4 +1,6 @@
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const DEFAULTS = Object.freeze({
   creator: 'JS-Innov.IA®',
@@ -40,6 +42,59 @@ function normalizeKeywords(value, client, sector) {
     seen.add(key);
     return true;
   });
+}
+
+function timestampMs(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number) || number <= 0) return null;
+  return number < 1_000_000_000_000 ? number * 1000 : number;
+}
+
+function parseComfyHistoryState(payload = {}, promptId = '') {
+  const history = payload?.[promptId] || payload?.history?.[promptId] || payload || {};
+  const status = history?.status && typeof history.status === 'object' ? history.status : {};
+  const outputs = history?.outputs && typeof history.outputs === 'object' ? history.outputs : {};
+  const files = [];
+  Object.values(outputs).forEach((nodeOutput) => {
+    ['videos', 'gifs', 'images', 'audio'].forEach((kind) => {
+      const values = nodeOutput?.[kind];
+      if (!Array.isArray(values)) return;
+      values.forEach((item) => {
+        if (item?.filename) files.push({ kind, ...item });
+      });
+    });
+  });
+
+  let startedAtMs = null;
+  let completedAtMs = null;
+  let error = '';
+  for (const message of Array.isArray(status.messages) ? status.messages : []) {
+    const [kind, detail = {}] = Array.isArray(message) ? message : [];
+    const at = timestampMs(detail?.timestamp);
+    if (kind === 'execution_start' && at) startedAtMs = at;
+    if (['execution_success', 'execution_error', 'execution_interrupted'].includes(kind) && at) completedAtMs = at;
+    if (kind === 'execution_error') {
+      error = clean(detail?.exception_message || detail?.exception_type || detail?.node_type || 'Échec ComfyUI', '', 1000);
+    }
+    if (kind === 'execution_interrupted') error = 'Exécution ComfyUI interrompue.';
+  }
+
+  const failed = Boolean(error) || ['error', 'failed'].includes(String(status.status_str || '').toLowerCase());
+  const completed = !failed && files.length > 0;
+  const completedWithoutOutput = !failed && status.completed === true && files.length === 0;
+  const runtimeSeconds = startedAtMs && completedAtMs && completedAtMs >= startedAtMs
+    ? Number(((completedAtMs - startedAtMs) / 1000).toFixed(3))
+    : null;
+  return {
+    files,
+    completed,
+    failed: failed || completedWithoutOutput,
+    error: error || (completedWithoutOutput ? 'ComfyUI a terminé sans produire de fichier exploitable.' : ''),
+    startedAt: startedAtMs ? new Date(startedAtMs).toISOString() : null,
+    completedAt: completedAtMs ? new Date(completedAtMs).toISOString() : null,
+    runtimeSeconds,
+    status: clean(status.status_str, '', 80) || null,
+  };
 }
 
 function buildVideoMetadata(input = {}, now = new Date()) {
@@ -137,10 +192,71 @@ function ffmpegMetadataArgs(metadata = {}) {
   return Object.entries(tags).flatMap(([key, value]) => ['-metadata', `${key}=${clean(value, '', 20_000)}`]);
 }
 
+function escapeDrawtext(value) {
+  return clean(value, '', 1000)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/:/g, '\\:')
+    .replace(/%/g, '\\%')
+    .replace(/,/g, '\\,');
+}
+
+function resolveSignageFontFile(explicit = '') {
+  const candidates = [
+    clean(explicit, '', 1000),
+    process.platform === 'win32' ? path.join(process.env.WINDIR || 'C:\\Windows', 'Fonts', 'arial.ttf') : '',
+    process.platform === 'win32' ? path.join(process.env.WINDIR || 'C:\\Windows', 'Fonts', 'segoeui.ttf') : '',
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    '/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf',
+  ].filter(Boolean);
+  return candidates.find((candidate) => fs.existsSync(candidate)) || '';
+}
+
+function drawtextFontOption(fontFile = '') {
+  const resolved = resolveSignageFontFile(fontFile);
+  if (!resolved) throw new Error('Aucune police locale compatible FFmpeg n’a été trouvée.');
+  const escaped = resolved.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
+  return `fontfile='${escaped}':`;
+}
+
+function buildSignageMasterArgs({ sourcePath, logoPath = '', outputPath, metadata, clientLabel, phoneLabel, fontFile = '' } = {}) {
+  if (!clean(sourcePath) || !clean(outputPath)) throw new Error('Chemin source ou sortie manquant.');
+  const client = escapeDrawtext(clientLabel || metadata?.client || 'CLIENT');
+  const phone = escapeDrawtext(phoneLabel);
+  if (!phone) throw new Error('Le numéro de téléphone exact est obligatoire pour l’écran final.');
+  const font = drawtextFontOption(fontFile);
+  const args = [
+    '-y', '-i', sourcePath,
+    '-f', 'lavfi', '-t', '3', '-i', 'color=c=0x081426:s=1920x1080:r=25',
+  ];
+  if (logoPath) args.push('-loop', '1', '-t', '3', '-i', logoPath);
+  const filters = [
+    '[0:v]setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=5,trim=duration=5,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=25,format=yuv420p[clip]',
+  ];
+  if (logoPath) {
+    filters.push('[2:v]scale=900:420:force_original_aspect_ratio=decrease[logo]');
+    filters.push(`[1:v][logo]overlay=(W-w)/2:100,drawtext=${font}text='${client}':fontcolor=white:fontsize=64:x=(w-text_w)/2:y=590,drawtext=${font}text='${phone}':fontcolor=0xF5C542:fontsize=96:x=(w-text_w)/2:y=720,format=yuv420p[card]`);
+  } else {
+    filters.push(`[1:v]drawtext=${font}text='${client}':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=390,drawtext=${font}text='${phone}':fontcolor=0xF5C542:fontsize=104:x=(w-text_w)/2:y=560,format=yuv420p[card]`);
+  }
+  filters.push('[clip][card]concat=n=2:v=1:a=0[outv]');
+  args.push(
+    '-filter_complex', filters.join(';'), '-map', '[outv]',
+    '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
+    '-pix_fmt', 'yuv420p', '-r', '25', '-t', '8', '-movflags', '+faststart+use_metadata_tags',
+    ...ffmpegMetadataArgs(metadata), outputPath,
+  );
+  return args;
+}
+
 function buildFfmpegArgs(inputPath, outputPath, metadata) {
+  const width = Math.max(1, Math.round(Number(metadata?.exportParameters?.width) || 1920));
+  const height = Math.max(1, Math.round(Number(metadata?.exportParameters?.height) || 1080));
   return [
     '-y', '-i', inputPath,
     '-map', '0:v:0', '-map', '0:a?',
+    '-vf', `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`,
+    '-t', String(Math.max(0.001, Number(metadata?.durationSeconds) || 8)),
     '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-b:a', '192k',
     '-movflags', '+faststart+use_metadata_tags',
@@ -216,10 +332,13 @@ module.exports = {
   buildVideoMetadata,
   buildFinalFilename,
   buildFfmpegArgs,
+  buildSignageMasterArgs,
   ffmpegMetadataArgs,
   verifyProbe,
   buildSidecar,
+  drawtextFontOption,
   encodeVideoPackage,
   decodeVideoPackage,
+  parseComfyHistoryState,
   slug,
 };

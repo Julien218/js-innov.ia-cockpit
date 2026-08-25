@@ -53,6 +53,8 @@ COPY --from=builder /app/server-domain-ops.cjs ./server-domain-ops.cjs
 COPY --from=builder /app/server-signage.cjs ./server-signage.cjs
 COPY --from=builder /app/server-video-provenance-core.cjs ./server-video-provenance-core.cjs
 COPY --from=builder /app/server-video-provenance.cjs ./server-video-provenance.cjs
+COPY --from=builder /app/server-video-generation-core.cjs ./server-video-generation-core.cjs
+COPY --from=builder /app/server-video-generation.cjs ./server-video-generation.cjs
 COPY --from=builder /app/server-dropbox-helper.cjs ./server-dropbox-helper.cjs
 COPY --from=builder /app/server-ai-cost.cjs ./server-ai-cost.cjs
 COPY --from=builder /app/server-nova-routing.cjs ./server-nova-routing.cjs
@@ -88,6 +90,8 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-signage.cjs \
  && test -f /app/server-video-provenance-core.cjs \
  && test -f /app/server-video-provenance.cjs \
+ && test -f /app/server-video-generation-core.cjs \
+ && test -f /app/server-video-generation.cjs \
  && test -f /app/server-assistant-batch.cjs \
  && test -f /app/server-task-batch.cjs \
  && test -f /app/server-nova-executors.cjs \
@@ -108,6 +112,8 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-signage.cjs \
  && node --check /app/server-video-provenance-core.cjs \
  && node --check /app/server-video-provenance.cjs \
+ && node --check /app/server-video-generation-core.cjs \
+ && node --check /app/server-video-generation.cjs \
  && node --check /app/server-assistant-batch.cjs \
  && node --check /app/server-task-batch.cjs \
  && node --check /app/server-nova-executors.cjs \

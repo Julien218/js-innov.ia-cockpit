@@ -5,10 +5,12 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   Clapperboard, Mic, Image, FileText, FolderOpen,
-  Send, Plus, Video, Sparkles, Link2, MonitorPlay, ArrowRight, PlayCircle,
+  Send, Plus, Video, Sparkles, Link2, MonitorPlay, ArrowRight, PlayCircle, Cpu,
 } from "lucide-react";
 
 const ACTIONS = [
+  { label: "Fabrique vidéo Grok / Sora", icon: Sparkles, color: "text-primary bg-primary/10", route: "/video-factory-api" },
+  { label: "Fabrique vidéo locale", icon: Cpu, color: "text-emerald-600 bg-emerald-500/10", route: "/video-factory-local" },
   { label: "Piloter écran géant", icon: MonitorPlay, color: "text-cyan-600 bg-cyan-500/10", route: "/ecran-geant" },
   { label: "Créer prompt vidéo", icon: Video, color: "text-blue-600 bg-blue-500/10", route: "/video-studio/new" },
   { label: "Créer script voix-off", icon: Mic, color: "text-purple-600 bg-purple-500/10", route: "/ai-video" },
@@ -46,15 +48,23 @@ export default function Production() {
             </div>
             <h2 className="text-2xl font-semibold sm:text-3xl">Que veux-tu produire maintenant ?</h2>
             <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
-              Les deux services les plus utilisés sont accessibles immédiatement. Les outils complémentaires restent regroupés juste dessous.
+              La fabrique choisit Grok ou Sora, rattache chaque coût au client, puis vérifie et archive automatiquement le MP4 et sa fiche JSON.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <button type="button" onClick={() => navigate("/video-studio/new")} className="production-primary-card group">
-              <span className="production-primary-icon"><Video className="h-5 w-5" /></span>
+            <button type="button" onClick={() => navigate("/video-factory-api")} className="production-primary-card group sm:col-span-2">
+              <span className="production-primary-icon text-primary"><Sparkles className="h-5 w-5" /></span>
               <span className="min-w-0 flex-1 text-left">
-                <strong className="block text-sm">Créer une vidéo</strong>
-                <span className="mt-0.5 block text-xs text-muted-foreground">Grok, Sora, ComfyUI et coûts</span>
+                <strong className="block text-sm">Créer une vidéo avec Grok ou Sora</strong>
+                <span className="mt-0.5 block text-xs text-muted-foreground">8 secondes · coût client · métadonnées · Dropbox</span>
+              </span>
+              <ArrowRight className="h-4 w-4 text-primary transition-transform group-hover:translate-x-1" />
+            </button>
+            <button type="button" onClick={() => navigate("/video-factory-local")} className="production-primary-card group">
+              <span className="production-primary-icon text-emerald-300"><Cpu className="h-5 w-5" /></span>
+              <span className="min-w-0 flex-1 text-left">
+                <strong className="block text-sm">Fabrique locale</strong>
+                <span className="mt-0.5 block text-xs text-muted-foreground">ComfyUI · sans coût API</span>
               </span>
               <ArrowRight className="h-4 w-4 text-primary transition-transform group-hover:translate-x-1" />
             </button>

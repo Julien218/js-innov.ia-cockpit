@@ -154,6 +154,16 @@ try {
   console.warn('⚠️ Finaliseur vidéo indisponible:', e.message);
 }
 
+// ── Génération vidéo API : Grok / Sora + coûts + archivage ─
+try {
+  const videoGeneration = require('./server-video-generation.cjs');
+  app.use('/api/video-generation', requireSession('admin'), videoGeneration.router);
+  const worker = videoGeneration.startVideoGenerationScheduler();
+  console.log(`✅ Fabrique vidéo API activée (Grok/Sora, coûts client, worker ${worker.started ? 'actif' : worker.reason})`);
+} catch (e) {
+  console.warn('⚠️ Fabrique vidéo API indisponible:', e.message);
+}
+
 // ── Companion batch : création multi-tâches + délégation ───
 try {
   const taskAutopilot = require('./server-task-autopilot.cjs');
