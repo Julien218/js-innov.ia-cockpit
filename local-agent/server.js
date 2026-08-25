@@ -12,7 +12,7 @@ const PORT = Number(process.env.LOCAL_AGENT_PORT || 8787);
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-const VERSION = '1.3.7';
+const VERSION = '1.4.0';
 const MAX_BODY = 5 * 1024 * 1024;
 const approvals = new Map();
 const runs = new Map();
@@ -123,6 +123,21 @@ async function executeTool(tool, args = {}) {
     command = 'ffmpeg'; commandArgs = ['-version'];
   } else if (tool === 'comfyui_health') {
     return fetchRun({ id, tool, startedAt, url: 'http://127.0.0.1:8188/system_stats', timeout: 5000, includeJson: true });
+  } else if (tool === 'avatar_factory_status') {
+    try {
+      const response = await fetch('http://127.0.0.1:8791/jobs', { signal: AbortSignal.timeout(5000) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || `HTTP ${response.status}`);
+      const latest = Array.isArray(payload.jobs) ? payload.jobs[0] : null;
+      let detail = latest;
+      if (latest?.id) {
+        const detailResponse = await fetch(`http://127.0.0.1:8791/jobs/${encodeURIComponent(latest.id)}`, { signal: AbortSignal.timeout(5000) });
+        if (detailResponse.ok) detail = await detailResponse.json();
+      }
+      return recordRun({ id, tool, started_at: startedAt, completed_at: new Date().toISOString(), success: true, exit_code: 0, target: 'http://127.0.0.1:8791/jobs', output: JSON.stringify({ online: true, jobs_count: Array.isArray(payload.jobs) ? payload.jobs.length : 0, latest: detail || null }) });
+    } catch (error) {
+      return recordRun({ id, tool, started_at: startedAt, completed_at: new Date().toISOString(), success: false, exit_code: 1, target: 'http://127.0.0.1:8791/jobs', output: JSON.stringify({ online: false, error: String(error.message || error) }) });
+    }
   } else if (tool === 'http_diagnose') {
     let target;
     try { target = new URL(String(args.url || '')); } catch { throw Object.assign(new Error('invalid_url'), { status: 400 }); }
@@ -188,6 +203,7 @@ function requestedTools(message) {
   if (/ffmpeg\s+-version|version\s+(?:de\s+)?ffmpeg|teste?.*ffmpeg/i.test(text)) add('ffmpeg_version');
   if (/(?:recherche|trouve|recense|localise|v[eé]rifie).*(?:workflow|minimax\s*h3)|(?:workflow|minimax\s*h3).*(?:local|dossier|fichier)/i.test(text)) add('find_local_workflows');
   if (/(?:comfyui|port\s*8188).*(?:[eé]tat|sant[eé]|status|disponible|en ligne|diagnostic|contr[oô]le)|(?:[eé]tat|sant[eé]|status|diagnostic|contr[oô]le).*(?:comfyui|8188)/i.test(text)) add('comfyui_health');
+  if (/(?:avatar factory|avatar js.?innov.?ia|port\s*8791).*(?:[eé]tat|status|termin[eé]|finalis[eé]|contr[oô]le|v[eé]rifie)|(?:contr[oô]le|v[eé]rifie).*(?:avatar factory|avatar js.?innov.?ia|8791)/i.test(text)) add('avatar_factory_status');
   const explicitUrl = text.match(/https?:\/\/[^\s<>)]+/i)?.[0]?.replace(/[.,;!?]+$/, '');
   const managedDomain = text.match(/\b(?:www\.)?(?:jsinnovia\.com|assurances-dour\.be|letourdedour\.com)\b/i)?.[0];
   if (/(?:https?|tls|api|site|domaine).*(?:diagnostic|teste?|v[eé]rifie|contr[oô]le)|(?:diagnostic|teste?|v[eé]rifie|contr[oô]le).*(?:https?|tls|api|site|domaine)/i.test(text) && (explicitUrl || managedDomain)) add('http_diagnose', { url: explicitUrl || `https://${managedDomain}` });
@@ -416,6 +432,7 @@ function localTaskPlan(task) {
   if (/fonctionnalites.*non operationnelles.*(?:video|module video)/.test(text)) return ['find_local_workflows', 'comfyui_health', 'ffmpeg_version'];
   if (/campagne.*tests?.*video ia/.test(text)) return ['video_pipeline_audit'];
   if (/mettre a jour.*documentation.*workflows?.*locaux/.test(text)) return ['workflow_documentation_audit'];
+  if (/(achever|finaliser).*(avatar|js innov ia).*local/.test(text)) return ['avatar_factory_status'];
   if (/(achever|finaliser|corriger|modifier)/.test(text)) return null;
   if (/verifi.*(?:workflow|minimax)|absence.*(?:workflow|minimax)/.test(text)) return ['find_local_workflows', 'comfyui_health'];
   if (/control.*(?:persistance|workflow)/.test(text)) return ['find_local_workflows'];
@@ -440,8 +457,17 @@ async function executeLocalTaskAutopilot(snapshot) {
       if (!cache.has(tool)) cache.set(tool, await executeTool(tool, {}));
       toolRuns.push(cache.get(tool));
     }
-    const completed = toolRuns.every((run) => run.success);
-    taskResults.push({ task_id: task.id, title: task.titre || task.title, completed, tools, tool_runs: toolRuns.map((run) => ({ id: run.id, tool: run.tool, started_at: run.started_at, completed_at: run.completed_at, success: run.success, exit_code: run.exit_code, output: String(run.output || '').slice(0, 12000) })) });
+    let completed = toolRuns.every((run) => run.success);
+    let reason = completed ? null : 'outil_local_en_echec';
+    if (tools.includes('avatar_factory_status')) {
+      const statusRun = toolRuns.find((run) => run.tool === 'avatar_factory_status');
+      let statusPayload = null;
+      try { statusPayload = JSON.parse(statusRun?.output || '{}'); } catch {}
+      const latestStatus = String(statusPayload?.latest?.status || 'absent').toLowerCase();
+      completed = statusRun?.success === true && latestStatus === 'completed';
+      reason = completed ? null : `avatar_factory_${latestStatus}`;
+    }
+    taskResults.push({ task_id: task.id, title: task.titre || task.title, completed, reason, tools, tool_runs: toolRuns.map((run) => ({ id: run.id, tool: run.tool, started_at: run.started_at, completed_at: run.completed_at, success: run.success, exit_code: run.exit_code, output: String(run.output || '').slice(0, 12000) })) });
   }
   return { run_id: `local-autopilot-${crypto.randomUUID()}`, examined: pending.length, executed: taskResults.length, task_results: taskResults };
 }
@@ -456,7 +482,7 @@ async function health() {
     models = (payload.models || []).map((item) => item.name);
   } catch {}
   const [ffmpeg, ffprobe] = await Promise.all([commandStatus('ffmpeg'), commandStatus('ffprobe')]);
-  return { ok: true, agent: { name: 'NOVA Local Tools', version: VERSION, mode: 'local-first', approvalGate: true }, services: { ollama: { online: ollamaOnline, url: OLLAMA_URL, models }, ffmpeg, ffprobe }, tools: [{ name: 'ffmpeg_version', mode: 'read_only', available: ffmpeg.online }, { name: 'ffprobe_file', mode: 'read_only', available: ffprobe.online }, { name: 'list_directory', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'find_local_workflows', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'workflow_documentation_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'video_pipeline_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'comfyui_health', mode: 'read_only', available: true }, { name: 'http_diagnose', mode: 'read_only', available: true }], allowed_roots: ALLOWED_ROOTS, allowed_http_hosts: [...ALLOWED_HTTP_HOSTS] };
+  return { ok: true, agent: { name: 'NOVA Local Tools', version: VERSION, mode: 'local-first', approvalGate: true }, services: { ollama: { online: ollamaOnline, url: OLLAMA_URL, models }, ffmpeg, ffprobe }, tools: [{ name: 'ffmpeg_version', mode: 'read_only', available: ffmpeg.online }, { name: 'ffprobe_file', mode: 'read_only', available: ffprobe.online }, { name: 'list_directory', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'find_local_workflows', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'workflow_documentation_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'video_pipeline_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'comfyui_health', mode: 'read_only', available: true }, { name: 'avatar_factory_status', mode: 'read_only', available: true }, { name: 'http_diagnose', mode: 'read_only', available: true }], allowed_roots: ALLOWED_ROOTS, allowed_http_hosts: [...ALLOWED_HTTP_HOSTS] };
 }
 
 function toolResponse(run) {
@@ -505,7 +531,7 @@ const server = http.createServer(async (req, res) => {
       const taskContext = body.context?.task_snapshot
         ? JSON.stringify(body.context.task_snapshot).slice(0, 30000)
         : 'Aucune copie locale de tâches disponible.';
-      const prompt = `${body.system_prompt || 'Tu es NOVA, assistant local JS-Innov.IA.'}\nOutils réels: ffmpeg_version, ffprobe_file, list_directory, find_local_workflows, comfyui_health, http_diagnose. N’invente jamais une exécution. Ne prétends jamais avoir exécuté un outil sans tool_run réel. Si une tâche exige un outil absent, marque-la bloquée et précise l’outil manquant.\nCopie locale des tâches: ${taskContext}\nHistorique: ${JSON.stringify(Array.isArray(body.history) ? body.history.slice(-20) : []).slice(0, 20000)}\nUtilisateur: ${String(body.message).slice(0, 4000)}\nNOVA:`;
+      const prompt = `${body.system_prompt || 'Tu es NOVA, assistant local JS-Innov.IA.'}\nOutils réels: ffmpeg_version, ffprobe_file, list_directory, find_local_workflows, workflow_documentation_audit, video_pipeline_audit, comfyui_health, avatar_factory_status, http_diagnose. N’invente jamais une exécution. Ne prétends jamais avoir exécuté un outil sans tool_run réel. Si une tâche exige un outil absent, marque-la bloquée et précise l’outil manquant.\nCopie locale des tâches: ${taskContext}\nHistorique: ${JSON.stringify(Array.isArray(body.history) ? body.history.slice(-20) : []).slice(0, 20000)}\nUtilisateur: ${String(body.message).slice(0, 4000)}\nNOVA:`;
       const response = await ollama(prompt, body.model);
       if (!response) {
         return send(req, res, 200, { ok: true, response: 'NOVA locale n’a produit aucune réponse exploitable. Reformulez la demande ou précisez le fichier, le dossier ou l’action souhaitée.', model: body.model || DEFAULT_MODEL, mode: 'local', empty_model_response: true });

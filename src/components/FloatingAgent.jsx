@@ -20,7 +20,7 @@ import novaAvatar from '@/assets/nova-avatar-128.png';
 const LOCAL_NOVA_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
 const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
 const LOCAL_AUTOPILOT_LAST_RUN_KEY = 'nova_local_autopilot_last_run_v1';
-const LOCAL_TOOL_REQUEST = /\b(?:find_local_workflows|comfyui_health|ffmpeg_version|ffprobe_file|list_directory|http_diagnose)\b|(?:ex[eé]cut|diagnosti|contr[oô]l|v[eé]rifi|recherch).*(?:comfyui|port\s*8188|workflow|minimax|ffmpeg|ffprobe|dossier\s+local)/i;
+const LOCAL_TOOL_REQUEST = /\b(?:find_local_workflows|comfyui_health|avatar_factory_status|ffmpeg_version|ffprobe_file|list_directory|http_diagnose)\b|(?:ex[eé]cut|diagnosti|contr[oô]l|v[eé]rifi|recherch).*(?:comfyui|port\s*(?:8188|8791)|workflow|minimax|avatar|ffmpeg|ffprobe|dossier\s+local)/i;
 const LOCAL_NOVA_PROMPT = `Tu es NOVA, l’unique assistant visible du Cockpit JS-Innov.IA. Tu conserves le même nom et le même rôle en mode cloud et en mode local. Vérifie les outils réellement disponibles avant toute affirmation de capacité. Ne dis jamais que tu es une simple IA textuelle ni que tu ne peux rien exécuter uniquement parce qu’Internet est coupé.`;
 
 const FloatingAgent = () => {
@@ -70,15 +70,21 @@ const FloatingAgent = () => {
 
   // Conserve une copie minimale des tâches pour que NOVA puisse les consulter hors connexion.
   useEffect(() => {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return undefined;
-    const controller = new AbortController();
-    fetch('/api/data/Tache?limit=100', { credentials: 'include', signal: controller.signal })
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`)))
-      .then((payload) => {
+    let stopped = false;
+    let syncing = false;
+    const syncLocalTasks = async () => {
+      if (stopped || syncing || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
+      syncing = true;
+      try {
+        const response = await fetch('/api/data/Tache?limit=100', { credentials: 'include', signal: AbortSignal.timeout(30000) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
         const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.items) ? payload.items : [];
         const tasks = rows.slice(0, 100).map((task) => ({
           id: task.id,
           titre: task.titre || task.title || task.nom,
+          description: task.description || '',
+          notes: task.notes || '',
           statut: task.statut || task.status,
           priorite: task.priorite || task.priority,
           date_echeance: task.date_echeance || task.due_date,
@@ -86,27 +92,37 @@ const FloatingAgent = () => {
         localStorage.setItem(LOCAL_TASK_SNAPSHOT_KEY, JSON.stringify({ synced_at: new Date().toISOString(), tasks }));
         const now = Date.now();
         const lastRun = Number(localStorage.getItem(LOCAL_AUTOPILOT_LAST_RUN_KEY) || 0);
-        if (now - lastRun > 5 * 60_000) {
+        if (now - lastRun >= 60_000) {
           const taskSnapshot = { synced_at: new Date().toISOString(), tasks };
-          void (async () => {
-            for (const localUrl of LOCAL_NOVA_URLS) {
-              try {
-                const localResponse = await fetch(`${localUrl}/api/tasks/autopilot`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task_snapshot: taskSnapshot }), signal: AbortSignal.timeout(120000) });
-                const localResult = await localResponse.json().catch(() => ({}));
-                if (!localResponse.ok) throw new Error(localResult.error || `HTTP ${localResponse.status}`);
-                if (Array.isArray(localResult.task_results) && localResult.task_results.length) {
-                  const syncResponse = await fetch('/api/task-autopilot/local-results', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ task_results: localResult.task_results }) });
-                  if (!syncResponse.ok) throw new Error(`Synchronisation locale HTTP ${syncResponse.status}`);
-                }
-                localStorage.setItem(LOCAL_AUTOPILOT_LAST_RUN_KEY, String(Date.now()));
-                break;
-              } catch {}
-            }
-          })();
+          for (const localUrl of LOCAL_NOVA_URLS) {
+            try {
+              const localResponse = await fetch(`${localUrl}/api/tasks/autopilot`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task_snapshot: taskSnapshot }), signal: AbortSignal.timeout(120000) });
+              const localResult = await localResponse.json().catch(() => ({}));
+              if (!localResponse.ok) throw new Error(localResult.error || `HTTP ${localResponse.status}`);
+              if (Array.isArray(localResult.task_results) && localResult.task_results.length) {
+                const syncResponse = await fetch('/api/task-autopilot/local-results', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ task_results: localResult.task_results }) });
+                if (!syncResponse.ok) throw new Error(`Synchronisation locale HTTP ${syncResponse.status}`);
+              }
+              localStorage.setItem(LOCAL_AUTOPILOT_LAST_RUN_KEY, String(Date.now()));
+              break;
+            } catch {}
+          }
         }
-      })
-      .catch(() => {});
-    return () => controller.abort();
+      } catch {
+        // La copie précédente reste disponible hors connexion.
+      } finally {
+        syncing = false;
+      }
+    };
+    void syncLocalTasks();
+    const timer = setInterval(() => void syncLocalTasks(), 60_000);
+    const online = () => void syncLocalTasks();
+    window.addEventListener('online', online);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      window.removeEventListener('online', online);
+    };
   }, []);
 
   // Preload TTS voices

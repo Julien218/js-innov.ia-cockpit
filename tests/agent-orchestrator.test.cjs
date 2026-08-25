@@ -22,10 +22,11 @@ test('route Synergie Dour vers son agent Base44 dédié', () => {
   assert.equal(plan[0].agent.provider_agent_id, '6a0208edd1e235b62b4bda38');
 });
 
-test('route MiniMax H3 / Video Studio vers Agent GeneratVideoPro', () => {
+test('MiniMax local reste sous NOVA sans appel Base44 générique', () => {
   const plan = resolveAgentPlan('Continue Video Studio et vérifie MiniMax H3 dans ComfyUI');
-  assert.ok(plan.some((item) => item.agent.role === 'video_production'));
-  assert.ok(plan.some((item) => item.agent.provider_agent_id === '69e467a9d6329bb2ead81fa3'));
+  assert.equal(plan.length, 0);
+  const sitePlan = resolveAgentPlan('Contrôle le site video-studio.jsinnovia.com');
+  assert.equal(sitePlan[0].agent.provider_agent_id, '69e467a9d6329bb2ead81fa3');
 });
 
 test('route DNS, TLS et SEO vers JsInnov-Agent', () => {
@@ -38,15 +39,15 @@ test('distingue DourConnect et VilleConnect', () => {
   assert.equal(resolveAgentPlan('Analyse villeconnect.be')[0].agent.provider_agent_id, '6a11d1493754e75ce76ee0de');
 });
 
-test('route le CRM Cockpit vers NOVA Base44', () => {
+test('le CRM Cockpit reste sous NOVA sans appel au doublon Base44', () => {
   const plan = resolveAgentPlan('NOVA analyse le CRM et le portfolio du Cockpit');
-  assert.equal(plan[0].agent.provider_agent_id, '69ff4dc771a2cdab275f8a00');
+  assert.equal(plan.length, 0);
 });
 
-test('peut combiner un agent site et un spécialiste transverse', () => {
+test('un agent site ne reçoit pas une tâche transverse sans domaine propre', () => {
   const plan = resolveAgentPlan('Prépare une vidéo pour missetmisterdour.be avec une campagne de vote');
   assert.ok(plan.some((item) => item.agent.role === 'site_pageant_dour'));
-  assert.ok(plan.some((item) => item.agent.role === 'video_dour_campaigns' || item.agent.role === 'video_production'));
+  assert.equal(plan.length, 1);
 });
 
 test('crée un rôle métier virtuel pertinent quand aucun agent historique ne correspond', () => {
@@ -85,7 +86,7 @@ test('un diagnostic complet avec journal non-URL est reconnu comme rapport prouv
 
 test('le contexte de routage interdit les clés Base44 côté frontend', () => {
   const ctx = buildAgentRoutingContext('Analyse Fashionistart').context;
-  assert.match(ctx, /réutiliser un agent existant lié au site\/projet/i);
+  assert.match(ctx, /domaine exact de son site/i);
   const env = fs.readFileSync(path.join(root, '.env.example'), 'utf8');
   assert.match(env, /BASE44_API_KEY=/);
   assert.match(env, /Ne jamais remplacer par une variable VITE_\*/);
@@ -112,5 +113,7 @@ test('le proxy et NOVA utilisent un registre Base44 unique', () => {
   const active = registry.filter((agent) => agent.status === 'active');
   assert.equal(active.length, 10);
   assert.equal(new Set(active.map((agent) => agent.provider_agent_id)).size, 10);
-  assert.deepEqual(orchestrator.SITE_AGENT_REGISTRY, active);
+  assert.ok(orchestrator.SITE_AGENT_REGISTRY.length < active.length);
+  assert.ok(orchestrator.SITE_AGENT_REGISTRY.every((agent) => agent.domains.length > 0));
+  assert.ok(orchestrator.SITE_AGENT_REGISTRY.every((agent) => !['nova', 'creative-director'].includes(agent.key)));
 });

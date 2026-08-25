@@ -7,7 +7,8 @@ const JS_AGENT_KEY = String(process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT
 const MAX_DELEGATES = Math.max(1, Math.min(3, Number(process.env.COMPANION_MAX_SPECIALISTS || 2)));
 
 /* Le proxy UI et l'orchestrateur consomment exactement le même registre. */
-const SITE_AGENT_REGISTRY = Object.freeze(AGENT_REGISTRY.filter((agent) => agent.status === 'active'));
+const SITE_AGENT_KEYS = new Set(['jsinnov-agent', 'synergie-dour', 'site-olivier', 'dourconnect', 'villeconnect', 'fashionistart', 'miss-mister-dour', 'generatvideopro']);
+const SITE_AGENT_REGISTRY = Object.freeze(AGENT_REGISTRY.filter((agent) => agent.status === 'active' && SITE_AGENT_KEYS.has(agent.key)));
 /*
   {
     key: 'jsinnovia-core',
@@ -111,6 +112,8 @@ function norm(value) {
 function scoreAgent(agent, message) {
   const text = norm(message);
   if (!text) return 0;
+  const exactDomain = (agent.domains || []).find((domain) => text.includes(norm(domain)));
+  if (!exactDomain) return 0;
   let score = 0;
   for (const domain of agent.domains || []) {
     if (text.includes(norm(domain))) score += 100;
@@ -125,9 +128,12 @@ function scoreAgent(agent, message) {
 }
 
 function resolveAgentPlan(message, limit = MAX_DELEGATES) {
+  const text = norm(message);
+  const mentionedDomains = [...new Set(SITE_AGENT_REGISTRY.flatMap((agent) => agent.domains || []).filter((domain) => text.includes(norm(domain))))];
+  const specificDomains = mentionedDomains.filter((domain) => !mentionedDomains.some((other) => other !== domain && norm(other).endsWith(`.${norm(domain)}`)));
   const scored = SITE_AGENT_REGISTRY
     .map((agent) => ({ agent, score: scoreAgent(agent, message) }))
-    .filter((item) => item.score > 0)
+    .filter((item) => item.score > 0 && (item.agent.domains || []).some((domain) => specificDomains.includes(domain)))
     .sort((a, b) => b.score - a.score || a.agent.name.localeCompare(b.agent.name));
 
   const picked = [];
@@ -176,8 +182,8 @@ function buildAgentRoutingContext(message) {
     '[ROUTAGE AGENTS MÉTIER JS-INNOV.IA — lecture seule]',
     `Provider Base44 serveur configuré: ${BASE44_API_KEY ? 'oui' : 'non'}.`,
     `Provider jsinnovia-agent configuré: ${JS_AGENT_KEY ? 'oui' : 'non'}.`,
-    'Politique: réutiliser un agent existant lié au site/projet avant de créer un nouvel agent métier.',
-    'Un agent Base44 dédié au site garde la priorité. Si Base44 est indisponible, utiliser un agent métier virtuel avec le même rôle.',
+    'Politique: Base44 intervient uniquement quand le domaine exact de son site est présent dans la demande.',
+    'Chaque agent Base44 reste strictement limité à ses domaines enregistrés. Les tâches Windows, vidéo locale, CRM et métier restent sous NOVA.',
   ];
   if (!plan.length) {
     const virtual = buildVirtualAgent(message);
@@ -234,6 +240,9 @@ async function delegateBase44ReadOnly(agent, message) {
   }
   if (!agent?.provider_agent_id) {
     return { ok: false, skipped: true, reason: 'agent_id_missing', agent };
+  }
+  if (!SITE_AGENT_REGISTRY.some((candidate) => candidate.key === agent.key && candidate.provider_agent_id === agent.provider_agent_id)) {
+    return { ok: false, skipped: true, reason: 'base44_agent_not_authorized_for_site_routing', agent };
   }
 
   const headers = { api_key: BASE44_API_KEY, 'Content-Type': 'application/json' };
