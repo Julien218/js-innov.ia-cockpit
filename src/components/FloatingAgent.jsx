@@ -17,6 +17,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import novaAvatar from '@/assets/nova-avatar-128.png';
 import { chooseNovaVoice } from '@/lib/nova-voice';
+import { inspectMediaFile } from '@/lib/mediaReference';
 
 const LOCAL_NOVA_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
 const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
@@ -337,6 +338,7 @@ const FloatingAgent = () => {
         { role: 'assistant', content: '🔄 NOVA classe et archive le média dans Dropbox…', ts: Date.now(), isSystem: true, uploadId },
       ]);
       try {
+        const mediaMetadata = await inspectMediaFile(file);
         const resp = await fetch('/api/assistant/upload-media', {
           method: 'POST',
           headers: {
@@ -344,6 +346,7 @@ const FloatingAgent = () => {
             'x-nova-file-name': encodeURIComponent(file.name),
             'x-nova-file-type': encodeURIComponent(file.type || 'application/octet-stream'),
             'x-nova-file-context': encodeURIComponent(context.slice(0, 1000)),
+            'x-nova-media-metadata': encodeURIComponent(JSON.stringify(mediaMetadata)),
           },
           credentials: 'include',
           body: file,
@@ -355,9 +358,14 @@ const FloatingAgent = () => {
         const clientInfo = cl.matchedClient ? `\n👤 Client: ${cl.matchedClient.name}` : '\n👤 Client: non identifié — rangé dans A_Classer';
         const projectInfo = cl.matchedProject ? `\n📌 Projet: ${cl.matchedProject.name}` : '';
         const indexInfo = data.indexed ? `\n🗂️ Index Cockpit: ${data.documentId}` : `\n🗂️ Index Cockpit: non créé${data.indexWarning ? ` (${data.indexWarning})` : ''}`;
+        const reference = data.reference || {};
+        const referenceInfo = reference.dropboxPath
+          ? `\n🏷️ Référencement: ${reference.title || 'contenu'}${reference.keywords?.length ? `\n🔎 Mots-clés: ${reference.keywords.join(', ')}` : ''}\n🧾 Fiche média: ${reference.dropboxPath}`
+          : '';
+        const renamedInfo = data.originalFileName && data.originalFileName !== data.fileName ? `\n↪️ Nom original: ${data.originalFileName}` : '';
         setMessages(prev => prev.filter((message) => message.uploadId !== uploadId).concat({
           role: 'assistant',
-          content: `✅ Média archivé dans Dropbox\n\n📄 ${data.fileName}\n🎞️ Type: ${cl.mediaType || 'Média'}${clientInfo}${projectInfo}\n📂 ${data.dropboxPath}${indexInfo}\n🧾 Journal: ${data.journalId}\n🕒 ${data.storedAt}`,
+          content: `✅ Média archivé et référencé dans Dropbox\n\n📄 ${data.fileName}${renamedInfo}\n🎞️ Type: ${cl.mediaType || 'Média'}${clientInfo}${projectInfo}\n📂 ${data.dropboxPath}${referenceInfo}${indexInfo}\n🧾 Journal: ${data.journalId}\n🕒 ${data.storedAt}`,
           ts: Date.now(),
         }));
         speak(`Média ${data.fileName} classé et sauvegardé dans Dropbox`);

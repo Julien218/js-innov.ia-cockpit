@@ -4,7 +4,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const { classifyDocument, isSupportedMedia, safeUploadFilename, isExistingFolderConflict } = require('../server-dropbox-helper.cjs');
+const {
+  buildMediaReference,
+  classifyDocument,
+  isSupportedMedia,
+  normalizeMediaMetadata,
+  safeUploadFilename,
+  isExistingFolderConflict,
+} = require('../server-dropbox-helper.cjs');
 
 test('NOVA classe une vidéo dans le client et le projet indiqués', async () => {
   const clients = [{ id: 'client-1', denomination_legale: 'Synergie Dour ASBL' }];
@@ -39,6 +46,45 @@ test('NOVA refuse les formats non médias et neutralise les chemins de fichier',
   assert.equal(safeUploadFilename('../secret/video.mp4'), 'video.mp4');
 });
 
+test('NOVA renomme un média avec le client, le projet, le sujet et une empreinte stable', async () => {
+  const clients = [{ id: 'client-1', denomination_legale: 'Synergie Dour ASBL' }];
+  const projects = [{ id: 'project-1', nom: 'Campagne Été 2026', client_id: 'client-1' }];
+  const classification = await classifyDocument(
+    'grok-video-f91b7580-50ad-4076-a9a2-65474a886ea8 (1).mp4',
+    'video/mp4',
+    2048,
+    clients,
+    'Spot de rentrée pour Synergie Dour ASBL, projet Campagne Été 2026',
+    projects,
+  );
+  const reference = buildMediaReference({
+    fileName: 'grok-video-f91b7580-50ad-4076-a9a2-65474a886ea8 (1).mp4',
+    mimeType: 'video/mp4',
+    message: 'Spot de rentrée pour Synergie Dour ASBL, projet Campagne Été 2026',
+    classification,
+    metadata: { width: 1080, height: 1920, durationSeconds: 12.5, source: 'browser-media-metadata' },
+    contentHash: 'abcdef1234567890',
+    now: new Date('2026-08-25T12:00:00Z'),
+  });
+
+  assert.match(reference.archivedFilename, /^Synergie Dour ASBL - Campagne Ete 2026 - Spot rentree - portrait - 2026-08-25 - abcdef1234\.mp4$/);
+  assert.equal(reference.originalFilename, 'grok-video-f91b7580-50ad-4076-a9a2-65474a886ea8 (1).mp4');
+  assert.equal(reference.provider, 'grok');
+  assert.equal(reference.orientation, 'portrait');
+  assert.equal(reference.technicalMetadata.durationSeconds, 12.5);
+  assert.ok(reference.keywords.includes('synergie'));
+  assert.ok(reference.referenceFilename.endsWith('.reference.json'));
+});
+
+test('les métadonnées média invalides ne sont jamais présentées comme vérifiées', () => {
+  assert.deepEqual(normalizeMediaMetadata({ width: -1, height: 'inconnue', durationSeconds: Infinity, source: 'invented' }), {
+    width: null,
+    height: null,
+    durationSeconds: null,
+    source: 'unavailable',
+  });
+});
+
 test('un dossier Dropbox déjà existant est un succès idempotent', () => {
   assert.equal(isExistingFolderConflict({
     error_summary: 'path/conflict/folder/..',
@@ -64,8 +110,13 @@ test('le Companion expose un dépôt média binaire sécurisé et indexé', () =
   assert.match(server, /MAX_NOVA_MEDIA_BYTES = 100 \* 1024 \* 1024/);
   assert.match(server, /Le dépôt média interne n’est pas accessible depuis un espace client/);
   assert.match(server, /indexDocument\(/);
+  assert.match(server, /crypto\.createHash\('sha256'\)/);
+  assert.match(server, /referenceManifest/);
+  assert.match(server, /reference\.referenceFilename/);
   assert.match(server, /journalId: `dropbox-\$\{crypto\.randomUUID\(\)\}`/);
   assert.match(ui, /\/api\/assistant\/upload-media/);
+  assert.match(ui, /inspectMediaFile\(file\)/);
+  assert.match(ui, /Média archivé et référencé dans Dropbox/);
   assert.match(ui, /type="file"/);
   assert.match(ui, /image\/jpeg/);
   assert.match(ui, /video\/mp4/);
