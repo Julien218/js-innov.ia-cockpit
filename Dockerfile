@@ -60,6 +60,8 @@ COPY --from=builder /app/server-ai-cost-attribution.cjs ./server-ai-cost-attribu
 COPY --from=builder /app/server-ai-cost-ledger-aggregate.cjs ./server-ai-cost-ledger-aggregate.cjs
 COPY --from=builder /app/server-cost-centers.cjs ./server-cost-centers.cjs
 COPY --from=builder /app/server-client-costs.cjs ./server-client-costs.cjs
+COPY --from=builder /app/server-cost-accounting-core.cjs ./server-cost-accounting-core.cjs
+COPY --from=builder /app/server-provider-cost-imports.cjs ./server-provider-cost-imports.cjs
 COPY --from=builder /app/server-twilio.cjs ./server-twilio.cjs
 COPY --from=builder /app/server-insurance.cjs ./server-insurance.cjs
 COPY --from=builder /app/server-insurance-mailbox.cjs ./server-insurance-mailbox.cjs
@@ -76,6 +78,8 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-ai-cost-ledger-aggregate.cjs \
  && test -f /app/server-cost-centers.cjs \
  && test -f /app/server-client-costs.cjs \
+ && test -f /app/server-cost-accounting-core.cjs \
+ && test -f /app/server-provider-cost-imports.cjs \
  && test -f /app/server-agent-registry.cjs \
  && test -f /app/server-agent-orchestrator.cjs \
  && test -f /app/server-agent-orchestrator-resilient.cjs \
@@ -94,6 +98,8 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-ai-cost-ledger-aggregate.cjs \
  && node --check /app/server-cost-centers.cjs \
  && node --check /app/server-client-costs.cjs \
+ && node --check /app/server-cost-accounting-core.cjs \
+ && node --check /app/server-provider-cost-imports.cjs \
  && node --check /app/server-agent-registry.cjs \
  && node --check /app/server-agent-orchestrator.cjs \
  && node --check /app/server-agent-orchestrator-resilient.cjs \

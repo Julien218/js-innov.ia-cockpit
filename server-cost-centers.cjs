@@ -30,6 +30,7 @@ const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
+const { sourceToEurMinor, stableRef } = require('./server-cost-accounting-core.cjs');
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 function requireApiKey(req, res, next) {
@@ -54,6 +55,7 @@ const OPENAI_ADMIN_KEY = process.env.OPENAI_ADMIN_KEY || "";
 const RAILWAY_API_TOKEN = process.env.RAILWAY_API_TOKEN || "";
 const RAILWAY_COSTS_ENDPOINT = process.env.RAILWAY_COSTS_ENDPOINT || "";
 const BILLING_EUR_PER_USD = parseFloat(process.env.BILLING_EUR_PER_USD || "0.92");
+const BILLING_FX_SOURCE = process.env.BILLING_FX_SOURCE || "";
 
 // Logo path
 const LOGO_PATH = path.join(__dirname, "assets", "logo-phoenix.png");
@@ -124,6 +126,9 @@ async function importOpenAICharges(mapping, periodYear, periodMonth) {
   if (!OPENAI_ADMIN_KEY) {
     return { lines: [], totalUsd: 0, error: "OPENAI_ADMIN_KEY not configured" };
   }
+  if (!process.env.BILLING_EUR_PER_USD || !BILLING_FX_SOURCE) {
+    return { lines: [], totalUsd: 0, error: "BILLING_EUR_PER_USD et BILLING_FX_SOURCE requis pour une conversion comptable traçable" };
+  }
 
   // Calculate date range for the period (previous month)
   const startDate = new Date(Date.UTC(periodYear, periodMonth - 1, 1));
@@ -132,45 +137,51 @@ async function importOpenAICharges(mapping, periodYear, periodMonth) {
   const endTs = Math.floor(endDate.getTime() / 1000);
 
   const projectId = mapping.external_id;
-  const url = `https://api.openai.com/v1/organization/costs?start_time=${startTs}&end_time=${endTs}&limit=365&project_ids=${projectId}&group_by=line_item`;
-
-  const res = await fetch(url, {
-    headers: {
-      "Authorization": `Bearer ${OPENAI_ADMIN_KEY}`,
-      "Content-Type": "application/json",
-    },
-  });
-
-  if (!res.ok) {
-    const txt = await res.text();
-    return { lines: [], totalUsd: 0, error: `OpenAI API ${res.status}: ${txt}` };
-  }
-
-  const data = await res.json();
-  const costLines = [];
-  let totalUsd = 0;
-
-  // OpenAI costs API returns: data[].results[].amount.value and .line_item
-  for (const bucket of (data.data || [])) {
-    for (const result of (bucket.results || [])) {
-      const lineItem = result.line_item || result.name || "unknown";
-      const costUsd = parseFloat(result.amount?.value || result.cost || result.amount || 0);
-      if (costUsd <= 0) continue;
-
-      totalUsd += costUsd;
-      costLines.push({
-        line_type: "llm_api",
-        description: `OpenAI API — ${lineItem}`,
-        quantity: 1,
-        unit_price_minor: usdToEurMinor(costUsd),
-        total_minor: usdToEurMinor(costUsd),
-        external_ref: `openai:${projectId}:${lineItem}`,
-        metadata: { source: "openai", line_item: lineItem, cost_usd: costUsd, project_id: projectId },
-      });
+  const byLine = new Map();
+  let page = "";
+  do {
+    const params = new URLSearchParams({
+      start_time: String(startTs), end_time: String(endTs), limit: "180",
+      project_ids: projectId, group_by: "line_item",
+    });
+    if (page) params.set("page", page);
+    const res = await fetch(`https://api.openai.com/v1/organization/costs?${params.toString()}`, {
+      headers: { "Authorization": `Bearer ${OPENAI_ADMIN_KEY}`, "Content-Type": "application/json" },
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      return { lines: [], totalUsd: 0, error: `OpenAI API ${res.status}: ${txt}` };
     }
-  }
+    const data = await res.json();
+    for (const bucket of (data.data || [])) {
+      for (const result of (bucket.results || [])) {
+        const currency = String(result.amount?.currency || "USD").toUpperCase();
+        if (currency !== "USD") return { lines: [], totalUsd: 0, error: `Devise OpenAI inattendue: ${currency}` };
+        const lineItem = result.line_item || result.name || "unknown";
+        const costUsd = parseFloat(result.amount?.value || result.cost || result.amount || 0);
+        if (costUsd > 0) byLine.set(lineItem, (byLine.get(lineItem) || 0) + costUsd);
+      }
+    }
+    page = data.has_more && data.next_page ? String(data.next_page) : "";
+  } while (page);
 
-  return { lines: costLines, totalUsd, totalEurMinor: usdToEurMinor(totalUsd) };
+  const period = `${periodYear}-${String(periodMonth).padStart(2, "0")}`;
+  const costLines = [...byLine.entries()].map(([lineItem, costUsd]) => ({
+    line_type: "llm_api",
+    description: `OpenAI API — ${lineItem}`,
+    quantity: 1,
+    unit_price_minor: usdToEurMinor(costUsd),
+    total_minor: usdToEurMinor(costUsd),
+    external_ref: `openai:${projectId}:${period}:${stableRef([lineItem, costUsd])}`,
+    metadata: {
+      evidence_status: "actual",
+      verification_ref: `openai-costs-api:${projectId}:${period}:${lineItem}`,
+      source: "openai", line_item: lineItem, source_amount: costUsd, source_currency: "USD",
+      fx_rate: BILLING_EUR_PER_USD, fx_source: BILLING_FX_SOURCE, project_id: projectId,
+    },
+  }));
+  const totalUsd = [...byLine.values()].reduce((sum, amount) => sum + amount, 0);
+  return { lines: costLines, totalUsd, totalEurMinor: usdToEurMinor(totalUsd), evidenceStatus: "actual" };
 }
 
 // ─── Railway Cost Import ─────────────────────────────────────────────────────
@@ -191,23 +202,36 @@ async function importRailwayCharges(mapping, periodYear, periodMonth) {
       return { lines: [], totalUsd: 0, error: `Railway API ${res.status}` };
     }
     const data = await res.json();
+    if (data.accounting_status !== "actual") {
+      return { lines: [], totalUsd: 0, error: "Adaptateur Railway sans accounting_status=actual; aucun montant importé" };
+    }
     const costLines = [];
     let totalUsd = 0;
     for (const item of (data.costs || data.data || [])) {
-      const costUsd = parseFloat(item.cost || item.amount || 0);
-      if (costUsd <= 0) continue;
-      totalUsd += costUsd;
+      const sourceAmount = parseFloat(item.net_amount ?? item.cost ?? item.amount ?? 0);
+      const sourceCurrency = String(item.currency || "USD").toUpperCase();
+      if (sourceAmount <= 0) continue;
+      if (!item.verification_ref) return { lines: [], totalUsd: 0, error: "Adaptateur Railway sans verification_ref; aucun montant importé" };
+      let converted;
+      try { converted = sourceToEurMinor(sourceAmount, sourceCurrency, process.env); }
+      catch (error) { return { lines: [], totalUsd: 0, error: error.message }; }
+      if (sourceCurrency === "USD") totalUsd += sourceAmount;
+      const period = `${periodYear}-${String(periodMonth).padStart(2, "0")}`;
       costLines.push({
         line_type: "railway",
         description: `Railway — ${item.service || item.name || "Infrastructure"}`,
         quantity: 1,
-        unit_price_minor: usdToEurMinor(costUsd),
-        total_minor: usdToEurMinor(costUsd),
-        external_ref: `railway:${projectId}:${item.service || item.name || ""}`,
-        metadata: { source: "railway", cost_usd: costUsd, project_id: projectId },
+        unit_price_minor: converted.totalMinor,
+        total_minor: converted.totalMinor,
+        external_ref: `railway:${projectId}:${period}:${stableRef([item.service, sourceAmount, sourceCurrency, item.verification_ref])}`,
+        metadata: {
+          evidence_status: "actual", verification_ref: item.verification_ref,
+          source: "railway", source_amount: sourceAmount, source_currency: sourceCurrency,
+          fx_rate: converted.fxRate, fx_source: converted.fxSource, project_id: projectId,
+        },
       });
     }
-    return { lines: costLines, totalUsd, totalEurMinor: usdToEurMinor(totalUsd) };
+    return { lines: costLines, totalUsd, totalEurMinor: costLines.reduce((sum, line) => sum + line.total_minor, 0), evidenceStatus: "actual" };
   }
 
   // Fallback: Railway GraphQL API (usage metrics — estimated usage)
@@ -216,15 +240,7 @@ async function importRailwayCharges(mapping, periodYear, periodMonth) {
   // which can be used to estimate costs, but actual billing amounts are not available.
   // For now, this creates a placeholder line requiring manual entry.
   return {
-    lines: [{
-      line_type: "railway",
-      description: `Railway — ${mapping.external_label || projectId} (manual entry required)`,
-      quantity: 1,
-      unit_price_minor: 0,
-      total_minor: 0,
-      external_ref: `railway:${projectId}`,
-      metadata: { source: "railway", project_id: projectId, manual: true },
-    }],
+    lines: [],
     totalUsd: 0,
     totalEurMinor: 0,
     error: "RAILWAY_COSTS_ENDPOINT not configured — manual entry required. Railway GraphQL provides usage metrics (CPU/RAM/Disk) but not direct monetary costs.",

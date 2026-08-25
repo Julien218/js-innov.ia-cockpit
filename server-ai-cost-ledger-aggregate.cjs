@@ -8,7 +8,8 @@ const AI_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'htt
 const AI_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || process.env.VITE_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_KEY = process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '';
-const EUR_PER_USD = Math.max(0, Number(process.env.BILLING_EUR_PER_USD || 0.92));
+const EUR_PER_USD = Math.max(0, Number(process.env.BILLING_EUR_PER_USD || 0));
+const FX_SOURCE = String(process.env.BILLING_FX_SOURCE || '').trim();
 const DEFAULT_MARKUP_PERCENT = Math.max(0, Number(process.env.CLIENT_COST_DEFAULT_MARKUP_PERCENT || 0));
 
 function safe(value, max = 300) {
@@ -103,12 +104,16 @@ function aggregateAiUsage(rows = []) {
       cachedInputTokens: 0,
       outputTokens: 0,
       costUsd: 0,
+      estimatedRequests: 0,
+      explicitCostRequests: 0,
     };
     current.requests += 1;
     current.inputTokens += nonNegative(row?.input_tokens);
     current.cachedInputTokens += nonNegative(row?.cached_input_tokens);
     current.outputTokens += nonNegative(row?.output_tokens);
     current.costUsd += nonNegative(row?.cost_usd);
+    if (row?.cost_estimated === false) current.explicitCostRequests += 1;
+    else current.estimatedRequests += 1;
     groups.set(key, current);
   }
 
@@ -179,11 +184,23 @@ async function upsertLedgerGroup(clientId, window, group, rule) {
     external_ref: externalRef,
     incurred_at: window.start.toISOString(),
     metadata: {
+      evidence_status: group.estimatedRequests > 0 ? 'estimated' : 'actual',
+      verification_ref: group.estimatedRequests > 0 ? null : `ai-cost-usage-month:${clientId}:${window.month}:${group.provider}:${group.model}`,
+      calculation_method: group.estimatedRequests > 0 ? 'provider_token_pricing_monthly_aggregation' : null,
+      calculation_inputs: group.estimatedRequests > 0 ? {
+        request_count: group.requests,
+        input_tokens: group.inputTokens,
+        cached_input_tokens: group.cachedInputTokens,
+        output_tokens: group.outputTokens,
+        cost_usd_precise: exactUsd,
+      } : null,
       aggregation: 'monthly_by_provider_model',
       month: window.month,
       model: group.model,
       provider: group.provider,
       request_count: group.requests,
+      estimated_request_count: group.estimatedRequests,
+      explicit_cost_request_count: group.explicitCostRequests,
       input_tokens: group.inputTokens,
       cached_input_tokens: group.cachedInputTokens,
       output_tokens: group.outputTokens,
@@ -191,6 +208,7 @@ async function upsertLedgerGroup(clientId, window, group, rule) {
       actual_cost_eur_precise: Number(priced.actualEur.toFixed(8)),
       billable_eur_precise: Number(priced.billableEur.toFixed(8)),
       eur_per_usd: EUR_PER_USD,
+      fx_source: FX_SOURCE,
       billing_mode: priced.mode,
       rounding: 'aggregate_then_cent',
     },
@@ -220,6 +238,9 @@ async function upsertLedgerGroup(clientId, window, group, rule) {
 router.post('/clients/:clientId/import-ai-usage', async (req, res) => {
   try {
     if (!AI_KEY) throw new Error('Supabase AI Cost non configuré');
+    if (!(EUR_PER_USD > 0) || !FX_SOURCE) {
+      return res.status(422).json({ error: 'BILLING_EUR_PER_USD et BILLING_FX_SOURCE requis pour une conversion comptable traçable', code: 'fx_rate_unconfigured' });
+    }
     const client = await getClient(req.params.clientId);
     const window = monthWindow(req.body?.month || req.query?.month);
     const rows = await rest(
