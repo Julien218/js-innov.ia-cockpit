@@ -387,3 +387,4 @@ module.exports.getDocumentBufferForUser = getDocumentBufferForUser;
 module.exports.isDropboxConfigured = isDropboxConfigured;
 module.exports.MAX_FILE_BYTES = MAX_FILE_BYTES;
 module.exports.firstDocumentRecord = firstDocumentRecord;
+module.exports.indexDocument = indexDocument;
