@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { resolveNovaExecutor, siteExecutorForTask } = require('../server-nova-executors.cjs');
+const { executeSiteTask, isBase44QuotaError, isReadOnlySiteTask, resolveNovaExecutor, siteExecutorForTask } = require('../server-nova-executors.cjs');
 const { base44ErrorMessage } = require('../server-domain-ops.cjs');
 const { executeTaskBatch, sanitizeTaskBatchPayload } = require('../server-task-batch.cjs');
 
@@ -70,6 +70,25 @@ test('les erreurs Base44 conservent le détail exploitable du fournisseur', () =
     base44ErrorMessage({ message: 'Agent tools are not enabled for this operation' }, 400, 'agent'),
     'Base44 agent HTTP 400: Agent tools are not enabled for this operation',
   );
+});
+
+test('un diagnostic de site reste en lecture seule même si le modèle omet le drapeau', () => {
+  assert.equal(isReadOnlySiteTask({ titre: 'Diagnostic DNS complet — assurances-dour.be' }), true);
+  assert.equal(isReadOnlySiteTask({ titre: 'Audit SEO technique — assurances-dour.be' }), true);
+  assert.equal(isReadOnlySiteTask({ titre: 'Corriger le TLS — assurances-dour.be' }), false);
+});
+
+test('le quota Base44 déclenche un diagnostic Cockpit prouvé sans simuler une correction', async () => {
+  const executor = siteExecutorForTask({ titre: 'Diagnostic DNS — assurances-dour.be' });
+  const result = await executeSiteTask(executor, { titre: 'Diagnostic DNS — assurances-dour.be' }, {
+    dispatch: async () => { throw new Error('You have reached your limit of messages for this month. Please upgrade to a paid plan to continue.'); },
+    analyze: async (domain) => ({ tool: 'cockpit_domain_probe', run_id: 'domain-proof-1', checked_at: '2026-08-25T12:00:00Z', domain, dns: { apex: { a: ['192.0.2.1'] } }, http: {}, tls: {}, seo: {}, issues: [] }),
+  });
+  assert.equal(isBase44QuotaError(result.result.base44_fallback.error), true);
+  assert.equal(result.completed, true);
+  assert.equal(result.provider, 'cockpit-server');
+  assert.equal(result.result.run_id, 'domain-proof-1');
+  assert.equal(result.result.base44_fallback.status, 'quota_exhausted');
 });
 
 test('NOVA attribue Windows et les données métier à ses exécuteurs internes', () => {

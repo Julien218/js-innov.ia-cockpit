@@ -56,6 +56,18 @@ function taskText(task = {}) {
   return `${task.titre || task.title || ''}\n${task.description || ''}\n${task.notes || ''}`;
 }
 
+function isReadOnlySiteTask(task = {}, declaredReadOnly = false) {
+  if (declaredReadOnly) return true;
+  const text = normalized(taskText(task));
+  const diagnostic = /(diagnost|analys|audit|control|verifi|mesur|etat)/.test(text);
+  const mutation = /(reparation|corrig|modifi|appliqu|deploi|publi|mise a jour|mettre a jour)/.test(text);
+  return diagnostic && !mutation;
+}
+
+function isBase44QuotaError(error) {
+  return /(limit of messages|message limit|monthly limit|quota|usage limit|rate limit|upgrade to a paid plan)/i.test(String(error?.message || error || ''));
+}
+
 function siteAgents() {
   return AGENT_REGISTRY.filter((agent) => agent.status === 'active' && SITE_AGENT_KEYS.has(agent.key));
 }
@@ -138,16 +150,17 @@ async function dispatchGenericSiteTask(executor, task, readOnly) {
   return { conversation_id: conversation.id, content, evidence: hasOperationalEvidence(content) };
 }
 
-async function executeSiteTask(executor, task, { readOnly = false } = {}) {
+async function executeSiteTask(executor, task, { readOnly = false, dispatch = dispatchGenericSiteTask, analyze = analyzeDomain } = {}) {
   const text = normalized(taskText(task));
-  if (!readOnly && /(reparation|corrig|seo automatique|tls|https|dns)/.test(text)) {
-    const before = await analyzeDomain(executor.domain);
+  const effectiveReadOnly = isReadOnlySiteTask(task, readOnly);
+  if (!effectiveReadOnly && /(reparation|corrig|seo automatique|tls|https|dns)/.test(text)) {
+    const before = await analyze(executor.domain);
     const officialAgent = agentForDomain(executor.domain);
     if (!officialAgent || officialAgent.provider_agent_id !== executor.provider_agent_id) {
       throw new Error('Le domaine n’est pas relié à son agent Base44 officiel.');
     }
     const dispatched = await executeBase44Agent(officialAgent, executor.domain, /seo/.test(text) ? 'seo' : 'repair', before);
-    const after = await analyzeDomain(executor.domain);
+    const after = await analyze(executor.domain);
     const verified = verifiedImprovement(/seo/.test(text) ? 'seo' : 'repair', before, after);
     return {
       completed: verified,
@@ -160,10 +173,33 @@ async function executeSiteTask(executor, task, { readOnly = false } = {}) {
     };
   }
 
-  const dispatched = await dispatchGenericSiteTask(executor, task, readOnly);
+  let dispatched;
+  try {
+    dispatched = await dispatch(executor, task, effectiveReadOnly);
+  } catch (error) {
+    if (!effectiveReadOnly || !isBase44QuotaError(error)) throw error;
+    const probe = await analyze(executor.domain);
+    return {
+      completed: true,
+      awaiting_review: false,
+      provider: 'cockpit-server',
+      conversation_id: null,
+      report: JSON.stringify(probe),
+      result: {
+        ...probe,
+        base44_fallback: {
+          attempted: true,
+          provider_agent_id: executor.provider_agent_id,
+          status: 'quota_exhausted',
+          error: clean(error.message, 800),
+        },
+      },
+      reason: null,
+    };
+  }
   return {
-    completed: readOnly && dispatched.evidence,
-    awaiting_review: !readOnly || !dispatched.evidence,
+    completed: effectiveReadOnly && dispatched.evidence,
+    awaiting_review: !effectiveReadOnly || !dispatched.evidence,
     provider: 'base44',
     conversation_id: dispatched.conversation_id,
     report: dispatched.content,
@@ -268,6 +304,8 @@ module.exports = {
   clientName,
   executeBusinessTask,
   executeSiteTask,
+  isBase44QuotaError,
+  isReadOnlySiteTask,
   missingLegalFields,
   resolveNovaExecutor,
   siteExecutorForTask,
