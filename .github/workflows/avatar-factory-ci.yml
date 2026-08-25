@@ -1,0 +1,38 @@
+name: Avatar Factory Cockpit CI
+
+on:
+  pull_request:
+    paths:
+      - 'src/pages/AvatarFactory.jsx'
+      - 'src/api/avatarFactoryClient.js'
+      - 'src/components/avatar/**'
+      - 'src/App.jsx'
+      - 'src/lib/roles.js'
+      - 'src/components/layout/Sidebar.jsx'
+      - '.env.example'
+      - 'docs/AVATAR_FACTORY_MODULE.md'
+      - '.github/workflows/avatar-factory-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - name: Build Cockpit
+        run: npm run build
+      - name: Verify multiview contract
+        shell: bash
+        run: |
+          grep -q "right_reference_path" src/pages/AvatarFactory.jsx
+          grep -q "seed: 2182026" src/pages/AvatarFactory.jsx
+          grep -q "path=\"/avatar-factory\"" src/App.jsx
+          grep -q '"/avatar-factory"' src/lib/roles.js

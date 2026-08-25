@@ -21,6 +21,7 @@ import Assurances from "@/pages/Assurances";
 import Documents from "@/pages/Documents";
 import AppsAgents from "@/pages/AppsAgents";
 import Production from "@/pages/Production";
+import AvatarFactory from "@/pages/AvatarFactory";
 import Domaines from "@/pages/Domaines";
 import Rangement from "@/pages/Rangement";
 import Clients from "@/pages/Clients";
@@ -65,6 +66,7 @@ const PageBoundary = ({ children }) => <AppErrorBoundary>{children}</AppErrorBou
 const AppRoutes = () => {
   const { user, isAuthenticated, isLoadingAuth, authChecked } = useAuth();
   const isClient = user?.role === 'client';
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
 
   if (!authChecked || isLoadingAuth) {
     return (
@@ -104,6 +106,7 @@ const AppRoutes = () => {
           <Route path="/agents-ia" element={isClient ? <Navigate to="/" replace /> : <PageBoundary><AgentsIA /></PageBoundary>} />
           <Route path="/mobile-hub" element={<PageBoundary><MobileHub /></PageBoundary>} />
           <Route path="/ai-cost-control" element={<PageBoundary><AICostControl /></PageBoundary>} />
+          <Route path="/avatar-factory" element={isAdmin ? <PageBoundary><AvatarFactory /></PageBoundary> : <Navigate to="/" replace />} />
           <Route path="/validations" element={<PageBoundary><Validations /></PageBoundary>} />
           <Route path="/logs" element={<PageBoundary><Logs /></PageBoundary>} />
           <Route path="/invitations" element={<PageBoundary><Invitations /></PageBoundary>} />
