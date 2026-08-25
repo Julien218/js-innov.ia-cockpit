@@ -1,4 +1,9 @@
-const { parseGitHubUsage, parseTwilioUsage } = require('./server-cost-accounting-core.cjs');
+const {
+  parseGitHubUsage,
+  parseTwilioUsage,
+  sourceToEurMinor,
+  stableRef,
+} = require('./server-cost-accounting-core.cjs');
 
 function periodKey(year, month) {
   return `${Number(year)}-${String(Number(month)).padStart(2, '0')}`;
@@ -84,4 +89,68 @@ async function importTwilioCharges(mapping, periodYear, periodMonth, options = {
   }
 }
 
-module.exports = { importGitHubCharges, importTwilioCharges, periodKey };
+const ADAPTER_SOURCES = {
+  supabase_project: { sourceType: 'supabase', envKey: 'SUPABASE_COSTS_ENDPOINT', idParam: 'project_id' },
+  dropbox_account: { sourceType: 'dropbox', envKey: 'DROPBOX_COSTS_ENDPOINT', idParam: 'account_id' },
+  media_provider: { sourceType: 'media_ai', envKey: 'MEDIA_COSTS_ENDPOINT', idParam: 'provider_id' },
+};
+
+async function importVerifiedAdapterCharges(mapping, periodYear, periodMonth, options = {}) {
+  const env = options.env || process.env;
+  const fetchImpl = options.fetchImpl || fetch;
+  const definition = ADAPTER_SOURCES[mapping.service_type];
+  if (!definition) return { lines: [], totalEurMinor: 0, error: `Adaptateur inconnu: ${mapping.service_type}` };
+  const endpoint = String(env[definition.envKey] || '').trim();
+  const token = String(env.COST_IMPORT_ADAPTER_TOKEN || '').trim();
+  if (!endpoint || !token) {
+    return { lines: [], totalEurMinor: 0, provider: definition.sourceType, error: `${definition.envKey}/COST_IMPORT_ADAPTER_TOKEN non configuré` };
+  }
+  const externalId = String(mapping.external_id || '').trim();
+  if (!externalId) return { lines: [], totalEurMinor: 0, provider: definition.sourceType, error: 'Identifiant externe absent du rattachement' };
+
+  const period = periodKey(periodYear, periodMonth);
+
+  try {
+    const url = new URL(endpoint);
+    url.searchParams.set(definition.idParam, externalId);
+    url.searchParams.set('year', String(Number(periodYear)));
+    url.searchParams.set('month', String(Number(periodMonth)));
+    const response = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+    const data = await readJson(response, definition.sourceType);
+    if (data.accounting_status !== 'actual') throw new Error(`${definition.sourceType}: accounting_status=actual requis`);
+    const items = Array.isArray(data.costs) ? data.costs : Array.isArray(data.data) ? data.data : [];
+    const lines = items.map((item) => {
+      const amount = Number(item.net_amount ?? item.cost ?? item.amount);
+      if (!Number.isFinite(amount) || amount < 0) throw new Error(`${definition.sourceType}: montant fournisseur invalide`);
+      const verificationRef = String(item.verification_ref || '').trim();
+      if (!verificationRef) throw new Error(`${definition.sourceType}: verification_ref requis`);
+      const currency = String(item.currency || 'EUR').toUpperCase();
+      const converted = sourceToEurMinor(amount, currency, env);
+      const itemRef = stableRef([definition.sourceType, externalId, period, item.id, item.name, amount, currency, verificationRef]);
+      return {
+        line_type: definition.sourceType,
+        description: `${definition.sourceType === 'media_ai' ? 'Génération média' : definition.sourceType} — ${item.name || item.service || item.id || period}`,
+        total_minor: converted.totalMinor,
+        external_ref: `${definition.sourceType}:${externalId}:${period}:${itemRef}`,
+        metadata: {
+          evidence_status: 'actual',
+          verification_ref: verificationRef,
+          source: definition.sourceType,
+          source_amount: amount,
+          source_currency: currency,
+          fx_rate: converted.fxRate,
+          fx_source: converted.fxSource,
+          external_id: externalId,
+          usage: item.usage || null,
+          model: item.model || null,
+          generation_id: item.generation_id || null,
+        },
+      };
+    }).filter((line) => line.total_minor > 0);
+    return { lines, totalEurMinor: total(lines), provider: definition.sourceType, evidenceStatus: 'actual' };
+  } catch (error) {
+    return { lines: [], totalEurMinor: 0, provider: definition.sourceType, error: error.message };
+  }
+}
+
+module.exports = { importGitHubCharges, importTwilioCharges, importVerifiedAdapterCharges, periodKey };

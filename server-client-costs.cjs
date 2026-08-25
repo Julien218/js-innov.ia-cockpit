@@ -1,12 +1,13 @@
 const express = require('express');
 const crypto = require('crypto');
 const { importOpenAICharges, importRailwayCharges } = require('./server-cost-centers.cjs');
-const { importGitHubCharges, importTwilioCharges } = require('./server-provider-cost-imports.cjs');
+const { importGitHubCharges, importTwilioCharges, importVerifiedAdapterCharges } = require('./server-provider-cost-imports.cjs');
 const {
   validateEvidence,
   evidenceStatus,
   summarizeAccounting,
   buildSourceCoverage,
+  accountingCompleteness,
   sourceToEurMinor,
 } = require('./server-cost-accounting-core.cjs');
 
@@ -29,7 +30,7 @@ const SOURCE_TYPES = new Set([
   'api', 'media_ai', 'supabase', 'dropbox', 'twilio', 'other',
 ]);
 const MAPPING_TYPES = new Set([
-  'openai_project', 'railway_project', 'github_user', 'github_org', 'github_repo',
+  'openai_project', 'railway_project', 'railway_service', 'github_user', 'github_org', 'github_repo',
   'twilio_account', 'supabase_project', 'dropbox_account', 'storage_account',
   'media_provider', 'communications_provider', 'api_provider', 'other_provider',
 ]);
@@ -101,6 +102,29 @@ async function crmPatch(table, filters, payload) {
     headers: { Prefer: 'return=representation' },
     body: JSON.stringify(payload),
   });
+}
+
+async function crmUpsert(table, payload, conflict) {
+  return rest(CRM_URL, CRM_KEY, `${table}?on_conflict=${encodeURIComponent(conflict)}`, {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+    body: JSON.stringify(payload),
+  });
+}
+
+function normalizedLocalRates(input = {}, source = 'environment') {
+  return {
+    power_watts: Math.max(0, Number(input.power_watts ?? input.LOCAL_AI_POWER_WATTS ?? LOCAL_AI_POWER_WATTS)),
+    energy_eur_kwh: Math.max(0, Number(input.energy_eur_kwh ?? input.LOCAL_AI_ENERGY_EUR_KWH ?? LOCAL_AI_ENERGY_EUR_KWH)),
+    machine_eur_hour: Math.max(0, Number(input.machine_eur_hour ?? input.LOCAL_AI_MACHINE_EUR_HOUR ?? LOCAL_AI_MACHINE_EUR_HOUR)),
+    source,
+  };
+}
+
+async function loadLocalRates() {
+  const rows = await crmSelect('cost_accounting_settings?select=*&settings_key=eq.local_ai_rates&limit=1').catch(() => []);
+  if (rows?.[0]?.settings) return normalizedLocalRates(rows[0].settings, 'cockpit');
+  return normalizedLocalRates(process.env, 'environment');
 }
 
 async function agentFetch(path, options = {}) {
@@ -212,9 +236,12 @@ async function createCostEvent({
 
 async function collectMapping(mapping, window) {
   if (mapping.service_type === 'openai_project') return importOpenAICharges(mapping, window.year, window.monthNumber);
-  if (mapping.service_type === 'railway_project') return importRailwayCharges(mapping, window.year, window.monthNumber);
+  if (['railway_project', 'railway_service'].includes(mapping.service_type)) return importRailwayCharges(mapping, window.year, window.monthNumber);
   if (['github_user', 'github_org', 'github_repo'].includes(mapping.service_type)) return importGitHubCharges(mapping, window.year, window.monthNumber);
   if (mapping.service_type === 'twilio_account') return importTwilioCharges(mapping, window.year, window.monthNumber);
+  if (['supabase_project', 'dropbox_account', 'media_provider'].includes(mapping.service_type)) {
+    return importVerifiedAdapterCharges(mapping, window.year, window.monthNumber);
+  }
   return { lines: [], totalEurMinor: 0, error: 'Cette source exige une facture vérifiée ou une remontée d’usage signée.' };
 }
 
@@ -229,7 +256,10 @@ async function importCostCenter(center, window) {
     let created = 0;
     for (const line of result.lines || []) {
       if (minor(line.total_minor) <= 0) continue;
-      const sourceType = ({ railway: 'railway', github: 'github', twilio: 'twilio' })[line.line_type] || 'llm_api';
+      const sourceType = ({
+        railway: 'railway', github: 'github', twilio: 'twilio',
+        supabase: 'supabase', dropbox: 'dropbox', media_ai: 'media_ai',
+      })[line.line_type] || 'llm_api';
       const ref = line.external_ref || `${sourceType}:${mapping.external_id}:${window.month}:${crypto.randomUUID()}`;
       const exists = await crmSelect(`client_cost_events?select=id&source_type=eq.${encodeURIComponent(sourceType)}&external_ref=eq.${encodeURIComponent(ref)}&limit=1`).catch(() => []);
       if (exists?.length) continue;
@@ -282,7 +312,9 @@ function summarize(events) {
   const accounting = summarizeAccounting(events);
   const internalCost = accounting.verified_cost_minor + accounting.estimated_cost_minor;
   return {
-    actual_cost_minor: accounting.verified_cost_minor,
+    actual_cost_minor: accounting.actual_cost_minor,
+    manual_verified_minor: accounting.manual_verified_minor,
+    verified_cost_minor: accounting.verified_cost_minor,
     estimated_cost_minor: accounting.estimated_cost_minor,
     billable_minor: accounting.billable_minor,
     margin_minor: Math.max(0, accounting.billable_minor - internalCost),
@@ -344,13 +376,23 @@ router.get('/accounting/overview', async (req, res) => {
     );
     const mappings = await crmSelect('client_external_mappings?select=*&is_active=eq.true&limit=5000').catch(() => []);
     const accounting = summarizeAccounting(events || []);
+    const localRates = await loadLocalRates();
+    const coverageEnv = {
+      ...process.env,
+      LOCAL_AI_POWER_WATTS: localRates.power_watts,
+      LOCAL_AI_ENERGY_EUR_KWH: localRates.energy_eur_kwh,
+      LOCAL_AI_MACHINE_EUR_HOUR: localRates.machine_eur_hour,
+    };
+    const sources = buildSourceCoverage(coverageEnv, mappings || [], events || []);
     return res.json({
       month: window.month,
       currency: 'EUR',
       accounting,
-      sources: buildSourceCoverage(process.env, mappings || [], events || []),
+      sources,
+      completeness: accountingCompleteness(sources),
+      local_rates: localRates,
       rules: {
-        actual: 'Montant fournisseur vérifié par une preuve API ou une facture.',
+        actual: 'Montant fournisseur reçu par API avec une référence vérifiable.',
         manual_verified: 'Montant saisi manuellement avec référence de facture ou justificatif.',
         estimated: 'Calcul interne documenté, séparé des dépenses fournisseur réelles.',
         unverified: 'Exclu des totaux et de la facturation tant qu’une preuve manque.',
@@ -358,6 +400,35 @@ router.get('/accounting/overview', async (req, res) => {
     });
   } catch (error) {
     return res.status(503).json({ error: error.message });
+  }
+});
+
+router.get('/accounting/local-rates', async (_req, res) => {
+  try {
+    return res.json({ rates: await loadLocalRates() });
+  } catch (error) {
+    return res.status(503).json({ error: error.message });
+  }
+});
+
+router.put('/accounting/local-rates', async (req, res) => {
+  try {
+    const rates = normalizedLocalRates(req.body || {}, 'cockpit');
+    if (!(rates.power_watts > 0) || !(rates.energy_eur_kwh > 0) || !(rates.machine_eur_hour > 0)) {
+      return res.status(400).json({ error: 'Puissance, prix du kWh et coût machine/heure doivent être supérieurs à zéro.' });
+    }
+    const rows = await crmUpsert('cost_accounting_settings', {
+      settings_key: 'local_ai_rates',
+      settings: {
+        power_watts: rates.power_watts,
+        energy_eur_kwh: rates.energy_eur_kwh,
+        machine_eur_hour: rates.machine_eur_hour,
+      },
+      updated_at: new Date().toISOString(),
+    }, 'settings_key');
+    return res.json({ success: true, rates, stored: rows?.[0] || null });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
   }
 });
 
@@ -524,9 +595,10 @@ router.post('/clients/:clientId/local-ai', async (req, res) => {
     const seconds = Math.max(0, Number(req.body?.runtime_seconds || 0));
     if (!seconds) return res.status(400).json({ error: 'runtime_seconds requis' });
     const hours = seconds / 3600;
-    const powerWatts = Math.max(0, Number(req.body?.power_watts ?? LOCAL_AI_POWER_WATTS));
-    const energyRate = Math.max(0, Number(req.body?.energy_eur_kwh ?? LOCAL_AI_ENERGY_EUR_KWH));
-    const machineRate = Math.max(0, Number(req.body?.machine_eur_hour ?? LOCAL_AI_MACHINE_EUR_HOUR));
+    const storedRates = await loadLocalRates();
+    const powerWatts = Math.max(0, Number(req.body?.power_watts ?? storedRates.power_watts));
+    const energyRate = Math.max(0, Number(req.body?.energy_eur_kwh ?? storedRates.energy_eur_kwh));
+    const machineRate = Math.max(0, Number(req.body?.machine_eur_hour ?? storedRates.machine_eur_hour));
     if (!(powerWatts > 0) || !(energyRate > 0) || !(machineRate > 0)) {
       return res.status(422).json({
         error: 'Tarification IA locale incomplète: puissance, prix du kWh et coût machine/heure doivent être supérieurs à zéro.',

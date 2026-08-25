@@ -185,18 +185,30 @@ async function importOpenAICharges(mapping, periodYear, periodMonth) {
 }
 
 // ─── Railway Cost Import ─────────────────────────────────────────────────────
-async function importRailwayCharges(mapping, periodYear, periodMonth) {
-  if (!RAILWAY_API_TOKEN) {
+async function importRailwayCharges(mapping, periodYear, periodMonth, options = {}) {
+  const env = options.env || process.env;
+  const fetchImpl = options.fetchImpl || fetch;
+  const railwayToken = String(env.RAILWAY_API_TOKEN || RAILWAY_API_TOKEN || '').trim();
+  const costsEndpoint = String(env.RAILWAY_COSTS_ENDPOINT || RAILWAY_COSTS_ENDPOINT || '').trim();
+  if (!railwayToken) {
     return { lines: [], totalUsd: 0, error: "RAILWAY_API_TOKEN not configured" };
   }
 
-  const projectId = mapping.external_id;
+  const metadata = mapping.metadata && typeof mapping.metadata === 'object' ? mapping.metadata : {};
+  const isService = mapping.service_type === 'railway_service';
+  const projectId = isService ? String(metadata.project_id || '').trim() : String(mapping.external_id || '').trim();
+  const serviceId = isService ? String(mapping.external_id || '').trim() : String(metadata.service_id || '').trim();
+  if (!projectId) return { lines: [], totalUsd: 0, error: 'Projet Railway absent du rattachement' };
 
   // Try RAILWAY_COSTS_ENDPOINT if configured (custom adapter)
-  if (RAILWAY_COSTS_ENDPOINT) {
-    const url = `${RAILWAY_COSTS_ENDPOINT}?project_id=${projectId}&year=${periodYear}&month=${periodMonth}`;
-    const res = await fetch(url, {
-      headers: { "Authorization": `Bearer ${RAILWAY_API_TOKEN}` },
+  if (costsEndpoint) {
+    const url = new URL(costsEndpoint);
+    url.searchParams.set('project_id', projectId);
+    if (serviceId) url.searchParams.set('service_id', serviceId);
+    url.searchParams.set('year', String(periodYear));
+    url.searchParams.set('month', String(periodMonth));
+    const res = await fetchImpl(url, {
+      headers: { "Authorization": `Bearer ${railwayToken}` },
     });
     if (!res.ok) {
       return { lines: [], totalUsd: 0, error: `Railway API ${res.status}` };
@@ -208,12 +220,13 @@ async function importRailwayCharges(mapping, periodYear, periodMonth) {
     const costLines = [];
     let totalUsd = 0;
     for (const item of (data.costs || data.data || [])) {
+      if (serviceId && item.service_id && String(item.service_id) !== serviceId) continue;
       const sourceAmount = parseFloat(item.net_amount ?? item.cost ?? item.amount ?? 0);
       const sourceCurrency = String(item.currency || "USD").toUpperCase();
       if (sourceAmount <= 0) continue;
       if (!item.verification_ref) return { lines: [], totalUsd: 0, error: "Adaptateur Railway sans verification_ref; aucun montant importé" };
       let converted;
-      try { converted = sourceToEurMinor(sourceAmount, sourceCurrency, process.env); }
+      try { converted = sourceToEurMinor(sourceAmount, sourceCurrency, env); }
       catch (error) { return { lines: [], totalUsd: 0, error: error.message }; }
       if (sourceCurrency === "USD") totalUsd += sourceAmount;
       const period = `${periodYear}-${String(periodMonth).padStart(2, "0")}`;
@@ -223,11 +236,12 @@ async function importRailwayCharges(mapping, periodYear, periodMonth) {
         quantity: 1,
         unit_price_minor: converted.totalMinor,
         total_minor: converted.totalMinor,
-        external_ref: `railway:${projectId}:${period}:${stableRef([item.service, sourceAmount, sourceCurrency, item.verification_ref])}`,
+        external_ref: `railway:${projectId}:${serviceId || 'all'}:${period}:${stableRef([item.service_id, item.service, sourceAmount, sourceCurrency, item.verification_ref])}`,
         metadata: {
           evidence_status: "actual", verification_ref: item.verification_ref,
           source: "railway", source_amount: sourceAmount, source_currency: sourceCurrency,
           fx_rate: converted.fxRate, fx_source: converted.fxSource, project_id: projectId,
+          service_id: item.service_id || serviceId || null,
         },
       });
     }

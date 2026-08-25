@@ -10,7 +10,7 @@ import {
 
 const MODELS = ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol'];
 const MAPPING_OPTIONS = [
-  ['openai_project', 'Projet OpenAI'], ['railway_project', 'Projet Railway'],
+  ['openai_project', 'Projet OpenAI'], ['railway_project', 'Projet Railway'], ['railway_service', 'Service Railway'],
   ['github_repo', 'Dépôt GitHub'], ['github_org', 'Organisation GitHub'], ['github_user', 'Compte GitHub'],
   ['twilio_account', 'Compte Twilio'], ['supabase_project', 'Projet Supabase'],
   ['dropbox_account', 'Compte Dropbox'], ['media_provider', 'Fournisseur vidéo / image'],
@@ -119,8 +119,10 @@ export default function AICostControl() {
     queryFn: () => fetchJson(`/api/ai-cost/usage?month=${encodeURIComponent(month)}&limit=25`),
     refetchInterval: 60000,
   });
-  const [mappingForm, setMappingForm] = useState({ cost_center_id: '', service_type: 'github_repo', external_id: '', external_label: '' });
+  const [mappingForm, setMappingForm] = useState({ cost_center_id: '', service_type: 'github_repo', external_id: '', external_label: '', project_id: '' });
   const [centerForm, setCenterForm] = useState({ client_id: '', product_code: '' });
+  const [localRatesForm, setLocalRatesForm] = useState({ power_watts: '', energy_eur_kwh: '', machine_eur_hour: '' });
+  const [manualCostForm, setManualCostForm] = useState({ client_id: '', cost_center_id: '', source_type: 'supabase', amount_eur: '', verification_ref: '', description: '' });
 
   const accountingQuery = useQuery({
     queryKey: ['cost-accounting-overview', month],
@@ -162,7 +164,18 @@ export default function AICostControl() {
   useEffect(() => {
     const first = clientsQuery.data?.clients?.[0];
     if (first && !centerForm.client_id) setCenterForm((value) => ({ ...value, client_id: first.id }));
-  }, [clientsQuery.data?.clients, centerForm.client_id]);
+    if (first && !manualCostForm.client_id) setManualCostForm((value) => ({ ...value, client_id: first.id }));
+  }, [clientsQuery.data?.clients, centerForm.client_id, manualCostForm.client_id]);
+
+  useEffect(() => {
+    const rates = accountingQuery.data?.local_rates;
+    if (!rates) return;
+    setLocalRatesForm({
+      power_watts: rates.power_watts || '',
+      energy_eur_kwh: rates.energy_eur_kwh || '',
+      machine_eur_hour: rates.machine_eur_hour || '',
+    });
+  }, [accountingQuery.data?.local_rates?.power_watts, accountingQuery.data?.local_rates?.energy_eur_kwh, accountingQuery.data?.local_rates?.machine_eur_hour]);
 
   const alertState = useMemo(() => {
     if (!globalBudget?.enabled) return null;
@@ -243,6 +256,10 @@ export default function AICostControl() {
       setNotice({ type: 'error', text: 'Choisis un client/projet et indique l’identifiant du fournisseur.' });
       return;
     }
+    if (mappingForm.service_type === 'railway_service' && !mappingForm.project_id.trim()) {
+      setNotice({ type: 'error', text: 'Indique aussi l’identifiant du projet Railway parent.' });
+      return;
+    }
     setSaving('mapping');
     setNotice(null);
     try {
@@ -252,11 +269,64 @@ export default function AICostControl() {
           service_type: mappingForm.service_type,
           external_id: mappingForm.external_id.trim(),
           external_label: mappingForm.external_label.trim(),
+          metadata: mappingForm.service_type === 'railway_service' ? { project_id: mappingForm.project_id.trim() } : {},
         }),
       });
-      setMappingForm((value) => ({ ...value, external_id: '', external_label: '' }));
+      setMappingForm((value) => ({ ...value, external_id: '', external_label: '', project_id: '' }));
       setNotice({ type: 'success', text: 'Fournisseur rattaché au bon client/projet.' });
       await Promise.all([centersQuery.refetch(), accountingQuery.refetch()]);
+    } catch (error) {
+      setNotice({ type: 'error', text: error.message });
+    } finally {
+      setSaving('');
+    }
+  };
+
+  const saveLocalRates = async () => {
+    setSaving('local-rates');
+    setNotice(null);
+    try {
+      await fetchJson('/api/client-costs/accounting/local-rates', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          power_watts: Number(localRatesForm.power_watts),
+          energy_eur_kwh: Number(localRatesForm.energy_eur_kwh),
+          machine_eur_hour: Number(localRatesForm.machine_eur_hour),
+        }),
+      });
+      setNotice({ type: 'success', text: 'Tarifs du poste local enregistrés et utilisés pour les prochains calculs.' });
+      await accountingQuery.refetch();
+    } catch (error) {
+      setNotice({ type: 'error', text: error.message });
+    } finally {
+      setSaving('');
+    }
+  };
+
+  const importManualCost = async () => {
+    if (!manualCostForm.client_id || !manualCostForm.amount_eur || !manualCostForm.verification_ref.trim()) {
+      setNotice({ type: 'error', text: 'Client, montant et référence du justificatif sont obligatoires.' });
+      return;
+    }
+    setSaving('manual-cost');
+    setNotice(null);
+    try {
+      await fetchJson(`/api/client-costs/clients/${encodeURIComponent(manualCostForm.client_id)}/events`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_type: manualCostForm.source_type,
+          cost_center_id: manualCostForm.cost_center_id || null,
+          actual_cost_eur: Number(manualCostForm.amount_eur),
+          evidence_status: 'manual_verified',
+          verification_ref: manualCostForm.verification_ref.trim(),
+          description: manualCostForm.description.trim() || `Justificatif ${manualCostForm.source_type}`,
+          external_ref: `manual:${manualCostForm.client_id}:${manualCostForm.source_type}:${manualCostForm.verification_ref.trim()}`,
+          metadata: { manual: true, imported_from: 'ai_cost_control' },
+        }),
+      });
+      setManualCostForm((value) => ({ ...value, amount_eur: '', verification_ref: '', description: '' }));
+      setNotice({ type: 'success', text: 'Justificatif importé comme coût manuel vérifié.' });
+      await accountingQuery.refetch();
     } catch (error) {
       setNotice({ type: 'error', text: error.message });
     } finally {
@@ -368,11 +438,20 @@ export default function AICostControl() {
         </div>
       ) : accountingQuery.data && (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            <KpiCard icon={ShieldCheck} label="Dépenses vérifiées" value={eurMinor(accountingQuery.data.accounting?.verified_cost_minor)} detail="Preuves API et justificatifs manuels" tone="emerald" />
+          {!accountingQuery.data.completeness?.complete && (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-800">
+              <div className="flex items-center gap-2 font-semibold"><AlertTriangle className="w-4 h-4" /> Total comptable incomplet</div>
+              <p className="mt-1">{accountingQuery.data.completeness?.warning || 'AI Cost Control ne doit pas être utilisé comme total comptable complet.'}</p>
+              <p className="mt-1 text-xs">{accountingQuery.data.completeness?.gaps?.length || 0} source(s) restent à connecter ou à justifier.</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+            <KpiCard icon={ShieldCheck} label="Réel API" value={eurMinor(accountingQuery.data.accounting?.actual_cost_minor)} detail="Preuves fournisseur" tone="emerald" />
+            <KpiCard icon={Database} label="Manuel vérifié" value={eurMinor(accountingQuery.data.accounting?.manual_verified_minor)} detail="Factures et justificatifs" />
             <KpiCard icon={TrendingUp} label="Coûts estimés" value={eurMinor(accountingQuery.data.accounting?.estimated_cost_minor)} detail="Calculs internes, séparés du réel" tone="violet" />
             <KpiCard icon={CircleDollarSign} label="Montant facturable" value={eurMinor(accountingQuery.data.accounting?.billable_minor)} detail={`${eurMinor(accountingQuery.data.accounting?.unbilled_billable_minor)} reste à facturer`} />
-            <KpiCard icon={AlertTriangle} label="Éléments non vérifiés" value={String(accountingQuery.data.accounting?.unverified_events || 0)} detail="Exclus des totaux et des factures" tone="amber" />
+            <KpiCard icon={AlertTriangle} label="Non vérifié" value={eurMinor(accountingQuery.data.accounting?.unverified_cost_minor)} detail={`${accountingQuery.data.accounting?.unverified_events || 0} élément(s), exclus des factures`} tone="amber" />
           </div>
 
           <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
@@ -386,19 +465,20 @@ export default function AICostControl() {
               </button>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[820px]">
+              <table className="w-full text-sm min-w-[1120px]">
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground border-b border-border">
                     <th className="py-2 pr-3 font-medium">Source</th>
                     <th className="py-2 pr-3 font-medium">Connexion</th>
-                    <th className="py-2 pr-3 font-medium text-right">Réel vérifié</th>
+                    <th className="py-2 pr-3 font-medium text-right">Réel API</th>
+                    <th className="py-2 pr-3 font-medium text-right">Manuel vérifié</th>
                     <th className="py-2 pr-3 font-medium text-right">Estimé</th>
+                    <th className="py-2 pr-3 font-medium text-right">Non vérifié</th>
                     <th className="py-2 font-medium">Action requise</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(accountingQuery.data.sources || []).map((source) => {
-                    const verified = Number(source.actual_cost_minor || 0) + Number(source.manual_verified_minor || 0);
                     return (
                       <tr key={source.id} className="border-b border-border/50 last:border-0">
                         <td className="py-2.5 pr-3 font-medium">{source.label}</td>
@@ -407,8 +487,10 @@ export default function AICostControl() {
                             {source.ready ? 'Configuré' : source.accounting_state === 'invoice_required' ? 'Facture à importer' : 'À configurer'}
                           </span>
                         </td>
-                        <td className="py-2.5 pr-3 text-right font-semibold tabular-nums">{eurMinor(verified)}</td>
+                        <td className="py-2.5 pr-3 text-right font-semibold tabular-nums">{eurMinor(source.actual_cost_minor)}</td>
+                        <td className="py-2.5 pr-3 text-right tabular-nums">{eurMinor(source.manual_verified_minor)}</td>
                         <td className="py-2.5 pr-3 text-right tabular-nums">{eurMinor(source.estimated_cost_minor)}</td>
+                        <td className="py-2.5 pr-3 text-right tabular-nums text-amber-700">{eurMinor(source.unverified_cost_minor)}</td>
                         <td className="py-2.5 text-xs text-muted-foreground">{(source.missing_configuration || []).join(' · ') || 'Aucune'}</td>
                       </tr>
                     );
@@ -417,13 +499,41 @@ export default function AICostControl() {
               </table>
             </div>
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-muted-foreground">
-              <p><strong className="text-foreground">Réel :</strong> preuve fournisseur ou facture identifiable.</p>
+              <p><strong className="text-foreground">Réel :</strong> montant reçu d’une API fournisseur avec preuve.</p>
+              <p><strong className="text-foreground">Manuel vérifié :</strong> facture ou justificatif identifiable.</p>
               <p><strong className="text-foreground">Estimé :</strong> temps machine, énergie ou tarification par tokens documentée.</p>
               <p><strong className="text-foreground">Facturable :</strong> règle client appliquée sans modifier le coût interne.</p>
               <p><strong className="text-foreground">Non vérifié :</strong> bloqué avant facturation.</p>
             </div>
 
             <div className="mt-5 pt-5 border-t border-border">
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-6">
+                <div className="rounded-xl border border-border p-4">
+                  <h3 className="font-semibold text-sm">Tarifs de l’ordinateur local</h3>
+                  <p className="text-xs text-muted-foreground mt-1">Ces valeurs produisent une estimation distincte du coût fournisseur réel.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
+                    <label className="text-xs text-muted-foreground">Puissance (W)<input type="number" min="0" step="1" value={localRatesForm.power_watts} onChange={(event) => setLocalRatesForm((value) => ({ ...value, power_watts: event.target.value }))} className="mt-1 h-10 w-full px-3 rounded-xl border border-border bg-background text-sm" /></label>
+                    <label className="text-xs text-muted-foreground">Électricité (€/kWh)<input type="number" min="0" step="0.001" value={localRatesForm.energy_eur_kwh} onChange={(event) => setLocalRatesForm((value) => ({ ...value, energy_eur_kwh: event.target.value }))} className="mt-1 h-10 w-full px-3 rounded-xl border border-border bg-background text-sm" /></label>
+                    <label className="text-xs text-muted-foreground">Machine (€/h)<input type="number" min="0" step="0.01" value={localRatesForm.machine_eur_hour} onChange={(event) => setLocalRatesForm((value) => ({ ...value, machine_eur_hour: event.target.value }))} className="mt-1 h-10 w-full px-3 rounded-xl border border-border bg-background text-sm" /></label>
+                  </div>
+                  <button onClick={saveLocalRates} disabled={saving === 'local-rates'} className="mt-3 h-10 px-3 rounded-xl border border-primary text-primary hover:bg-primary/10 disabled:opacity-50 text-sm font-medium">{saving === 'local-rates' ? 'Enregistrement…' : 'Enregistrer les tarifs locaux'}</button>
+                </div>
+
+                <div className="rounded-xl border border-border p-4">
+                  <h3 className="font-semibold text-sm">Importer une facture ou un justificatif</h3>
+                  <p className="text-xs text-muted-foreground mt-1">Pour Supabase, Dropbox, Railway, Twilio ou un générateur vidéo lorsque l’API monétaire n’est pas disponible.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+                    <select value={manualCostForm.client_id} onChange={(event) => setManualCostForm((value) => ({ ...value, client_id: event.target.value, cost_center_id: '' }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm"><option value="">Client</option>{(clientsQuery.data?.clients || []).map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>
+                    <select value={manualCostForm.cost_center_id} onChange={(event) => setManualCostForm((value) => ({ ...value, cost_center_id: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm"><option value="">Projet / centre de coût (optionnel)</option>{(centersQuery.data?.centers || []).filter((center) => !manualCostForm.client_id || String(center.client_id) === String(manualCostForm.client_id)).map((center) => <option key={center.id} value={center.id}>{center.product_code}</option>)}</select>
+                    <select value={manualCostForm.source_type} onChange={(event) => setManualCostForm((value) => ({ ...value, source_type: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm"><option value="railway">Railway</option><option value="github">GitHub</option><option value="supabase">Supabase</option><option value="dropbox">Dropbox</option><option value="twilio">Twilio</option><option value="media_ai">Générateur vidéo / image</option><option value="other">Autre</option></select>
+                    <input type="number" min="0" step="0.01" value={manualCostForm.amount_eur} onChange={(event) => setManualCostForm((value) => ({ ...value, amount_eur: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm" placeholder="Montant comptabilisé selon justificatif (€)" />
+                    <input value={manualCostForm.verification_ref} onChange={(event) => setManualCostForm((value) => ({ ...value, verification_ref: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm" placeholder="N° facture ou référence vérifiable" />
+                    <input value={manualCostForm.description} onChange={(event) => setManualCostForm((value) => ({ ...value, description: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm" placeholder="Description" />
+                  </div>
+                  <button onClick={importManualCost} disabled={saving === 'manual-cost'} className="mt-3 h-10 px-3 rounded-xl border border-primary text-primary hover:bg-primary/10 disabled:opacity-50 text-sm font-medium">{saving === 'manual-cost' ? 'Import…' : 'Importer comme manuel vérifié'}</button>
+                </div>
+              </div>
+
               <div className="mb-5">
                 <h3 className="font-semibold text-sm">1. Créer le centre de coût du projet</h3>
                 <p className="text-xs text-muted-foreground mt-1">À faire une seule fois par client et par projet facturable.</p>
@@ -443,7 +553,7 @@ export default function AICostControl() {
                   <p className="text-xs text-muted-foreground">Un identifiant externe ne peut appartenir qu’à un seul client.</p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-2">
                 <select value={mappingForm.cost_center_id} onChange={(event) => setMappingForm((value) => ({ ...value, cost_center_id: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm">
                   <option value="">Client / projet</option>
                   {(centersQuery.data?.centers || []).map((center) => <option key={center.id} value={center.id}>{center.client_name} · {center.product_code}</option>)}
@@ -451,6 +561,7 @@ export default function AICostControl() {
                 <select value={mappingForm.service_type} onChange={(event) => setMappingForm((value) => ({ ...value, service_type: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm">
                   {MAPPING_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
+                {mappingForm.service_type === 'railway_service' && <input value={mappingForm.project_id} onChange={(event) => setMappingForm((value) => ({ ...value, project_id: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm" placeholder="ID projet Railway parent" />}
                 <input value={mappingForm.external_id} onChange={(event) => setMappingForm((value) => ({ ...value, external_id: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm" placeholder="ID projet, compte ou owner/dépôt" />
                 <input value={mappingForm.external_label} onChange={(event) => setMappingForm((value) => ({ ...value, external_label: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm" placeholder="Nom lisible (facultatif)" />
                 <button onClick={saveMapping} disabled={saving === 'mapping' || centersQuery.isLoading} className="h-10 px-3 rounded-xl border border-primary text-primary hover:bg-primary/10 disabled:opacity-50 text-sm font-medium">{saving === 'mapping' ? 'Ajout…' : 'Ajouter le rattachement'}</button>

@@ -4,14 +4,14 @@ const EVIDENCE_STATUSES = new Set(['actual', 'estimated', 'manual_verified', 'un
 
 const SOURCE_CATALOG = [
   { id: 'llm_api', label: 'LLM / API IA', mappingTypes: ['openai_project'], mode: 'api', envAny: ['OPENAI_ADMIN_KEY'] },
-  { id: 'railway', label: 'Railway', mappingTypes: ['railway_project'], mode: 'adapter', envAll: ['RAILWAY_API_TOKEN', 'RAILWAY_COSTS_ENDPOINT'] },
+  { id: 'railway', label: 'Railway par projet et service', mappingTypes: ['railway_project', 'railway_service'], mode: 'adapter', envAll: ['RAILWAY_API_TOKEN', 'RAILWAY_COSTS_ENDPOINT'] },
   { id: 'github', label: 'GitHub Actions, Packages et Copilot', mappingTypes: ['github_user', 'github_org', 'github_repo'], mode: 'api', envAny: ['GITHUB_BILLING_TOKEN', 'GITHUB_TOKEN'] },
   { id: 'local_ai', label: 'IA locale (machine + électricité)', mappingTypes: [], mode: 'calculation', envAll: ['LOCAL_AI_POWER_WATTS', 'LOCAL_AI_ENERGY_EUR_KWH', 'LOCAL_AI_MACHINE_EUR_HOUR'] },
   { id: 'twilio', label: 'Twilio', mappingTypes: ['twilio_account'], mode: 'api', envAll: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'] },
-  { id: 'supabase', label: 'Supabase', mappingTypes: ['supabase_project'], mode: 'invoice' },
-  { id: 'dropbox', label: 'Dropbox', mappingTypes: ['dropbox_account'], mode: 'invoice' },
+  { id: 'supabase', label: 'Supabase', mappingTypes: ['supabase_project'], mode: 'adapter', envAll: ['SUPABASE_COSTS_ENDPOINT', 'COST_IMPORT_ADAPTER_TOKEN'] },
+  { id: 'dropbox', label: 'Dropbox', mappingTypes: ['dropbox_account'], mode: 'adapter', envAll: ['DROPBOX_COSTS_ENDPOINT', 'COST_IMPORT_ADAPTER_TOKEN'] },
   { id: 'storage', label: 'Stockage et sauvegardes', mappingTypes: ['storage_account'], mode: 'invoice' },
-  { id: 'media_ai', label: 'Génération vidéo / image', mappingTypes: ['media_provider'], mode: 'usage' },
+  { id: 'media_ai', label: 'Génération vidéo / image', mappingTypes: ['media_provider'], mode: 'adapter', envAll: ['MEDIA_COSTS_ENDPOINT', 'COST_IMPORT_ADAPTER_TOKEN'] },
   { id: 'communications', label: 'Communications', mappingTypes: ['communications_provider'], mode: 'usage' },
   { id: 'api', label: 'Autres API', mappingTypes: ['api_provider'], mode: 'usage' },
   { id: 'other', label: 'Autres frais techniques', mappingTypes: ['other_provider'], mode: 'invoice' },
@@ -54,6 +54,7 @@ function summarizeAccounting(events = []) {
     actual_cost_minor: 0,
     manual_verified_minor: 0,
     estimated_cost_minor: 0,
+    unverified_cost_minor: 0,
     billable_minor: 0,
     unbilled_billable_minor: 0,
     actual_events: 0,
@@ -72,6 +73,7 @@ function summarizeAccounting(events = []) {
       actual_cost_minor: 0,
       manual_verified_minor: 0,
       estimated_cost_minor: 0,
+      unverified_cost_minor: 0,
       billable_minor: 0,
       events: 0,
       unverified_events: 0,
@@ -93,6 +95,8 @@ function summarizeAccounting(events = []) {
     } else {
       totals.unverified_events += 1;
       row.unverified_events += 1;
+      totals.unverified_cost_minor += amount;
+      row.unverified_cost_minor += amount;
     }
 
     if (status !== 'unverified' && event.billable) {
@@ -107,7 +111,7 @@ function summarizeAccounting(events = []) {
   return {
     ...totals,
     verified_cost_minor: totals.actual_cost_minor + totals.manual_verified_minor,
-    by_source: [...bySource.values()].sort((a, b) => (b.actual_cost_minor + b.manual_verified_minor + b.estimated_cost_minor) - (a.actual_cost_minor + a.manual_verified_minor + a.estimated_cost_minor)),
+    by_source: [...bySource.values()].sort((a, b) => (b.actual_cost_minor + b.manual_verified_minor + b.estimated_cost_minor + b.unverified_cost_minor) - (a.actual_cost_minor + a.manual_verified_minor + a.estimated_cost_minor + a.unverified_cost_minor)),
   };
 }
 
@@ -134,17 +138,40 @@ function configured(env, source, mappings = []) {
 function buildSourceCoverage(env = {}, mappings = [], events = []) {
   const summary = summarizeAccounting(events);
   const stats = new Map(summary.by_source.map((row) => [row.source_type, row]));
-  return SOURCE_CATALOG.map((source) => ({
-    ...configured(env, source, mappings),
-    ...(stats.get(source.id) || {
+  return SOURCE_CATALOG.map((source) => {
+    const amounts = stats.get(source.id) || {
       actual_cost_minor: 0,
       manual_verified_minor: 0,
       estimated_cost_minor: 0,
+      unverified_cost_minor: 0,
       billable_minor: 0,
       events: 0,
       unverified_events: 0,
-    }),
-  }));
+    };
+    const state = configured(env, source, mappings);
+    const documented = amounts.actual_cost_minor > 0 || amounts.manual_verified_minor > 0 || amounts.estimated_cost_minor > 0;
+    return {
+      ...state,
+      ...amounts,
+      documented,
+      accounting_state: documented ? 'documented' : state.accounting_state,
+      ready: documented || state.ready,
+    };
+  });
+}
+
+function accountingCompleteness(sources = []) {
+  const gaps = (sources || [])
+    .filter((source) => !source.documented)
+    .map((source) => ({ id: source.id, label: source.label, state: source.accounting_state, missing: source.missing_configuration || [] }));
+  return {
+    complete: gaps.length === 0,
+    scope: 'operational_cost_ledger',
+    warning: gaps.length
+      ? 'AI Cost Control ne constitue pas encore un total comptable complet. Les sources absentes, non connectées ou sans justificatif restent exclues.'
+      : null,
+    gaps,
+  };
 }
 
 function sourceToEurMinor(amount, currency, env = process.env) {
@@ -168,7 +195,11 @@ function parseGitHubUsage(data, mapping, period, env = process.env) {
   const items = Array.isArray(data?.usageItems) ? data.usageItems : [];
   const wantedRepo = mapping.service_type === 'github_repo' ? String(mapping.external_id || '').toLowerCase() : '';
   return items
-    .filter((item) => !wantedRepo || String(item.repositoryName || '').toLowerCase() === wantedRepo)
+    .filter((item) => {
+      if (!wantedRepo) return true;
+      const repository = String(item.repositoryName || '').toLowerCase();
+      return repository === wantedRepo || repository === wantedRepo.split('/').pop();
+    })
     .filter((item) => number(item.netAmount, 0) !== 0)
     .map((item) => {
       const amountUsd = number(item.netAmount, 0);
@@ -189,6 +220,7 @@ function parseGitHubUsage(data, mapping, period, env = process.env) {
           fx_rate: converted.fxRate,
           fx_source: converted.fxSource,
           product: item.product || null,
+          product_key: String(item.product || '').trim().toLowerCase(),
           sku: item.sku || null,
           repository: item.repositoryName || null,
           gross_amount: number(item.grossAmount, 0),
@@ -234,6 +266,7 @@ module.exports = {
   validateEvidence,
   summarizeAccounting,
   buildSourceCoverage,
+  accountingCompleteness,
   sourceToEurMinor,
   parseGitHubUsage,
   parseTwilioUsage,
