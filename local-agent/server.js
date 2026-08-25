@@ -12,7 +12,7 @@ const PORT = Number(process.env.LOCAL_AGENT_PORT || 8787);
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const MAX_BODY = 5 * 1024 * 1024;
 const approvals = new Map();
 const runs = new Map();
@@ -26,6 +26,12 @@ const ALLOWED_ROOTS = [...new Set((configuredRoots.length ? configuredRoots : de
 const logDir = process.env.LOCAL_AGENT_LOG_DIR || path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'JS-InnovIA', 'AI-Factory');
 mkdirSync(logDir, { recursive: true });
 const runLogPath = path.join(logDir, 'tool-runs.jsonl');
+const telemetrySessionId = crypto.randomUUID();
+const telemetrySamples = [];
+const TELEMETRY_INTERVAL_MS = Math.max(2000, Number(process.env.LOCAL_TELEMETRY_INTERVAL_MS || 5000));
+const TELEMETRY_MAX_SAMPLES = Math.max(120, Number(process.env.LOCAL_TELEMETRY_MAX_SAMPLES || 4320));
+const LOCAL_POWER_CEILING_WATTS = Math.max(1, Number(process.env.LOCAL_AI_POWER_WATTS || 180));
+let previousCpuTimes = null;
 
 function comfyUiLaunchSpec() {
   const installRoot = process.env.COMFYUI_INSTALL_ROOT || path.join(os.homedir(), 'AppData', 'Local', 'Comfy-Desktop', 'ComfyUI-Installs', 'Comfyui');
@@ -98,6 +104,12 @@ function pathInsideAllowedRoot(input) {
 }
 
 async function recordRun(run) {
+  if (!run.telemetry) {
+    const runtimeSeconds = run.started_at && run.completed_at
+      ? Math.max(0, (Date.parse(run.completed_at) - Date.parse(run.started_at)) / 1000)
+      : 0;
+    run.telemetry = telemetrySummary(run.started_at, run.completed_at, runtimeSeconds);
+  }
   runs.set(run.id, run);
   if (runs.size > 200) runs.delete(runs.keys().next().value);
   await appendFile(runLogPath, `${JSON.stringify(run)}\n`, 'utf8').catch(() => {});
@@ -111,6 +123,172 @@ async function commandStatus(command) {
   } catch (error) {
     return { online: false, error: error.code === 'ENOENT' ? 'not_installed' : String(error.message).slice(0, 240) };
   }
+}
+
+function cpuTimes() {
+  return os.cpus().reduce((result, cpu) => {
+    result.idle += Number(cpu.times?.idle || 0);
+    result.total += Object.values(cpu.times || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+    return result;
+  }, { idle: 0, total: 0 });
+}
+
+function cpuUtilizationPercent(current) {
+  if (!previousCpuTimes) {
+    previousCpuTimes = current;
+    return null;
+  }
+  const total = current.total - previousCpuTimes.total;
+  const idle = current.idle - previousCpuTimes.idle;
+  previousCpuTimes = current;
+  if (!(total > 0)) return null;
+  return Number((Math.max(0, Math.min(1, 1 - idle / total)) * 100).toFixed(2));
+}
+
+async function readNvidiaTelemetry() {
+  try {
+    const fields = 'name,utilization.gpu,memory.used,memory.total,power.draw,power.limit';
+    const { stdout } = await execFileAsync('nvidia-smi', [`--query-gpu=${fields}`, '--format=csv,noheader,nounits'], {
+      ...execOptions,
+      timeout: 3000,
+    });
+    const devices = String(stdout || '').trim().split(/\r?\n/).filter(Boolean).map((line) => {
+      const [name, utilization, memoryUsed, memoryTotal, powerDraw, powerLimit] = line.split(',').map((value) => value.trim());
+      const numeric = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+      return {
+        name: name || 'NVIDIA GPU',
+        utilization_percent: numeric(utilization),
+        memory_used_mib: numeric(memoryUsed),
+        memory_total_mib: numeric(memoryTotal),
+        power_draw_watts: numeric(powerDraw),
+        power_limit_watts: numeric(powerLimit),
+        power_sensor: numeric(powerDraw) !== null ? 'nvidia_smi_instantaneous' : 'unavailable',
+      };
+    });
+    return devices;
+  } catch {
+    return [];
+  }
+}
+
+function estimateSystemPower({ cpuPercent, gpuDevices }) {
+  const gpuMeasured = gpuDevices.reduce((sum, device) => sum + Math.max(0, Number(device.power_draw_watts || 0)), 0);
+  const gpuUtil = gpuDevices.length
+    ? gpuDevices.reduce((sum, device) => sum + Math.max(0, Number(device.utilization_percent || 0)), 0) / gpuDevices.length
+    : 0;
+  if (gpuMeasured > 0) {
+    const baseAndCpu = 35 + (Math.max(0, Number(cpuPercent || 0)) / 100) * 65;
+    return {
+      watts: Number(Math.min(LOCAL_POWER_CEILING_WATTS * 1.25, Math.max(LOCAL_POWER_CEILING_WATTS * 0.25, baseAndCpu + gpuMeasured)).toFixed(2)),
+      method: 'gpu_sensor_plus_cpu_system_estimate',
+    };
+  }
+  const loadFactor = Math.max(0.25, Math.min(1, 0.25 + (Math.max(0, Number(cpuPercent || 0)) / 100) * 0.35 + (gpuUtil / 100) * 0.4));
+  return {
+    watts: Number((LOCAL_POWER_CEILING_WATTS * loadFactor).toFixed(2)),
+    method: 'configured_ceiling_load_estimate',
+  };
+}
+
+async function collectTelemetrySnapshot() {
+  const cpus = os.cpus();
+  const cpuPercent = cpuUtilizationPercent(cpuTimes());
+  const gpuDevices = await readNvidiaTelemetry();
+  const power = estimateSystemPower({ cpuPercent, gpuDevices });
+  const totalMemory = os.totalmem();
+  const usedMemory = Math.max(0, totalMemory - os.freemem());
+  const snapshot = {
+    id: crypto.randomUUID(),
+    session_id: telemetrySessionId,
+    captured_at: new Date().toISOString(),
+    platform: process.platform,
+    hostname: os.hostname(),
+    cpu: {
+      model: cpus[0]?.model || 'inconnu',
+      logical_cores: cpus.length,
+      utilization_percent: cpuPercent,
+    },
+    memory: {
+      used_bytes: usedMemory,
+      total_bytes: totalMemory,
+      utilization_percent: totalMemory > 0 ? Number((usedMemory / totalMemory * 100).toFixed(2)) : null,
+    },
+    gpu: { devices: gpuDevices },
+    power: {
+      estimated_system_watts: power.watts,
+      configured_ceiling_watts: LOCAL_POWER_CEILING_WATTS,
+      method: power.method,
+      evidence_status: 'estimated',
+      note: 'La puissance GPU est lue par capteur lorsqu’elle est disponible; la consommation électrique totale du PC reste estimée sans compteur physique.',
+    },
+  };
+  telemetrySamples.push(snapshot);
+  if (telemetrySamples.length > TELEMETRY_MAX_SAMPLES) telemetrySamples.splice(0, telemetrySamples.length - TELEMETRY_MAX_SAMPLES);
+  return snapshot;
+}
+
+function average(values) {
+  const usable = values.filter((value) => value !== null && value !== undefined && value !== '').map(Number).filter(Number.isFinite);
+  return usable.length ? Number((usable.reduce((sum, value) => sum + value, 0) / usable.length).toFixed(2)) : null;
+}
+
+function summarizeTelemetrySamples(samples = [], options = {}) {
+  const selected = samples.filter(Boolean);
+  const startedAt = options.startedAt || selected[0]?.captured_at || null;
+  const completedAt = options.completedAt || selected[selected.length - 1]?.captured_at || null;
+  const explicitSeconds = Number(options.runtimeSeconds || 0);
+  const derivedSeconds = startedAt && completedAt ? Math.max(0, (Date.parse(completedAt) - Date.parse(startedAt)) / 1000) : 0;
+  const runtimeSeconds = explicitSeconds > 0 ? explicitSeconds : derivedSeconds;
+  const gpuDevices = selected.flatMap((sample) => sample.gpu?.devices || []);
+  const first = selected[0] || null;
+  return {
+    summary_id: `local-telemetry:${telemetrySessionId}:${crypto.randomUUID()}`,
+    session_id: telemetrySessionId,
+    started_at: startedAt,
+    completed_at: completedAt,
+    runtime_seconds: Number(runtimeSeconds.toFixed(3)),
+    sample_count: selected.length,
+    sampling_interval_seconds: TELEMETRY_INTERVAL_MS / 1000,
+    cpu: {
+      model: first?.cpu?.model || null,
+      logical_cores: first?.cpu?.logical_cores || null,
+      average_utilization_percent: average(selected.map((sample) => sample.cpu?.utilization_percent)),
+    },
+    memory: {
+      total_bytes: first?.memory?.total_bytes || null,
+      average_utilization_percent: average(selected.map((sample) => sample.memory?.utilization_percent)),
+    },
+    gpu: {
+      names: [...new Set(gpuDevices.map((device) => device.name).filter(Boolean))],
+      average_utilization_percent: average(gpuDevices.map((device) => device.utilization_percent)),
+      average_power_draw_watts: average(gpuDevices.map((device) => device.power_draw_watts)),
+      power_sensor: gpuDevices.some((device) => device.power_sensor === 'nvidia_smi_instantaneous') ? 'nvidia_smi_instantaneous' : 'unavailable',
+    },
+    power: {
+      average_estimated_system_watts: average(selected.map((sample) => sample.power?.estimated_system_watts)),
+      configured_ceiling_watts: first?.power?.configured_ceiling_watts || LOCAL_POWER_CEILING_WATTS,
+      methods: [...new Set(selected.map((sample) => sample.power?.method).filter(Boolean))],
+      evidence_status: 'estimated',
+    },
+    evidence_status: 'estimated',
+  };
+}
+
+function telemetrySummary(startedAt, completedAt, runtimeSeconds = 0) {
+  const startMs = Number.isFinite(Date.parse(startedAt)) ? Date.parse(startedAt) : 0;
+  const endMs = Number.isFinite(Date.parse(completedAt)) ? Date.parse(completedAt) : Date.now();
+  const selected = telemetrySamples.filter((sample) => {
+    const captured = Date.parse(sample.captured_at);
+    return captured >= startMs && captured <= endMs;
+  });
+  const fallback = selected.length ? selected : telemetrySamples.slice(-1);
+  return summarizeTelemetrySamples(fallback, { startedAt: startedAt || fallback[0]?.captured_at, completedAt: completedAt || fallback[fallback.length - 1]?.captured_at, runtimeSeconds });
+}
+
+async function currentTelemetrySnapshot() {
+  const latest = telemetrySamples[telemetrySamples.length - 1];
+  if (!latest || Date.now() - Date.parse(latest.captured_at) >= TELEMETRY_INTERVAL_MS) return collectTelemetrySnapshot();
+  return latest;
 }
 
 async function executeTool(tool, args = {}) {
@@ -482,7 +660,7 @@ async function health() {
     models = (payload.models || []).map((item) => item.name);
   } catch {}
   const [ffmpeg, ffprobe] = await Promise.all([commandStatus('ffmpeg'), commandStatus('ffprobe')]);
-  return { ok: true, agent: { name: 'NOVA Local Tools', version: VERSION, mode: 'local-first', approvalGate: true }, services: { ollama: { online: ollamaOnline, url: OLLAMA_URL, models }, ffmpeg, ffprobe }, tools: [{ name: 'ffmpeg_version', mode: 'read_only', available: ffmpeg.online }, { name: 'ffprobe_file', mode: 'read_only', available: ffprobe.online }, { name: 'list_directory', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'find_local_workflows', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'workflow_documentation_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'video_pipeline_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'comfyui_health', mode: 'read_only', available: true }, { name: 'avatar_factory_status', mode: 'read_only', available: true }, { name: 'http_diagnose', mode: 'read_only', available: true }], allowed_roots: ALLOWED_ROOTS, allowed_http_hosts: [...ALLOWED_HTTP_HOSTS] };
+  return { ok: true, agent: { name: 'NOVA Local Tools', version: VERSION, mode: 'local-first', approvalGate: true }, services: { ollama: { online: ollamaOnline, url: OLLAMA_URL, models }, ffmpeg, ffprobe }, telemetry: await currentTelemetrySnapshot(), tools: [{ name: 'ffmpeg_version', mode: 'read_only', available: ffmpeg.online }, { name: 'ffprobe_file', mode: 'read_only', available: ffprobe.online }, { name: 'list_directory', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'find_local_workflows', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'workflow_documentation_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'video_pipeline_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'comfyui_health', mode: 'read_only', available: true }, { name: 'avatar_factory_status', mode: 'read_only', available: true }, { name: 'http_diagnose', mode: 'read_only', available: true }], allowed_roots: ALLOWED_ROOTS, allowed_http_hosts: [...ALLOWED_HTTP_HOSTS] };
 }
 
 function toolResponse(run) {
@@ -495,8 +673,18 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'OPTIONS') return send(req, res, 204, {});
     const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
-    if (TOKEN && url.pathname !== '/health' && req.headers.authorization !== `Bearer ${TOKEN}`) return send(req, res, 401, { ok: false, error: 'unauthorized' });
+    const publicReadOnlyPath = url.pathname === '/health' || url.pathname === '/api/telemetry/current' || url.pathname === '/api/telemetry/summary';
+    if (TOKEN && !publicReadOnlyPath && req.headers.authorization !== `Bearer ${TOKEN}`) return send(req, res, 401, { ok: false, error: 'unauthorized' });
     if (req.method === 'GET' && url.pathname === '/health') return send(req, res, 200, await health());
+    if (req.method === 'GET' && url.pathname === '/api/telemetry/current') {
+      return send(req, res, 200, { ok: true, telemetry: await currentTelemetrySnapshot() });
+    }
+    if (req.method === 'GET' && url.pathname === '/api/telemetry/summary') {
+      const startedAt = url.searchParams.get('started_at') || null;
+      const completedAt = url.searchParams.get('completed_at') || null;
+      const runtimeSeconds = Math.max(0, Number(url.searchParams.get('runtime_seconds') || 0));
+      return send(req, res, 200, { ok: true, telemetry: telemetrySummary(startedAt, completedAt, runtimeSeconds) });
+    }
     if (req.method === 'GET' && url.pathname === '/api/agent/models') return send(req, res, 200, { models: (await health()).services.ollama.models });
     if (req.method === 'GET' && url.pathname === '/api/tools') return send(req, res, 200, await health());
     if (req.method === 'GET' && url.pathname.startsWith('/api/tools/runs/')) {
@@ -565,7 +753,10 @@ const server = http.createServer(async (req, res) => {
 if (process.env.LOCAL_AGENT_NO_LISTEN !== '1') {
   server.listen(PORT, '127.0.0.1', () => {
     console.log(`NOVA Local Tools v${VERSION} http://127.0.0.1:${PORT}`);
+    void collectTelemetrySnapshot();
+    const telemetryTimer = setInterval(() => void collectTelemetrySnapshot(), TELEMETRY_INTERVAL_MS);
+    telemetryTimer.unref();
     void ensureComfyUi();
   });
 }
-export { executeTool, pathInsideAllowedRoot, requestedTool, requestedTools, requestsTaskList, taskSnapshotResponse, requestsTaskAnalysis, taskAnalysisResponse, canonicalTaskKey, localTaskPlan, executeLocalTaskAutopilot, auditVideoPipeline, comfyUiLaunchSpec, ensureComfyUi };
+export { executeTool, pathInsideAllowedRoot, requestedTool, requestedTools, requestsTaskList, taskSnapshotResponse, requestsTaskAnalysis, taskAnalysisResponse, canonicalTaskKey, localTaskPlan, executeLocalTaskAutopilot, auditVideoPipeline, comfyUiLaunchSpec, ensureComfyUi, collectTelemetrySnapshot, summarizeTelemetrySamples, estimateSystemPower, telemetrySummary };

@@ -8,6 +8,7 @@ on:
       - "src/components/FloatingAgent.jsx"
       - "src/lib/mediaReference.js"
       - "tests/local-agent-tools.test.cjs"
+      - "tests/local-cost-telemetry.test.cjs"
       - "tests/electron-global-auto-update.test.cjs"
       - ".github/workflows/electron-auto-update-ci.yml"
       - ".github/workflows/electron-build.yml"

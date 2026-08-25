@@ -4,13 +4,18 @@ on:
   pull_request:
     paths:
       - 'server-ai-cost.cjs'
+      - 'server-client-costs.cjs'
       - 'server-assistant.cjs'
       - 'server.cjs'
       - 'src/pages/AICostControl.jsx'
+      - 'src/pages/LocalVideoFactory.jsx'
+      - 'src/lib/localTelemetry.js'
+      - 'local-agent/**'
       - 'src/App.jsx'
       - 'src/components/layout/Sidebar.jsx'
       - 'src/lib/roles.js'
       - 'tests/ai-cost-control.test.cjs'
+      - 'tests/local-cost-telemetry.test.cjs'
       - 'supabase/migrations/002_ai_cost_control.sql'
       - '.github/workflows/ai-cost-control-ci.yml'
   push:
@@ -18,13 +23,18 @@ on:
       - 'feat/ai-cost-control'
     paths:
       - 'server-ai-cost.cjs'
+      - 'server-client-costs.cjs'
       - 'server-assistant.cjs'
       - 'server.cjs'
       - 'src/pages/AICostControl.jsx'
+      - 'src/pages/LocalVideoFactory.jsx'
+      - 'src/lib/localTelemetry.js'
+      - 'local-agent/**'
       - 'src/App.jsx'
       - 'src/components/layout/Sidebar.jsx'
       - 'src/lib/roles.js'
       - 'tests/ai-cost-control.test.cjs'
+      - 'tests/local-cost-telemetry.test.cjs'
       - 'supabase/migrations/002_ai_cost_control.sql'
       - '.github/workflows/ai-cost-control-ci.yml'
 
