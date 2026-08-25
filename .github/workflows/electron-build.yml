@@ -45,6 +45,9 @@ jobs:
         run: |
           $version = node -p "require('./package.json').version"
           if (-not $version) { throw "Version Electron introuvable" }
+          git fetch --tags --force
+          $existingTag = git tag --list "v$version"
+          if ($existingTag) { throw "La version v$version existe déjà. Incrémente electron/package.json avant de publier afin que l'auto-update Windows détecte le nouveau binaire." }
           "version=$version" >> $env:GITHUB_OUTPUT
           Write-Host "Building JS-Innov.IA Cockpit v$version"
 
