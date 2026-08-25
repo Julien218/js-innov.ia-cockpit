@@ -566,6 +566,16 @@ ipcMain.handle("video-local-batch-publish", async (_event, payload = {}) => {
   return publishLocalVideoChoice(batch, payload.position);
 });
 
+ipcMain.handle("video-local-generated-open-folder", async (_event, generatedPath) => {
+  const root = path.resolve(app.getPath("videos"), "JS-Innov.IA");
+  const candidate = path.resolve(String(generatedPath || ""));
+  if (!candidate.startsWith(`${root}${path.sep}`)) throw new Error("Chemin de production refusé.");
+  const folder = fs.existsSync(candidate) && fs.statSync(candidate).isDirectory() ? candidate : path.dirname(candidate);
+  const error = await shell.openPath(folder);
+  if (error) throw new Error(error);
+  return { ok: true, folder };
+});
+
 ipcMain.handle("video-local-review-open-folder", async (_event, reviewPath) => {
   const root = path.resolve(app.getPath("videos"), "JS-Innov.IA", "Validations");
   const candidate = path.resolve(String(reviewPath || ""));
