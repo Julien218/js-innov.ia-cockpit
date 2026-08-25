@@ -12,12 +12,15 @@ const MEMORY_SNAPSHOT_PREFIX = process.env.CHATGPT_MEMORY_SNAPSHOT_PREFIX || 'An
 const EXPLICIT_MEMORY_ROOT = String(process.env.CHATGPT_MEMORY_ROOT || '').trim();
 const FALLBACK_MEMORY_ROOT = EXPLICIT_MEMORY_ROOT || `${MEMORY_ARCHIVE_ROOT}/Analyse Cockpit 2026-08-14`;
 const CACHE_TTL_MS = 10 * 60 * 1000;
+const MEMORY_STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
 let cache = {
   expiresAt: 0,
   conversations: [],
+  projects: [],
   manifest: null,
   root: FALLBACK_MEMORY_ROOT,
+  loadedAt: null,
 };
 
 const STOP_WORDS = new Set([
@@ -40,6 +43,53 @@ function queryTerms(message) {
     .split(/\s+/)
     .filter((term) => term.length >= 3 && !STOP_WORDS.has(term)))]
     .slice(0, 12);
+}
+
+function requestsProjectOverview(message) {
+  const text = normalize(message).replace(/[^a-z0-9]+/g, ' ').trim();
+  return /(vue d ensemble|ensemble des projets|tous les projets|liste des projets|portefeuille|portfolio|etat des projets|statut des projets|ou en sont (mes|les) projets|resume des projets|resumer les projets)/i.test(text);
+}
+
+function memoryFreshness(manifest, now = Date.now()) {
+  const generatedAt = manifest?.generated_at || null;
+  const generatedTime = Date.parse(generatedAt || '');
+  if (!Number.isFinite(generatedTime)) {
+    return { generated_at: generatedAt, age_days: null, stale: true, reason: 'date_snapshot_inconnue' };
+  }
+  const ageMs = Math.max(0, Number(now) - generatedTime);
+  return {
+    generated_at: generatedAt,
+    age_days: Math.floor(ageMs / 86400000),
+    stale: ageMs > MEMORY_STALE_AFTER_MS,
+    reason: ageMs > MEMORY_STALE_AFTER_MS ? 'snapshot_plus_ancien_que_7_jours' : null,
+  };
+}
+
+function compactProject(project) {
+  return {
+    name: String(project?.name || 'Projet sans nom').slice(0, 160),
+    conversation_count: Number(project?.conversation_count || 0),
+    task_count: Number(project?.task_count || 0),
+    decision_count: Number(project?.decision_count || 0),
+    clients: Array.isArray(project?.clients) ? project.clients.slice(0, 12).map((value) => String(value).slice(0, 120)) : [],
+    recent_conversations: Array.isArray(project?.recent_conversations)
+      ? project.recent_conversations.slice(0, 5).map((item) => ({
+        id: item?.id || null,
+        title: String(item?.title || '').slice(0, 180),
+        updated_at: item?.updated_at || null,
+      }))
+      : [],
+  };
+}
+
+function buildProjectOverview(projects = []) {
+  return [...projects]
+    .map(compactProject)
+    .sort((a, b) => {
+      if (a.name === 'Non classé') return 1;
+      if (b.name === 'Non classé') return -1;
+      return b.conversation_count - a.conversation_count || a.name.localeCompare(b.name);
+    });
 }
 
 function isSnapshotFolder(entry) {
@@ -108,9 +158,10 @@ async function loadArchive() {
   const indexPath = `${root}/conversations.index.jsonl`;
   const manifestPath = `${root}/manifest.json`;
 
-  const [indexText, manifestText] = await Promise.all([
+  const [indexText, manifestText, projectsText] = await Promise.all([
     readDropboxText(indexPath),
     readDropboxText(manifestPath).catch(() => ''),
+    readDropboxText(`${root}/projects.json`).catch(() => ''),
   ]);
 
   const conversations = [];
@@ -125,12 +176,19 @@ async function loadArchive() {
 
   let manifest = null;
   try { manifest = manifestText ? JSON.parse(manifestText) : null; } catch {}
+  let projects = [];
+  try {
+    const parsed = projectsText ? JSON.parse(projectsText) : [];
+    projects = Array.isArray(parsed) ? parsed : [];
+  } catch {}
 
   cache = {
     expiresAt: Date.now() + CACHE_TTL_MS,
     conversations,
+    projects,
     manifest,
     root,
+    loadedAt: new Date().toISOString(),
   };
   return cache;
 }
@@ -179,9 +237,8 @@ function compactRecord(record) {
 
 async function searchHistoricalMemory(message, limit = 6) {
   const terms = queryTerms(message);
-  if (!terms.length) return { results: [], manifest: null, terms, root: cache.root };
-
   const archive = await loadArchive();
+  const overviewRequested = requestsProjectOverview(message);
   const ranked = archive.conversations
     .map((record) => ({ record, score: scoreRecord(record, terms) }))
     .filter((item) => item.score > 0)
@@ -189,7 +246,15 @@ async function searchHistoricalMemory(message, limit = 6) {
     .slice(0, Math.min(10, Math.max(1, Number(limit) || 6)))
     .map((item) => ({ ...compactRecord(item.record), score: item.score }));
 
-  return { results: ranked, manifest: archive.manifest, terms, root: archive.root };
+  return {
+    results: ranked,
+    projects: overviewRequested ? buildProjectOverview(archive.projects) : [],
+    overview_requested: overviewRequested,
+    manifest: archive.manifest,
+    freshness: memoryFreshness(archive.manifest),
+    terms,
+    root: archive.root,
+  };
 }
 
 function architectContract() {
@@ -276,12 +341,16 @@ async function buildHistoricalMemoryContext(message, user) {
   }
 
   let results = [];
+  let projects = [];
   let manifest = null;
+  let freshness = null;
   let root = cache.root || FALLBACK_MEMORY_ROOT;
   try {
     const search = await searchHistoricalMemory(message, 6);
     results = search.results;
+    projects = search.projects || [];
     manifest = search.manifest;
+    freshness = search.freshness;
     root = search.root || root;
   } catch (error) {
     lines.push('', '[MÉMOIRE HISTORIQUE JS-INNOV.IA — archive ChatGPT Dropbox, lecture seule]');
@@ -291,9 +360,10 @@ async function buildHistoricalMemoryContext(message, user) {
     return lines.join('\n');
   }
 
-  if (!results.length) {
+  if (!results.length && !projects.length) {
     lines.push('', '[MÉMOIRE HISTORIQUE JS-INNOV.IA — archive ChatGPT Dropbox, lecture seule]');
     lines.push(`Snapshot mémoire actif: ${root || FALLBACK_MEMORY_ROOT}. Aucun résultat pertinent trouvé pour cette demande.`);
+    if (freshness?.stale) lines.push(`Attention: cet index date de ${freshness.generated_at || 'date inconnue'} (${freshness.age_days ?? '?'} jours). Il ne couvre pas les échanges plus récents.`);
     lines.push('[/MÉMOIRE HISTORIQUE JS-INNOV.IA]');
     return lines.join('\n');
   }
@@ -306,6 +376,22 @@ async function buildHistoricalMemoryContext(message, user) {
     `Snapshot actif: ${root || FALLBACK_MEMORY_ROOT}. Index généré: ${generatedAt}. Conversations indexées: ${indexedCount}.`,
     'Utilise ces éléments comme mémoire historique, pas comme vérité actuelle absolue. En cas de conflit, privilégie les données Cockpit/GitHub/infra les plus récentes.',
   );
+  if (freshness?.stale) {
+    lines.push(`ALERTE FRAÎCHEUR: snapshot vieux de ${freshness.age_days ?? '?'} jours. Ne jamais présenter cette vue comme complète ou à jour; signaler que les échanges postérieurs à ${freshness.generated_at || 'la date du snapshot'} sont absents.`);
+  }
+
+  if (projects.length) {
+    lines.push('Vue d’ensemble historique des projets (les catégories peuvent se chevaucher; ne pas additionner leurs compteurs):');
+    for (const project of projects) {
+      lines.push(`- ${project.name}: ${project.conversation_count} conversation(s), ${project.task_count} tâche(s), ${project.decision_count} décision(s).`);
+      if (project.clients.length) lines.push(`  clients détectés: ${project.clients.join(', ')}`);
+      if (project.recent_conversations.length) lines.push(`  échanges récents: ${project.recent_conversations.map((item) => `${item.title} (${item.updated_at || 'date inconnue'})`).join(' | ')}`);
+    }
+    const unclassified = projects.find((project) => normalize(project.name) === 'non classe');
+    if (unclassified?.conversation_count) {
+      lines.push(`Qualité du classement: ${unclassified.conversation_count} conversation(s) restent « Non classé ». Ne pas prétendre que tous les échanges sont correctement rattachés à un projet.`);
+    }
+  }
 
   for (const item of results) {
     lines.push(`- ${item.title} (${item.updated_at || 'date inconnue'})`);
@@ -319,19 +405,33 @@ async function buildHistoricalMemoryContext(message, user) {
   return lines.join('\n');
 }
 
-function getMemoryStatus() {
+async function getMemoryStatus() {
+  let statusCache = cache;
+  let error = null;
+  try {
+    statusCache = await loadArchive();
+  } catch (loadError) {
+    error = String(loadError?.message || loadError).slice(0, 300);
+  }
+  const freshness = memoryFreshness(statusCache.manifest);
   return {
     archive_root: MEMORY_ARCHIVE_ROOT,
-    root: cache.root || FALLBACK_MEMORY_ROOT,
+    root: statusCache.root || FALLBACK_MEMORY_ROOT,
     explicit_root: Boolean(EXPLICIT_MEMORY_ROOT),
-    cached: cache.conversations.length > 0 && cache.expiresAt > Date.now(),
-    cached_conversations: cache.conversations.length,
-    manifest: cache.manifest,
+    available: statusCache.conversations.length > 0,
+    cached: statusCache.conversations.length > 0 && statusCache.expiresAt > Date.now(),
+    cached_conversations: statusCache.conversations.length,
+    indexed_projects: statusCache.projects.length,
+    loaded_at: statusCache.loadedAt,
+    manifest: statusCache.manifest,
+    freshness,
+    warning: freshness.stale ? 'La mémoire Dropbox est historique et doit être régénérée pour inclure les conversations récentes.' : null,
+    error,
   };
 }
 
 function clearMemoryCache() {
-  cache = { expiresAt: 0, conversations: [], manifest: null, root: FALLBACK_MEMORY_ROOT };
+  cache = { expiresAt: 0, conversations: [], projects: [], manifest: null, root: FALLBACK_MEMORY_ROOT, loadedAt: null };
 }
 
 module.exports = {
@@ -345,4 +445,7 @@ module.exports = {
   managedDomainsInMessage,
   requestsLiveDomainDiagnostic,
   buildLiveDomainDiagnosticContext,
+  requestsProjectOverview,
+  memoryFreshness,
+  buildProjectOverview,
 };

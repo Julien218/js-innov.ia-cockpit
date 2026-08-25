@@ -376,7 +376,7 @@ router.delete('/history', async (req, res) => {
 router.get('/memory/status', async (req, res) => {
   if (req.user?.role !== 'superadmin') return res.status(403).json({ error: 'Réservé au superadministrateur' });
   try {
-    res.json({ success: true, ...getMemoryStatus() });
+    res.json({ success: true, ...(await getMemoryStatus()) });
   } catch (error) {
     res.status(502).json({ error: 'État mémoire indisponible' });
   }

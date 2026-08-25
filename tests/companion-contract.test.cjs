@@ -117,6 +117,7 @@ test('les routes client excluent les agents internes et les demandes globales', 
 test('la mémoire historique Dropbox utilise un snapshot indexé en lecture seule sans modifier la source', () => {
   assert.match(memoryServer, /conversations\.index\.jsonl/);
   assert.match(memoryServer, /manifest\.json/);
+  assert.match(memoryServer, /projects\.json/);
   assert.match(memoryServer, /listFolder\(MEMORY_ARCHIVE_ROOT\)/);
   assert.match(memoryServer, /readDropboxText\(indexPath\)/);
   assert.match(memoryServer, /downloadFile\(path\)/);
