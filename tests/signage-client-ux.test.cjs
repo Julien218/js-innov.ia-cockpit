@@ -46,3 +46,14 @@ test('the redesign preserves the existing media and publication APIs', () => {
   assert.match(page, /\/manage\/playlists/);
   assert.match(page, /\/manage\/publications/);
 });
+
+test('the client page carries the JS-Innov.IA visual identity', () => {
+  assert.match(page, /src="\/logo\.png" alt="JS-Innov\.IA"/);
+  assert.match(page, /JS-Innov\.IA · Signage/);
+  assert.match(page, /#070B1C/);
+  assert.match(page, /#101B3D/);
+  assert.match(page, /#D4AF37/);
+  assert.match(page, /#E7C75F/);
+  assert.match(page, /#2563EB/);
+  assert.match(page, /#0891B2/);
+});

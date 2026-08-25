@@ -1,6 +1,5 @@
 import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import PageHeader from "@/components/shared/PageHeader";
 import { Upload, Download, ListVideo, CalendarClock, Wifi, HardDrive, Eye, ArrowUp, ArrowDown, CheckCircle2, CircleAlert, Play, Clock3 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 
@@ -54,7 +53,14 @@ const uploadMedia = (file, onProgress, clientEmail = "") => new Promise((resolve
   xhr.send(file);
 });
 
-const StatusCard = ({ icon: Icon, label, value, detail }) => <div className="rounded-2xl border border-border bg-card p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center"><Icon className="w-5 h-5" /></div><div><p className="text-xs text-muted-foreground">{label}</p><p className="text-sm font-semibold">{value}</p>{detail && <p className="text-xs text-muted-foreground mt-0.5">{detail}</p>}</div></div></div>;
+const STATUS_TONES = {
+  gold: "border-[#D4AF37]/25 bg-[#D4AF37]/5 text-[#A77E10]",
+  cyan: "border-cyan-500/20 bg-cyan-500/5 text-cyan-700",
+  blue: "border-blue-500/20 bg-blue-500/5 text-blue-700",
+  navy: "border-slate-900/15 bg-slate-900/[0.03] text-slate-800",
+};
+
+const StatusCard = ({ icon: Icon, label, value, detail, tone = "blue" }) => <div className={`rounded-2xl border bg-card p-4 shadow-sm ${STATUS_TONES[tone]}`}><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-current/10"><Icon className="h-5 w-5" /></div><div><p className="text-xs text-muted-foreground">{label}</p><p className="text-sm font-semibold text-foreground">{value}</p>{detail && <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>}</div></div></div>;
 
 const MEDIA_STATUS_LABELS = {
   ready: "Prêt à diffuser",
@@ -166,8 +172,18 @@ export default function DigitalSignage() {
     setPreview({ ...mediaItem, url: result.url });
   }, "Prévisualisation chargée.");
 
-  return <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
-    <PageHeader title="Mon écran géant" subtitle="Ajoutez vos médias, choisissez leur ordre puis lancez la diffusion." />
+  return <div className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
+    <section className="relative overflow-hidden rounded-3xl border border-[#D4AF37]/30 bg-[linear-gradient(135deg,#070B1C_0%,#101B3D_55%,#0B2940_100%)] p-5 text-white shadow-xl shadow-[#101B3D]/15 md:p-7">
+      <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-cyan-400/15 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-[#D4AF37]/15 blur-3xl" />
+      <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-4">
+          <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-[#D4AF37]/40 bg-black/25 p-1 shadow-lg shadow-black/20"><img src="/logo.png" alt="JS-Innov.IA" className="h-full w-full rounded-xl object-cover" /></div>
+          <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-[#E7C75F]">JS-Innov.IA · Signage</p><h1 className="mt-1 text-2xl font-bold tracking-tight md:text-3xl">Mon écran géant</h1><p className="mt-1 text-sm text-slate-300">Ajoutez vos médias, choisissez leur ordre puis lancez la diffusion.</p></div>
+        </div>
+        <div className="inline-flex w-fit items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-xs font-medium text-slate-100 backdrop-blur-sm"><span className="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.9)]" /> Service écran géant</div>
+      </div>
+    </section>
     {isAdmin && <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
       <div className="flex-1"><p className="text-sm font-semibold">Client géré</p><p className="text-xs text-muted-foreground">Vous pilotez uniquement les écrans du client sélectionné.</p></div>
       <select value={managedClient} onChange={event => { const email = event.target.value; setManagedClient(email); window.localStorage.setItem(managedClientKey, email); setEnrollmentToken(""); setTransfer(null); setMessage(""); setSelectedMediaIds([]); setPreview(null); setPreviewError(""); }} className="rounded-xl border border-border bg-background px-3 py-2 text-sm min-w-[260px]">
@@ -184,10 +200,10 @@ export default function DigitalSignage() {
       <p className={`text-xs ${transfer.state === "error" ? "text-red-700" : transfer.state === "done" ? "text-emerald-700" : "text-muted-foreground"}`}>{transfer.label}</p>
     </div>}
     {enrollmentToken && <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2"><p className="font-semibold">Jeton d’association — affiché une seule fois</p><p className="text-xs text-muted-foreground">Saisissez exactement ce jeton sur la MXQ, puis effacez-le de toute note temporaire.</p><div className="flex gap-2"><input readOnly value={enrollmentToken} className="flex-1 rounded-lg border bg-background px-3 py-2 font-mono text-sm"/><button onClick={() => navigator.clipboard.writeText(enrollmentToken)} className="rounded-lg border px-4 py-2 text-sm">Copier</button></div></div>}
-    <section className={`rounded-3xl border p-5 md:p-6 ${playerOnline ? "border-emerald-500/25 bg-emerald-500/5" : "border-amber-500/30 bg-amber-500/5"}`}>
+    <section className={`rounded-3xl border p-5 shadow-sm md:p-6 ${playerOnline ? "border-cyan-500/25 bg-[linear-gradient(135deg,rgba(6,182,212,0.08),rgba(37,99,235,0.04))]" : "border-[#D4AF37]/35 bg-[#D4AF37]/5"}`}>
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-start gap-3">
-          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${playerOnline ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"}`}>
+          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-lg ${playerOnline ? "bg-cyan-500 text-white shadow-cyan-500/20" : "bg-[#D4AF37] text-[#07111F] shadow-[#D4AF37]/20"}`}>
             {playerOnline ? <CheckCircle2 className="h-6 w-6" /> : <CircleAlert className="h-6 w-6" />}
           </div>
           <div>
@@ -198,7 +214,7 @@ export default function DigitalSignage() {
             {player?.last_seen_at && <p className="mt-2 text-xs text-muted-foreground">Dernier contact : {new Date(player.last_seen_at).toLocaleString("fr-BE")}</p>}
           </div>
         </div>
-        <button disabled={busy || isLoading} onClick={() => fileInput.current?.click()} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-sm disabled:opacity-50">
+        <button disabled={busy || isLoading} onClick={() => fileInput.current?.click()} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#D4AF37] px-5 py-3 text-sm font-bold text-[#07111F] shadow-lg shadow-[#D4AF37]/20 transition-colors hover:bg-[#E5C55B] disabled:opacity-50">
           <Upload className="h-4 w-4" /> Ajouter une vidéo ou une image
         </button>
       </div>
@@ -207,20 +223,20 @@ export default function DigitalSignage() {
     <input ref={fileInput} type="file" accept="video/*,image/*" className="hidden" onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) upload(file); }} />
 
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-      <StatusCard icon={Wifi} label="Écran" value={playerOnline ? "En ligne" : player ? "Hors ligne" : "Non associé"} detail="État actualisé automatiquement" />
-      <StatusCard icon={HardDrive} label="Médias disponibles" value={`${readyMediaCount} prêt${readyMediaCount > 1 ? "s" : ""}`} detail={`${media.length} fichier${media.length > 1 ? "s" : ""} au total`} />
-      <StatusCard icon={ListVideo} label="Programmes enregistrés" value={`${playlists.length}`} detail={playlists.length ? "Prêts à être diffusés" : "Créez votre premier programme"} />
-      <StatusCard icon={Clock3} label="Dernière diffusion" value={PUBLICATION_STATUS_LABELS[latestPublication?.status] || "Aucune"} detail={latestPublication?.scheduled_at ? new Date(latestPublication.scheduled_at).toLocaleString("fr-BE") : ""} />
+      <StatusCard tone="cyan" icon={Wifi} label="Écran" value={playerOnline ? "En ligne" : player ? "Hors ligne" : "Non associé"} detail="État actualisé automatiquement" />
+      <StatusCard tone="gold" icon={HardDrive} label="Médias disponibles" value={`${readyMediaCount} prêt${readyMediaCount > 1 ? "s" : ""}`} detail={`${media.length} fichier${media.length > 1 ? "s" : ""} au total`} />
+      <StatusCard tone="blue" icon={ListVideo} label="Programmes enregistrés" value={`${playlists.length}`} detail={playlists.length ? "Prêts à être diffusés" : "Créez votre premier programme"} />
+      <StatusCard tone="navy" icon={Clock3} label="Dernière diffusion" value={PUBLICATION_STATUS_LABELS[latestPublication?.status] || "Aucune"} detail={latestPublication?.scheduled_at ? new Date(latestPublication.scheduled_at).toLocaleString("fr-BE") : ""} />
     </div>
     {latestPublication?.status === "failed" && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-700"><p className="font-semibold">La dernière diffusion a échoué sur le Player.</p><p className="mt-1">{latestPublication.error || "Le Player n’a pas pu lire le média."}</p></div>}
 
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
-      <section className="rounded-2xl border bg-card p-4 md:p-5">
+      <section className="rounded-2xl border border-[#D4AF37]/20 bg-card p-4 shadow-sm md:p-5">
         <div className="flex items-start gap-3">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">1</span>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0B1633] text-sm font-bold text-[#E7C75F] ring-2 ring-[#D4AF37]/25">1</span>
           <div><h2 className="text-base font-semibold">Ajoutez vos médias</h2><p className="mt-1 text-sm text-muted-foreground">Cochez les vidéos et images à diffuser. L’ordre choisi sera conservé.</p></div>
         </div>
-        <div className="mt-4 space-y-2">{media.map(item => { const selected = selectedMediaIds.includes(item.id); const position = selectedMediaIds.indexOf(item.id); return <div key={item.id} className={`rounded-xl border p-3 flex items-center gap-2 ${selected ? "border-primary/40 bg-primary/5" : ""}`}><input type="checkbox" checked={selected} onChange={() => toggleMedia(item.id)} aria-label={`Sélectionner ${item.name}`}/><div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{item.name}</p><p className="text-xs text-muted-foreground">{formatBytes(Number(item.size_bytes || 0))} · {MEDIA_STATUS_LABELS[item.status] || "État inconnu"}</p></div><button onClick={() => previewMedia(item)} className="rounded-lg border p-2" aria-label={`Prévisualiser ${item.name}`}><Eye className="w-4 h-4"/></button>{selected && <><button disabled={position <= 0} onClick={() => moveMedia(item.id, -1)} className="rounded-lg border p-2 disabled:opacity-30" aria-label="Monter"><ArrowUp className="w-4 h-4"/></button><button disabled={position === selectedMediaIds.length - 1} onClick={() => moveMedia(item.id, 1)} className="rounded-lg border p-2 disabled:opacity-30" aria-label="Descendre"><ArrowDown className="w-4 h-4"/></button><span className="w-6 text-center text-xs font-semibold">{position + 1}</span></>}</div>})}{!media.length && <div className="rounded-xl border border-dashed p-8 text-center"><p className="text-sm font-medium">Aucun média pour le moment</p><button onClick={() => fileInput.current?.click()} className="mt-3 rounded-xl bg-primary px-4 py-2 text-sm text-primary-foreground">Ajouter le premier média</button></div>}</div>
+        <div className="mt-4 space-y-2">{media.map(item => { const selected = selectedMediaIds.includes(item.id); const position = selectedMediaIds.indexOf(item.id); return <div key={item.id} className={`rounded-xl border p-3 flex items-center gap-2 ${selected ? "border-[#D4AF37]/55 bg-[#D4AF37]/5 shadow-sm" : ""}`}><input type="checkbox" checked={selected} onChange={() => toggleMedia(item.id)} aria-label={`Sélectionner ${item.name}`}/><div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{item.name}</p><p className="text-xs text-muted-foreground">{formatBytes(Number(item.size_bytes || 0))} · {MEDIA_STATUS_LABELS[item.status] || "État inconnu"}</p></div><button onClick={() => previewMedia(item)} className="rounded-lg border p-2 hover:border-cyan-500/40 hover:text-cyan-700" aria-label={`Prévisualiser ${item.name}`}><Eye className="w-4 h-4"/></button>{selected && <><button disabled={position <= 0} onClick={() => moveMedia(item.id, -1)} className="rounded-lg border p-2 disabled:opacity-30" aria-label="Monter"><ArrowUp className="w-4 h-4"/></button><button disabled={position === selectedMediaIds.length - 1} onClick={() => moveMedia(item.id, 1)} className="rounded-lg border p-2 disabled:opacity-30" aria-label="Descendre"><ArrowDown className="w-4 h-4"/></button><span className="w-6 text-center text-xs font-semibold text-[#9A7414]">{position + 1}</span></>}</div>})}{!media.length && <div className="rounded-xl border border-dashed p-8 text-center"><p className="text-sm font-medium">Aucun média pour le moment</p><button onClick={() => fileInput.current?.click()} className="mt-3 rounded-xl bg-[#D4AF37] px-4 py-2 text-sm font-semibold text-[#07111F]">Ajouter le premier média</button></div>}</div>
       </section>
 
       <section className="rounded-2xl border bg-card p-4 md:p-5">
@@ -240,25 +256,25 @@ export default function DigitalSignage() {
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <section className="rounded-2xl border bg-card p-4 md:p-5">
         <div className="flex items-start gap-3">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">2</span>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0B1633] text-sm font-bold text-[#E7C75F] ring-2 ring-[#D4AF37]/25">2</span>
           <div><h2 className="text-base font-semibold">Préparez votre programme</h2><p className="mt-1 text-sm text-muted-foreground">{selectedMedia.length ? `${selectedMedia.length} média${selectedMedia.length > 1 ? "s" : ""} sélectionné${selectedMedia.length > 1 ? "s" : ""}.` : "Choisissez au moins un média à l’étape 1."}</p></div>
         </div>
         <div className="mt-4 rounded-xl bg-muted/40 p-3 text-sm">
           {selectedMedia.length ? selectedMedia.map((item, index) => <p key={item.id} className="truncate py-1"><span className="mr-2 font-bold text-primary">{index + 1}.</span>{item.name}</p>) : <p className="text-muted-foreground">Votre programme apparaîtra ici.</p>}
         </div>
-        <button disabled={busy || !selectedMedia.length} onClick={createPlaylist} className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-primary px-4 py-3 text-sm font-semibold text-primary disabled:opacity-40"><ListVideo className="h-4 w-4" /> Enregistrer ce programme</button>
+        <button disabled={busy || !selectedMedia.length} onClick={createPlaylist} className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#D4AF37]/60 px-4 py-3 text-sm font-semibold text-[#8A6812] transition-colors hover:bg-[#D4AF37]/10 disabled:opacity-40"><ListVideo className="h-4 w-4" /> Enregistrer ce programme</button>
       </section>
 
       <section className="rounded-2xl border bg-card p-4 md:p-5">
         <div className="flex items-start gap-3">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">3</span>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0B1633] text-sm font-bold text-[#E7C75F] ring-2 ring-[#D4AF37]/25">3</span>
           <div><h2 className="text-base font-semibold">Lancez la diffusion</h2><p className="mt-1 text-sm text-muted-foreground">Diffusez maintenant ou choisissez une date.</p></div>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <label className="block text-sm font-medium">Date et heure <span className="font-normal text-muted-foreground">(facultatif)</span><input type="datetime-local" value={scheduledAt} onChange={event => setScheduledAt(event.target.value)} className="mt-1.5 w-full rounded-xl border bg-background px-3 py-2.5 text-sm text-foreground"/></label>
           <label className="block text-sm font-medium">Répétition<select value={recurrence} onChange={event => setRecurrence(event.target.value)} className="mt-1.5 w-full rounded-xl border bg-background px-3 py-2.5 text-sm text-foreground"><option value="none">Une seule fois</option><option value="daily">Chaque jour</option><option value="weekly">Chaque semaine</option></select></label>
         </div>
-        <button disabled={busy || !player || !playlists.length} onClick={publish} className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-40">{scheduledAt ? <CalendarClock className="h-4 w-4" /> : <Play className="h-4 w-4" />}{scheduledAt ? "Programmer la diffusion" : "Diffuser maintenant"}</button>
+        <button disabled={busy || !player || !playlists.length} onClick={publish} className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#2563EB,#0891B2)] px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/20 transition-opacity hover:opacity-90 disabled:opacity-40">{scheduledAt ? <CalendarClock className="h-4 w-4" /> : <Play className="h-4 w-4" />}{scheduledAt ? "Programmer la diffusion" : "Diffuser maintenant"}</button>
         {!playlists.length && <p className="mt-2 text-center text-xs text-muted-foreground">Enregistrez d’abord votre programme à l’étape 2.</p>}
       </section>
     </div>
