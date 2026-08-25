@@ -11,6 +11,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     status: () => ipcRenderer.invoke("video-local-status"),
     queue: ({ workflow, clientId }) => ipcRenderer.invoke("video-local-queue", { workflow, clientId }),
     history: (promptId) => ipcRenderer.invoke("video-local-history", promptId),
+    batchQueue: (payload) => ipcRenderer.invoke("video-local-batch-queue", payload),
+    batchStatus: (batchId) => ipcRenderer.invoke("video-local-batch-status", batchId),
+    batchList: () => ipcRenderer.invoke("video-local-batch-list"),
+    batchCancel: (batchId) => ipcRenderer.invoke("video-local-batch-cancel", batchId),
+
     interrupt: () => ipcRenderer.invoke("video-local-interrupt"),
     uploadImage: ({ name, dataUrl }) => ipcRenderer.invoke("video-local-upload-image", { name, dataUrl }),
     finalize: ({ bytes, metadata }) => ipcRenderer.invoke("video-local-finalize", { bytes, metadata }),
