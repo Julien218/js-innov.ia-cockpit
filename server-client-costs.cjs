@@ -19,6 +19,8 @@ const AI_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'htt
 const AI_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || process.env.VITE_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_KEY = process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '';
+const CRM_PROXY_URL = process.env.SUPABASE_CRM_PROXY_URL || '';
+const CRM_PROXY_TOKEN = process.env.SUPABASE_CRM_PROXY_TOKEN || '';
 
 const DEFAULT_MARKUP_PERCENT = Math.max(0, Number(process.env.CLIENT_COST_DEFAULT_MARKUP_PERCENT || 0));
 const LOCAL_AI_POWER_WATTS = Math.max(0, Number(process.env.LOCAL_AI_POWER_WATTS || 0));
@@ -72,6 +74,17 @@ function authHeaders(key) {
 }
 
 async function rest(base, key, path, options = {}) {
+  if (base === CRM_URL && CRM_PROXY_URL && CRM_PROXY_TOKEN) {
+    const response = await fetch(CRM_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-cockpit-proxy-token': CRM_PROXY_TOKEN },
+      body: JSON.stringify({ path, method: options.method || 'GET', headers: options.headers || {}, body: options.body || null }),
+    });
+    const text = await response.text();
+    const data = text ? JSON.parse(text) : null;
+    if (!response.ok) throw new Error(data?.message || data?.error || `Relais CRM ${response.status}`);
+    return data;
+  }
   const candidates = base === CRM_URL
     ? [...new Set([key, process.env.SUPABASE_SERVICE_ROLE_KEY, process.env.SUPABASE_SECRET_KEY].map((value) => String(value || '').trim()).filter(Boolean))]
     : [String(key || '').trim()].filter(Boolean);

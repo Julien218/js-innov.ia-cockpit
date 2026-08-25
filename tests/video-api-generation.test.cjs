@@ -64,3 +64,15 @@ test('le backend peut utiliser les clés serveur protégées sans les exposer au
   assert.match(server, /SUPABASE_SECRET_KEY/);
   assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '..', 'src', 'pages', 'ApiVideoFactory.jsx'), 'utf8'), /SUPABASE_(CRM_KEY|SERVICE_ROLE_KEY|SECRET_KEY)/);
 });
+
+test('le relais CRM est authentifié et limité aux tables comptables', () => {
+  const proxy = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'crm-server-proxy', 'index.ts'), 'utf8');
+  assert.match(proxy, /x-cockpit-proxy-token/);
+  assert.match(proxy, /EXPECTED_TOKEN_SHA256/);
+  assert.match(proxy, /ALLOWED_TABLES/);
+  assert.match(proxy, /video_generation_jobs/);
+  assert.doesNotMatch(proxy, /delete/i);
+  const server = fs.readFileSync(path.join(__dirname, '..', 'server-video-generation.cjs'), 'utf8');
+  assert.match(server, /SUPABASE_CRM_PROXY_URL/);
+  assert.match(server, /SUPABASE_CRM_PROXY_TOKEN/);
+});
