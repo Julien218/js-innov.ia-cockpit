@@ -59,13 +59,21 @@ export default function DigitalSignageScheduled() {
 
   return <>
     <DigitalSignage />
-    <div className="px-4 md:px-6 pb-6 max-w-7xl mx-auto space-y-6">
+    <div className="px-4 md:px-6 pb-6 max-w-7xl mx-auto space-y-4">
       {error && <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-700">{error}</div>}
-      <SignageMediaManager managedClient={managedClient} />
-      {player ? <>
-        <SignageSchedulePanel player={player} managedClient={managedClient} />
-        <SignageDisplayManager player={player} managedClient={managedClient} />
-      </> : <div className="rounded-2xl border bg-card p-5 text-sm text-muted-foreground">Le calendrier et le Display Manager seront disponibles dès qu’un Player est associé à ce client.</div>}
+      {player && <details className="rounded-2xl border bg-card">
+        <summary className="cursor-pointer list-none p-4 text-sm font-semibold md:p-5">Définir les horaires automatiques</summary>
+        <div className="border-t p-3 md:p-4"><SignageSchedulePanel player={player} managedClient={managedClient} /></div>
+      </details>}
+      <details className="rounded-2xl border bg-card">
+        <summary className="cursor-pointer list-none p-4 text-sm font-semibold md:p-5">Gérer ou supprimer des fichiers</summary>
+        <div className="border-t p-3 md:p-4"><SignageMediaManager managedClient={managedClient} /></div>
+      </details>
+      {isAdmin && player && <details className="rounded-2xl border bg-card">
+        <summary className="cursor-pointer list-none p-4 text-sm font-semibold md:p-5">Diagnostic avancé de l’écran</summary>
+        <div className="border-t p-3 md:p-4"><SignageDisplayManager player={player} managedClient={managedClient} /></div>
+      </details>}
+      {!player && <div className="rounded-2xl border bg-card p-5 text-sm text-muted-foreground">Les horaires seront disponibles dès que l’écran sera associé.</div>}
     </div>
   </>;
 }
