@@ -94,6 +94,19 @@ async function uploadFile(dropboxPath, buffer) {
   }
 }
 
+function isExistingFolderConflict(data) {
+  const summary = String(data?.error_summary || '').toLowerCase();
+  if (summary.startsWith('path/conflict/folder')) return true;
+
+  const error = data?.error;
+  if (error?.['.tag'] === 'path_conflict' && error?.conflict?.['.tag'] === 'folder') return true;
+  if (error?.['.tag'] !== 'path') return false;
+
+  const pathError = error.path || error.reason;
+  if (pathError?.['.tag'] !== 'conflict') return false;
+  return pathError?.conflict?.['.tag'] === 'folder';
+}
+
 // === Create a folder if it does not exist ===
 async function ensureFolder(folderPath) {
   const token = await getAccessToken();
@@ -106,8 +119,8 @@ async function ensureFolder(folderPath) {
       body: JSON.stringify({ path: folderPath }),
     });
     const data = await resp.json();
-    if (resp.ok || (data.error && data.error['.tag'] === 'path_conflict')) {
-      return { success: true, path: folderPath };
+    if (resp.ok || isExistingFolderConflict(data)) {
+      return { success: true, path: folderPath, alreadyExisted: !resp.ok };
     }
     return { error: data.error_summary || 'Create folder failed' };
   } catch (err) {
@@ -376,4 +389,5 @@ module.exports = {
   extractTextFromBuffer,
   isSupportedMedia,
   safeUploadFilename,
+  isExistingFolderConflict,
 };

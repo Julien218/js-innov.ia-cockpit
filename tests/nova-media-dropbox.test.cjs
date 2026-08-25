@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const { classifyDocument, isSupportedMedia, safeUploadFilename } = require('../server-dropbox-helper.cjs');
+const { classifyDocument, isSupportedMedia, safeUploadFilename, isExistingFolderConflict } = require('../server-dropbox-helper.cjs');
 
 test('NOVA classe une vidéo dans le client et le projet indiqués', async () => {
   const clients = [{ id: 'client-1', denomination_legale: 'Synergie Dour ASBL' }];
@@ -37,6 +37,23 @@ test('NOVA refuse les formats non médias et neutralise les chemins de fichier',
   assert.equal(isSupportedMedia('facture.pdf', 'application/pdf'), false);
   assert.equal(isSupportedMedia('programme.exe', 'image/png'), false);
   assert.equal(safeUploadFilename('../secret/video.mp4'), 'video.mp4');
+});
+
+test('un dossier Dropbox déjà existant est un succès idempotent', () => {
+  assert.equal(isExistingFolderConflict({
+    error_summary: 'path/conflict/folder/..',
+    error: {
+      '.tag': 'path',
+      path: { '.tag': 'conflict', conflict: { '.tag': 'folder' } },
+    },
+  }), true);
+  assert.equal(isExistingFolderConflict({
+    error_summary: 'path/conflict/file/..',
+    error: {
+      '.tag': 'path',
+      path: { '.tag': 'conflict', conflict: { '.tag': 'file' } },
+    },
+  }), false);
 });
 
 test('le Companion expose un dépôt média binaire sécurisé et indexé', () => {
