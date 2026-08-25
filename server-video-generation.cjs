@@ -19,13 +19,27 @@ function headers(key = CRM_KEY) {
   return { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
 }
 
+function crmKeys(env = process.env) {
+  return [...new Set([
+    env.SUPABASE_CRM_KEY,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    env.SUPABASE_SECRET_KEY,
+  ].map((value) => String(value || '').trim()).filter(Boolean))];
+}
+
 async function crm(path, options = {}) {
-  if (!CRM_KEY) throw new Error('SUPABASE_CRM_KEY manquante');
-  const response = await fetch(`${CRM_URL}/rest/v1/${path}`, { ...options, headers: { ...headers(), ...(options.headers || {}) } });
-  const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
-  if (!response.ok) throw new Error(data?.message || data?.error || `Supabase ${response.status}`);
-  return data;
+  const candidates = crmKeys();
+  if (!candidates.length) throw new Error('Clé serveur Supabase CRM manquante');
+  let lastError = 'Clé Supabase CRM refusée';
+  for (const key of candidates) {
+    const response = await fetch(`${CRM_URL}/rest/v1/${path}`, { ...options, headers: { ...headers(key), ...(options.headers || {}) } });
+    const text = await response.text();
+    const data = text ? JSON.parse(text) : null;
+    if (response.ok) return data;
+    lastError = data?.message || data?.error || `Supabase ${response.status}`;
+    if (![401, 403].includes(response.status)) break;
+  }
+  throw new Error(lastError);
 }
 
 async function insertJob(row) {
@@ -195,4 +209,4 @@ router.post('/jobs', async (req, res) => {
   } catch (error) { return res.status(400).json({ error: error.message }); }
 });
 
-module.exports = { router, startVideoGenerationScheduler, sweep, processJob };
+module.exports = { router, startVideoGenerationScheduler, sweep, processJob, crmKeys };

@@ -72,15 +72,23 @@ function authHeaders(key) {
 }
 
 async function rest(base, key, path, options = {}) {
-  if (!key) throw new Error('Configuration Supabase serveur manquante');
-  const response = await fetch(`${base}/rest/v1/${path}`, {
-    ...options,
-    headers: { ...authHeaders(key), ...(options.headers || {}) },
-  });
-  const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
-  if (!response.ok) throw new Error(data?.message || data?.error || `Supabase ${response.status}`);
-  return data;
+  const candidates = base === CRM_URL
+    ? [...new Set([key, process.env.SUPABASE_SERVICE_ROLE_KEY, process.env.SUPABASE_SECRET_KEY].map((value) => String(value || '').trim()).filter(Boolean))]
+    : [String(key || '').trim()].filter(Boolean);
+  if (!candidates.length) throw new Error('Configuration Supabase serveur manquante');
+  let lastError = 'Clé Supabase refusée';
+  for (const candidate of candidates) {
+    const response = await fetch(`${base}/rest/v1/${path}`, {
+      ...options,
+      headers: { ...authHeaders(candidate), ...(options.headers || {}) },
+    });
+    const text = await response.text();
+    const data = text ? JSON.parse(text) : null;
+    if (response.ok) return data;
+    lastError = data?.message || data?.error || `Supabase ${response.status}`;
+    if (![401, 403].includes(response.status)) break;
+  }
+  throw new Error(lastError);
 }
 
 async function crmSelect(path) {
