@@ -53,6 +53,7 @@ test('ffmpeg embeds metadata without adding any visible watermark filter', () =>
   assert.match(command, /use_metadata_tags/);
   assert.match(command, /title=Rougraff — Services/);
   assert.match(command, /encoded_by=JS-Innov\.IA® — Signage Studio/);
+  assert.match(command, /fps=25/);
   assert.doesNotMatch(command, /drawtext|overlay|watermark/i);
 });
 
@@ -79,13 +80,14 @@ test('verifies every required tag and records SHA-256 in the JSON sidecar', () =
     keywords: metadata.keywords.join(', '),
   };
   assert.equal(Object.keys(tags).length, REQUIRED_TAGS.length);
-  const probe = { format: { tags, duration: '8.000', format_name: 'mov,mp4' }, streams: [{ codec_type: 'video', codec_name: 'h264', width: 1920, height: 1080 }] };
+  const probe = { format: { tags, duration: '8.000', format_name: 'mov,mp4' }, streams: [{ codec_type: 'video', codec_name: 'h264', width: 1920, height: 1080, avg_frame_rate: '25/1' }] };
   const verification = verifyProbe(probe, metadata);
   assert.equal(verification.ok, true);
   const sidecar = buildSidecar(metadata, { sha256: 'a'.repeat(64), probe, verification });
   assert.equal(sidecar.integrity.algorithm, 'SHA-256');
   assert.equal(sidecar.integrity.hash, 'a'.repeat(64));
   assert.equal(sidecar.technicalVerification.metadataPresent, true);
+  assert.equal(sidecar.technicalVerification.fps, 25);
   assert.equal(sidecar.prompt, metadata.prompt);
   assert.match(sidecar.notice, /Aucun filigrane visible/);
 });
@@ -112,11 +114,12 @@ test('verification refuses metadata that lies about duration or resolution', () 
   tags.client = metadata.client;
   tags.campaign = metadata.campaign;
   tags.unique_id = metadata.uniqueId;
-  const result = verifyProbe({ format: { tags, duration: '5.000' }, streams: [{ codec_type: 'video', width: 1280, height: 720 }] }, metadata);
+  const result = verifyProbe({ format: { tags, duration: '5.000' }, streams: [{ codec_type: 'video', width: 1280, height: 720, avg_frame_rate: '30/1' }] }, metadata);
   assert.equal(result.ok, false);
   assert.ok(result.mismatches.includes('duration_seconds'));
   assert.ok(result.mismatches.includes('width'));
   assert.ok(result.mismatches.includes('height'));
+  assert.ok(result.mismatches.includes('fps'));
 });
 
 test('ComfyUI history exposes verifiable runtime and output evidence', () => {
@@ -171,6 +174,27 @@ test('FFmpeg produit réellement un master écran géant de 8 secondes avec ses 
     const logoProbe = spawnSync('ffprobe', ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', logoOutput], { encoding: 'utf8' });
     assert.equal(logoProbe.status, 0, logoProbe.stderr);
     assert.equal(verifyProbe(JSON.parse(logoProbe.stdout), metadata).ok, true);
+  } finally {
+    fs.rmSync(folder, { recursive: true, force: true });
+  }
+});
+
+test('le finaliseur normalise réellement une source 30 fps vers 25 fps', { skip: spawnSync('ffmpeg', ['-version']).status !== 0 }, () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'jsinnovia-fps-test-'));
+  try {
+    const source = path.join(folder, 'source-30fps.mp4');
+    const output = path.join(folder, 'final-25fps.mp4');
+    const sourceRun = spawnSync('ffmpeg', ['-y', '-f', 'lavfi', '-i', 'color=c=navy:s=640x360:r=30', '-t', '1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', source], { encoding: 'utf8' });
+    assert.equal(sourceRun.status, 0, sourceRun.stderr);
+    const metadata = buildVideoMetadata({ client: 'JS-Innov.IA', campaign: 'Test cadence', durationSeconds: 1, width: 1920, height: 1080 });
+    const render = spawnSync('ffmpeg', buildFfmpegArgs(source, output, metadata), { encoding: 'utf8', timeout: 120_000 });
+    assert.equal(render.status, 0, render.stderr);
+    const probeRun = spawnSync('ffprobe', ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', output], { encoding: 'utf8' });
+    assert.equal(probeRun.status, 0, probeRun.stderr);
+    const probe = JSON.parse(probeRun.stdout);
+    const stream = probe.streams.find((item) => item.codec_type === 'video');
+    assert.equal(stream.avg_frame_rate, '25/1');
+    assert.equal(verifyProbe(probe, metadata).ok, true);
   } finally {
     fs.rmSync(folder, { recursive: true, force: true });
   }

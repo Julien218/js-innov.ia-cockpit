@@ -252,10 +252,11 @@ function buildSignageMasterArgs({ sourcePath, logoPath = '', outputPath, metadat
 function buildFfmpegArgs(inputPath, outputPath, metadata) {
   const width = Math.max(1, Math.round(Number(metadata?.exportParameters?.width) || 1920));
   const height = Math.max(1, Math.round(Number(metadata?.exportParameters?.height) || 1080));
+  const fps = Math.max(1, Math.round(Number(metadata?.exportParameters?.fps) || 25));
   return [
     '-y', '-i', inputPath,
     '-map', '0:v:0', '-map', '0:a?',
-    '-vf', `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`,
+    '-vf', `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,fps=${fps}`,
     '-t', String(Math.max(0.001, Number(metadata?.durationSeconds) || 8)),
     '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-b:a', '192k',
@@ -285,7 +286,11 @@ function verifyProbe(probe = {}, expected = {}) {
   const videoStream = probe?.streams?.find((stream) => stream.codec_type === 'video');
   if (Number(videoStream?.width || 0) !== Number(expected.exportParameters?.width || 0)) mismatches.push('width');
   if (Number(videoStream?.height || 0) !== Number(expected.exportParameters?.height || 0)) mismatches.push('height');
-  return { ok: missing.length === 0 && mismatches.length === 0, missing, mismatches, tags, formatDurationSeconds };
+  const [numerator, denominator] = String(videoStream?.avg_frame_rate || videoStream?.r_frame_rate || '').split('/').map(Number);
+  const frameRate = denominator > 0 ? numerator / denominator : Number(numerator) || null;
+  const expectedFps = Number(expected.exportParameters?.fps || 25);
+  if (!frameRate || Math.abs(frameRate - expectedFps) > 0.01) mismatches.push('fps');
+  return { ok: missing.length === 0 && mismatches.length === 0, missing, mismatches, tags, formatDurationSeconds, frameRate };
 }
 
 function buildSidecar(metadata, { sha256, probe, verification, finalizedAt = new Date().toISOString() } = {}) {
@@ -304,6 +309,7 @@ function buildSidecar(metadata, { sha256, probe, verification, finalizedAt = new
       codec: probe?.streams?.find((stream) => stream.codec_type === 'video')?.codec_name || null,
       width: probe?.streams?.find((stream) => stream.codec_type === 'video')?.width || null,
       height: probe?.streams?.find((stream) => stream.codec_type === 'video')?.height || null,
+      fps: verification?.frameRate || null,
     },
     notice: 'Les métadonnées sont invisibles dans la publicité et peuvent être supprimées par certaines plateformes. Aucun filigrane visible n’a été ajouté.',
   };

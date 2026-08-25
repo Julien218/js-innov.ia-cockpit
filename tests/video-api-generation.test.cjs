@@ -76,3 +76,10 @@ test('le relais CRM est authentifié et limité aux tables comptables', () => {
   assert.match(server, /SUPABASE_CRM_PROXY_URL/);
   assert.match(server, /SUPABASE_CRM_PROXY_TOKEN/);
 });
+
+test('les coûts vidéo utilisent une contrainte complète compatible avec on_conflict', () => {
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20260825224500_cost_event_idempotency_constraint.sql'), 'utf8');
+  assert.match(sql, /create unique index/i);
+  assert.match(sql, /client_cost_events\(source_type, external_ref\)/i);
+  assert.doesNotMatch(sql, /where external_ref is not null/i);
+});
