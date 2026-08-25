@@ -2,7 +2,9 @@ const crypto = require('node:crypto');
 
 const {
   executeBusinessTask,
+  executeProjectTask,
   executeSiteTask,
+  executeVideoTask,
   resolveNovaExecutor,
 } = require('./server-nova-executors.cjs');
 
@@ -157,6 +159,8 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
   const handlers = {
     site: executionHandlers.site || executeSiteTask,
     business: executionHandlers.business || executeBusinessTask,
+    project: executionHandlers.project || executeProjectTask,
+    video: executionHandlers.video || executeVideoTask,
   };
   const existingResponse = await agentFetch('/data/Tache?limit=250', {
     headers: { 'x-organisation-id': organisation },
@@ -220,7 +224,11 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
       };
       const outcome = executor.kind === 'site'
         ? await handlers.site(executor, item.record, { readOnly: item.read_only })
-        : await handlers.business(item.record, agentRequest);
+        : executor.kind === 'project'
+          ? await handlers.project(item.record, agentRequest)
+          : executor.kind === 'video'
+            ? await handlers.video(item.record, agentRequest, null, { user, organisation, taskId: task.id, runId: run.id })
+            : await handlers.business(item.record, agentRequest);
 
       if (outcome.completed) {
         await patchRun(agentFetch, run.id, { status: 'completed', result: outcome.result || { report: outcome.report }, completed_at: new Date().toISOString(), base44_conv_id: outcome.conversation_id || null }, organisation);

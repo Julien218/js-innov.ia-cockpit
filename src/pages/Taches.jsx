@@ -7,7 +7,8 @@ import StatusBadge from "@/components/shared/StatusBadge";
 import ErrorState from "@/components/shared/ErrorState";
 import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, CheckCircle2, CircleDot, Clock3, Pencil, Trash2 } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
+import { AlertTriangle, CheckCircle2, CircleDot, Clock3, Loader2, Pencil, Play, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import { isTaskBlocked, isTaskCompleted, normalizeTaskStatus } from "@/lib/taskStatus";
 import { groupTasks } from "@/lib/taskGrouping";
 
@@ -44,6 +45,7 @@ const columns = [
 
 export default function Taches() {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
@@ -54,6 +56,41 @@ export default function Taches() {
   const { data: taches = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["Tache"],
     queryFn: () => base44.entities.Tache.list("-created_at"),
+  });
+
+  const { data: autopilotStatus, refetch: refetchAutopilot } = useQuery({
+    queryKey: ["task-autopilot-status"],
+    queryFn: async () => {
+      const response = await fetch("/api/task-autopilot/status", { credentials: "same-origin" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "État NOVA indisponible");
+      return data;
+    },
+    refetchInterval: 30_000,
+  });
+
+  const runAutopilot = useMutation({
+    mutationFn: async ({ allowWrites }) => {
+      const response = await fetch("/api/task-autopilot/run", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allow_writes: allowWrites }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Exécution NOVA impossible");
+      return data;
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["Tache"] });
+      refetchAutopilot();
+      const result = data || {};
+      toast({
+        title: "NOVA a terminé le passage",
+        description: `${result.executed?.length || 0} terminée(s), ${result.queued?.length || 0} en traitement, ${result.blocked?.length || 0} blocage(s) réel(s).`,
+      });
+    },
+    onError: (mutationError) => toast({ title: "Exécution NOVA impossible", description: mutationError.message, variant: "destructive" }),
   });
 
   const save = useMutation({
@@ -68,7 +105,23 @@ export default function Taches() {
   });
 
   const rows = Array.isArray(taches) ? taches : [];
-  const displayRows = useMemo(() => groupDuplicates ? groupTasks(rows) : rows, [rows, groupDuplicates]);
+  const autopilotResult = autopilotStatus?.last_result || {};
+  const awaitingAuthorization = Array.isArray(autopilotResult.awaiting_authorization) ? autopilotResult.awaiting_authorization : [];
+  const actualBlockers = Array.isArray(autopilotResult.blocked) ? autopilotResult.blocked : [];
+  const queuedExecutions = Array.isArray(autopilotResult.queued) ? autopilotResult.queued : [];
+  const waitingTaskIds = useMemo(() => new Set(awaitingAuthorization.map((item) => String(item.task_id))), [awaitingAuthorization]);
+  const blockedTaskIds = useMemo(() => new Set(actualBlockers.map((item) => String(item.task_id))), [actualBlockers]);
+  const displayRows = useMemo(() => {
+    const groupedRows = groupDuplicates ? groupTasks(rows) : rows;
+    return groupedRows.map((row) => {
+      const ids = (row.duplicate_ids?.length ? row.duplicate_ids : [row.id]).map(String);
+      const hasRealBlocker = ids.some((id) => blockedTaskIds.has(id));
+      const waiting = ids.some((id) => waitingTaskIds.has(id));
+      return waiting && !hasRealBlocker
+        ? { ...row, statut: "en_attente", operational_status: "en_attente_autorisation" }
+        : row;
+    });
+  }, [rows, groupDuplicates, waitingTaskIds, blockedTaskIds]);
   const isLate = (task) => task?.date_echeance && new Date(task.date_echeance) < new Date() && !isTaskCompleted(task);
 
   const counters = useMemo(() => ({
@@ -140,6 +193,51 @@ export default function Taches() {
       <PageHeader title="Tâches" subtitle={`${filteredTasks.length} tâche(s) affichée(s) · ${rows.length} enregistrement(s) conservé(s)`}
         search={search} onSearch={(value) => { setSearch(value); setVisibleCount(25); }}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouvelle tâche</Button>} />
+
+      <section className="rounded-2xl border border-border/70 bg-card/70 p-4 shadow-sm" aria-label="Pilotage des exécutions NOVA">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              <div>
+                <p className="text-sm font-semibold">Pilotage NOVA</p>
+                <p className="text-xs text-muted-foreground">Les attentes d’autorisation sont séparées des pannes techniques.</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full bg-amber-500/10 px-2.5 py-1 font-medium text-amber-600">{awaitingAuthorization.length} en attente d’autorisation</span>
+              <span className="rounded-full bg-blue-500/10 px-2.5 py-1 font-medium text-blue-600">{queuedExecutions.length} en traitement</span>
+              <span className="rounded-full bg-red-500/10 px-2.5 py-1 font-medium text-red-600">{actualBlockers.length} blocage(s) réel(s)</span>
+            </div>
+            {actualBlockers.slice(0, 3).map((item) => (
+              <p key={`${item.task_id}-${item.reason}`} className="text-xs text-red-500">
+                {item.title || item.task_id} — {item.reason || "exécuteur indisponible"}
+              </p>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={runAutopilot.isPending}
+              onClick={() => runAutopilot.mutate({ allowWrites: false })}
+            >
+              {runAutopilot.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              Relancer les diagnostics
+            </Button>
+            <Button
+              type="button"
+              disabled={runAutopilot.isPending || awaitingAuthorization.length === 0}
+              onClick={() => {
+                const approved = confirm("Autoriser NOVA à exécuter les tâches supportées en attente ? Cela peut mettre à jour les fiches métier et demander aux agents responsables de modifier uniquement leurs sites. Aucune suppression ni facturation ne sera effectuée.");
+                if (approved) runAutopilot.mutate({ allowWrites: true });
+              }}
+            >
+              <Play className="mr-2 h-4 w-4" /> Exécuter les tâches autorisées
+            </Button>
+          </div>
+        </div>
+      </section>
 
       <section className="workspace-toolbar" aria-label="Filtres des tâches">
         <div className="flex flex-wrap gap-2">

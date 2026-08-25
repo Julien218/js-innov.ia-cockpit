@@ -74,6 +74,52 @@ async function listJobs(query = '') {
   return crm(`video_generation_jobs?select=*&${query || 'order=created_at.desc&limit=50'}`, { method: 'GET' });
 }
 
+async function patchLinkedExecution(path, payload, organisation = 'jsinnovia') {
+  if (!AGENT_KEY) throw new Error('Clé Agent manquante pour synchroniser la tâche vidéo.');
+  const response = await fetch(`${AGENT_URL}${path}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'x-agent-key': AGENT_KEY, 'x-organisation-id': organisation },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || data.message || `Synchronisation vidéo HTTP ${response.status}`);
+  return data;
+}
+
+async function completeLinkedExecution(job, finalJob) {
+  const taskId = String(job?.metadata?.task_id || '').trim();
+  const runId = String(job?.metadata?.agent_run_id || '').trim();
+  if (!taskId || !runId) return { linked: false };
+  const organisation = String(job?.metadata?.organisation || 'jsinnovia');
+  const proof = {
+    video_job_id: finalJob.id,
+    provider_job_id: finalJob.provider_job_id,
+    journal_id: `video-generation-${finalJob.id}`,
+    dropbox_path: finalJob.dropbox_path,
+    sidecar_path: finalJob.sidecar_path,
+    sha256: finalJob.sha256,
+    cost_event_id: finalJob.cost_event_id,
+    completed_at: finalJob.completed_at,
+  };
+  await patchLinkedExecution(`/agent-runs/${encodeURIComponent(runId)}`, { status: 'completed', result: proof, error: null, completed_at: finalJob.completed_at }, organisation);
+  await patchLinkedExecution(`/data/Tache/${encodeURIComponent(taskId)}`, {
+    statut: 'terminee',
+    notes: `Génération vidéo finalisée avec preuve.\nrun_id=${runId}\njournal=${proof.journal_id}\nDropbox=${proof.dropbox_path}\nSHA-256=${proof.sha256}`.slice(0, 4000),
+  }, organisation);
+  return { linked: true, task_id: taskId, run_id: runId };
+}
+
+async function failLinkedExecution(job, error) {
+  const taskId = String(job?.metadata?.task_id || '').trim();
+  const runId = String(job?.metadata?.agent_run_id || '').trim();
+  if (!taskId || !runId) return { linked: false };
+  const organisation = String(job?.metadata?.organisation || 'jsinnovia');
+  const message = String(error?.message || error || 'Échec vidéo').slice(0, 1000);
+  await patchLinkedExecution(`/agent-runs/${encodeURIComponent(runId)}`, { status: 'failed', error: message, completed_at: new Date().toISOString() }, organisation);
+  await patchLinkedExecution(`/data/Tache/${encodeURIComponent(taskId)}`, { statut: 'bloquee', notes: `Blocage d’exécution réel: ${message}\nrun_id=${runId}`.slice(0, 4000) }, organisation);
+  return { linked: true, task_id: taskId, run_id: runId };
+}
+
 function normalizedName(value) {
   return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
@@ -199,12 +245,14 @@ async function complete(job, completed) {
     evidenceStatus: evidence, verificationRef, calculationMethod, calculationInputs,
     metadata: { video_job_id: job.id, provider_job_id: job.provider_job_id, cost_usd: usd, dropbox_path: archived.videoUpload.path },
   });
-  return patchJob(job.id, {
+  const finalJob = await patchJob(job.id, {
     status: 'completed', progress: 100, result_payload: completed.data, cost_usd: usd,
     cost_eur_minor: converted.totalMinor, cost_evidence_status: evidence, cost_event_id: costEvent.id || null,
     dropbox_path: archived.videoUpload.path, sidecar_path: archived.jsonUpload.path, sha256: finalized.sha256,
     metadata: { ...job.metadata, final: finalized.metadata, index_warning: archived.indexWarning }, completed_at: new Date().toISOString(), error: null,
   });
+  await completeLinkedExecution(job, finalJob).catch((error) => console.warn('[video-generation] task sync:', error.message));
+  return finalJob;
 }
 
 async function processJob(job) {
@@ -217,6 +265,7 @@ async function processJob(job) {
   } catch (error) {
     console.error('[video-generation]', job.id, error.message);
     await patchJob(job.id, { status: 'failed', error: String(error.message || error).slice(0, 2000) }).catch(() => {});
+    await failLinkedExecution(job, error).catch((syncError) => console.warn('[video-generation] failed task sync:', syncError.message));
   } finally {
     active.delete(job.id);
   }
@@ -252,35 +301,43 @@ router.get('/jobs/:id', async (req, res) => {
     return res.json({ job: rows[0] });
   } catch (error) { return res.status(503).json({ error: error.message }); }
 });
+
+async function createVideoGenerationJob(body, user = {}) {
+  const resolvedBody = await resolveClientInput(body);
+  const input = validateJobInput(resolvedBody);
+  const provider = chooseProvider(resolvedBody.provider);
+  let sourceDocument = null;
+  if (input.sourceDocumentId) {
+    if (provider !== 'xai') throw new Error('Une image source Dropbox nécessite Grok Imagine; Sora texte seul ne peut pas être utilisé pour cette demande.');
+    sourceDocument = await getDocumentBufferForUser(user, input.sourceDocumentId);
+    if (!String(sourceDocument.record.mime_type || '').toLowerCase().startsWith('image/')) throw new Error('Le document source sélectionné n’est pas une image.');
+  }
+  const request = buildProviderRequest(provider, input.prompt);
+  const job = await insertJob({
+    client_id: input.clientId, client_name: input.clientName, project_id: input.projectId, cost_center_id: input.costCenterId,
+    provider, model: request.model, status: 'queued', prompt: input.prompt, campaign_name: input.campaign,
+    duration_seconds: 8, resolution: provider === 'xai' ? '1080p' : '1280x720', aspect_ratio: '16:9', version: input.version,
+    metadata: {
+      sector: input.sector,
+      usage_rights: input.usageRights,
+      rights_confirmed: input.rightsConfirmed,
+      requested_by: user?.id || user?.email || null,
+      task_id: String(resolvedBody.task_id || '').trim() || null,
+      agent_run_id: String(resolvedBody.agent_run_id || '').trim() || null,
+      organisation: String(user?.organisation || 'jsinnovia'),
+      source_document_id: input.sourceDocumentId,
+      source_media: sourceDocument ? [{ document_id: input.sourceDocumentId, filename: sourceDocument.record.filename, dropbox_path: sourceDocument.record.dropbox_path }] : [],
+    },
+    created_by: user?.id || user?.email || null,
+  });
+  processJob(job).catch(() => {});
+  return { job, journal_id: `video-generation-${job.id}` };
+}
+
 router.post('/jobs', async (req, res) => {
   try {
-    const resolvedBody = await resolveClientInput(req.body);
-    const input = validateJobInput(resolvedBody);
-    const provider = chooseProvider(resolvedBody.provider);
-    let sourceDocument = null;
-    if (input.sourceDocumentId) {
-      if (provider !== 'xai') throw new Error('Une image source Dropbox nécessite Grok Imagine; Sora texte seul ne peut pas être utilisé pour cette demande.');
-      sourceDocument = await getDocumentBufferForUser(req.user, input.sourceDocumentId);
-      if (!String(sourceDocument.record.mime_type || '').toLowerCase().startsWith('image/')) throw new Error('Le document source sélectionné n’est pas une image.');
-    }
-    const request = buildProviderRequest(provider, input.prompt);
-    const job = await insertJob({
-      client_id: input.clientId, client_name: input.clientName, project_id: input.projectId, cost_center_id: input.costCenterId,
-      provider, model: request.model, status: 'queued', prompt: input.prompt, campaign_name: input.campaign,
-      duration_seconds: 8, resolution: provider === 'xai' ? '1080p' : '1280x720', aspect_ratio: '16:9', version: input.version,
-      metadata: {
-        sector: input.sector,
-        usage_rights: input.usageRights,
-        rights_confirmed: input.rightsConfirmed,
-        requested_by: req.user?.id || req.user?.email || null,
-        source_document_id: input.sourceDocumentId,
-        source_media: sourceDocument ? [{ document_id: input.sourceDocumentId, filename: sourceDocument.record.filename, dropbox_path: sourceDocument.record.dropbox_path }] : [],
-      },
-      created_by: req.user?.id || req.user?.email || null,
-    });
-    processJob(job).catch(() => {});
-    return res.status(202).json({ job, journal_id: `video-generation-${job.id}` });
+    return res.status(202).json(await createVideoGenerationJob(req.body, req.user));
   } catch (error) { return res.status(400).json({ error: error.message }); }
 });
 
-module.exports = { router, startVideoGenerationScheduler, sweep, processJob, crmKeys, resolveClientInput, canonicalClientName };
+module.exports = { router, startVideoGenerationScheduler, sweep, processJob, crmKeys, resolveClientInput, canonicalClientName, createVideoGenerationJob, completeLinkedExecution, failLinkedExecution };

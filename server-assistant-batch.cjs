@@ -76,10 +76,12 @@ function autopilotMessage(result) {
   const executed = Array.isArray(result?.executed) ? result.executed : [];
   const queued = Array.isArray(result?.queued) ? result.queued : [];
   const blocked = Array.isArray(result?.blocked) ? result.blocked : [];
+  const awaitingAuthorization = Array.isArray(result?.awaiting_authorization) ? result.awaiting_authorization : [];
   const lines = executed.map((item) => `✅ task_id=${item.task_id} · run_id=${item.run_id || item.tool_run_id || 'aucun'} · statut=${item.status || 'completed'}`)
     .concat(queued.map((item) => `⏳ task_id=${item.task_id} · run_id=${item.run_id || 'aucun'} · exécuteur=${item.executor || 'NOVA'} · statut=${item.status}`))
+    .concat(awaitingAuthorization.map((item) => `⏸️ task_id=${item.task_id} · exécuteur=${item.executor || 'NOVA'} · statut=en_attente_autorisation`))
     .concat(blocked.map((item) => `⛔ task_id=${item.task_id} · statut=bloquee · raison=${item.reason || 'exécuteur ou accès indisponible'}`));
-  return `Prise en charge déterministe terminée. run_id=${result?.run_id || 'absent'} · tâches uniques=${result?.unique || 0} · terminées=${executed.length} · en traitement=${queued.length} · bloquées=${blocked.length}\n${lines.join('\n')}`;
+  return `Prise en charge déterministe terminée. run_id=${result?.run_id || 'absent'} · tâches uniques=${result?.unique || 0} · terminées=${executed.length} · en traitement=${queued.length} · en attente d’autorisation=${awaitingAuthorization.length} · bloquées=${blocked.length}\n${lines.join('\n')}`;
 }
 
 function removeStaleConfirmationLanguage(value) {
@@ -138,7 +140,7 @@ router.post('/chat', async (req, res, next) => {
   const userAlreadyAuthorizedExecution = explicitExecutionAuthorization(message);
   try {
     if (userAlreadyAuthorizedExecution && directAutopilotSignal(message)) {
-      const result = await runAutopilot({ allowWrites: true, requestedBy: req.user?.email || req.user?.id || 'companion' });
+      const result = await runAutopilot({ allowWrites: true, requestedBy: req.user?.email || req.user?.id || 'companion', user: req.user });
       return res.json({ message: autopilotMessage(result), confirmation: null, result, conversation_id: conversationIdFrom(req), assistant_mode: req.user?.role === 'superadmin' ? 'owner' : 'staff' });
     }
     const response = await agentFetch('/chat', {
