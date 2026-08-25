@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
@@ -7,7 +7,7 @@ import DataTable from "@/components/shared/DataTable";
 import StatusBadge from "@/components/shared/StatusBadge";
 import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
-import { Landmark, Pencil, Trash2 } from "lucide-react";
+import { AlertTriangle, Building2, Landmark, Mail, MapPin, Pencil, ShieldCheck, Trash2, Users } from "lucide-react";
 
 const formFields = [
   { name: "nom",                   label: "Nom du contact",                 type: "text", required: true },
@@ -54,6 +54,7 @@ export default function Clients() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [search, setSearch] = useState("");
 
   const { data: clients = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["Client"],
@@ -154,6 +155,23 @@ export default function Clients() {
     },
   });
 
+  const rows = Array.isArray(clients) ? clients : [];
+  const verifiedCount = rows.filter((client) => client.facturation_statut === "verifie").length;
+  const missingLegalCount = rows.filter((client) =>
+    !client.numero_tva || !client.denomination_legale || client.facturation_statut !== "verifie"
+  ).length;
+  const activeCount = rows.filter((client) => client.statut === "actif").length;
+
+  const filteredClients = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return rows;
+    return rows.filter((client) =>
+      [client.nom, client.prenom, client.email, client.entreprise, client.denomination_legale, client.numero_tva, client.ville]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term))
+    );
+  }, [rows, search]);
+
   const actions = (row) => (
     <div className="flex gap-2">
       <Button size="icon" variant="ghost" title="Vérifier auprès de la BCE officielle"
@@ -184,9 +202,58 @@ export default function Clients() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Clients" subtitle={`${Array.isArray(clients) ? clients.length : 0} client(s)`}
+      <PageHeader title="Clients" subtitle={`${filteredClients.length} résultat(s) · ${rows.length} client(s)`}
+        search={search} onSearch={setSearch}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouveau client</Button>} />
-      <DataTable columns={columns} data={Array.isArray(clients) ? clients : []} loading={isLoading} actions={actions} />
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="workspace-metric">
+          <div className="workspace-metric-icon text-cyan-300"><Users className="h-4 w-4" /></div>
+          <div><p className="workspace-metric-value">{activeCount}</p><p className="workspace-metric-label">clients actifs</p></div>
+        </div>
+        <div className="workspace-metric">
+          <div className="workspace-metric-icon text-emerald-300"><ShieldCheck className="h-4 w-4" /></div>
+          <div><p className="workspace-metric-value">{verifiedCount}</p><p className="workspace-metric-label">fiches vérifiées</p></div>
+        </div>
+        <div className="workspace-metric">
+          <div className="workspace-metric-icon text-amber-300"><AlertTriangle className="h-4 w-4" /></div>
+          <div><p className="workspace-metric-value">{missingLegalCount}</p><p className="workspace-metric-label">fiches à compléter</p></div>
+        </div>
+      </div>
+
+      <div className="hidden lg:block data-surface">
+        <DataTable columns={columns} data={filteredClients} loading={isLoading} actions={actions} emptyMessage="Aucun client trouvé" />
+      </div>
+
+      <div className="grid gap-3 lg:hidden">
+        {isLoading ? (
+          <div className="workspace-card p-5 text-sm text-muted-foreground">Chargement des clients…</div>
+        ) : filteredClients.length === 0 ? (
+          <div className="workspace-card p-8 text-center text-sm text-muted-foreground">Aucun client trouvé</div>
+        ) : filteredClients.map((client) => (
+          <article key={client.id} className="workspace-card p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="workspace-avatar"><Building2 className="h-4 w-4" /></div>
+                <div className="min-w-0">
+                  <h2 className="truncate text-sm font-semibold">{client.entreprise || `${client.nom || ""} ${client.prenom || ""}`.trim()}</h2>
+                  {client.entreprise && <p className="truncate text-xs text-muted-foreground">{client.nom} {client.prenom}</p>}
+                </div>
+              </div>
+              <StatusBadge status={client.statut} />
+            </div>
+            <div className="mt-4 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+              <span className="flex items-center gap-2 truncate"><Mail className="h-3.5 w-3.5 shrink-0" />{client.email || "Email manquant"}</span>
+              <span className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5 shrink-0" />{client.ville || "Ville manquante"}</span>
+              <span className="flex items-center gap-2"><Landmark className="h-3.5 w-3.5 shrink-0" />{client.numero_tva || "TVA manquante"}</span>
+              <span className={client.facturation_statut === "verifie" ? "text-emerald-300" : "text-amber-300"}>
+                {client.facturation_statut === "verifie" ? "Données légales vérifiées" : "Données légales à vérifier"}
+              </span>
+            </div>
+            <div className="mt-3 flex justify-end border-t border-border/70 pt-2">{actions(client)}</div>
+          </article>
+        ))}
+      </div>
       <FormModal open={open} onClose={() => { setOpen(false); setEditing(null); }}
         title={editing ? "Modifier le client" : "Nouveau client"}
         fields={formFields} initialData={editing}

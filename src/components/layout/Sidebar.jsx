@@ -147,7 +147,10 @@ const allNavGroups = [
 ];
 
 export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("cockpit-sidebar-collapsed") === "true";
+  });
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -187,6 +190,14 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
 
   const handleNavClick = () => {
     if (mobileOpen && onCloseMobile) onCloseMobile();
+  };
+
+  const toggleCollapsed = () => {
+    setCollapsed((current) => {
+      const next = !current;
+      window.localStorage.setItem("cockpit-sidebar-collapsed", String(next));
+      return next;
+    });
   };
 
   return (
@@ -262,7 +273,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
                       "sidebar-item mb-0.5 relative min-h-[44px]",
                       collapsed ? "md:justify-center md:px-0 md:py-2.5" : "",
                       active
-                        ? "bg-primary text-white shadow-lg shadow-primary/25"
+                        ? "active"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     )}
                   >
@@ -296,8 +307,11 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
         </nav>
 
         <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="hidden md:flex items-center justify-center py-2 border-t border-border text-muted-foreground hover:bg-muted"
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? "Déplier la navigation" : "Réduire la navigation"}
+          title={collapsed ? "Déplier la navigation" : "Réduire la navigation"}
+          className="hidden md:flex items-center justify-center py-2.5 border-t border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         >
           {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
         </button>

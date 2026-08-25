@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
@@ -7,7 +7,7 @@ import StatusBadge from "@/components/shared/StatusBadge";
 import ErrorState from "@/components/shared/ErrorState";
 import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleDot, Clock3, Pencil, Trash2 } from "lucide-react";
 
 const formFields = [
   { name: "titre",         label: "Titre",         type: "text",   required: true },
@@ -35,6 +35,9 @@ export default function Taches() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("actives");
+  const [visibleCount, setVisibleCount] = useState(25);
 
   const { data: taches = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["Tache"],
@@ -51,6 +54,51 @@ export default function Taches() {
     mutationFn: (id) => base44.entities.Tache.delete(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["Tache"] }),
   });
+
+  const rows = Array.isArray(taches) ? taches : [];
+  const isCompleted = (task) => ["termine", "terminee", "completed"].includes(task?.statut);
+  const isBlocked = (task) => ["bloque", "bloquee", "failed"].includes(task?.statut);
+  const isLate = (task) => task?.date_echeance && new Date(task.date_echeance) < new Date() && !isCompleted(task);
+
+  const counters = useMemo(() => ({
+    actives: rows.filter((task) => !isCompleted(task)).length,
+    en_cours: rows.filter((task) => task.statut === "en_cours").length,
+    bloquees: rows.filter(isBlocked).length,
+    retard: rows.filter(isLate).length,
+    terminees: rows.filter(isCompleted).length,
+  }), [rows]);
+
+  const filteredTasks = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const priorityRank = { urgente: 0, haute: 1, normale: 2, basse: 3 };
+    return rows
+      .filter((task) => {
+        if (statusFilter === "actives" && isCompleted(task)) return false;
+        if (statusFilter === "bloquees" && !isBlocked(task)) return false;
+        if (statusFilter === "retard" && !isLate(task)) return false;
+        if (statusFilter === "en_cours" && task.statut !== "en_cours") return false;
+        if (statusFilter === "terminees" && !isCompleted(task)) return false;
+        if (!term) return true;
+        return [task.titre, task.description, task.client_nom, task.projet_nom]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(term));
+      })
+      .sort((a, b) => {
+        const stateA = isBlocked(a) ? 0 : isLate(a) ? 1 : a.statut === "en_cours" ? 2 : isCompleted(a) ? 4 : 3;
+        const stateB = isBlocked(b) ? 0 : isLate(b) ? 1 : b.statut === "en_cours" ? 2 : isCompleted(b) ? 4 : 3;
+        if (stateA !== stateB) return stateA - stateB;
+        return (priorityRank[a.priorite] ?? 9) - (priorityRank[b.priorite] ?? 9);
+      });
+  }, [rows, search, statusFilter]);
+
+  const filters = [
+    { id: "actives", label: "À traiter", count: counters.actives, icon: CircleDot },
+    { id: "en_cours", label: "En cours", count: counters.en_cours, icon: Clock3 },
+    { id: "bloquees", label: "Bloquées", count: counters.bloquees, icon: AlertTriangle },
+    { id: "retard", label: "En retard", count: counters.retard, icon: AlertTriangle },
+    { id: "terminees", label: "Terminées", count: counters.terminees, icon: CheckCircle2 },
+    { id: "toutes", label: "Toutes", count: rows.length, icon: CircleDot },
+  ];
 
   const actions = (row) => (
     <div className="flex gap-2">
@@ -78,9 +126,52 @@ export default function Taches() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Tâches" subtitle={`${Array.isArray(taches) ? taches.length : 0} tâche(s)`}
+      <PageHeader title="Tâches" subtitle={`${filteredTasks.length} résultat(s) · ${counters.actives} à traiter`}
+        search={search} onSearch={(value) => { setSearch(value); setVisibleCount(25); }}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouvelle tâche</Button>} />
-      <DataTable columns={columns} data={Array.isArray(taches) ? taches : []} loading={isLoading} actions={actions} />
+
+      <section className="workspace-toolbar" aria-label="Filtres des tâches">
+        <div className="flex flex-wrap gap-2">
+          {filters.map((filter) => {
+            const Icon = filter.icon;
+            const selected = statusFilter === filter.id;
+            return (
+              <button
+                key={filter.id}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => { setStatusFilter(filter.id); setVisibleCount(25); }}
+                className={`filter-chip ${selected ? "filter-chip-active" : ""}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span>{filter.label}</span>
+                <span className="filter-chip-count">{filter.count}</span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Les tâches bloquées, en retard et urgentes sont affichées en premier.
+        </p>
+      </section>
+
+      <div className="data-surface">
+        <DataTable
+          columns={columns}
+          data={filteredTasks.slice(0, visibleCount)}
+          loading={isLoading}
+          actions={actions}
+          emptyMessage="Aucune tâche ne correspond à ces filtres"
+        />
+        {filteredTasks.length > visibleCount && (
+          <div className="flex items-center justify-between border-t border-border/70 px-4 py-3">
+            <span className="text-xs text-muted-foreground">{visibleCount} sur {filteredTasks.length} affichées</span>
+            <Button size="sm" variant="outline" onClick={() => setVisibleCount((count) => count + 25)}>
+              Afficher 25 de plus
+            </Button>
+          </div>
+        )}
+      </div>
       <FormModal open={open} onClose={() => { setOpen(false); setEditing(null); }}
         title={editing ? "Modifier la tâche" : "Nouvelle tâche"}
         fields={formFields} initialData={editing}
