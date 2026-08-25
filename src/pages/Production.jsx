@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   Clapperboard, Mic, Image, FileText, FolderOpen,
-  Send, Plus, Video, Sparkles, Link2, MonitorPlay, ArrowRight, PlayCircle,
+  Send, Plus, Video, Sparkles, Link2, MonitorPlay, ArrowRight, PlayCircle, Cpu,
 } from "lucide-react";
 
 const ACTIONS = [
+  { label: "Fabrique vidéo locale", icon: Cpu, color: "text-emerald-600 bg-emerald-500/10", route: "/video-factory-local" },
   { label: "Piloter écran géant", icon: MonitorPlay, color: "text-cyan-600 bg-cyan-500/10", route: "/ecran-geant" },
   { label: "Créer prompt vidéo", icon: Video, color: "text-blue-600 bg-blue-500/10", route: "/video-studio/new" },
   { label: "Créer script voix-off", icon: Mic, color: "text-purple-600 bg-purple-500/10", route: "/ai-video" },
@@ -46,10 +47,18 @@ export default function Production() {
             </div>
             <h2 className="text-2xl font-semibold sm:text-3xl">Que veux-tu produire maintenant ?</h2>
             <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
-              Les deux services les plus utilisés sont accessibles immédiatement. Les outils complémentaires restent regroupés juste dessous.
+              La fabrique locale produit trois concepts de 8 secondes par client et peut traiter jusqu’à 32 vidéos sans surcharger la station.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
+            <button type="button" onClick={() => navigate("/video-factory-local")} className="production-primary-card group sm:col-span-2">
+              <span className="production-primary-icon text-emerald-300"><Cpu className="h-5 w-5" /></span>
+              <span className="min-w-0 flex-1 text-left">
+                <strong className="block text-sm">Produire 3 propositions en local</strong>
+                <span className="mt-0.5 block text-xs text-muted-foreground">8 secondes · file de 32 vidéos · validation 1, 2 ou 3</span>
+              </span>
+              <ArrowRight className="h-4 w-4 text-emerald-300 transition-transform group-hover:translate-x-1" />
+            </button>
             <button type="button" onClick={() => navigate("/video-studio/new")} className="production-primary-card group">
               <span className="production-primary-icon"><Video className="h-5 w-5" /></span>
               <span className="min-w-0 flex-1 text-left">
