@@ -2,13 +2,20 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   AlertTriangle, BarChart3, Bot, CheckCircle2, CircleDollarSign,
-  Gauge, Layers3, RefreshCw, Save, ShieldCheck, TrendingUp, Users,
+  Database, Gauge, Layers3, RefreshCw, Save, ShieldCheck, TrendingUp, Users,
 } from 'lucide-react';
 import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 
 const MODELS = ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol'];
+const MAPPING_OPTIONS = [
+  ['openai_project', 'Projet OpenAI'], ['railway_project', 'Projet Railway'],
+  ['github_repo', 'Dépôt GitHub'], ['github_org', 'Organisation GitHub'], ['github_user', 'Compte GitHub'],
+  ['twilio_account', 'Compte Twilio'], ['supabase_project', 'Projet Supabase'],
+  ['dropbox_account', 'Compte Dropbox'], ['media_provider', 'Fournisseur vidéo / image'],
+  ['api_provider', 'Autre API'],
+];
 
 function currentMonth() {
   const d = new Date();
@@ -26,6 +33,12 @@ function usd(value, digits = 2) {
 
 function tokens(value) {
   return new Intl.NumberFormat('fr-BE', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value || 0));
+}
+
+function eurMinor(value, digits = 2) {
+  return new Intl.NumberFormat('fr-BE', {
+    style: 'currency', currency: 'EUR', minimumFractionDigits: digits, maximumFractionDigits: digits,
+  }).format(Number(value || 0) / 100);
 }
 
 async function fetchJson(url, options) {
@@ -106,6 +119,24 @@ export default function AICostControl() {
     queryFn: () => fetchJson(`/api/ai-cost/usage?month=${encodeURIComponent(month)}&limit=25`),
     refetchInterval: 60000,
   });
+  const [mappingForm, setMappingForm] = useState({ cost_center_id: '', service_type: 'github_repo', external_id: '', external_label: '' });
+  const [centerForm, setCenterForm] = useState({ client_id: '', product_code: '' });
+
+  const accountingQuery = useQuery({
+    queryKey: ['cost-accounting-overview', month],
+    queryFn: () => fetchJson(`/api/client-costs/accounting/overview?month=${encodeURIComponent(month)}`),
+    refetchInterval: 60000,
+  });
+
+  const centersQuery = useQuery({
+    queryKey: ['cost-accounting-centers'],
+    queryFn: () => fetchJson('/api/client-costs/accounting/cost-centers'),
+  });
+
+  const clientsQuery = useQuery({
+    queryKey: ['cost-accounting-clients'],
+    queryFn: () => fetchJson('/api/client-costs/accounting/clients'),
+  });
 
   const summary = summaryQuery.data;
   const globalBudget = summary?.global_budget;
@@ -122,6 +153,16 @@ export default function AICostControl() {
   useEffect(() => {
     if (summary?.routing) setRoutingForm(summary.routing);
   }, [summary?.routing]);
+
+  useEffect(() => {
+    const first = centersQuery.data?.centers?.[0];
+    if (first && !mappingForm.cost_center_id) setMappingForm((value) => ({ ...value, cost_center_id: first.id }));
+  }, [centersQuery.data?.centers, mappingForm.cost_center_id]);
+
+  useEffect(() => {
+    const first = clientsQuery.data?.clients?.[0];
+    if (first && !centerForm.client_id) setCenterForm((value) => ({ ...value, client_id: first.id }));
+  }, [clientsQuery.data?.clients, centerForm.client_id]);
 
   const alertState = useMemo(() => {
     if (!globalBudget?.enabled) return null;
@@ -178,6 +219,75 @@ export default function AICostControl() {
     }
   };
 
+  const syncAccounting = async () => {
+    setSaving('sync');
+    setNotice(null);
+    try {
+      const result = await fetchJson('/api/client-costs/accounting/sync', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ month }),
+      });
+      setNotice({
+        type: result.blocked_sources > 0 ? 'error' : 'success',
+        text: `${result.imported_events || 0} nouvelle(s) dépense(s) importée(s) · ${result.blocked_sources || 0} source(s) bloquée(s).`,
+      });
+      await accountingQuery.refetch();
+    } catch (error) {
+      setNotice({ type: 'error', text: error.message });
+    } finally {
+      setSaving('');
+    }
+  };
+
+  const saveMapping = async () => {
+    if (!mappingForm.cost_center_id || !mappingForm.external_id.trim()) {
+      setNotice({ type: 'error', text: 'Choisis un client/projet et indique l’identifiant du fournisseur.' });
+      return;
+    }
+    setSaving('mapping');
+    setNotice(null);
+    try {
+      await fetchJson(`/api/client-costs/accounting/cost-centers/${encodeURIComponent(mappingForm.cost_center_id)}/mappings`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          service_type: mappingForm.service_type,
+          external_id: mappingForm.external_id.trim(),
+          external_label: mappingForm.external_label.trim(),
+        }),
+      });
+      setMappingForm((value) => ({ ...value, external_id: '', external_label: '' }));
+      setNotice({ type: 'success', text: 'Fournisseur rattaché au bon client/projet.' });
+      await Promise.all([centersQuery.refetch(), accountingQuery.refetch()]);
+    } catch (error) {
+      setNotice({ type: 'error', text: error.message });
+    } finally {
+      setSaving('');
+    }
+  };
+
+  const saveCostCenter = async () => {
+    if (!centerForm.client_id || !centerForm.product_code.trim()) {
+      setNotice({ type: 'error', text: 'Choisis un client et donne un code court au projet.' });
+      return;
+    }
+    setSaving('center');
+    setNotice(null);
+    try {
+      const result = await fetchJson('/api/client-costs/accounting/cost-centers', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(centerForm),
+      });
+      setCenterForm((value) => ({ ...value, product_code: '' }));
+      setNotice({ type: 'success', text: 'Centre de coût client/projet créé.' });
+      const refreshed = await centersQuery.refetch();
+      if (result.cost_center?.id) setMappingForm((value) => ({ ...value, cost_center_id: result.cost_center.id }));
+      await Promise.all([clientsQuery.refetch(), accountingQuery.refetch()]);
+      return refreshed;
+    } catch (error) {
+      setNotice({ type: 'error', text: error.message });
+    } finally {
+      setSaving('');
+    }
+  };
+
   if (summaryQuery.isLoading) {
     return (
       <div className="min-h-[50vh] flex items-center justify-center">
@@ -211,7 +321,7 @@ export default function AICostControl() {
             </div>
             <div>
               <h1 className="text-2xl font-bold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>AI Cost Control</h1>
-              <p className="text-sm text-muted-foreground">Coûts OpenAI, budgets, alertes et routage intelligent des modèles.</p>
+              <p className="text-sm text-muted-foreground">Coûts IA, Railway, GitHub, services cloud et production locale, rattachés aux clients.</p>
             </div>
           </div>
         </div>
@@ -223,7 +333,7 @@ export default function AICostControl() {
             className="h-10 px-3 rounded-xl border border-border bg-background text-sm"
           />
           <button
-            onClick={() => { summaryQuery.refetch(); usageQuery.refetch(); }}
+            onClick={() => { summaryQuery.refetch(); usageQuery.refetch(); accountingQuery.refetch(); }}
             className="h-10 px-3 rounded-xl border border-border hover:bg-muted flex items-center gap-2 text-sm"
           >
             <RefreshCw className="w-4 h-4" /> Actualiser
@@ -245,11 +355,110 @@ export default function AICostControl() {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <KpiCard icon={CircleDollarSign} label="Dépense du mois" value={usd(totals.cost_usd)} detail={`${totals.requests || 0} appels enregistrés`} />
+        <KpiCard icon={CircleDollarSign} label="Usage IA suivi" value={usd(totals.cost_usd)} detail={`${totals.requests || 0} appels enregistrés · réel et estimé détaillés ci-dessous`} />
         <KpiCard icon={TrendingUp} label="Prévision fin de mois" value={usd(totals.forecast_usd)} detail="Projection au rythme actuel" tone="violet" />
         <KpiCard icon={ShieldCheck} label="Budget restant" value={remaining === null ? 'À configurer' : usd(remaining)} detail={globalBudget?.enabled ? `${globalBudget.percent || 0}% consommé` : 'Protection désactivée'} tone="emerald" />
         <KpiCard icon={Bot} label="Tokens" value={tokens((totals.input_tokens || 0) + (totals.output_tokens || 0))} detail={`${tokens(totals.input_tokens)} entrée · ${tokens(totals.output_tokens)} sortie`} tone="amber" />
       </div>
+
+      {accountingQuery.isError ? (
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-700">
+          <div className="flex items-center gap-2 font-semibold"><AlertTriangle className="w-4 h-4" /> Vue comptable indisponible</div>
+          <p className="mt-1">{accountingQuery.error?.message}</p>
+        </div>
+      ) : accountingQuery.data && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            <KpiCard icon={ShieldCheck} label="Dépenses vérifiées" value={eurMinor(accountingQuery.data.accounting?.verified_cost_minor)} detail="Preuves API et justificatifs manuels" tone="emerald" />
+            <KpiCard icon={TrendingUp} label="Coûts estimés" value={eurMinor(accountingQuery.data.accounting?.estimated_cost_minor)} detail="Calculs internes, séparés du réel" tone="violet" />
+            <KpiCard icon={CircleDollarSign} label="Montant facturable" value={eurMinor(accountingQuery.data.accounting?.billable_minor)} detail={`${eurMinor(accountingQuery.data.accounting?.unbilled_billable_minor)} reste à facturer`} />
+            <KpiCard icon={AlertTriangle} label="Éléments non vérifiés" value={String(accountingQuery.data.accounting?.unverified_events || 0)} detail="Exclus des totaux et des factures" tone="amber" />
+          </div>
+
+          <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+              <div>
+                <h2 className="font-semibold">Couverture comptable par fournisseur</h2>
+                <p className="text-xs text-muted-foreground">Une source absente ou non connectée n’est jamais comptée comme 0 €.</p>
+              </div>
+              <button onClick={syncAccounting} disabled={saving === 'sync'} className="h-10 px-3 rounded-xl bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 text-sm font-medium">
+                <RefreshCw className={`w-4 h-4 ${saving === 'sync' ? 'animate-spin' : ''}`} /> {saving === 'sync' ? 'Synchronisation…' : 'Synchroniser les coûts'}
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[820px]">
+                <thead>
+                  <tr className="text-left text-xs text-muted-foreground border-b border-border">
+                    <th className="py-2 pr-3 font-medium">Source</th>
+                    <th className="py-2 pr-3 font-medium">Connexion</th>
+                    <th className="py-2 pr-3 font-medium text-right">Réel vérifié</th>
+                    <th className="py-2 pr-3 font-medium text-right">Estimé</th>
+                    <th className="py-2 font-medium">Action requise</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(accountingQuery.data.sources || []).map((source) => {
+                    const verified = Number(source.actual_cost_minor || 0) + Number(source.manual_verified_minor || 0);
+                    return (
+                      <tr key={source.id} className="border-b border-border/50 last:border-0">
+                        <td className="py-2.5 pr-3 font-medium">{source.label}</td>
+                        <td className="py-2.5 pr-3">
+                          <span className={`text-[11px] px-2 py-1 rounded-full ${source.ready ? 'bg-emerald-500/10 text-emerald-700' : source.accounting_state === 'invoice_required' ? 'bg-blue-500/10 text-blue-700' : 'bg-amber-500/10 text-amber-700'}`}>
+                            {source.ready ? 'Configuré' : source.accounting_state === 'invoice_required' ? 'Facture à importer' : 'À configurer'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 pr-3 text-right font-semibold tabular-nums">{eurMinor(verified)}</td>
+                        <td className="py-2.5 pr-3 text-right tabular-nums">{eurMinor(source.estimated_cost_minor)}</td>
+                        <td className="py-2.5 text-xs text-muted-foreground">{(source.missing_configuration || []).join(' · ') || 'Aucune'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-muted-foreground">
+              <p><strong className="text-foreground">Réel :</strong> preuve fournisseur ou facture identifiable.</p>
+              <p><strong className="text-foreground">Estimé :</strong> temps machine, énergie ou tarification par tokens documentée.</p>
+              <p><strong className="text-foreground">Facturable :</strong> règle client appliquée sans modifier le coût interne.</p>
+              <p><strong className="text-foreground">Non vérifié :</strong> bloqué avant facturation.</p>
+            </div>
+
+            <div className="mt-5 pt-5 border-t border-border">
+              <div className="mb-5">
+                <h3 className="font-semibold text-sm">1. Créer le centre de coût du projet</h3>
+                <p className="text-xs text-muted-foreground mt-1">À faire une seule fois par client et par projet facturable.</p>
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2 mt-3">
+                  <select value={centerForm.client_id} onChange={(event) => setCenterForm((value) => ({ ...value, client_id: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm">
+                    <option value="">Client</option>
+                    {(clientsQuery.data?.clients || []).map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+                  </select>
+                  <input value={centerForm.product_code} onChange={(event) => setCenterForm((value) => ({ ...value, product_code: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm" placeholder="Code projet, ex. ROUGRAFF_VIDEO" />
+                  <button onClick={saveCostCenter} disabled={saving === 'center' || clientsQuery.isLoading} className="h-10 px-3 rounded-xl border border-primary text-primary hover:bg-primary/10 disabled:opacity-50 text-sm font-medium">{saving === 'center' ? 'Création…' : 'Créer le centre'}</button>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 mb-3">
+                <Database className="w-4 h-4 text-primary" />
+                <div>
+                  <h3 className="font-semibold text-sm">2. Rattacher un fournisseur à ce client/projet</h3>
+                  <p className="text-xs text-muted-foreground">Un identifiant externe ne peut appartenir qu’à un seul client.</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-2">
+                <select value={mappingForm.cost_center_id} onChange={(event) => setMappingForm((value) => ({ ...value, cost_center_id: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm">
+                  <option value="">Client / projet</option>
+                  {(centersQuery.data?.centers || []).map((center) => <option key={center.id} value={center.id}>{center.client_name} · {center.product_code}</option>)}
+                </select>
+                <select value={mappingForm.service_type} onChange={(event) => setMappingForm((value) => ({ ...value, service_type: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm">
+                  {MAPPING_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+                <input value={mappingForm.external_id} onChange={(event) => setMappingForm((value) => ({ ...value, external_id: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm" placeholder="ID projet, compte ou owner/dépôt" />
+                <input value={mappingForm.external_label} onChange={(event) => setMappingForm((value) => ({ ...value, external_label: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm" placeholder="Nom lisible (facultatif)" />
+                <button onClick={saveMapping} disabled={saving === 'mapping' || centersQuery.isLoading} className="h-10 px-3 rounded-xl border border-primary text-primary hover:bg-primary/10 disabled:opacity-50 text-sm font-medium">{saving === 'mapping' ? 'Ajout…' : 'Ajouter le rattachement'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2 bg-card border border-border rounded-2xl p-4 shadow-sm">

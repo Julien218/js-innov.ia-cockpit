@@ -1,6 +1,14 @@
 const express = require('express');
 const crypto = require('crypto');
 const { importOpenAICharges, importRailwayCharges } = require('./server-cost-centers.cjs');
+const { importGitHubCharges, importTwilioCharges } = require('./server-provider-cost-imports.cjs');
+const {
+  validateEvidence,
+  evidenceStatus,
+  summarizeAccounting,
+  buildSourceCoverage,
+  sourceToEurMinor,
+} = require('./server-cost-accounting-core.cjs');
 
 const router = express.Router();
 
@@ -19,6 +27,11 @@ const LOCAL_AI_MACHINE_EUR_HOUR = Math.max(0, Number(process.env.LOCAL_AI_MACHIN
 const SOURCE_TYPES = new Set([
   'llm_api', 'railway', 'local_ai', 'github', 'storage', 'communications',
   'api', 'media_ai', 'supabase', 'dropbox', 'twilio', 'other',
+]);
+const MAPPING_TYPES = new Set([
+  'openai_project', 'railway_project', 'github_user', 'github_org', 'github_repo',
+  'twilio_account', 'supabase_project', 'dropbox_account', 'storage_account',
+  'media_provider', 'communications_provider', 'api_provider', 'other_provider',
 ]);
 
 function clean(value, max = 300) {
@@ -149,11 +162,27 @@ async function createCostEvent({
   externalRef = null,
   incurredAt = null,
   metadata = {},
+  evidenceStatus = null,
+  verificationRef = null,
+  calculationMethod = null,
+  calculationInputs = null,
 }) {
   await getClient(clientId);
   const type = SOURCE_TYPES.has(sourceType) ? sourceType : 'other';
   const rule = await loadBillingRule(clientId, type);
+  const requestedEvidence = evidenceStatus || metadata.evidence_status || 'unverified';
+  const normalizedEvidence = validateEvidence({
+    status: requestedEvidence,
+    verificationRef: verificationRef || metadata.verification_ref,
+    calculationMethod: calculationMethod || metadata.calculation_method,
+    calculationInputs: calculationInputs || metadata.calculation_inputs,
+    billable: requestedEvidence === 'unverified' ? false : undefined,
+  });
   const priced = applyBillingRule(actualCostMinor, rule);
+  if (normalizedEvidence === 'unverified') {
+    priced.billable = 0;
+    priced.billableEnabled = false;
+  }
   const row = {
     client_id: clientId,
     project_id: projectId || null,
@@ -168,10 +197,69 @@ async function createCostEvent({
     billable: priced.billableEnabled,
     external_ref: clean(externalRef, 300) || null,
     incurred_at: incurredAt && !Number.isNaN(Date.parse(incurredAt)) ? new Date(incurredAt).toISOString() : new Date().toISOString(),
-    metadata: { ...metadata, billing_mode: priced.mode },
+    metadata: {
+      ...metadata,
+      evidence_status: normalizedEvidence,
+      verification_ref: clean(verificationRef || metadata.verification_ref, 500) || null,
+      calculation_method: clean(calculationMethod || metadata.calculation_method, 300) || null,
+      calculation_inputs: calculationInputs || metadata.calculation_inputs || null,
+      billing_mode: priced.mode,
+    },
   };
   const inserted = await crmInsert('client_cost_events', row, externalRef ? 'source_type,external_ref' : null);
   return inserted?.[0] || row;
+}
+
+async function collectMapping(mapping, window) {
+  if (mapping.service_type === 'openai_project') return importOpenAICharges(mapping, window.year, window.monthNumber);
+  if (mapping.service_type === 'railway_project') return importRailwayCharges(mapping, window.year, window.monthNumber);
+  if (['github_user', 'github_org', 'github_repo'].includes(mapping.service_type)) return importGitHubCharges(mapping, window.year, window.monthNumber);
+  if (mapping.service_type === 'twilio_account') return importTwilioCharges(mapping, window.year, window.monthNumber);
+  return { lines: [], totalEurMinor: 0, error: 'Cette source exige une facture vérifiée ou une remontée d’usage signée.' };
+}
+
+async function importCostCenter(center, window) {
+  if (!center?.client_id) throw new Error('Cost center sans client_id canonique');
+  await getClient(center.client_id);
+  const mappings = await crmSelect(`client_external_mappings?select=*&cost_center_id=eq.${encodeURIComponent(center.id)}&is_active=eq.true&limit=500`);
+  const results = [];
+
+  for (const mapping of mappings || []) {
+    const result = await collectMapping(mapping, window);
+    let created = 0;
+    for (const line of result.lines || []) {
+      if (minor(line.total_minor) <= 0) continue;
+      const sourceType = ({ railway: 'railway', github: 'github', twilio: 'twilio' })[line.line_type] || 'llm_api';
+      const ref = line.external_ref || `${sourceType}:${mapping.external_id}:${window.month}:${crypto.randomUUID()}`;
+      const exists = await crmSelect(`client_cost_events?select=id&source_type=eq.${encodeURIComponent(sourceType)}&external_ref=eq.${encodeURIComponent(ref)}&limit=1`).catch(() => []);
+      if (exists?.length) continue;
+      await createCostEvent({
+        clientId: center.client_id,
+        costCenterId: center.id,
+        sourceType,
+        provider: sourceType === 'llm_api' ? 'openai' : sourceType,
+        description: line.description,
+        actualCostMinor: line.total_minor,
+        externalRef: ref,
+        incurredAt: window.start.toISOString(),
+        evidenceStatus: line.metadata?.evidence_status || 'unverified',
+        verificationRef: line.metadata?.verification_ref || null,
+        calculationMethod: line.metadata?.calculation_method || null,
+        calculationInputs: line.metadata?.calculation_inputs || null,
+        metadata: { ...(line.metadata || {}), mapping_id: mapping.id, period: window.month },
+      });
+      created += 1;
+    }
+    results.push({
+      mapping_id: mapping.id,
+      service_type: mapping.service_type,
+      external_label: mapping.external_label || mapping.external_id,
+      created,
+      status: result.error ? 'blocked' : 'completed',
+      error: result.error || null,
+    });
+  }
+  return results;
 }
 
 async function listCostEvents(clientId, window, onlyUnbilled = false) {
@@ -191,23 +279,16 @@ async function listCostEvents(clientId, window, onlyUnbilled = false) {
 }
 
 function summarize(events) {
-  const bySource = {};
-  let actual = 0;
-  let billable = 0;
-  for (const event of events || []) {
-    actual += minor(event.actual_cost_minor);
-    billable += event.billable ? minor(event.billable_minor) : 0;
-    const key = event.source_type || 'other';
-    bySource[key] ||= { source_type: key, actual_cost_minor: 0, billable_minor: 0, events: 0 };
-    bySource[key].actual_cost_minor += minor(event.actual_cost_minor);
-    bySource[key].billable_minor += event.billable ? minor(event.billable_minor) : 0;
-    bySource[key].events += 1;
-  }
+  const accounting = summarizeAccounting(events);
+  const internalCost = accounting.verified_cost_minor + accounting.estimated_cost_minor;
   return {
-    actual_cost_minor: actual,
-    billable_minor: billable,
-    margin_minor: Math.max(0, billable - actual),
-    by_source: Object.values(bySource),
+    actual_cost_minor: accounting.verified_cost_minor,
+    estimated_cost_minor: accounting.estimated_cost_minor,
+    billable_minor: accounting.billable_minor,
+    margin_minor: Math.max(0, accounting.billable_minor - internalCost),
+    unverified_events: accounting.unverified_events,
+    by_source: accounting.by_source,
+    accounting,
   };
 }
 
@@ -225,7 +306,7 @@ async function nextCoreInvoiceNumber(year) {
 function buildInvoiceLines(events) {
   const groups = new Map();
   for (const event of events) {
-    if (!event.billable || minor(event.billable_minor) <= 0) continue;
+    if (evidenceStatus(event) === 'unverified' || !event.billable || minor(event.billable_minor) <= 0) continue;
     const key = event.source_type || 'other';
     const current = groups.get(key) || { description: key, total: 0, count: 0 };
     current.total += minor(event.billable_minor);
@@ -254,6 +335,144 @@ function buildInvoiceLines(events) {
   }));
 }
 
+// Vue comptable globale : ne mélange jamais coûts réels, estimations et sources non vérifiées.
+router.get('/accounting/overview', async (req, res) => {
+  try {
+    const window = monthWindow(req.query.month);
+    const events = await crmSelect(
+      `client_cost_events?select=*&incurred_at=gte.${encodeURIComponent(window.start.toISOString())}&incurred_at=lt.${encodeURIComponent(window.end.toISOString())}&order=incurred_at.desc&limit=10000`,
+    );
+    const mappings = await crmSelect('client_external_mappings?select=*&is_active=eq.true&limit=5000').catch(() => []);
+    const accounting = summarizeAccounting(events || []);
+    return res.json({
+      month: window.month,
+      currency: 'EUR',
+      accounting,
+      sources: buildSourceCoverage(process.env, mappings || [], events || []),
+      rules: {
+        actual: 'Montant fournisseur vérifié par une preuve API ou une facture.',
+        manual_verified: 'Montant saisi manuellement avec référence de facture ou justificatif.',
+        estimated: 'Calcul interne documenté, séparé des dépenses fournisseur réelles.',
+        unverified: 'Exclu des totaux et de la facturation tant qu’une preuve manque.',
+      },
+    });
+  } catch (error) {
+    return res.status(503).json({ error: error.message });
+  }
+});
+
+router.get('/accounting/cost-centers', async (_req, res) => {
+  try {
+    const centers = await crmSelect('client_cost_centers?select=*&is_active=eq.true&order=client_name.asc&limit=1000');
+    const mappings = await crmSelect('client_external_mappings?select=*&is_active=eq.true&order=created_at.asc&limit=5000').catch(() => []);
+    return res.json({
+      centers: (centers || []).map((center) => ({
+        ...center,
+        mappings: (mappings || []).filter((mapping) => mapping.cost_center_id === center.id),
+      })),
+      mapping_types: [...MAPPING_TYPES],
+    });
+  } catch (error) {
+    return res.status(503).json({ error: error.message });
+  }
+});
+
+router.get('/accounting/clients', async (_req, res) => {
+  try {
+    const clients = await agentFetch('/data/Client?limit=2000');
+    const centers = await crmSelect('client_cost_centers?select=id,client_id,product_code&is_active=eq.true&limit=2000').catch(() => []);
+    return res.json({
+      clients: (Array.isArray(clients) ? clients : []).map((client) => ({
+        id: client.id,
+        name: clientName(client),
+        cost_centers: (centers || []).filter((center) => String(center.client_id) === String(client.id)),
+      })).sort((a, b) => a.name.localeCompare(b.name, 'fr')),
+    });
+  } catch (error) {
+    return res.status(503).json({ error: error.message });
+  }
+});
+
+router.post('/accounting/cost-centers', async (req, res) => {
+  try {
+    const client = await getClient(clean(req.body?.client_id, 120));
+    const rawCode = clean(req.body?.product_code, 100) || `CLIENT_${client.id}`;
+    const productCode = rawCode.toUpperCase().replace(/[^A-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 100);
+    if (!productCode) return res.status(400).json({ error: 'Code projet invalide' });
+    const existing = await crmSelect(`client_cost_centers?select=*&client_id=eq.${encodeURIComponent(client.id)}&product_code=eq.${encodeURIComponent(productCode)}&is_active=eq.true&limit=1`).catch(() => []);
+    if (existing?.[0]) return res.json({ success: true, cost_center: existing[0], status: 'already_exists' });
+    const rows = await crmInsert('client_cost_centers', {
+      client_id: String(client.id),
+      product_code: productCode,
+      client_name: clientName(client),
+      client_email: clean(client.email, 200) || null,
+      client_address: clean(client.adresse || client.adresse_complete, 500) || null,
+      client_vat_number: clean(client.numero_tva || client.tva, 80) || null,
+      monthly_fee_minor: 0,
+      currency: 'EUR',
+      is_active: true,
+      metadata: { created_from: 'ai_cost_control', canonical_client_id: String(client.id) },
+    });
+    return res.status(201).json({ success: true, cost_center: rows?.[0] });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+router.post('/accounting/cost-centers/:id/mappings', async (req, res) => {
+  try {
+    const serviceType = clean(req.body?.service_type, 80).toLowerCase();
+    const externalId = clean(req.body?.external_id, 300);
+    if (!MAPPING_TYPES.has(serviceType)) return res.status(400).json({ error: 'Type de source non pris en charge' });
+    if (!externalId) return res.status(400).json({ error: 'Identifiant fournisseur requis' });
+    const centers = await crmSelect(`client_cost_centers?select=id,client_id&is_active=eq.true&id=eq.${encodeURIComponent(req.params.id)}&limit=1`);
+    if (!centers?.[0]?.client_id) return res.status(404).json({ error: 'Centre de coût client introuvable' });
+    const existing = await crmSelect(`client_external_mappings?select=*&service_type=eq.${encodeURIComponent(serviceType)}&external_id=eq.${encodeURIComponent(externalId)}&is_active=eq.true&limit=1`).catch(() => []);
+    if (existing?.[0] && existing[0].cost_center_id !== req.params.id) {
+      return res.status(409).json({ error: 'Cet identifiant fournisseur appartient déjà à un autre client/projet' });
+    }
+    if (existing?.[0]) return res.json({ success: true, mapping: existing[0], status: 'already_exists' });
+    const rows = await crmInsert('client_external_mappings', {
+      cost_center_id: req.params.id,
+      service_type: serviceType,
+      external_id: externalId,
+      external_label: clean(req.body?.external_label, 300) || externalId,
+      metadata: req.body?.metadata && typeof req.body.metadata === 'object' ? req.body.metadata : {},
+      is_active: true,
+    });
+    return res.status(201).json({ success: true, mapping: rows?.[0] });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+router.post('/accounting/sync', async (req, res) => {
+  try {
+    const window = monthWindow(req.body?.month || req.query?.month);
+    const centers = await crmSelect('client_cost_centers?select=*&is_active=eq.true&client_id=not.is.null&limit=1000');
+    const results = [];
+    for (const center of centers || []) {
+      try {
+        results.push({ cost_center_id: center.id, client_id: center.client_id, results: await importCostCenter(center, window) });
+      } catch (error) {
+        results.push({ cost_center_id: center.id, client_id: center.client_id, error: error.message, results: [] });
+      }
+    }
+    const flat = results.flatMap((row) => row.results || []);
+    return res.json({
+      success: true,
+      month: window.month,
+      centers: results.length,
+      imported_events: flat.reduce((sum, item) => sum + Number(item.created || 0), 0),
+      completed_sources: flat.filter((item) => item.status === 'completed').length,
+      blocked_sources: flat.filter((item) => item.status === 'blocked').length,
+      results,
+    });
+  } catch (error) {
+    return res.status(503).json({ error: error.message });
+  }
+});
+
 // Résumé par client : coût fournisseur, montant à refacturer et marge.
 router.get('/clients/:clientId/summary', async (req, res) => {
   try {
@@ -270,6 +489,10 @@ router.get('/clients/:clientId/summary', async (req, res) => {
 router.post('/clients/:clientId/events', async (req, res) => {
   try {
     const sourceType = clean(req.body?.source_type, 60).toLowerCase();
+    const evidenceStatus = clean(req.body?.evidence_status, 40).toLowerCase() || 'unverified';
+    if (req.body?.actual_cost_minor === undefined && req.body?.actual_cost_eur === undefined) {
+      return res.status(400).json({ error: 'actual_cost_minor ou actual_cost_eur requis; une absence de montant ne vaut pas zéro' });
+    }
     const actualCostMinor = req.body?.actual_cost_minor !== undefined
       ? minor(req.body.actual_cost_minor)
       : minor(Number(req.body?.actual_cost_eur || 0) * 100);
@@ -284,6 +507,10 @@ router.post('/clients/:clientId/events', async (req, res) => {
       externalRef: req.body?.external_ref,
       incurredAt: req.body?.incurred_at,
       metadata: req.body?.metadata && typeof req.body.metadata === 'object' ? req.body.metadata : {},
+      evidenceStatus,
+      verificationRef: req.body?.verification_ref,
+      calculationMethod: req.body?.calculation_method,
+      calculationInputs: req.body?.calculation_inputs,
     });
     return res.status(201).json({ success: true, event });
   } catch (error) {
@@ -300,6 +527,12 @@ router.post('/clients/:clientId/local-ai', async (req, res) => {
     const powerWatts = Math.max(0, Number(req.body?.power_watts ?? LOCAL_AI_POWER_WATTS));
     const energyRate = Math.max(0, Number(req.body?.energy_eur_kwh ?? LOCAL_AI_ENERGY_EUR_KWH));
     const machineRate = Math.max(0, Number(req.body?.machine_eur_hour ?? LOCAL_AI_MACHINE_EUR_HOUR));
+    if (!(powerWatts > 0) || !(energyRate > 0) || !(machineRate > 0)) {
+      return res.status(422).json({
+        error: 'Tarification IA locale incomplète: puissance, prix du kWh et coût machine/heure doivent être supérieurs à zéro.',
+        code: 'local_ai_rates_unconfigured',
+      });
+    }
     const energyEur = hours * (powerWatts / 1000) * energyRate;
     const machineEur = hours * machineRate;
     const actualCostMinor = minor((energyEur + machineEur) * 100);
@@ -313,6 +546,14 @@ router.post('/clients/:clientId/local-ai', async (req, res) => {
       description: req.body?.description || `IA locale — ${clean(req.body?.model, 120) || 'modèle local'}`,
       actualCostMinor,
       externalRef,
+      evidenceStatus: 'estimated',
+      calculationMethod: 'runtime_machine_plus_energy',
+      calculationInputs: {
+        runtime_seconds: seconds,
+        power_watts: powerWatts,
+        energy_eur_kwh: energyRate,
+        machine_eur_hour: machineRate,
+      },
       metadata: {
         runtime_seconds: seconds,
         power_watts: powerWatts,
@@ -342,17 +583,32 @@ router.post('/clients/:clientId/import-ai-usage', async (req, res) => {
     );
     let imported = 0;
     for (const row of rows || []) {
+      if (row.pricing_warning === 'model_unpriced') {
+        return res.status(422).json({ error: `Modèle non tarifé: ${row.model || 'inconnu'}`, code: 'ai_usage_unpriced' });
+      }
       const externalRef = `ai-usage:${row.request_id || row.id}`;
       const before = await crmSelect(`client_cost_events?select=id&source_type=eq.llm_api&external_ref=eq.${encodeURIComponent(externalRef)}&limit=1`).catch(() => []);
       if (before?.length) continue;
+      const converted = sourceToEurMinor(Number(row.cost_usd || 0), 'USD', process.env);
+      const estimated = row.cost_estimated !== false;
       await createCostEvent({
         clientId: client.id,
         sourceType: 'llm_api',
         provider: row.provider || 'openai',
         description: `LLM API — ${row.model || 'modèle'}`,
-        actualCostMinor: minor(Number(row.cost_usd || 0) * Number(process.env.BILLING_EUR_PER_USD || 0.92) * 100),
+        actualCostMinor: converted.totalMinor,
         externalRef,
         incurredAt: row.created_at,
+        evidenceStatus: estimated ? 'estimated' : 'actual',
+        verificationRef: estimated ? null : `ai-cost-usage:${row.request_id || row.id}`,
+        calculationMethod: estimated ? 'provider_token_pricing' : null,
+        calculationInputs: estimated ? {
+          model: row.model,
+          input_tokens: row.input_tokens,
+          cached_input_tokens: row.cached_input_tokens,
+          output_tokens: row.output_tokens,
+          cost_usd: row.cost_usd,
+        } : null,
         metadata: {
           ai_cost_usage_id: row.id,
           request_id: row.request_id,
@@ -361,6 +617,9 @@ router.post('/clients/:clientId/import-ai-usage', async (req, res) => {
           output_tokens: row.output_tokens,
           cost_usd: row.cost_usd,
           cost_estimated: row.cost_estimated,
+          source_currency: 'USD',
+          fx_rate: converted.fxRate,
+          fx_source: converted.fxSource,
         },
       });
       imported += 1;
@@ -371,45 +630,14 @@ router.post('/clients/:clientId/import-ai-usage', async (req, res) => {
   }
 });
 
-// Import OpenAI/Railway depuis les mappings existants du cost center, puis ledger canonique.
+// Import des fournisseurs depuis leurs preuves API, puis ledger canonique.
 router.post('/cost-centers/:id/import-external', async (req, res) => {
   try {
     const centers = await crmSelect(`client_cost_centers?select=*&id=eq.${encodeURIComponent(req.params.id)}&limit=1`);
     const center = centers?.[0];
     if (!center?.client_id) return res.status(422).json({ error: 'Cost center sans client_id canonique' });
-    await getClient(center.client_id);
     const window = monthWindow(req.body?.month || req.query?.month);
-    const mappings = await crmSelect(`client_external_mappings?select=*&cost_center_id=eq.${encodeURIComponent(center.id)}&is_active=eq.true&limit=500`);
-    const results = [];
-
-    for (const mapping of mappings || []) {
-      let result = null;
-      if (mapping.service_type === 'openai_project') result = await importOpenAICharges(mapping, window.year, window.monthNumber);
-      if (mapping.service_type === 'railway_project') result = await importRailwayCharges(mapping, window.year, window.monthNumber);
-      if (!result) continue;
-
-      let created = 0;
-      for (const line of result.lines || []) {
-        if (minor(line.total_minor) <= 0) continue;
-        const sourceType = line.line_type === 'railway' ? 'railway' : 'llm_api';
-        const ref = line.external_ref || `${sourceType}:${mapping.external_id}:${window.month}:${crypto.randomUUID()}`;
-        const exists = await crmSelect(`client_cost_events?select=id&source_type=eq.${encodeURIComponent(sourceType)}&external_ref=eq.${encodeURIComponent(ref)}&limit=1`).catch(() => []);
-        if (exists?.length) continue;
-        await createCostEvent({
-          clientId: center.client_id,
-          costCenterId: center.id,
-          sourceType,
-          provider: sourceType === 'railway' ? 'railway' : 'openai',
-          description: line.description,
-          actualCostMinor: line.total_minor,
-          externalRef: ref,
-          incurredAt: window.start.toISOString(),
-          metadata: { ...(line.metadata || {}), mapping_id: mapping.id, period: window.month },
-        });
-        created += 1;
-      }
-      results.push({ mapping_id: mapping.id, service_type: mapping.service_type, created, error: result.error || null });
-    }
+    const results = await importCostCenter(center, window);
     return res.json({ success: true, client_id: center.client_id, month: window.month, results });
   } catch (error) {
     return res.status(503).json({ error: error.message });
@@ -452,7 +680,8 @@ router.post('/clients/:clientId/generate-draft', async (req, res) => {
     const client = await getClient(req.params.clientId);
     const window = monthWindow(req.body?.month || req.query?.month);
     const events = await listCostEvents(client.id, window, true);
-    const lines = buildInvoiceLines(events || []);
+    const eligibleEvents = (events || []).filter((event) => evidenceStatus(event) !== 'unverified');
+    const lines = buildInvoiceLines(eligibleEvents);
     if (!lines.length) return res.status(409).json({ error: 'Aucun coût refacturable non facturé pour cette période' });
 
     const amountHt = Number(lines.reduce((sum, line) => sum + Number(line.total || 0), 0).toFixed(2));
@@ -481,13 +710,16 @@ router.post('/clients/:clientId/generate-draft', async (req, res) => {
     });
 
     if (!invoice?.id) throw new Error('Facture créée sans identifiant');
-    await crmPatch(
-      'client_cost_events',
-      `client_id=eq.${encodeURIComponent(client.id)}&incurred_at=gte.${encodeURIComponent(window.start.toISOString())}&incurred_at=lt.${encodeURIComponent(window.end.toISOString())}&facture_id=is.null&billable=eq.true`,
-      { facture_id: String(invoice.id) },
-    );
+    const eventIds = eligibleEvents.map((event) => event.id).filter(Boolean);
+    if (eventIds.length) {
+      await crmPatch(
+        'client_cost_events',
+        `id=in.(${eventIds.map((id) => encodeURIComponent(id)).join(',')})&facture_id=is.null`,
+        { facture_id: String(invoice.id) },
+      );
+    }
 
-    return res.status(201).json({ success: true, client_id: client.id, month: window.month, invoice, source_events: events.length });
+    return res.status(201).json({ success: true, client_id: client.id, month: window.month, invoice, source_events: eligibleEvents.length, excluded_unverified: (events || []).length - eligibleEvents.length });
   } catch (error) {
     return res.status(503).json({ error: error.message });
   }
