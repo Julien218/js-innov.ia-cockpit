@@ -12,6 +12,8 @@ const { sourceToEurMinor } = require('./server-cost-accounting-core.cjs');
 const router = express.Router();
 const CRM_URL = process.env.SUPABASE_CRM_URL || 'https://gfjpryakxzdzwnazlsfz.supabase.co';
 const CRM_KEY = process.env.SUPABASE_CRM_KEY || '';
+const CRM_PROXY_URL = process.env.SUPABASE_CRM_PROXY_URL || '';
+const CRM_PROXY_TOKEN = process.env.SUPABASE_CRM_PROXY_TOKEN || '';
 const active = new Set();
 let scheduler = null;
 
@@ -28,6 +30,17 @@ function crmKeys(env = process.env) {
 }
 
 async function crm(path, options = {}) {
+  if (CRM_PROXY_URL && CRM_PROXY_TOKEN) {
+    const response = await fetch(CRM_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-cockpit-proxy-token': CRM_PROXY_TOKEN },
+      body: JSON.stringify({ path, method: options.method || 'GET', headers: options.headers || {}, body: options.body || null }),
+    });
+    const text = await response.text();
+    const data = text ? JSON.parse(text) : null;
+    if (!response.ok) throw new Error(data?.message || data?.error || `Relais CRM ${response.status}`);
+    return data;
+  }
   const candidates = crmKeys();
   if (!candidates.length) throw new Error('Clé serveur Supabase CRM manquante');
   let lastError = 'Clé Supabase CRM refusée';
