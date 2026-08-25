@@ -22,9 +22,11 @@ import {
   getLocalVideoStatus,
   listLocalVideoBatches,
   loadLocalWorkflow,
+  openLocalGeneratedFolder,
   openLocalOutputFolder,
   openLocalReviewFolder,
   prepareH3Workflow,
+  publishLocalVideoChoice,
   queueLocalVideoBatch,
   saveLocalWorkflow,
   uploadLocalImage,
@@ -79,6 +81,7 @@ export default function LocalVideoFactory() {
   const [batch, setBatch] = useState(null);
   const [starting, setStarting] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const [publishingPosition, setPublishingPosition] = useState(0);
   const [notice, setNotice] = useState(null);
 
   const summary = useMemo(() => summarizeLocalBatch(batch || { jobs }), [batch, jobs]);
@@ -188,6 +191,7 @@ export default function LocalVideoFactory() {
             firstFrameName,
           }),
           metadata: {
+            firstFrameName,
             position: job.position,
             direction: job.directionLabel,
             clientName,
@@ -227,6 +231,21 @@ export default function LocalVideoFactory() {
       setNotice({ type: 'error', text: error.message });
     } finally {
       setReviewing(false);
+    }
+  };
+
+  const exportChoice = async (position) => {
+    if (!batch?.id) return;
+    setPublishingPosition(position);
+    setNotice(null);
+    try {
+      const result = await publishLocalVideoChoice(batch.id, position);
+      setBatch((current) => ({ ...current, publication: result }));
+      setNotice({ type: 'success', text: `La proposition ${position} est exportée en master 8 secondes, 1920×1080, prête pour l’écran géant.` });
+    } catch (error) {
+      setNotice({ type: 'error', text: error.message });
+    } finally {
+      setPublishingPosition(0);
     }
   };
 
@@ -372,11 +391,31 @@ export default function LocalVideoFactory() {
                 <FolderOpen size={15} /> Ouvrir le montage
               </button>
               <button type="button" onClick={() => navigate('/validations')} className="rounded-lg border border-border px-4 py-2 text-sm">
-                Enregistrer la validation
+                Ouvrir les validations
               </button>
+              {[1, 2, 3].map((position) => (
+                <button key={position} type="button" disabled={publishingPosition > 0} onClick={() => exportChoice(position)} className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-2 text-sm disabled:opacity-50 flex items-center gap-2">
+                  {publishingPosition === position && <Loader2 size={14} className="animate-spin" />}
+                  Exporter le choix {position}
+                </button>
+              ))}
             </>
           )}
         </div>
+        {batch?.publication?.outputPath && (
+          <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-700">
+            <p className="font-semibold">Master écran géant prêt : choix {batch.publication.selectedPosition}</p>
+            <p className="mt-1 break-all text-xs">{batch.publication.outputPath}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button type="button" onClick={() => openLocalGeneratedFolder(batch.publication.outputPath)} className="rounded-lg border border-emerald-500/30 px-3 py-1.5 text-xs flex items-center gap-1">
+                <FolderOpen size={13} /> Ouvrir le dossier
+              </button>
+              <button type="button" onClick={() => navigate('/ecran-geant')} className="rounded-lg border border-emerald-500/30 px-3 py-1.5 text-xs">
+                Passer à la diffusion
+              </button>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );
