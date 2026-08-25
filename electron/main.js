@@ -187,7 +187,7 @@ async function createLocalReviewVideo(batch) {
       "[4:v]trim=duration=8,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=25,format=yuv420p[v4]",
       `[5:v]${reviewDrawtext("PROPOSITION 3")},format=yuv420p[v5]`,
       "[6:v]trim=duration=8,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=25,format=yuv420p[v6]",
-      `[7:v]${reviewDrawtext("CHOISISSEZ 1, 2 OU 3", 72)},format=yuv420p[v7]`,
+      `[7:v]${reviewDrawtext("CHOISISSEZ 1\\, 2 OU 3", 72)},format=yuv420p[v7]`,
       "[v0][v1][v2][v3][v4][v5][v6][v7]concat=n=8:v=1:a=0[outv]",
     ].join(";"),
     "-map", "[outv]",
