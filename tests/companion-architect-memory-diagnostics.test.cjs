@@ -21,6 +21,29 @@ test('memory snapshot selector prefers the newest Analyse Cockpit folder', () =>
   assert.equal(picked.name, 'Analyse Cockpit 2026-08-21');
 });
 
+test('NOVA reconnaît une demande de vue d’ensemble des projets', () => {
+  assert.equal(memory.requestsProjectOverview('Donne-moi une vue d’ensemble de tous mes projets'), true);
+  assert.equal(memory.requestsProjectOverview('Que sais-tu du projet Assurances Dour ?'), false);
+});
+
+test('la vue projets place les éléments classés avant Non classé et conserve les preuves utiles', () => {
+  const overview = memory.buildProjectOverview([
+    { name: 'Non classé', conversation_count: 12 },
+    { name: 'Cockpit', conversation_count: 4, task_count: 3, decision_count: 2, clients: ['JS-Innov.IA'], recent_conversations: [{ id: 'c1', title: 'Mémoire', updated_at: '2026-08-25' }] },
+  ]);
+  assert.equal(overview[0].name, 'Cockpit');
+  assert.equal(overview[0].clients[0], 'JS-Innov.IA');
+  assert.equal(overview[1].name, 'Non classé');
+});
+
+test('NOVA signale un snapshot Dropbox vieux de plus de sept jours', () => {
+  const now = Date.parse('2026-08-25T12:00:00.000Z');
+  assert.equal(memory.memoryFreshness({ generated_at: '2026-08-24T12:00:00.000Z' }, now).stale, false);
+  const stale = memory.memoryFreshness({ generated_at: '2026-08-14T12:00:00.000Z' }, now);
+  assert.equal(stale.stale, true);
+  assert.equal(stale.age_days, 11);
+});
+
 test('owner architect contract delegates reads and gates real effects behind one confirmation', () => {
   const contract = memory.architectContract();
   assert.match(contract, /architecte\/orchestratrice/i);
