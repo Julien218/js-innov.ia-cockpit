@@ -135,6 +135,23 @@ export async function createLocalReviewVideo(batchId) {
   return bridge().createReview(batchId);
 }
 
+export async function publishLocalVideoChoice(batchId, position) {
+  if (!batchId) throw new Error('Identifiant de lot vidéo manquant.');
+  if (![1, 2, 3].includes(Number(position))) throw new Error('Choisis la proposition 1, 2 ou 3.');
+  if (typeof bridge().publishChoice !== 'function') {
+    throw new Error('L’export écran géant nécessite la dernière application desktop JS-Innov.IA.');
+  }
+  return bridge().publishChoice({ batchId, position: Number(position) });
+}
+
+export async function openLocalGeneratedFolder(generatedPath) {
+  if (!generatedPath) throw new Error('Chemin de production manquant.');
+  if (typeof bridge().openGeneratedFolder !== 'function') {
+    throw new Error('La dernière application desktop JS-Innov.IA est nécessaire.');
+  }
+  return bridge().openGeneratedFolder(generatedPath);
+}
+
 export async function openLocalReviewFolder(reviewPath) {
   if (!reviewPath) throw new Error('Chemin du montage de validation manquant.');
   if (typeof bridge().openReviewFolder !== 'function') {
