@@ -10,6 +10,7 @@ const {
   uploadFile,
   ensureFolderTree,
   classifyDocument,
+  buildMediaReference,
   extractTextFromPDF,
   extractTextFromBuffer,
   isSupportedMedia,
@@ -587,6 +588,17 @@ function decodedHeader(req, name, max = 500) {
   catch { return raw.slice(0, max); }
 }
 
+function decodedJsonHeader(req, name, max = 2000) {
+  const value = decodedHeader(req, name, max);
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 router.post('/upload-media', express.raw({ type: () => true, limit: MAX_NOVA_MEDIA_BYTES }), async (req, res) => {
   if (req.user?.role === 'client') {
     return res.status(403).json({ error: 'Le dépôt média interne n’est pas accessible depuis un espace client.' });
@@ -597,6 +609,7 @@ router.post('/upload-media', express.raw({ type: () => true, limit: MAX_NOVA_MED
     const fileName = safeUploadFilename(requestedFileName);
     const mimeType = decodedHeader(req, 'x-nova-file-type', 100) || String(req.get('content-type') || 'application/octet-stream').slice(0, 100);
     const message = decodedHeader(req, 'x-nova-file-context', 1000);
+    const mediaMetadata = decodedJsonHeader(req, 'x-nova-media-metadata');
     const buffer = req.body;
     if (!requestedFileName || !Buffer.isBuffer(buffer) || buffer.length === 0) {
       return res.status(400).json({ error: 'Fichier média vide ou nom absent.' });
@@ -609,10 +622,42 @@ router.post('/upload-media', express.raw({ type: () => true, limit: MAX_NOVA_MED
       fetchTableRows('Projet').catch((error) => { console.warn('[assistant] Project fetch failed:', error.message); return []; }),
     ]);
     const classification = await classifyDocument(fileName, mimeType, buffer.length, clients, message, projects);
+    const contentHash = crypto.createHash('sha256').update(buffer).digest('hex');
+    const reference = buildMediaReference({ fileName, mimeType, message, classification, metadata: mediaMetadata, contentHash });
+    classification.suggestedPath = `${classification.folderPath}/${reference.archivedFilename}`;
     const folderResult = await ensureFolderTree(classification.folderPath);
     if (folderResult?.error) throw new Error(`Dropbox dossier: ${folderResult.error}`);
     const uploadResult = await uploadFile(classification.suggestedPath, buffer);
     if (uploadResult.error) throw new Error(`Dropbox: ${uploadResult.error}`);
+
+    const referenceManifest = {
+      schema_version: reference.schemaVersion,
+      media: {
+        original_filename: reference.originalFilename,
+        archived_filename: reference.archivedFilename,
+        mime_type: mimeType,
+        size_bytes: buffer.length,
+        type: classification.docType,
+        technical_metadata: reference.technicalMetadata,
+      },
+      reference: {
+        title: reference.title,
+        keywords: reference.keywords,
+        provider: reference.provider,
+        orientation: reference.orientation,
+        client: classification.matchedClient,
+        project: classification.matchedProject,
+      },
+      integrity: reference.integrity,
+      provenance: {
+        methods: reference.classificationMethods,
+        generated_at: new Date().toISOString(),
+        generated_by: 'nova-media-reference-v1',
+      },
+    };
+    const referencePath = `${classification.folderPath}/${reference.referenceFilename}`;
+    const referenceUpload = await uploadFile(referencePath, Buffer.from(`${JSON.stringify(referenceManifest, null, 2)}\n`, 'utf8'));
+    if (referenceUpload.error) throw new Error(`Dropbox fiche de référencement: ${referenceUpload.error}`);
 
     let document = null;
     let indexWarning = null;
@@ -623,10 +668,10 @@ router.post('/upload-media', express.raw({ type: () => true, limit: MAX_NOVA_MED
         brand: 'nova-media',
         clientId: classification.matchedClient?.id || null,
         category: classification.docType,
-        filename: fileName,
+        filename: reference.archivedFilename,
         mimeType,
         sizeBytes: buffer.length,
-        dropboxMeta: { id: uploadResult.id, path_display: uploadResult.path, size: uploadResult.size },
+        dropboxMeta: { id: uploadResult.id, path_display: uploadResult.path, size: uploadResult.size, content_hash: contentHash },
         source: 'nova-assistant',
       });
     } catch (error) {
@@ -634,10 +679,11 @@ router.post('/upload-media', express.raw({ type: () => true, limit: MAX_NOVA_MED
       console.warn('[assistant] Media index failed:', error.message);
     }
 
-    await logAction(req.user, 'upload media', 'succes', `${fileName} → ${uploadResult.path}`);
+    await logAction(req.user, 'upload media', 'succes', `${fileName} → ${reference.archivedFilename} → ${uploadResult.path}`);
     return res.status(201).json({
       success: true,
-      fileName,
+      fileName: reference.archivedFilename,
+      originalFileName: fileName,
       mimeType,
       size: uploadResult.size,
       dropboxPath: uploadResult.path,
@@ -650,6 +696,17 @@ router.post('/upload-media', express.raw({ type: () => true, limit: MAX_NOVA_MED
         matchedClient: classification.matchedClient,
         matchedProject: classification.matchedProject,
         folderPath: classification.folderPath,
+      },
+      reference: {
+        title: reference.title,
+        keywords: reference.keywords,
+        provider: reference.provider,
+        orientation: reference.orientation,
+        technicalMetadata: reference.technicalMetadata,
+        contentHash,
+        fileName: reference.referenceFilename,
+        dropboxPath: referenceUpload.path,
+        dropboxId: referenceUpload.id,
       },
       journalId: `dropbox-${crypto.randomUUID()}`,
       storedAt: new Date().toISOString(),

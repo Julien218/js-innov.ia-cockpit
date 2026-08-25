@@ -8,6 +8,7 @@ on:
       - "electron/**"
       - "local-agent/**"
       - "src/components/FloatingAgent.jsx"
+      - "src/lib/mediaReference.js"
       - ".github/workflows/electron-build.yml"
   workflow_dispatch:
 

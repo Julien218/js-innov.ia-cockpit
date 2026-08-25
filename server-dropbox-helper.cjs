@@ -267,6 +267,132 @@ function safeUploadFilename(value) {
   return safePathSegment(base, 'fichier').slice(0, 180);
 }
 
+function fileExtension(fileName, mimeType) {
+  const safe = safeUploadFilename(fileName);
+  const match = safe.match(/(\.[a-z0-9]{2,5})$/i);
+  if (match) return match[1].toLowerCase();
+  if (/^video\//i.test(mimeType)) return '.mp4';
+  if (/^image\//i.test(mimeType)) return '.jpg';
+  return '';
+}
+
+function uniqueWords(values, limit = 16) {
+  const seen = new Set();
+  const result = [];
+  for (const value of values.flatMap((item) => String(item || '').split(/[\s,;|/]+/))) {
+    const word = normalizeMatch(value).replace(/\s+/g, '-');
+    if (!word || word.length < 2 || seen.has(word)) continue;
+    seen.add(word);
+    result.push(word);
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
+function normalizeMediaMetadata(value = {}) {
+  const number = (input, max) => {
+    const parsed = Number(input);
+    return Number.isFinite(parsed) && parsed > 0 && parsed <= max ? Math.round(parsed * 1000) / 1000 : null;
+  };
+  const width = number(value.width, 100_000);
+  const height = number(value.height, 100_000);
+  const durationSeconds = number(value.durationSeconds, 24 * 60 * 60);
+  return {
+    width,
+    height,
+    durationSeconds,
+    source: (width || height || durationSeconds) && value.source === 'browser-media-metadata' ? value.source : 'unavailable',
+  };
+}
+
+function mediaOrientation(metadata = {}) {
+  const width = Number(metadata.width || 0);
+  const height = Number(metadata.height || 0);
+  if (!width || !height) return null;
+  if (Math.abs(width - height) / Math.max(width, height) < 0.08) return 'carre';
+  return width > height ? 'paysage' : 'portrait';
+}
+
+function referenceTopic(fileName, message, classification = {}) {
+  const extension = fileExtension(fileName, classification.mimeType);
+  const originalBase = safeUploadFilename(fileName).slice(0, extension ? -extension.length : undefined);
+  const source = String(message || '').trim() || originalBase;
+  const entityWords = uniqueWords([
+    classification.matchedClient?.name,
+    classification.matchedProject?.name,
+  ], 30);
+  const excluded = new Set([
+    ...entityWords,
+    'a', 'au', 'aux', 'avec', 'cette', 'ce', 'ces', 'de', 'des', 'du', 'et', 'fichier', 'final',
+    'image', 'media', 'photo', 'pour', 'projet', 'range', 'ranger', 'classe', 'classer', 'archive',
+    'archiver', 'the', 'une', 'un', 'video', 'grok', 'sora', 'runway', 'output', 'generated',
+  ]);
+  const normalized = normalizeMatch(source)
+    .replace(/[a-f0-9]{8}-[a-f0-9-]{27,}/g, ' ')
+    .replace(/\b[a-f0-9]{24,}\b/g, ' ')
+    .replace(/\b\d{1,3}\b(?=\s*$)/g, ' ');
+  const words = normalized.split(' ').filter((word) => word.length >= 2 && !excluded.has(word)).slice(0, 8);
+  const topic = safePathSegment(words.join(' '), 'contenu');
+  return `${topic.charAt(0).toUpperCase()}${topic.slice(1)}`;
+}
+
+function detectMediaProvider(fileName, message) {
+  const context = normalizeMatch(`${fileName} ${message}`);
+  if (/\bgrok\b|\bxai\b/.test(context)) return 'grok';
+  if (/\bsora\b|\bopenai\b/.test(context)) return 'sora';
+  if (/\brunway\b/.test(context)) return 'runway';
+  if (/\bcomfyui\b/.test(context)) return 'comfyui';
+  return null;
+}
+
+function buildMediaReference({ fileName, mimeType, message, classification, metadata, contentHash, now = new Date() }) {
+  const technicalMetadata = normalizeMediaMetadata(metadata);
+  const orientation = mediaOrientation(technicalMetadata);
+  const provider = detectMediaProvider(fileName, message);
+  const title = referenceTopic(fileName, message, { ...classification, mimeType });
+  const extension = fileExtension(fileName, mimeType);
+  const day = new Date(now).toISOString().slice(0, 10);
+  const hash = String(contentHash || '').toLowerCase().replace(/[^a-f0-9]/g, '').slice(0, 10) || crypto.randomUUID().slice(0, 8);
+  const kind = classification.docType === 'Videos' ? 'Video' : 'Image';
+  const nameParts = [
+    classification.matchedClient?.name,
+    classification.matchedProject?.name,
+    title,
+    orientation,
+    day,
+    hash,
+  ].filter(Boolean).map((part) => safePathSegment(part));
+  const archivedFilename = `${nameParts.join(' - ').slice(0, Math.max(1, 180 - extension.length))}${extension}`;
+  const stem = archivedFilename.slice(0, extension ? -extension.length : undefined);
+  const keywords = uniqueWords([
+    classification.matchedClient?.name,
+    classification.matchedProject?.name,
+    title,
+    kind,
+    orientation,
+    provider,
+    extension.replace('.', ''),
+  ]);
+
+  return {
+    schemaVersion: 1,
+    originalFilename: safeUploadFilename(fileName),
+    archivedFilename,
+    referenceFilename: `${stem}.reference.json`,
+    title,
+    keywords,
+    provider,
+    orientation,
+    technicalMetadata,
+    integrity: { algorithm: 'sha256', hash: String(contentHash || '') },
+    classificationMethods: [
+      'server-content-sha256',
+      classification.matchedClient || classification.matchedProject ? 'cockpit-client-project-context' : 'cockpit-unclassified',
+      technicalMetadata.source,
+    ],
+  };
+}
+
 function clientName(client = {}) {
   return client.denomination_legale || client.entreprise || client.nom || client.name || '';
 }
@@ -390,4 +516,6 @@ module.exports = {
   isSupportedMedia,
   safeUploadFilename,
   isExistingFolderConflict,
+  buildMediaReference,
+  normalizeMediaMetadata,
 };
