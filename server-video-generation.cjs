@@ -8,12 +8,15 @@ const { encodeVideoPackage } = require('./server-video-provenance-core.cjs');
 const { finalizeVideoBuffer, archiveFinalizedVideo } = require('./server-video-provenance.cjs');
 const { createCostEvent } = require('./server-client-costs.cjs');
 const { sourceToEurMinor } = require('./server-cost-accounting-core.cjs');
+const { getDocumentBufferForUser } = require('./server-documents.cjs');
 
 const router = express.Router();
 const CRM_URL = process.env.SUPABASE_CRM_URL || 'https://gfjpryakxzdzwnazlsfz.supabase.co';
 const CRM_KEY = process.env.SUPABASE_CRM_KEY || '';
 const CRM_PROXY_URL = process.env.SUPABASE_CRM_PROXY_URL || '';
 const CRM_PROXY_TOKEN = process.env.SUPABASE_CRM_PROXY_TOKEN || '';
+const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || process.env.VITE_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
+const AGENT_KEY = process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '';
 const active = new Set();
 let scheduler = null;
 
@@ -71,6 +74,35 @@ async function listJobs(query = '') {
   return crm(`video_generation_jobs?select=*&${query || 'order=created_at.desc&limit=50'}`, { method: 'GET' });
 }
 
+function normalizedName(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function canonicalClientName(client = {}) {
+  return String(client.denomination_legale || client.entreprise || [client.prenom, client.nom].filter(Boolean).join(' ') || client.nom || '').trim();
+}
+
+async function resolveClientInput(input = {}) {
+  if (String(input.client_id || '').trim()) return input;
+  const requestedName = String(input.client_name || '').trim();
+  if (!requestedName) return input;
+  if (!AGENT_KEY) throw new Error('Impossible de retrouver le client : clé Agent Cockpit manquante.');
+  const response = await fetch(`${AGENT_URL}/data/Client?limit=2000`, { headers: { 'x-agent-key': AGENT_KEY } });
+  const clients = await response.json().catch(() => []);
+  if (!response.ok) throw new Error(`Recherche client impossible (${response.status}).`);
+  const key = normalizedName(requestedName);
+  const matches = (Array.isArray(clients) ? clients : []).filter((client) => {
+    const names = [canonicalClientName(client), client.nom, client.entreprise, client.denomination_legale].map(normalizedName).filter(Boolean);
+    return names.includes(key);
+  });
+  if (matches.length !== 1) {
+    throw new Error(matches.length > 1
+      ? `Plusieurs clients correspondent à « ${requestedName} » : sélection manuelle requise.`
+      : `Client « ${requestedName} » introuvable dans le Cockpit : créez ou sélectionnez sa fiche avant de générer.`);
+  }
+  return { ...input, client_id: matches[0].id, client_name: canonicalClientName(matches[0]) };
+}
+
 function providerHeaders(provider) {
   const key = provider === 'xai' ? process.env.XAI_API_KEY : process.env.OPENAI_API_KEY;
   return { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
@@ -86,12 +118,27 @@ async function providerJson(url, provider, options = {}) {
 }
 
 async function submit(job) {
-  const request = buildProviderRequest(job.provider, job.prompt);
+  let imageDataUri = null;
+  if (job.metadata?.source_document_id) {
+    if (job.provider !== 'xai') throw new Error('La génération depuis une image Dropbox nécessite Grok Imagine.');
+    const { record, buffer } = await getDocumentBufferForUser({ role: 'superadmin' }, job.metadata.source_document_id);
+    if (!String(record.mime_type || '').toLowerCase().startsWith('image/')) throw new Error('Le média source n’est pas une image exploitable.');
+    imageDataUri = `data:${record.mime_type};base64,${buffer.toString('base64')}`;
+  }
+  const request = buildProviderRequest(job.provider, job.prompt, { imageDataUri });
   const data = await providerJson(request.url, job.provider, { method: 'POST', body: JSON.stringify(request.body) });
   const providerJobId = data.request_id || data.id;
   if (!providerJobId) throw new Error('Le fournisseur n’a retourné aucun identifiant d’exécution.');
   return patchJob(job.id, {
-    status: 'submitted', provider_job_id: providerJobId, provider_payload: { request: request.body, response: data }, progress: Number(data.progress || 0),
+    status: 'submitted',
+    provider_job_id: providerJobId,
+    provider_payload: {
+      request: imageDataUri
+        ? { ...request.body, image: { source_document_id: job.metadata.source_document_id, data_uri_redacted: true } }
+        : request.body,
+      response: data,
+    },
+    progress: Number(data.progress || 0),
   });
 }
 
@@ -207,14 +254,28 @@ router.get('/jobs/:id', async (req, res) => {
 });
 router.post('/jobs', async (req, res) => {
   try {
-    const input = validateJobInput(req.body);
-    const provider = chooseProvider(req.body.provider);
+    const resolvedBody = await resolveClientInput(req.body);
+    const input = validateJobInput(resolvedBody);
+    const provider = chooseProvider(resolvedBody.provider);
+    let sourceDocument = null;
+    if (input.sourceDocumentId) {
+      if (provider !== 'xai') throw new Error('Une image source Dropbox nécessite Grok Imagine; Sora texte seul ne peut pas être utilisé pour cette demande.');
+      sourceDocument = await getDocumentBufferForUser(req.user, input.sourceDocumentId);
+      if (!String(sourceDocument.record.mime_type || '').toLowerCase().startsWith('image/')) throw new Error('Le document source sélectionné n’est pas une image.');
+    }
     const request = buildProviderRequest(provider, input.prompt);
     const job = await insertJob({
       client_id: input.clientId, client_name: input.clientName, project_id: input.projectId, cost_center_id: input.costCenterId,
       provider, model: request.model, status: 'queued', prompt: input.prompt, campaign_name: input.campaign,
-      duration_seconds: 8, resolution: provider === 'xai' ? '720p' : '1280x720', aspect_ratio: '16:9', version: input.version,
-      metadata: { sector: input.sector, usage_rights: input.usageRights, rights_confirmed: input.rightsConfirmed, requested_by: req.user?.id || req.user?.email || null },
+      duration_seconds: 8, resolution: provider === 'xai' ? '1080p' : '1280x720', aspect_ratio: '16:9', version: input.version,
+      metadata: {
+        sector: input.sector,
+        usage_rights: input.usageRights,
+        rights_confirmed: input.rightsConfirmed,
+        requested_by: req.user?.id || req.user?.email || null,
+        source_document_id: input.sourceDocumentId,
+        source_media: sourceDocument ? [{ document_id: input.sourceDocumentId, filename: sourceDocument.record.filename, dropbox_path: sourceDocument.record.dropbox_path }] : [],
+      },
       created_by: req.user?.id || req.user?.email || null,
     });
     processJob(job).catch(() => {});
@@ -222,4 +283,4 @@ router.post('/jobs', async (req, res) => {
   } catch (error) { return res.status(400).json({ error: error.message }); }
 });
 
-module.exports = { router, startVideoGenerationScheduler, sweep, processJob, crmKeys };
+module.exports = { router, startVideoGenerationScheduler, sweep, processJob, crmKeys, resolveClientInput, canonicalClientName };

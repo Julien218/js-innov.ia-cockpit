@@ -61,14 +61,22 @@ function validateJobInput(input = {}) {
     usageRights: clean(input.usage_rights, 1000) || 'Utilisation limitée à la campagne et aux supports validés par le client.',
     rightsConfirmed: input.rights_confirmed === true,
     version: clean(input.version, 20) || 'v01',
+    sourceDocumentId: clean(input.source_document_id, 180) || null,
   };
 }
 
-function buildProviderRequest(provider, prompt) {
+function buildProviderRequest(provider, prompt, { imageDataUri = null } = {}) {
   if (provider === 'xai') return {
     url: 'https://api.x.ai/v1/videos/generations',
     model: XAI_MODEL,
-    body: { model: XAI_MODEL, prompt, duration: 8, aspect_ratio: '16:9', resolution: '720p' },
+    body: {
+      model: XAI_MODEL,
+      prompt,
+      duration: 8,
+      aspect_ratio: '16:9',
+      resolution: '1080p',
+      ...(imageDataUri ? { image: { url: imageDataUri } } : {}),
+    },
   };
   return {
     url: 'https://api.openai.com/v1/videos',
