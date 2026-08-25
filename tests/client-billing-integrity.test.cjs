@@ -48,9 +48,9 @@ test('la marge est séparée du coût réel et peut être incluse ou à prix co�
 
 test('le résumé client conserve coût réel, refacturation et marge', () => {
   const result = summarize([
-    { source_type: 'llm_api', actual_cost_minor: 100, billable_minor: 130, billable: true },
-    { source_type: 'railway', actual_cost_minor: 200, billable_minor: 200, billable: true },
-    { source_type: 'github', actual_cost_minor: 50, billable_minor: 0, billable: false },
+    { source_type: 'llm_api', actual_cost_minor: 100, billable_minor: 130, billable: true, metadata: { evidence_status: 'actual', verification_ref: 'api:1' } },
+    { source_type: 'railway', actual_cost_minor: 200, billable_minor: 200, billable: true, metadata: { evidence_status: 'actual', verification_ref: 'api:2' } },
+    { source_type: 'github', actual_cost_minor: 50, billable_minor: 0, billable: false, metadata: { evidence_status: 'actual', verification_ref: 'api:3' } },
   ]);
   assert.equal(result.actual_cost_minor, 350);
   assert.equal(result.billable_minor, 330);
@@ -60,8 +60,9 @@ test('le résumé client conserve coût réel, refacturation et marge', () => {
 
 test('les lignes de facture regroupent uniquement les coûts refacturables', () => {
   const lines = buildInvoiceLines([
-    { source_type: 'llm_api', billable: true, billable_minor: 150 },
-    { source_type: 'llm_api', billable: true, billable_minor: 50 },
+    { source_type: 'llm_api', billable: true, billable_minor: 150, metadata: { evidence_status: 'actual', verification_ref: 'provider:1' } },
+    { source_type: 'llm_api', billable: true, billable_minor: 50, metadata: { evidence_status: 'estimated', calculation_method: 'tokens', calculation_inputs: {} } },
+    { source_type: 'llm_api', billable: true, billable_minor: 999, metadata: {} },
     { source_type: 'local_ai', billable: false, billable_minor: 100 },
   ]);
   assert.equal(lines.length, 1);
