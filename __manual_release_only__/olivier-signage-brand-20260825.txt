@@ -1,0 +1,3 @@
+Release Railway manuelle de l’identité visuelle JS-Innov.IA pour l’écran géant.
+Commit validé et fusionné : 70be0353208acf42d703b7be404d72a47b356713
+PR : https://github.com/Julien218/js-innov.ia-cockpit/pull/126
