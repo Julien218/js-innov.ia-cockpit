@@ -1,14 +1,18 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const {
   REQUIRED_TAGS,
   buildVideoMetadata,
   buildFfmpegArgs,
+  buildSignageMasterArgs,
   buildSidecar,
   encodeVideoPackage,
   decodeVideoPackage,
+  parseComfyHistoryState,
   verifyProbe,
 } = require('../server-video-provenance-core.cjs');
 
@@ -113,6 +117,63 @@ test('verification refuses metadata that lies about duration or resolution', () 
   assert.ok(result.mismatches.includes('duration_seconds'));
   assert.ok(result.mismatches.includes('width'));
   assert.ok(result.mismatches.includes('height'));
+});
+
+test('ComfyUI history exposes verifiable runtime and output evidence', () => {
+  const result = parseComfyHistoryState({
+    prompt123: {
+      outputs: { node9: { videos: [{ filename: 'final.mp4', subfolder: 'client' }] } },
+      status: {
+        status_str: 'success',
+        completed: true,
+        messages: [
+          ['execution_start', { timestamp: 1_700_000_000_000 }],
+          ['execution_success', { timestamp: 1_700_000_012_500 }],
+        ],
+      },
+    },
+  }, 'prompt123');
+  assert.equal(result.completed, true);
+  assert.equal(result.failed, false);
+  assert.equal(result.runtimeSeconds, 12.5);
+  assert.equal(result.files[0].filename, 'final.mp4');
+});
+
+test('ComfyUI errors and output-less completions never become false successes', () => {
+  const failed = parseComfyHistoryState({
+    p1: { status: { status_str: 'error', completed: false, messages: [['execution_error', { exception_message: 'CUDA out of memory', timestamp: 1_700_000_001_000 }]] } },
+  }, 'p1');
+  const empty = parseComfyHistoryState({ p2: { outputs: {}, status: { status_str: 'success', completed: true } } }, 'p2');
+  assert.equal(failed.failed, true);
+  assert.match(failed.error, /CUDA out of memory/);
+  assert.equal(empty.failed, true);
+  assert.match(empty.error, /sans produire/);
+});
+
+test('FFmpeg produit réellement un master écran géant de 8 secondes avec ses tags', { skip: spawnSync('ffmpeg', ['-version']).status !== 0 }, () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'jsinnovia-signage-test-'));
+  try {
+    const source = path.join(folder, 'source.mp4');
+    const output = path.join(folder, 'master.mp4');
+    const sourceRun = spawnSync('ffmpeg', ['-y', '-f', 'lavfi', '-i', 'color=c=blue:s=640x360:r=25', '-t', '1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', source], { encoding: 'utf8' });
+    assert.equal(sourceRun.status, 0, sourceRun.stderr);
+    const metadata = buildVideoMetadata({ client: 'Rougraff', campaign: 'Services', durationSeconds: 8, width: 1920, height: 1080 });
+    const render = spawnSync('ffmpeg', buildSignageMasterArgs({ sourcePath: source, outputPath: output, metadata, clientLabel: 'Rougraff', phoneLabel: '065 65 22 05' }), { encoding: 'utf8', timeout: 120_000 });
+    assert.equal(render.status, 0, render.stderr);
+    const probeRun = spawnSync('ffprobe', ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', output], { encoding: 'utf8' });
+    assert.equal(probeRun.status, 0, probeRun.stderr);
+    const verification = verifyProbe(JSON.parse(probeRun.stdout), metadata);
+    assert.equal(verification.ok, true, JSON.stringify(verification));
+    const logoOutput = path.join(folder, 'master-logo.mp4');
+    const logo = path.join(__dirname, '..', 'electron', 'icon.png');
+    const logoRender = spawnSync('ffmpeg', buildSignageMasterArgs({ sourcePath: source, logoPath: logo, outputPath: logoOutput, metadata, clientLabel: 'Rougraff', phoneLabel: '065 65 22 05' }), { encoding: 'utf8', timeout: 120_000 });
+    assert.equal(logoRender.status, 0, logoRender.stderr);
+    const logoProbe = spawnSync('ffprobe', ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', logoOutput], { encoding: 'utf8' });
+    assert.equal(logoProbe.status, 0, logoProbe.stderr);
+    assert.equal(verifyProbe(JSON.parse(logoProbe.stdout), metadata).ok, true);
+  } finally {
+    fs.rmSync(folder, { recursive: true, force: true });
+  }
 });
 
 test('cloud, browser and Windows generation paths all use the same finalizer contract', () => {

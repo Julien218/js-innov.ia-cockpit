@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 test('la fabrique crée trois concepts écran géant distincts de 8 secondes', async () => {
   const factory = await import('../src/lib/signageVideoFactory.js');
@@ -38,4 +40,22 @@ test('le suivi et la timeline de validation sont déterministes', async () => {
   assert.equal(summary.done, true);
   assert.equal(review.ready, true);
   assert.equal(review.duration, 35.5);
+});
+
+test('la fabrique desktop est séquentielle, traçable et rattachée aux coûts', () => {
+  const root = path.resolve(__dirname, '..');
+  const electron = fs.readFileSync(path.join(root, 'electron', 'main.js'), 'utf8');
+  const page = fs.readFileSync(path.join(root, 'src', 'pages', 'LocalVideoFactory.jsx'), 'utf8');
+  assert.match(electron, /queueNextLocalVideoJob/);
+  assert.match(electron, /status: "waiting"/);
+  assert.match(electron, /parseComfyHistoryState/);
+  assert.match(electron, /core\.buildSignageMasterArgs/);
+  assert.match(electron, /core\.verifyProbe\(probe, metadata\)/);
+  assert.match(electron, /core\.buildSidecar/);
+  assert.match(electron, /runtimeSeconds/);
+  assert.match(electron, /loadLocalVideoQualification/);
+  assert.match(electron, /doit d’abord réussir un lot réel de trois vidéos/);
+  assert.match(page, /\/local-ai/);
+  assert.match(page, /cost_center_id/);
+  assert.match(page, /MiniMax H3 local n’est pas installé/);
 });
