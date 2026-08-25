@@ -56,3 +56,11 @@ test('le parcours UI relie fournisseur, coût, Dropbox et preuve SHA-256', () =>
   const ui = fs.readFileSync(path.join(__dirname, '..', 'src', 'pages', 'ApiVideoFactory.jsx'), 'utf8');
   for (const expected of ['Grok Imagine 1.5', 'Sora 2', 'Centre de coût', 'Dropbox', 'SHA-256']) assert.match(ui, new RegExp(expected));
 });
+
+test('le backend peut utiliser les clés serveur protégées sans les exposer au frontend', () => {
+  const server = fs.readFileSync(path.join(__dirname, '..', 'server-video-generation.cjs'), 'utf8');
+  assert.match(server, /SUPABASE_CRM_KEY/);
+  assert.match(server, /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(server, /SUPABASE_SECRET_KEY/);
+  assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '..', 'src', 'pages', 'ApiVideoFactory.jsx'), 'utf8'), /SUPABASE_(CRM_KEY|SERVICE_ROLE_KEY|SECRET_KEY)/);
+});
