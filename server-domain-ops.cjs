@@ -451,3 +451,4 @@ module.exports.safeDomain = safeDomain;
 module.exports.MANAGED_DOMAINS = MANAGED_DOMAINS;
 module.exports.verifiedImprovement = verifiedImprovement;
 module.exports.agentForDomain = agentForDomain;
+module.exports.executeBase44Agent = executeBase44Agent;

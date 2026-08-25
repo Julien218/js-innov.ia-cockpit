@@ -61,6 +61,7 @@ test('NOVA locale reconnaît uniquement les intentions d’outils autorisées', 
     assert.deepEqual(module.localTaskPlan({ titre: 'Recenser les fonctionnalités non opérationnelles dans le module vidéo IA' }), ['find_local_workflows', 'comfyui_health', 'ffmpeg_version']);
     assert.deepEqual(module.localTaskPlan({ titre: 'Lancer une campagne de tests sur les fonctionnalités vidéo IA' }), ['video_pipeline_audit']);
     assert.deepEqual(module.localTaskPlan({ titre: 'Mettre à jour la documentation sur les workflows locaux' }), ['workflow_documentation_audit']);
+    assert.deepEqual(module.localTaskPlan({ titre: "Achever l'avatar Js-Innov.IA en local" }), ['avatar_factory_status']);
     const autopilot = await module.executeLocalTaskAutopilot({ tasks: [
       { id: 'api-video', titre: "Contrôler l’état des API vidéo IA", statut: 'a_faire' },
       { id: 'workflows', titre: 'Contrôler la persistance des workflows vidéo IA locaux', statut: 'a_faire' },
@@ -92,6 +93,7 @@ test('le moteur local emploie execFile sans shell ni commande arbitraire', () =>
   assert.match(source, /find_local_workflows/);
   assert.match(source, /video_pipeline_audit/);
   assert.match(source, /workflow_documentation_audit/);
+  assert.match(source, /avatar_factory_status/);
   assert.match(source, /delete childEnv\.SSLKEYLOGFILE/);
   assert.match(source, /void ensureComfyUi\(\)/);
   assert.match(source, /const raw = String\(run\.output/);
@@ -105,6 +107,8 @@ test('le Cockpit synchronise et transmet une copie locale des tâches', () => {
   assert.match(source, /task_snapshot: taskSnapshot/);
   assert.match(source, /\/api\/tasks\/autopilot/);
   assert.match(source, /\/api\/task-autopilot\/local-results/);
+  assert.match(source, /setInterval\(\(\) => void syncLocalTasks\(\), 60_000\)/);
+  assert.match(source, /description: task\.description/);
 });
 
 test('les demandes d outils locaux sont routées vers NOVA Windows même avec Internet', () => {

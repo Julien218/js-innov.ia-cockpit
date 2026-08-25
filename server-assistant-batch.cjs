@@ -64,10 +64,12 @@ function directAutopilotSignal(message) {
 function autopilotMessage(result) {
   if (result?.skipped) return `Autopilote déjà en cours (${result.reason}).`;
   const executed = Array.isArray(result?.executed) ? result.executed : [];
+  const queued = Array.isArray(result?.queued) ? result.queued : [];
   const blocked = Array.isArray(result?.blocked) ? result.blocked : [];
   const lines = executed.map((item) => `✅ task_id=${item.task_id} · run_id=${item.run_id || item.tool_run_id || 'aucun'} · statut=${item.status || 'completed'}`)
+    .concat(queued.map((item) => `⏳ task_id=${item.task_id} · run_id=${item.run_id || 'aucun'} · exécuteur=${item.executor || 'NOVA'} · statut=${item.status}`))
     .concat(blocked.map((item) => `⛔ task_id=${item.task_id} · statut=bloquee · raison=${item.reason || 'exécuteur ou accès indisponible'}`));
-  return `Exécution déterministe terminée. run_id=${result?.run_id || 'absent'} · tâches uniques=${result?.unique || 0} · exécutées=${executed.length} · bloquées=${blocked.length}\n${lines.join('\n')}`;
+  return `Prise en charge déterministe terminée. run_id=${result?.run_id || 'absent'} · tâches uniques=${result?.unique || 0} · terminées=${executed.length} · en traitement=${queued.length} · bloquées=${blocked.length}\n${lines.join('\n')}`;
 }
 
 function removeStaleConfirmationLanguage(value) {
@@ -87,7 +89,7 @@ function executionProof(result) {
     const runId = item.run_id || 'aucun';
     const status = item.status || (item.success ? 'créée' : 'échec');
     const error = item.error ? ` — erreur: ${item.error}` : '';
-    return `${index + 1}. task_id=${taskId} · run_id=${runId} · statut=${status}${error}`;
+    return `${index + 1}. task_id=${taskId} · run_id=${runId} · exécuteur=${item.executor || 'non attribué'} · statut=${status}${error}`;
   });
   return `\n\nPreuves du lot:\n${lines.join('\n')}`;
 }
@@ -123,7 +125,7 @@ router.post('/chat', async (req, res, next) => {
   const userAlreadyAuthorizedExecution = explicitExecutionAuthorization(message);
   try {
     if (userAlreadyAuthorizedExecution && directAutopilotSignal(message)) {
-      const result = await runAutopilot();
+      const result = await runAutopilot({ allowWrites: true, requestedBy: req.user?.email || req.user?.id || 'companion' });
       return res.json({ message: autopilotMessage(result), confirmation: null, result, conversation_id: conversationIdFrom(req), assistant_mode: req.user?.role === 'superadmin' ? 'owner' : 'staff' });
     }
     const response = await agentFetch('/chat', {
@@ -205,9 +207,11 @@ router.post('/chat', async (req, res, next) => {
     }
 
     if (executionResult) {
-      const suffix = executionResult.success
-        ? `\n\n✅ Exécution lancée et suivie: ${executionResult.succeeded}/${executionResult.requested} tâche(s) traitée(s) sans confirmation supplémentaire.`
-        : `\n\n⚠️ Exécution partielle: ${executionResult.succeeded}/${executionResult.requested} tâche(s) traitée(s). Les branches bloquées restent identifiées sans arrêter les autres.`;
+      const counts = executionResult.results.reduce((summary, item) => {
+        summary[item.status] = (summary[item.status] || 0) + 1;
+        return summary;
+      }, {});
+      const suffix = `\n\nPrise en charge réelle: ${counts.completed || 0} terminée(s), ${counts.queued_local || 0} transmise(s) à Windows, ${(counts.awaiting_review || 0) + (counts.already_running || 0)} en suivi, ${(counts.blocked || 0) + (counts.failed || 0)} bloquée(s).`;
       return res.status(executionResult.success ? 200 : 207).json({
         message: `${removeStaleConfirmationLanguage(data.response || data.reply || data.message || 'Batch préparé.')}${suffix}${executionProof(executionResult)}`,
         confirmation: null,

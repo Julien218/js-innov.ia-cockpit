@@ -1,6 +1,8 @@
 const express = require('express');
 const crypto = require('node:crypto');
 const { analyzeDomain, MANAGED_DOMAINS } = require('./server-domain-ops.cjs');
+const { executeTaskBatch, sanitizeTaskBatchPayload } = require('./server-task-batch.cjs');
+const { resolveNovaExecutor } = require('./server-nova-executors.cjs');
 
 const router = express.Router();
 const AGENT_URL = String(process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app').replace(/\/$/, '');
@@ -114,6 +116,15 @@ async function agentRequest(path, { method = 'GET', body } = {}) {
   return data;
 }
 
+function agentFetch(path, options = {}) {
+  if (!AGENT_KEY) throw new Error('JSINNOVIA_AGENT_KEY non configurée pour l’autopilote.');
+  return fetch(`${AGENT_URL}${path}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', 'x-agent-key': AGENT_KEY, 'x-organisation-id': 'jsinnovia', ...(options.headers || {}) },
+    signal: options.signal || AbortSignal.timeout(120_000),
+  });
+}
+
 async function patchTask(taskId, payload) {
   return agentRequest(`/data/Tache/${encodeURIComponent(taskId)}`, { method: 'PATCH', body: payload });
 }
@@ -185,7 +196,15 @@ async function closeVerifiedDuplicates(canonicalTask, copies, proofIds = []) {
   return closed;
 }
 
-async function runAutopilot() {
+function safeScheduledTask(task, executor) {
+  const text = norm(taskText(task));
+  if (executor.kind === 'local') return true;
+  if (executor.kind === 'business') return /(analys|audit|verifi|control)/.test(text);
+  if (executor.kind === 'site') return /(verifi|control|analys|audit|diagnosti)/.test(text) && !/(reparation|corrig|modifier|seo automatique|deploi|publier)/.test(text);
+  return false;
+}
+
+async function runAutopilot({ allowWrites = false, requestedBy = 'companion-autopilot' } = {}) {
   if (state.running) return { skipped: true, reason: 'already_running' };
   state.running = true;
   state.last_started_at = new Date().toISOString();
@@ -200,29 +219,47 @@ async function runAutopilot() {
       groups.get(key).push(task);
     }
 
-    const executed = [];
+    const executableTasks = [];
     const blocked = [];
     const duplicates = [];
     for (const group of groups.values()) {
       const [task, ...copies] = group;
       if (copies.length) duplicates.push({ canonical_task_id: task.id, duplicate_ids: copies.map((item) => item.id), count: group.length });
-      const classification = classifyTask(task);
-      if (!classification.executable) {
-        blocked.push({ task_id: task.id, title: task.titre || task.title, ...classification });
+      const executor = resolveNovaExecutor(task);
+      if (executor.kind === 'unsupported' || (!allowWrites && !safeScheduledTask(task, executor))) {
+        blocked.push({ task_id: task.id, title: task.titre || task.title, kind: executor.kind, executable: false, reason: executor.reason || 'autorisation_explicite_requise' });
         continue;
       }
-      try {
-        const execution = await executeExistingTask(task, classification);
-        execution.duplicate_task_ids = await closeVerifiedDuplicates(task, copies, [execution.run_id, execution.tool_run_id].filter(Boolean));
-        executed.push(execution);
-      } catch (error) {
-        await patchTask(task.id, { statut: 'bloquee', notes: `${task.notes || ''}\nAutopilote bloqué: ${String(error.message || error).slice(0, 500)}`.trim().slice(0, 4000) }).catch(() => null);
-        await recordRun(task, classification, null, 'failed', String(error.message || error).slice(0, 500)).catch(() => null);
-        blocked.push({ task_id: task.id, title: task.titre || task.title, ...classification, reason: String(error.message || error).slice(0, 500) });
-      }
+      executableTasks.push({
+        titre: task.titre || task.title,
+        description: task.description,
+        notes: task.notes,
+        priorite: task.priorite,
+        projet_id: task.projet_id,
+        client_id: task.client_id,
+        read_only: !allowWrites,
+      });
     }
 
-    const result = { run_id: `autopilot-${crypto.randomUUID()}`, examined: tasks.length, unique: groups.size, executed, blocked, duplicates };
+    let batch = { results: [] };
+    if (executableTasks.length) {
+      const payload = sanitizeTaskBatchPayload({ tasks: executableTasks });
+      batch = await executeTaskBatch({
+        payload,
+        token: `autopilot-${crypto.randomUUID()}`,
+        user: { id: requestedBy, email: requestedBy },
+        tenant: 'jsinnovia',
+        agentFetch,
+      });
+    }
+    const executed = batch.results.filter((item) => item.status === 'completed');
+    const queued = batch.results.filter((item) => ['queued_local', 'already_running', 'awaiting_review'].includes(item.status));
+    blocked.push(...batch.results.filter((item) => !item.success).map((item) => ({ task_id: item.task_id, run_id: item.run_id, reason: item.error || item.status })));
+    for (const execution of executed) {
+      const canonicalTask = tasks.find((task) => String(task.id) === String(execution.task_id));
+      if (canonicalTask) execution.duplicate_task_ids = await closeVerifiedDuplicates(canonicalTask, duplicateTasksForCanonical(tasks, canonicalTask), [execution.run_id].filter(Boolean));
+    }
+    const result = { run_id: `autopilot-${crypto.randomUUID()}`, examined: tasks.length, unique: groups.size, executed, queued, blocked, duplicates, allow_writes: allowWrites };
     state.last_result = result;
     return result;
   } catch (error) {
@@ -235,12 +272,12 @@ async function runAutopilot() {
 }
 
 router.get('/status', (_req, res) => res.json({ enabled: AUTOPILOT_ENABLED, interval_ms: AUTOPILOT_INTERVAL_MS, ...state }));
-router.post('/run', async (_req, res) => {
-  try { res.json(await runAutopilot()); }
+router.post('/run', async (req, res) => {
+  try { res.json(await runAutopilot({ allowWrites: req.body?.allow_writes === true, requestedBy: req.user?.email || req.user?.id || 'cockpit-admin' })); }
   catch (error) { res.status(502).json({ error: error.message, state }); }
 });
 
-const LOCAL_TOOLS = new Set(['ffmpeg_version', 'ffprobe_file', 'list_directory', 'find_local_workflows', 'workflow_documentation_audit', 'video_pipeline_audit', 'comfyui_health', 'http_diagnose']);
+const LOCAL_TOOLS = new Set(['ffmpeg_version', 'ffprobe_file', 'list_directory', 'find_local_workflows', 'workflow_documentation_audit', 'video_pipeline_audit', 'comfyui_health', 'http_diagnose', 'avatar_factory_status']);
 router.post('/local-results', async (req, res) => {
   const results = Array.isArray(req.body?.task_results) ? req.body.task_results.slice(0, 50) : [];
   const synced = [];
@@ -261,7 +298,16 @@ router.post('/local-results', async (req, res) => {
       if (canonicalTaskTitle(canonicalTask.titre || canonicalTask.title) !== canonicalTaskTitle(item.title)) {
         throw new Error('le titre du résultat local ne correspond pas au task_id; synchronisation refusée');
       }
-      const log = await agentRequest('/agent-runs', { method: 'POST', body: { task_id: taskId, agent_id: 'nova-local-tools', functional_role: 'windows_local_diagnostics', provider_name: 'local-agent', status: 'completed', execution_mode: 'read_only', input: { title: String(item.title || '').slice(0, 240), tools: evidence.map((run) => run.tool) }, result: { tool_runs: evidence }, idempotency_key: `local-autopilot:${taskId}:${evidence.map((run) => run.id).join(':')}`.slice(0, 500), requested_by: String(req.user?.email || req.user?.id || 'desktop-companion').slice(0, 180), started_at: evidence[0].started_at, completed_at: evidence[evidence.length - 1].completed_at } });
+      const runPayload = {
+        status: 'completed',
+        result: { tool_runs: evidence },
+        completed_at: evidence[evidence.length - 1].completed_at,
+      };
+      const existingRuns = rowsFrom(await agentRequest(`/agent-runs?task_id=${encodeURIComponent(taskId)}&provider_name=local-agent&limit=20`));
+      const pendingRun = existingRuns.find((run) => ['pending', 'queued', 'running'].includes(norm(run.status)) && String(run.task_id) === taskId);
+      const log = pendingRun?.id
+        ? await agentRequest(`/agent-runs/${encodeURIComponent(pendingRun.id)}`, { method: 'PATCH', body: runPayload })
+        : await agentRequest('/agent-runs', { method: 'POST', body: { task_id: taskId, agent_id: 'nova-local-tools', functional_role: 'windows_local_diagnostics', provider_name: 'local-agent', status: 'completed', execution_mode: 'autonomous', input: { title: String(item.title || '').slice(0, 240), tools: evidence.map((run) => run.tool) }, ...runPayload, idempotency_key: `local-autopilot:${taskId}:${evidence.map((run) => run.id).join(':')}`.slice(0, 500), requested_by: String(req.user?.email || req.user?.id || 'desktop-companion').slice(0, 180), started_at: evidence[0].started_at } });
       await patchTask(taskId, { statut: 'terminee', notes: `NOVA locale — diagnostic terminé avec preuve.\nOutils: ${evidence.map((run) => run.tool).join(', ')}\nJournaux: ${evidence.map((run) => run.id).join(', ')}`.slice(0, 4000) });
       const duplicateTaskIds = await closeVerifiedDuplicates(
         canonicalTask,

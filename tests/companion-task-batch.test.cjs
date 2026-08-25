@@ -45,7 +45,7 @@ test('un batch exige des tâches avec un titre non vide', () => {
   }] });
   assert.equal(valid.tasks.length, 1);
   assert.equal(valid.tasks[0].record.titre, 'Audit MiniMax H3');
-  assert.equal(valid.tasks[0].agent.read_only, true);
+  assert.equal(valid.tasks[0].read_only, true);
 });
 
 test('un même titre ne peut apparaître deux fois dans un lot', () => {
@@ -56,27 +56,27 @@ test('un même titre ne peut apparaître deux fois dans un lot', () => {
   assert.equal(payload.tasks.length, 1);
 });
 
-test('l’assignation agent est stockée dans notes et jamais dans une colonne inexistante', () => {
+test('l’assignation proposée par le modèle reste une métadonnée non fiable', () => {
   assert.doesNotMatch(taskBatchSource, /record\s*=\s*\{[\s\S]*assigne_a\s*:/);
-  assert.match(taskBatchSource, /Agent métier:/);
-  assert.match(taskBatchSource, /Rôle métier:/);
+  assert.match(taskBatchSource, /requested_agent/);
+  assert.match(taskBatchSource, /resolveNovaExecutor\(item\.record\)/);
 });
 
 test('chaque tâche créée reçoit un agent_run relié et un idempotency key', () => {
   assert.match(taskBatchSource, /task_id:\s*String\(task\.id\)/);
-  assert.match(taskBatchSource, /idempotency_key:\s*runKey/);
-  assert.match(taskBatchSource, /execution_mode:\s*item\.agent\.read_only \? 'prepare_only' : 'delegated_execution'/);
+  assert.match(taskBatchSource, /idempotency_key:/);
+  assert.match(taskBatchSource, /execution_mode:\s*executor\.execution_mode \|\| 'autonomous'/);
 });
 
 test('une tâche d’écriture déléguée démarre réellement au lieu d’attendre une nouvelle validation', () => {
-  assert.match(taskBatchSource, /status:\s*'running'/);
-  assert.match(taskBatchSource, /execution_mode:\s*item\.agent\.read_only \? 'prepare_only' : 'delegated_execution'/);
+  assert.match(taskBatchSource, /createRun\(agentFetch, task, item, executor, token, index, organisation, requestedBy, 'running'\)/);
+  assert.match(taskBatchSource, /await handlers\.site|await handlers\.business/);
   assert.match(taskBatchSource, /statut:\s*'en_cours'/);
   assert.doesNotMatch(taskBatchSource, /status:\s*item\.agent\.read_only \? 'running' : 'awaiting_approval'/);
 });
 
-test('une délégation lecture seule clôt la tâche uniquement après un résultat réel', () => {
-  const reportIndex = taskBatchSource.indexOf('report = await');
+test('une délégation clôt la tâche uniquement après un résultat réel', () => {
+  const reportIndex = taskBatchSource.indexOf('const outcome =');
   const completeIndex = taskBatchSource.indexOf("statut: 'terminee'");
   assert.ok(reportIndex >= 0);
   assert.ok(completeIndex > reportIndex);
@@ -86,7 +86,7 @@ test('une délégation lecture seule clôt la tâche uniquement après un résul
 test('un échec partiel n’annule pas les branches déjà exécutées', () => {
   assert.match(batchSource, /res\.status\(executionResult\.success \? 200 : 207\)/);
   assert.match(batchSource, /return res\.status\(207\)\.json/);
-  assert.match(batchSource, /Les branches bloquées restent identifiées sans arrêter les autres/);
+  assert.match(batchSource, /Prise en charge réelle/);
   assert.match(taskBatchSource, /results\.push\(\{ index, success: false/);
 });
 
@@ -107,6 +107,7 @@ test('la confirmation batch reste à usage unique lorsque la demande n’autoris
 test('les modules batch sont présents dans l’image de production', () => {
   assert.match(dockerfile, /server-assistant-batch\.cjs/);
   assert.match(dockerfile, /server-task-batch\.cjs/);
+  assert.match(dockerfile, /server-nova-executors\.cjs/);
   assert.match(dockerfile, /node --check \/app\/server-assistant-batch\.cjs/);
   assert.match(dockerfile, /node --check \/app\/server-task-batch\.cjs/);
 });
@@ -137,10 +138,10 @@ test('already_running exige un agent_run actif et expose son identifiant', () =>
   assert.equal(latestActiveRun({ data: [
     { id: 'wrong-run', task_id: 'task-2', status: 'running', updated_at: '2026-08-25T02:00:00Z' },
     { id: 'run-1', task_id: 'task-1', status: 'running', updated_at: '2026-08-25T01:00:00Z' },
-  ] }, 'task-1').id, 'run-1');
+  ] }, 'task-1', Date.parse('2026-08-25T01:10:00Z')).id, 'run-1');
   assert.match(taskBatchSource, /agent-runs\?task_id=/);
-  assert.match(taskBatchSource, /run_id: activeRun\.id/);
-  assert.match(taskBatchSource, /Statut en_cours obsolète corrigé automatiquement/);
+  assert.match(taskBatchSource, /run_id: active\.id/);
+  assert.match(taskBatchSource, /STALE_RUNNING_MS/);
 });
 
 test('une confirmation formulée en phrase complète est consommée par le pont UI', () => {
