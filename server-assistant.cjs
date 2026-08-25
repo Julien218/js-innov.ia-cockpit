@@ -429,6 +429,14 @@ router.post('/chat', async (req, res) => {
       buildRoutingContext(routingDecision, costAttribution, budgetDecision),
       recentMediaContext(recentMedia),
       [
+        '[POLITIQUE VIDÉO JS-INNOV.IA — obligatoire pour tout rendu final]',
+        'Toute génération vidéo finale doit passer par /api/video-provenance/finalize avant d’être déclarée terminée.',
+        'Le finaliseur produit un MP4, inscrit les métadonnées invisibles, les relit avec FFprobe, calcule le SHA-256 et archive un JSON homonyme avec le MP4 dans Dropbox.',
+        'Ne jamais ajouter de filigrane visible sans autorisation. Ne jamais attribuer le copyright si rightsConfirmed n’est pas vrai.',
+        'Un rendu sans preuve finalized=true, verified=true, chemin MP4, chemin JSON et SHA-256 reste en cours ou bloqué; il n’est jamais terminé.',
+        '[/POLITIQUE VIDÉO JS-INNOV.IA]',
+      ].join('\n'),
+      [
         '[CONTRAT DE CAPACITÉS NOVA — état courant du serveur]',
         `Actions Cockpit autorisées pour cette session: ${availableActionsFor(req.user).join(', ') || 'aucune action d’écriture'}.`,
         'L’Agent Local 8787 est une capacité optionnelle et son absence ne signifie jamais que NOVA ou le Cockpit ne peuvent rien exécuter.',

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Film, Download, X, AlertCircle, CheckCircle, Image, Loader2, Sparkles } from "lucide-react";
 import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
+import { finalizeStudioExport } from "@/lib/videoProvenance";
 
 export default function VideoExporter({ vp, sourceProject, onClose }) {
   const [status, setStatus] = useState("idle");
@@ -258,12 +259,29 @@ export default function VideoExporter({ vp, sourceProject, onClose }) {
     const url = URL.createObjectURL(blob);
     blobUrlRef.current = url;
     const fileSizeMb = blob.size / 1024 / 1024;
-    
-    // Upload to save export
-    const { file_url } = await base44.integrations.Core.UploadFile({ file: blob });
-    
-    // Enregistrer l'export en base
-    await base44.functions.invoke('saveVideoExport', {
+
+    setMessage("Inscription et vérification des métadonnées invisibles…");
+    let provenance;
+    try {
+      provenance = await finalizeStudioExport(blob, {
+        vp: freshVp,
+        sourceProject,
+        durationSeconds: fullDur,
+        width: WIDTH,
+        height: HEIGHT,
+        resolutionLabel: "1080p",
+        fps: FPS,
+        exportType: "simple",
+      });
+    } catch (error) {
+      setStatus("error");
+      setMessage(`Export non finalisé : ${error.message}`);
+      return;
+    }
+
+    // L’aperçu WebM reste disponible dans la médiathèque; le MP4 de référence est dans Dropbox.
+    const { url: file_url } = await base44.integrations.Core.UploadFile({ file: blob, fileName: `${provenance.uniqueId}.webm` });
+    await base44.entities.VideoExport.create({
       video_project_id: vp?.id,
       title: freshTitle(),
       format: "WebM",
@@ -275,7 +293,7 @@ export default function VideoExporter({ vp, sourceProject, onClose }) {
     
     setProgress(100);
     setStatus("done");
-    setMessage(`Vidéo prête — ${fileSizeMb.toFixed(1)} MB · ${Math.ceil(fullDur)}s`);
+    setMessage(`MP4 vérifié et archivé — ${provenance.fileName} · SHA-256 ${provenance.sha256.slice(0, 12)}…`);
 
     // Génération automatique de la couverture IA
     generateCover(freshVp);

@@ -4,8 +4,13 @@ on:
   pull_request:
     paths:
       - "src/pages/VideoStudio.jsx"
+      - "src/pages/DourCampaignVideo.jsx"
       - "src/components/studio/**"
       - "src/lib/videoOrchestrator.js"
+      - "src/lib/videoProvenance.js"
+      - "server-video-provenance-core.cjs"
+      - "server-video-provenance.cjs"
+      - "tests/video-provenance.test.cjs"
       - "electron/**"
       - ".github/workflows/video-local-ci.yml"
   push:
@@ -13,8 +18,13 @@ on:
       - main
     paths:
       - "src/pages/VideoStudio.jsx"
+      - "src/pages/DourCampaignVideo.jsx"
       - "src/components/studio/**"
       - "src/lib/videoOrchestrator.js"
+      - "src/lib/videoProvenance.js"
+      - "server-video-provenance-core.cjs"
+      - "server-video-provenance.cjs"
+      - "tests/video-provenance.test.cjs"
       - "electron/**"
       - ".github/workflows/video-local-ci.yml"
 
@@ -40,7 +50,14 @@ jobs:
         run: npm run build
 
       - name: Syntax-check local orchestrator
-        run: node --check src/lib/videoOrchestrator.js
+        run: |
+          node --check src/lib/videoOrchestrator.js
+          node --check src/lib/videoProvenance.js
+          node --check server-video-provenance-core.cjs
+          node --check server-video-provenance.cjs
+
+      - name: Verify video provenance policy
+        run: node --require ./tests/node-test-globals.cjs --test tests/video-provenance.test.cjs
 
   electron-check:
     runs-on: windows-latest

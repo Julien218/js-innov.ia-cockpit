@@ -1,6 +1,6 @@
 {
   "name": "jsinnovia-cockpit",
-  "version": "1.0.34",
+  "version": "1.0.35",
   "description": "JS-Innov.IA Cockpit — Application desktop Windows",
   "main": "bootstrap.js",
   "author": "Julien Pagin <julien@jsinnovia.com>",
@@ -53,6 +53,10 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "../server-video-provenance-core.cjs",
+        "to": "video-provenance-core.cjs"
       }
     ],
     "publish": [

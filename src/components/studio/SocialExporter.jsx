@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { X, Download, Film, CheckCircle, AlertCircle } from "lucide-react";
 import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
+import { finalizeStudioExport } from "@/lib/videoProvenance";
 
 const FORMAT_PRESETS = {
   "9:16":  { width: 1080, height: 1920, label: "Vertical 9:16 (TikTok / Reels / Shorts)" },
@@ -227,12 +228,29 @@ export default function SocialExporter({ vp, sourceProject, onClose }) {
     const blob = new Blob(chunks, { type: "video/webm" });
     blobUrlRef.current = URL.createObjectURL(blob);
     const fileSizeMb = blob.size / 1024 / 1024;
-    
-    // Upload to save export
-    const { file_url } = await base44.integrations.Core.UploadFile({ file: blob });
-    
-    // Enregistrer l'export en base
-    await base44.functions.invoke('saveVideoExport', {
+
+    setMessage("Inscription et vérification des métadonnées invisibles…");
+    let provenance;
+    try {
+      provenance = await finalizeStudioExport(blob, {
+        vp,
+        sourceProject,
+        durationSeconds: fullDur,
+        width: WIDTH,
+        height: HEIGHT,
+        resolutionLabel: "1080p",
+        fps: FPS,
+        exportType: "social",
+        visualFormat: templateFormat,
+      });
+    } catch (error) {
+      setStatus("error");
+      setMessage(`Export non finalisé : ${error.message}`);
+      return;
+    }
+
+    const { url: file_url } = await base44.integrations.Core.UploadFile({ file: blob, fileName: `${provenance.uniqueId}.webm` });
+    await base44.entities.VideoExport.create({
       video_project_id: vp?.id,
       title: vp?.title || "Montage social",
       format: templateFormat,
@@ -244,7 +262,7 @@ export default function SocialExporter({ vp, sourceProject, onClose }) {
     
     setProgress(100);
     setStatus("done");
-    setMessage(`Prêt — ${fileSizeMb.toFixed(1)} MB · ${Math.ceil(fullDur)}s · ${templateFormat}`);
+    setMessage(`MP4 vérifié et archivé — ${provenance.fileName} · SHA-256 ${provenance.sha256.slice(0, 12)}…`);
   }
 
   const handleDownload = () => {

@@ -5,6 +5,7 @@ const fs = require("fs");
 const http = require("http");
 const https = require("https");
 const { execFile } = require("child_process");
+const crypto = require("crypto");
 
 let mainWindow = null;
 let tray = null;
@@ -94,6 +95,22 @@ function commandAvailable(command, args = ["--version"]) {
   });
 }
 
+function videoProvenanceCore() {
+  const location = app.isPackaged
+    ? path.join(process.resourcesPath, "video-provenance-core.cjs")
+    : path.join(__dirname, "..", "server-video-provenance-core.cjs");
+  return require(location);
+}
+
+function execFileStrict(command, args, timeout = 20 * 60 * 1000) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { windowsHide: true, timeout, maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) return reject(new Error(`${command}: ${String(stderr || error.message).slice(0, 4000)}`));
+      resolve({ stdout: String(stdout || ""), stderr: String(stderr || "") });
+    });
+  });
+}
+
 function comfyOutputCandidates() {
   return [
     process.env.JSINNOVIA_COMFYUI_OUTPUT_DIR,
@@ -172,6 +189,54 @@ ipcMain.handle("video-local-open-output", async () => {
   const error = await shell.openPath(folder);
   if (error) throw new Error(error);
   return { ok: true, folder };
+});
+
+ipcMain.handle("video-local-finalize", async (_event, payload = {}) => {
+  const source = Buffer.from(payload.bytes || []);
+  if (!source.length) throw new Error("Vidéo source vide.");
+  if (source.length > 250 * 1024 * 1024) throw new Error("Vidéo trop volumineuse (250 MB max).");
+  const core = videoProvenanceCore();
+  const metadata = core.buildVideoMetadata(payload.metadata || {});
+  const tempFolder = fs.mkdtempSync(path.join(os.tmpdir(), "jsinnovia-video-"));
+  const sourcePath = path.join(tempFolder, "source-video");
+  const tempOutputPath = path.join(tempFolder, metadata.filename);
+  const outputFolder = path.join(
+    app.getPath("videos"),
+    "JS-Innov.IA",
+    String(metadata.client || "A_Classer").replace(/[\\/:*?"<>|]/g, "-").trim(),
+    String(metadata.campaign || "Campagne").replace(/[\\/:*?"<>|]/g, "-").trim(),
+  );
+  const outputPath = path.join(outputFolder, metadata.filename);
+  const jsonPath = outputPath.replace(/\.mp4$/i, ".json");
+  try {
+    fs.mkdirSync(outputFolder, { recursive: true });
+    fs.writeFileSync(sourcePath, source);
+    await execFileStrict("ffmpeg", core.buildFfmpegArgs(sourcePath, tempOutputPath, metadata));
+    const probeResult = await execFileStrict("ffprobe", ["-v", "error", "-show_format", "-show_streams", "-of", "json", tempOutputPath], 60_000);
+    const probe = JSON.parse(probeResult.stdout);
+    const verification = core.verifyProbe(probe, metadata);
+    if (!verification.ok) throw new Error(`Vérification des métadonnées échouée: ${[...verification.missing, ...verification.mismatches].join(", ")}`);
+    const finalBuffer = fs.readFileSync(tempOutputPath);
+    const sha256 = crypto.createHash("sha256").update(finalBuffer).digest("hex");
+    const sidecar = core.buildSidecar(metadata, { sha256, probe, verification });
+    fs.copyFileSync(tempOutputPath, outputPath);
+    fs.writeFileSync(jsonPath, `${JSON.stringify(sidecar, null, 2)}\n`, "utf8");
+    return {
+      success: true,
+      finalized: true,
+      verified: true,
+      storage: "windows-local",
+      fileName: metadata.filename,
+      localVideoPath: outputPath,
+      sidecarPath: jsonPath,
+      sha256,
+      uniqueId: metadata.uniqueId,
+      rightsConfirmed: metadata.rightsConfirmed,
+      journalId: `video-provenance-local-${crypto.randomUUID()}`,
+    };
+  } finally {
+    fs.rmSync(tempFolder, { recursive: true, force: true });
+  }
 });
 
 // ── Helper: vérifier qu'une fenêtre est toujours vivante ────────────────────

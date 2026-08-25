@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     history: (promptId) => ipcRenderer.invoke("video-local-history", promptId),
     interrupt: () => ipcRenderer.invoke("video-local-interrupt"),
     uploadImage: ({ name, dataUrl }) => ipcRenderer.invoke("video-local-upload-image", { name, dataUrl }),
+    finalize: ({ bytes, metadata }) => ipcRenderer.invoke("video-local-finalize", { bytes, metadata }),
     openOutputFolder: () => ipcRenderer.invoke("video-local-open-output"),
   },
 });

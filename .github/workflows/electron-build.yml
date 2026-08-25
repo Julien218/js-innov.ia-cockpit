@@ -9,6 +9,8 @@ on:
       - "local-agent/**"
       - "src/components/FloatingAgent.jsx"
       - "src/lib/mediaReference.js"
+      - "src/lib/videoProvenance.js"
+      - "server-video-provenance-core.cjs"
       - ".github/workflows/electron-build.yml"
   workflow_dispatch:
 
@@ -69,6 +71,7 @@ jobs:
           $exe = Get-ChildItem "dist/*.exe" | Select-Object -First 1
           if (-not $exe) { throw "Installeur .exe manquant" }
           if (-not (Test-Path "dist/win-unpacked/resources/offline-web/index.html")) { throw "Interface Cockpit hors ligne manquante" }
+          if (-not (Test-Path "dist/win-unpacked/resources/video-provenance-core.cjs")) { throw "Finaliseur vidéo local manquant" }
           Write-Host "Installer: $($exe.Name)"
 
       - name: Upload Windows artifact
