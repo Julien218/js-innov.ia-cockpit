@@ -7,6 +7,7 @@ import {
 import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
+import { getLocalTelemetryCurrent } from '../lib/localTelemetry';
 
 const MODELS = ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol'];
 const MAPPING_OPTIONS = [
@@ -128,6 +129,13 @@ export default function AICostControl() {
     queryKey: ['cost-accounting-overview', month],
     queryFn: () => fetchJson(`/api/client-costs/accounting/overview?month=${encodeURIComponent(month)}`),
     refetchInterval: 60000,
+  });
+
+  const localTelemetryQuery = useQuery({
+    queryKey: ['local-windows-telemetry'],
+    queryFn: getLocalTelemetryCurrent,
+    refetchInterval: 5000,
+    retry: false,
   });
 
   const centersQuery = useQuery({
@@ -509,10 +517,35 @@ export default function AICostControl() {
             <div className="mt-5 pt-5 border-t border-border">
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-6">
                 <div className="rounded-xl border border-border p-4">
-                  <h3 className="font-semibold text-sm">Tarifs de l’ordinateur local</h3>
-                  <p className="text-xs text-muted-foreground mt-1">Ces valeurs produisent une estimation distincte du coût fournisseur réel.</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold text-sm">Ordinateur local et télémétrie</h3>
+                      <p className="text-xs text-muted-foreground mt-1">CPU, GPU et durée sont relevés automatiquement. Sans compteur physique, l’électricité reste une estimation documentée.</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold ${localTelemetryQuery.data?.telemetry ? 'bg-emerald-500/10 text-emerald-700' : 'bg-amber-500/10 text-amber-700'}`}>
+                      {localTelemetryQuery.data?.telemetry ? 'Agent Windows connecté' : 'Télémétrie indisponible'}
+                    </span>
+                  </div>
+                  {localTelemetryQuery.data?.telemetry && (() => {
+                    const telemetry = localTelemetryQuery.data.telemetry;
+                    const gpu = telemetry.gpu?.devices?.[0];
+                    const telemetryCeiling = Number(telemetry.power?.configured_ceiling_watts || 0);
+                    const savedCeiling = Number(localRatesForm.power_watts || telemetryCeiling || 0);
+                    const effectivePower = telemetryCeiling > 0
+                      ? Number((Number(telemetry.power?.estimated_system_watts || 0) / telemetryCeiling * savedCeiling).toFixed(1))
+                      : telemetry.power?.estimated_system_watts;
+                    return (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+                        <div className="rounded-lg bg-muted/50 p-2"><p className="text-[10px] text-muted-foreground">CPU observé</p><p className="text-sm font-semibold tabular-nums">{telemetry.cpu?.utilization_percent == null ? 'mesure en cours' : `${telemetry.cpu.utilization_percent} %`}</p></div>
+                        <div className="rounded-lg bg-muted/50 p-2"><p className="text-[10px] text-muted-foreground">GPU observé</p><p className="text-sm font-semibold tabular-nums">{gpu?.utilization_percent == null ? 'non détecté' : `${gpu.utilization_percent} %`}</p></div>
+                        <div className="rounded-lg bg-muted/50 p-2"><p className="text-[10px] text-muted-foreground">Puissance GPU</p><p className="text-sm font-semibold tabular-nums">{gpu?.power_draw_watts == null ? 'capteur absent' : `${gpu.power_draw_watts} W`}</p></div>
+                        <div className="rounded-lg bg-muted/50 p-2"><p className="text-[10px] text-muted-foreground">PC estimé</p><p className="text-sm font-semibold tabular-nums">{effectivePower ?? '—'} W</p></div>
+                      </div>
+                    );
+                  })()}
+                  <p className="text-[11px] text-muted-foreground mt-3">Tarifs appliqués aux prochaines productions locales · valeurs de départ JS-Innov.IA : 180 W, 0,30 €/kWh et 0,20 €/h.</p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
-                    <label className="text-xs text-muted-foreground">Puissance (W)<input type="number" min="0" step="1" value={localRatesForm.power_watts} onChange={(event) => setLocalRatesForm((value) => ({ ...value, power_watts: event.target.value }))} className="mt-1 h-10 w-full px-3 rounded-xl border border-border bg-background text-sm" /></label>
+                    <label className="text-xs text-muted-foreground">Puissance plafond (W)<input type="number" min="0" step="1" value={localRatesForm.power_watts} onChange={(event) => setLocalRatesForm((value) => ({ ...value, power_watts: event.target.value }))} className="mt-1 h-10 w-full px-3 rounded-xl border border-border bg-background text-sm" /></label>
                     <label className="text-xs text-muted-foreground">Électricité (€/kWh)<input type="number" min="0" step="0.001" value={localRatesForm.energy_eur_kwh} onChange={(event) => setLocalRatesForm((value) => ({ ...value, energy_eur_kwh: event.target.value }))} className="mt-1 h-10 w-full px-3 rounded-xl border border-border bg-background text-sm" /></label>
                     <label className="text-xs text-muted-foreground">Machine (€/h)<input type="number" min="0" step="0.01" value={localRatesForm.machine_eur_hour} onChange={(event) => setLocalRatesForm((value) => ({ ...value, machine_eur_hour: event.target.value }))} className="mt-1 h-10 w-full px-3 rounded-xl border border-border bg-background text-sm" /></label>
                   </div>

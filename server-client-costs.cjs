@@ -23,9 +23,9 @@ const CRM_PROXY_URL = process.env.SUPABASE_CRM_PROXY_URL || '';
 const CRM_PROXY_TOKEN = process.env.SUPABASE_CRM_PROXY_TOKEN || '';
 
 const DEFAULT_MARKUP_PERCENT = Math.max(0, Number(process.env.CLIENT_COST_DEFAULT_MARKUP_PERCENT || 0));
-const LOCAL_AI_POWER_WATTS = Math.max(0, Number(process.env.LOCAL_AI_POWER_WATTS || 0));
-const LOCAL_AI_ENERGY_EUR_KWH = Math.max(0, Number(process.env.LOCAL_AI_ENERGY_EUR_KWH || 0));
-const LOCAL_AI_MACHINE_EUR_HOUR = Math.max(0, Number(process.env.LOCAL_AI_MACHINE_EUR_HOUR || 0));
+const LOCAL_AI_POWER_WATTS = Math.max(0, Number(process.env.LOCAL_AI_POWER_WATTS || 180));
+const LOCAL_AI_ENERGY_EUR_KWH = Math.max(0, Number(process.env.LOCAL_AI_ENERGY_EUR_KWH || 0.30));
+const LOCAL_AI_MACHINE_EUR_HOUR = Math.max(0, Number(process.env.LOCAL_AI_MACHINE_EUR_HOUR || 0.20));
 
 const SOURCE_TYPES = new Set([
   'llm_api', 'railway', 'local_ai', 'github', 'storage', 'communications',
@@ -194,6 +194,51 @@ function applyBillingRule(actualMinor, rule) {
   const calculated = Math.round(actual * (1 + markupPercent / 100));
   const billable = Math.max(calculated, minor(rule?.minimum_minor));
   return { actual, billable, markupPercent, billableEnabled: true, mode: rule?.billing_mode || 'percent' };
+}
+
+function limitedNumber(value, min, max) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= min && number <= max ? number : null;
+}
+
+function normalizeLocalTelemetry(input = {}, runtimeSeconds = 0) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  const sampleCount = Math.max(0, Math.min(100000, Math.round(Number(input.sample_count || 0))));
+  const averagePowerWatts = limitedNumber(input.power?.average_estimated_system_watts, 1, 5000);
+  if (!sampleCount || !averagePowerWatts) return null;
+  const seconds = Math.max(0, Number(runtimeSeconds || input.runtime_seconds || 0));
+  return {
+    summary_id: clean(input.summary_id, 300) || null,
+    session_id: clean(input.session_id, 120) || null,
+    started_at: Number.isFinite(Date.parse(input.started_at)) ? new Date(input.started_at).toISOString() : null,
+    completed_at: Number.isFinite(Date.parse(input.completed_at)) ? new Date(input.completed_at).toISOString() : null,
+    runtime_seconds: seconds,
+    sample_count: sampleCount,
+    sampling_interval_seconds: limitedNumber(input.sampling_interval_seconds, 0.1, 3600),
+    cpu: {
+      model: clean(input.cpu?.model, 300) || null,
+      logical_cores: limitedNumber(input.cpu?.logical_cores, 1, 1024),
+      average_utilization_percent: limitedNumber(input.cpu?.average_utilization_percent, 0, 100),
+    },
+    memory: {
+      total_bytes: limitedNumber(input.memory?.total_bytes, 1, Number.MAX_SAFE_INTEGER),
+      average_utilization_percent: limitedNumber(input.memory?.average_utilization_percent, 0, 100),
+    },
+    gpu: {
+      names: Array.isArray(input.gpu?.names) ? input.gpu.names.slice(0, 8).map((name) => clean(name, 300)).filter(Boolean) : [],
+      average_utilization_percent: limitedNumber(input.gpu?.average_utilization_percent, 0, 100),
+      average_power_draw_watts: limitedNumber(input.gpu?.average_power_draw_watts, 0, 5000),
+      power_sensor: clean(input.gpu?.power_sensor, 80) || 'unavailable',
+    },
+    power: {
+      average_estimated_system_watts: averagePowerWatts,
+      configured_ceiling_watts: limitedNumber(input.power?.configured_ceiling_watts, 1, 5000),
+      methods: Array.isArray(input.power?.methods) ? input.power.methods.slice(0, 8).map((method) => clean(method, 120)).filter(Boolean) : [],
+      evidence_status: 'estimated',
+    },
+    energy_wh_estimated: Number((seconds * averagePowerWatts / 3600).toFixed(6)),
+    evidence_status: 'estimated',
+  };
 }
 
 function costEventLookupPath(sourceType, externalRef) {
@@ -627,7 +672,14 @@ router.post('/clients/:clientId/local-ai', async (req, res) => {
     if (!seconds) return res.status(400).json({ error: 'runtime_seconds requis' });
     const hours = seconds / 3600;
     const storedRates = await loadLocalRates();
-    const powerWatts = Math.max(0, Number(req.body?.power_watts ?? storedRates.power_watts));
+    const telemetry = normalizeLocalTelemetry(req.body?.telemetry, seconds);
+    const configuredPowerWatts = Math.max(0, Number(req.body?.power_watts ?? storedRates.power_watts));
+    const telemetryLoadRatio = telemetry
+      ? telemetry.power.average_estimated_system_watts / (telemetry.power.configured_ceiling_watts || telemetry.power.average_estimated_system_watts)
+      : 1;
+    const powerWatts = telemetry
+      ? Number((configuredPowerWatts * Math.max(0.05, Math.min(1.5, telemetryLoadRatio))).toFixed(3))
+      : configuredPowerWatts;
     const energyRate = Math.max(0, Number(req.body?.energy_eur_kwh ?? storedRates.energy_eur_kwh));
     const machineRate = Math.max(0, Number(req.body?.machine_eur_hour ?? storedRates.machine_eur_hour));
     if (!(powerWatts > 0) || !(energyRate > 0) || !(machineRate > 0)) {
@@ -644,31 +696,53 @@ router.post('/clients/:clientId/local-ai', async (req, res) => {
     const event = await createCostEvent({
       clientId: req.params.clientId,
       projectId: clean(req.body?.project_id, 120) || null,
+      costCenterId: clean(req.body?.cost_center_id, 120) || null,
       sourceType: 'local_ai',
       provider: 'jsinnovia-local',
       description: req.body?.description || `IA locale — ${clean(req.body?.model, 120) || 'modèle local'}`,
       actualCostMinor,
       externalRef,
       evidenceStatus: 'estimated',
-      calculationMethod: 'runtime_machine_plus_energy',
+      calculationMethod: telemetry ? 'local_agent_telemetry_machine_plus_energy' : 'runtime_machine_plus_energy',
       calculationInputs: {
         runtime_seconds: seconds,
         power_watts: powerWatts,
+        configured_power_watts: configuredPowerWatts,
+        telemetry_load_ratio: telemetry ? Number(telemetryLoadRatio.toFixed(6)) : null,
+        power_source: telemetry ? 'local_agent_telemetry_estimate' : 'configured_nominal_power',
         energy_eur_kwh: energyRate,
         machine_eur_hour: machineRate,
+        telemetry_summary_id: telemetry?.summary_id || null,
+        telemetry_sample_count: telemetry?.sample_count || 0,
       },
       metadata: {
         runtime_seconds: seconds,
         power_watts: powerWatts,
+        configured_power_watts: configuredPowerWatts,
+        telemetry_load_ratio: telemetry ? Number(telemetryLoadRatio.toFixed(6)) : null,
         energy_eur_kwh: energyRate,
         machine_eur_hour: machineRate,
         energy_eur: Number(energyEur.toFixed(6)),
         machine_eur: Number(machineEur.toFixed(6)),
         model: clean(req.body?.model, 120) || null,
+        telemetry,
+        telemetry_used: Boolean(telemetry),
+        power_source: telemetry ? 'local_agent_telemetry_estimate' : 'configured_nominal_power',
         estimated: true,
       },
     });
-    return res.status(201).json({ success: true, event });
+    return res.status(201).json({
+      success: true,
+      event,
+      calculation: {
+        evidence_status: 'estimated',
+        telemetry_used: Boolean(telemetry),
+        power_watts: powerWatts,
+        energy_eur: Number(energyEur.toFixed(6)),
+        machine_eur: Number(machineEur.toFixed(6)),
+        total_eur: Number((energyEur + machineEur).toFixed(6)),
+      },
+    });
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
@@ -836,4 +910,6 @@ module.exports = {
   summarize,
   buildInvoiceLines,
   monthWindow,
+  normalizedLocalRates,
+  normalizeLocalTelemetry,
 };

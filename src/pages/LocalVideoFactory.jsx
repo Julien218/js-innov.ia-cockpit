@@ -31,6 +31,7 @@ import {
   saveLocalWorkflow,
   uploadLocalImage,
 } from '@/lib/videoOrchestrator';
+import { getLocalTelemetrySummary } from '../lib/localTelemetry';
 import {
   MAX_LOCAL_VIDEO_BATCH,
   SIGNAGE_GENERATION_SIZE,
@@ -113,7 +114,12 @@ export default function LocalVideoFactory() {
       const externalRef = `local-video:${currentBatch.id}:${job.id}`;
       if (costSyncedIds.current.has(externalRef)) continue;
       try {
-        await fetchJson(`/api/client-costs/clients/${encodeURIComponent(canonicalClientId)}/local-ai`, {
+        const telemetryResult = await getLocalTelemetrySummary({
+          startedAt: job.executionStartedAt || job.startedAt,
+          completedAt: job.completedAt,
+          runtimeSeconds: Number(job.runtimeSeconds),
+        }).catch(() => null);
+        const accounting = await fetchJson(`/api/client-costs/clients/${encodeURIComponent(canonicalClientId)}/local-ai`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -123,10 +129,16 @@ export default function LocalVideoFactory() {
             project_id: currentBatch.projectId || null,
             cost_center_id: currentBatch.costCenterId || null,
             description: `${currentBatch.clientName || 'Client'} — ${job.title || 'vidéo écran géant'}`,
+            telemetry: telemetryResult?.telemetry || null,
           }),
         });
         costSyncedIds.current.add(externalRef);
-        setAccountingNotice({ type: 'success', text: 'Temps machine local transmis à AI Cost Control avec preuve d’exécution ComfyUI.' });
+        setAccountingNotice({
+          type: 'success',
+          text: accounting?.calculation?.telemetry_used
+            ? 'Durée, CPU, GPU et consommation estimée transmis à AI Cost Control avec la preuve ComfyUI.'
+            : 'Durée ComfyUI comptabilisée avec la puissance nominale; la télémétrie Windows était indisponible.',
+        });
       } catch (error) {
         setAccountingNotice({ type: 'error', text: `Coût local non comptabilisé : ${error.message}. La vidéo reste exclue de la facturation automatique tant que ce point n’est pas corrigé.` });
       }
