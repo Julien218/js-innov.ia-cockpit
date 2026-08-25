@@ -145,6 +145,15 @@ try {
   console.warn('⚠️ Route Écran géant indisponible:', e.message);
 }
 
+// ── Finalisation vidéo : MP4 + métadonnées + JSON + Dropbox ─
+try {
+  const videoProvenanceRouter = require('./server-video-provenance.cjs');
+  app.use('/api/video-provenance', requireSession('admin'), videoProvenanceRouter);
+  console.log('✅ Finaliseur vidéo activé (FFmpeg/FFprobe + SHA-256 + Dropbox)');
+} catch (e) {
+  console.warn('⚠️ Finaliseur vidéo indisponible:', e.message);
+}
+
 // ── Companion batch : création multi-tâches + délégation ───
 try {
   const taskAutopilot = require('./server-task-autopilot.cjs');

@@ -13,6 +13,8 @@ on:
       - 'server-companion-memory.cjs'
       - 'server-data-proxy.cjs'
       - 'server-dropbox-helper.cjs'
+      - 'server-video-provenance-core.cjs'
+      - 'server-video-provenance.cjs'
       - 'server-tenant.cjs'
       - 'server-ai-cost-attribution.cjs'
       - 'server-client-costs.cjs'
@@ -37,6 +39,7 @@ on:
       - 'tests/task-autopilot.test.cjs'
       - 'tests/local-agent-tools.test.cjs'
       - 'tests/nova-media-dropbox.test.cjs'
+      - 'tests/video-provenance.test.cjs'
       - 'tests/client-billing-integrity.test.cjs'
       - 'tests/hainoflow-tenant.test.cjs'
       - 'tests/billing-archive.test.cjs'
@@ -81,6 +84,8 @@ jobs:
           node --check server-tenant.cjs
           node --check server-ai-cost-attribution.cjs
           node --check server-client-costs.cjs
+          node --check server-video-provenance-core.cjs
+          node --check server-video-provenance.cjs
           node --check local-agent/server.js
       - name: Full Cockpit regression suite
         run: npm test

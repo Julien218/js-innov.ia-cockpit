@@ -15,7 +15,7 @@ test('desktop starts through the global bootstrap', () => {
 });
 
 test('desktop bundles and starts NOVA Local Tools without a second assistant UI', () => {
-  assert.equal(pkg.version, '1.0.34');
+  assert.equal(pkg.version, '1.0.35');
   const localAgentResource = pkg.build?.extraResources?.find((item) => item.to === 'local-agent');
   assert.ok(localAgentResource);
   assert.ok(localAgentResource.filter.includes('server.js'));
@@ -33,6 +33,8 @@ test('desktop bundles and starts NOVA Local Tools without a second assistant UI'
   assert.match(main, /captureOfflineSession/);
   assert.match(main, /hydrateOfflineSession/);
   assert.match(main, /nova_local_task_snapshot_v1/);
+  assert.match(main, /video-local-finalize/);
+  assert.ok(pkg.build?.extraResources?.some((item) => item.to === 'video-provenance-core.cjs'));
 });
 
 test('startup refreshes only HTTP cache before loading the remote cockpit', () => {

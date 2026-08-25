@@ -21,7 +21,7 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 
-RUN apk add --no-cache nginx
+RUN apk add --no-cache nginx ffmpeg
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
@@ -51,6 +51,8 @@ COPY --from=builder /app/server-agent-orchestrator-resilient.cjs ./server-agent-
 COPY --from=builder /app/server-agent-run-log.cjs ./server-agent-run-log.cjs
 COPY --from=builder /app/server-domain-ops.cjs ./server-domain-ops.cjs
 COPY --from=builder /app/server-signage.cjs ./server-signage.cjs
+COPY --from=builder /app/server-video-provenance-core.cjs ./server-video-provenance-core.cjs
+COPY --from=builder /app/server-video-provenance.cjs ./server-video-provenance.cjs
 COPY --from=builder /app/server-dropbox-helper.cjs ./server-dropbox-helper.cjs
 COPY --from=builder /app/server-ai-cost.cjs ./server-ai-cost.cjs
 COPY --from=builder /app/server-nova-routing.cjs ./server-nova-routing.cjs
@@ -80,6 +82,8 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-agent-run-log.cjs \
  && test -f /app/server-domain-ops.cjs \
  && test -f /app/server-signage.cjs \
+ && test -f /app/server-video-provenance-core.cjs \
+ && test -f /app/server-video-provenance.cjs \
  && test -f /app/server-assistant-batch.cjs \
  && test -f /app/server-task-batch.cjs \
  && test -f /app/server-nova-executors.cjs \
@@ -96,6 +100,8 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-agent-run-log.cjs \
  && node --check /app/server-domain-ops.cjs \
  && node --check /app/server-signage.cjs \
+ && node --check /app/server-video-provenance-core.cjs \
+ && node --check /app/server-video-provenance.cjs \
  && node --check /app/server-assistant-batch.cjs \
  && node --check /app/server-task-batch.cjs \
  && node --check /app/server-nova-executors.cjs \
@@ -114,7 +120,7 @@ server {
     add_header X-Frame-Options "DENY" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
-    client_max_body_size 105m;
+    client_max_body_size 260m;
 
     if ($host = documents.jsinnovia.com) {
         return 302 https://cockpit.jsinnovia.com/documents;

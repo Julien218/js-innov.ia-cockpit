@@ -125,6 +125,6 @@ test('le Companion expose un dépôt média binaire sécurisé et indexé', () =
   assert.match(ui, /type="file"/);
   assert.match(ui, /image\/jpeg/);
   assert.match(ui, /video\/mp4/);
-  assert.match(docker, /client_max_body_size 105m/);
+  assert.match(docker, /client_max_body_size 260m/);
   assert.match(docker, /proxy_request_buffering off/);
 });

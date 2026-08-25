@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Film, Download, X, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
+import { finalizeStudioExport } from "@/lib/videoProvenance";
 
 const FPS = 30;
 const FONTS = { normal: "600 36px sans-serif", small: "400 24px sans-serif", large: "700 56px sans-serif" };
@@ -225,12 +226,28 @@ export default function MultiTrackExporter({ vp, tracks, sourceProject, onClose 
     const blob = new Blob(chunks, { type: "video/webm" });
     const url = URL.createObjectURL(blob);
     const fileSizeMb = blob.size / 1024 / 1024;
-    
-    // Upload to save export
-    const { file_url } = await base44.integrations.Core.UploadFile({ file: blob });
-    
-    // Enregistrer l'export en base
-    await base44.functions.invoke('saveVideoExport', {
+
+    setMessage("Inscription et vérification des métadonnées invisibles…");
+    let provenance;
+    try {
+      provenance = await finalizeStudioExport(blob, {
+        vp,
+        sourceProject,
+        durationSeconds: totalSec,
+        width: W,
+        height: H,
+        resolutionLabel: "1080p",
+        fps: FPS,
+        exportType: "multitrack",
+      });
+    } catch (error) {
+      setStatus("error");
+      setMessage(`Export non finalisé : ${error.message}`);
+      return;
+    }
+
+    const { url: file_url } = await base44.integrations.Core.UploadFile({ file: blob, fileName: `${provenance.uniqueId}.webm` });
+    await base44.entities.VideoExport.create({
       video_project_id: vp?.id,
       title: vp?.title || "Montage multipiste",
       format: vp?.template_format || "16:9",
@@ -244,7 +261,7 @@ export default function MultiTrackExporter({ vp, tracks, sourceProject, onClose 
     setBlobSize(blob.size);
     setProgress(100);
     setStatus("done");
-    setMessage(`Export terminé — ${fileSizeMb.toFixed(1)} MB`);
+    setMessage(`MP4 vérifié et archivé — ${provenance.fileName} · SHA-256 ${provenance.sha256.slice(0, 12)}…`);
   };
 
   const handleDownload = () => {

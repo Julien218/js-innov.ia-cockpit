@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Download, Play, Film, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import { finalizeStudioExport } from "@/lib/videoProvenance";
 
 // ─── Palette ────────────────────────────────────────────────────────────────
 const C = {
@@ -726,9 +727,36 @@ export default function DourCampaignVideo() {
 
     const blob = new Blob(chunks, { type: "video/webm" });
     blobUrlRef.current = URL.createObjectURL(blob);
+    setMessage("Inscription et vérification des métadonnées invisibles…");
+    try {
+      const provenance = await finalizeStudioExport(blob, {
+        vp: {
+          title: "Mascotte Dour",
+          campaign_name: "Campagne mascotte Dour",
+          client_name: "JS-Innov.IA",
+          version: "v01",
+          ai_prompt: "Animation de la mascotte Dour pour la campagne locale.",
+          clips: [],
+          rights_confirmed: false,
+          usage_rights: "Campagne interne JS-Innov.IA et diffusion sur les supports validés.",
+        },
+        sourceProject: { sector: "communication locale" },
+        durationSeconds: TOTAL_DURATION,
+        width: W,
+        height: H,
+        resolutionLabel: "1080p",
+        fps: FPS,
+        exportType: "campaign",
+        visualFormat: "9:16",
+      });
+      setMessage(`MP4 vérifié et archivé — ${provenance.fileName} · SHA-256 ${provenance.sha256.slice(0, 12)}…`);
+    } catch (error) {
+      setStatus("error");
+      setMessage(`Export non finalisé : ${error.message}`);
+      return;
+    }
     setProgress(100);
     setStatus("done");
-    setMessage(`Vidéo prête — ${(blob.size / 1024 / 1024).toFixed(1)} MB · 40s`);
   };
 
   const handleDownload = () => {
