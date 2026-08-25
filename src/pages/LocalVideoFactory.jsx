@@ -17,11 +17,13 @@ import {
 import PageHeader from '@/components/shared/PageHeader';
 import {
   cancelLocalVideoBatch,
+  createLocalReviewVideo,
   getLocalVideoBatchStatus,
   getLocalVideoStatus,
   listLocalVideoBatches,
   loadLocalWorkflow,
   openLocalOutputFolder,
+  openLocalReviewFolder,
   prepareH3Workflow,
   queueLocalVideoBatch,
   saveLocalWorkflow,
@@ -76,6 +78,7 @@ export default function LocalVideoFactory() {
   const [localStatus, setLocalStatus] = useState(null);
   const [batch, setBatch] = useState(null);
   const [starting, setStarting] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const [notice, setNotice] = useState(null);
 
   const summary = useMemo(() => summarizeLocalBatch(batch || { jobs }), [batch, jobs]);
@@ -212,6 +215,21 @@ export default function LocalVideoFactory() {
     }
   };
 
+  const prepareReview = async () => {
+    if (!batch?.id) return;
+    setReviewing(true);
+    setNotice(null);
+    try {
+      const result = await createLocalReviewVideo(batch.id);
+      setBatch((current) => ({ ...current, review: result }));
+      setNotice({ type: 'success', text: 'Le montage comparatif 1 · 2 · 3 est prêt pour la validation client.' });
+    } catch (error) {
+      setNotice({ type: 'error', text: error.message });
+    } finally {
+      setReviewing(false);
+    }
+  };
+
   const cancelBatch = async () => {
     if (!batch?.id) return;
     try {
@@ -343,9 +361,22 @@ export default function LocalVideoFactory() {
             {review.ready ? `Les trois premières propositions sont terminées. Montage prévu : ${review.duration}s.` : 'Disponible lorsque les trois premières propositions sont terminées.'}
           </p>
         </div>
-        <button type="button" disabled={!review.ready} onClick={() => navigate('/validations')} className="rounded-lg border border-border px-4 py-2 text-sm disabled:opacity-50">
-          Préparer le choix 1 · 2 · 3
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={!review.ready || reviewing} onClick={prepareReview} className="btn-gold rounded-lg px-4 py-2 text-sm disabled:opacity-50 flex items-center gap-2">
+            {reviewing ? <Loader2 size={15} className="animate-spin" /> : <Clapperboard size={15} />}
+            {batch?.review?.outputPath ? 'Regénérer le comparatif' : 'Générer le choix 1 · 2 · 3'}
+          </button>
+          {batch?.review?.outputPath && (
+            <>
+              <button type="button" onClick={() => openLocalReviewFolder(batch.review.outputPath)} className="rounded-lg border border-border px-4 py-2 text-sm flex items-center gap-2">
+                <FolderOpen size={15} /> Ouvrir le montage
+              </button>
+              <button type="button" onClick={() => navigate('/validations')} className="rounded-lg border border-border px-4 py-2 text-sm">
+                Enregistrer la validation
+              </button>
+            </>
+          )}
+        </div>
       </section>
     </div>
   );
