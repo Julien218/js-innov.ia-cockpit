@@ -9,7 +9,7 @@ const taskBatchSource = fs.readFileSync(path.join(root, 'server-task-batch.cjs')
 const serverSource = fs.readFileSync(path.join(root, 'server.cjs'), 'utf8');
 const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
 
-const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage, executionProof, directAutopilotSignal, autopilotMessage, directEntityMutationSignal } = require(path.join(root, 'server-assistant-batch.cjs'));
+const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage, executionProof, directAutopilotSignal, autopilotMessage, directEntityMutationSignal, executionProhibited, directInspectionSignal } = require(path.join(root, 'server-assistant-batch.cjs'));
 const { canonicalTaskTitle, latestActiveRun, sanitizeTaskBatchPayload } = require(path.join(root, 'server-task-batch.cjs'));
 
 test('les demandes multi-tâches et d’exécution sont reconnues sans intercepter un chat banal', () => {
@@ -39,6 +39,17 @@ test('une demande explicite d’exécution autorise le lot sans seconde confirma
   assert.match(batchSource, /require_confirmation_for_actions:\s*!userAlreadyAuthorizedExecution/);
   assert.match(batchSource, /if \(userAlreadyAuthorizedExecution\)/);
   assert.match(batchSource, /confirmation:\s*null/);
+});
+
+test('une interdiction explicite d’écrire ne peut jamais devenir une autorisation par sous-chaîne', () => {
+  const request = 'Analyse toutes les tâches non terminées et leurs preuves. N’exécute aucune écriture, modification, génération ni dépense. Rapport uniquement.';
+  assert.equal(executionProhibited(request), true);
+  assert.equal(explicitExecutionAuthorization(request), false);
+  assert.equal(directAutopilotSignal(request), false);
+  assert.equal(directInspectionSignal(request), true);
+  assert.equal(executionProhibited('Effectue toutes les tâches non terminées'), false);
+  assert.equal(explicitExecutionAuthorization('Effectue toutes les tâches non terminées'), true);
+  assert.match(batchSource, /runAutopilot\(\{ inspectOnly: true/);
 });
 
 test('un batch exige des tâches avec un titre non vide', () => {
@@ -168,6 +179,23 @@ test('effectue toutes les tâches déclenche directement l’autopilote sans ré
   const message = autopilotMessage({ run_id: 'auto-1', unique: 2, executed: [{ task_id: 't1', run_id: 'r1', status: 'completed' }], blocked: [{ task_id: 't2', reason: 'accès manquant' }] });
   assert.match(message, /run_id=auto-1/);
   assert.match(message, /task_id=t1 · run_id=r1/);
-  assert.match(message, /task_id=t2 · statut=bloquee/);
+  assert.match(message, /task_id=t2 .* statut=bloquee/);
   assert.match(batchSource, /if \(userAlreadyAuthorizedExecution && directAutopilotSignal\(message\)\)/);
+});
+
+test('le rapport autopilote identifie chaque tâche, exécuteur et preuve', () => {
+  const message = autopilotMessage({
+    run_id: 'auto-proof',
+    unique: 3,
+    executed: [{ task_id: 't1', title: 'Audit factures', executor: 'nova-business-data', run_id: 'r1', tool_run_id: 'journal-1', status: 'completed' }],
+    ready: [{ task_id: 't2', title: 'Audit vidéo', executor: 'nova-video-production' }],
+    awaiting_authorization: [{ task_id: 't3', title: 'Modifier client', executor: 'nova-business-data', reason: 'autorisation_explicite_requise' }],
+    inspection_only: true,
+  });
+  assert.match(message, /Inspection déterministe sans effet/);
+  assert.match(message, /Audit factures · task_id=t1/);
+  assert.match(message, /exécuteur=nova-business-data/);
+  assert.match(message, /preuve=journal-1/);
+  assert.match(message, /Audit vidéo · task_id=t2/);
+  assert.match(message, /Modifier client · task_id=t3/);
 });

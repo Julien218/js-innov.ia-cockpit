@@ -210,7 +210,7 @@ function safeScheduledTask(task, executor) {
   return false;
 }
 
-async function runAutopilot({ allowWrites = false, requestedBy = 'companion-autopilot', user = null } = {}) {
+async function runAutopilot({ allowWrites = false, inspectOnly = false, requestedBy = 'companion-autopilot', user = null } = {}) {
   if (state.running) return { skipped: true, reason: 'already_running' };
   state.running = true;
   state.last_started_at = new Date().toISOString();
@@ -228,6 +228,7 @@ async function runAutopilot({ allowWrites = false, requestedBy = 'companion-auto
     const executableTasks = [];
     const blocked = [];
     const awaitingAuthorization = [];
+    const ready = [];
     const duplicates = [];
     for (const group of groups.values()) {
       const [task, ...copies] = group;
@@ -253,6 +254,17 @@ async function runAutopilot({ allowWrites = false, requestedBy = 'companion-auto
         });
         continue;
       }
+      if (inspectOnly) {
+        ready.push({
+          task_id: task.id,
+          title: task.titre || task.title,
+          kind: executor.kind,
+          executor: executor.id,
+          domain: executor.domain || null,
+          reason: 'inspection_sans_effet',
+        });
+        continue;
+      }
       executableTasks.push({
         titre: task.titre || task.title,
         description: task.description,
@@ -275,14 +287,23 @@ async function runAutopilot({ allowWrites = false, requestedBy = 'companion-auto
         agentFetch,
       });
     }
-    const executed = batch.results.filter((item) => item.status === 'completed');
-    const queued = batch.results.filter((item) => ['queued_local', 'already_running', 'awaiting_review'].includes(item.status));
-    blocked.push(...batch.results.filter((item) => !item.success).map((item) => ({ task_id: item.task_id, run_id: item.run_id, reason: item.error || item.status })));
+    const decorate = (item) => {
+      const task = tasks.find((candidate) => String(candidate.id) === String(item.task_id))
+        || tasks.find((candidate) => canonicalTaskTitle(candidate.titre || candidate.title) === canonicalTaskTitle(item.title));
+      const executor = task ? resolveNovaExecutor(task) : null;
+      return { ...item, title: item.title || task?.titre || task?.title, executor: item.executor || executor?.id || null };
+    };
+    const executed = batch.results.filter((item) => item.status === 'completed').map(decorate);
+    const queued = batch.results.filter((item) => ['queued_local', 'already_running', 'awaiting_review'].includes(item.status)).map(decorate);
+    blocked.push(...batch.results.filter((item) => !item.success).map((item) => {
+      const decorated = decorate(item);
+      return { task_id: decorated.task_id, title: decorated.title, executor: decorated.executor, run_id: decorated.run_id, reason: decorated.error || decorated.status };
+    }));
     for (const execution of executed) {
       const canonicalTask = tasks.find((task) => String(task.id) === String(execution.task_id));
       if (canonicalTask) execution.duplicate_task_ids = await closeVerifiedDuplicates(canonicalTask, duplicateTasksForCanonical(tasks, canonicalTask), [execution.run_id].filter(Boolean));
     }
-    const result = { run_id: `autopilot-${crypto.randomUUID()}`, examined: tasks.length, unique: groups.size, executed, queued, blocked, awaiting_authorization: awaitingAuthorization, duplicates, allow_writes: allowWrites };
+    const result = { run_id: `autopilot-${crypto.randomUUID()}`, examined: tasks.length, unique: groups.size, executed, queued, ready, blocked, awaiting_authorization: awaitingAuthorization, duplicates, allow_writes: allowWrites, inspection_only: inspectOnly };
     state.last_result = result;
     return result;
   } catch (error) {

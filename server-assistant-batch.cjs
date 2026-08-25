@@ -49,8 +49,17 @@ function batchSignals(text) {
   return (hasWorkItem && (hasAgent || hasPlural)) || hasExecutionIntent;
 }
 
+function executionProhibited(message) {
+  const source = String(message || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return /(?:\bne\s+|\bn['’]\s*)(?:execute|lance|effectue|realise|applique|delegue|modifie)\b/.test(source)
+    || /\bsans\s+(?:executer|lancer|effectuer|realiser|appliquer|deleguer|modifier)\b/.test(source)
+    || /\b(?:lecture\s+seule|rapport\s+uniquement|analyse\s+uniquement|diagnostic\s+uniquement)\b/.test(source)
+    || /\baucune\s+(?:ecriture|modification|generation|depense|delegation|execution)\b/.test(source);
+}
+
 function explicitExecutionAuthorization(message) {
   const source = String(message || '').trim().toLowerCase();
+  if (executionProhibited(message)) return false;
   return /\b(?:je\s+)?confirme(?:\s+explicitement)?\s+(?:l['’]\s*)?(?:ex[eé]cution|lancement|d[eé]l[eé]gation)\b/.test(source)
     || /\b(?:j['’]\s*)?autorise(?:\s+explicitement)?\b.*\b(?:ex[eé]cuter|lancer|d[eé]l[eé]guer|effectuer)\b/.test(source)
     || /(effectue|ex[eé]cute|lance|fais|faites|continue|poursuis|traite|r[eé]alise|applique|d[eé]l[eè]gue).*(toutes?|chaque|les|la|le)?\s*(t[aâ]ches?|actions?|changements?|modifications?|diagnostics?|audits?)/.test(source)
@@ -59,8 +68,16 @@ function explicitExecutionAuthorization(message) {
 
 function directAutopilotSignal(message) {
   const source = String(message || '').toLowerCase();
+  if (executionProhibited(message)) return false;
   return /(effectue|ex[eé]cute|lance|traite|r[eé]alise).*(toutes?|les)\s+t[aâ]ches?/.test(source)
     || /toutes?\s+les\s+t[aâ]ches?.*(effectue|ex[eé]cute|lance|traite|r[eé]alise)/.test(source);
+}
+
+function directInspectionSignal(message) {
+  const source = String(message || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return executionProhibited(message)
+    && /\b(?:analyse|inspecte|controle|verifie|liste|rapport|etat)\b/.test(source)
+    && /\b(?:taches?|executions?|runs?|blocages?|preuves?)\b/.test(source);
 }
 
 function directEntityMutationSignal(message) {
@@ -77,11 +94,16 @@ function autopilotMessage(result) {
   const queued = Array.isArray(result?.queued) ? result.queued : [];
   const blocked = Array.isArray(result?.blocked) ? result.blocked : [];
   const awaitingAuthorization = Array.isArray(result?.awaiting_authorization) ? result.awaiting_authorization : [];
-  const lines = executed.map((item) => `✅ task_id=${item.task_id} · run_id=${item.run_id || item.tool_run_id || 'aucun'} · statut=${item.status || 'completed'}`)
-    .concat(queued.map((item) => `⏳ task_id=${item.task_id} · run_id=${item.run_id || 'aucun'} · exécuteur=${item.executor || 'NOVA'} · statut=${item.status}`))
-    .concat(awaitingAuthorization.map((item) => `⏸️ task_id=${item.task_id} · exécuteur=${item.executor || 'NOVA'} · statut=en_attente_autorisation`))
-    .concat(blocked.map((item) => `⛔ task_id=${item.task_id} · statut=bloquee · raison=${item.reason || 'exécuteur ou accès indisponible'}`));
-  return `Prise en charge déterministe terminée. run_id=${result?.run_id || 'absent'} · tâches uniques=${result?.unique || 0} · terminées=${executed.length} · en traitement=${queued.length} · en attente d’autorisation=${awaitingAuthorization.length} · bloquées=${blocked.length}\n${lines.join('\n')}`;
+  const ready = Array.isArray(result?.ready) ? result.ready : [];
+  const title = (item) => String(item?.title || 'titre indisponible').replace(/[\r\n]+/g, ' ').slice(0, 180);
+  const proof = (item) => item?.tool_run_id || item?.journal_id || item?.result?.journal_id || item?.result?.update_id || item?.result?.run_id || item?.run_id || 'aucune';
+  const lines = executed.map((item) => `✅ ${title(item)} · task_id=${item.task_id} · run_id=${item.run_id || 'aucun'} · exécuteur=${item.executor || 'NOVA'} · statut=${item.status || 'completed'} · preuve=${proof(item)}`)
+    .concat(queued.map((item) => `⏳ ${title(item)} · task_id=${item.task_id} · run_id=${item.run_id || 'aucun'} · exécuteur=${item.executor || 'NOVA'} · statut=${item.status} · preuve=${proof(item)}`))
+    .concat(ready.map((item) => `🔎 ${title(item)} · task_id=${item.task_id} · exécuteur=${item.executor || 'NOVA'} · statut=exécutable_non_lancé · raison=inspection_sans_effet`))
+    .concat(awaitingAuthorization.map((item) => `⏸️ ${title(item)} · task_id=${item.task_id} · exécuteur=${item.executor || 'NOVA'} · statut=en_attente_autorisation · raison=${item.reason || 'autorisation_explicite_requise'}`))
+    .concat(blocked.map((item) => `⛔ ${title(item)} · task_id=${item.task_id} · exécuteur=${item.executor || 'non attribué'} · statut=bloquee · raison=${item.reason || 'exécuteur ou accès indisponible'}`));
+  const prefix = result?.inspection_only ? 'Inspection déterministe sans effet terminée.' : 'Prise en charge déterministe terminée.';
+  return `${prefix} run_id=${result?.run_id || 'absent'} · tâches uniques=${result?.unique || 0} · terminées=${executed.length} · en traitement=${queued.length} · exécutables non lancées=${ready.length} · en attente d’autorisation=${awaitingAuthorization.length} · bloquées=${blocked.length}\n${lines.join('\n')}`;
 }
 
 function removeStaleConfirmationLanguage(value) {
@@ -139,6 +161,10 @@ router.post('/chat', async (req, res, next) => {
   const sessionId = sessionIdFor(req);
   const userAlreadyAuthorizedExecution = explicitExecutionAuthorization(message);
   try {
+    if (directInspectionSignal(message)) {
+      const result = await runAutopilot({ inspectOnly: true, requestedBy: req.user?.email || req.user?.id || 'companion', user: req.user });
+      return res.json({ message: autopilotMessage(result), confirmation: null, result, conversation_id: conversationIdFrom(req), assistant_mode: req.user?.role === 'superadmin' ? 'owner' : 'staff' });
+    }
     if (userAlreadyAuthorizedExecution && directAutopilotSignal(message)) {
       const result = await runAutopilot({ allowWrites: true, requestedBy: req.user?.email || req.user?.id || 'companion', user: req.user });
       return res.json({ message: autopilotMessage(result), confirmation: null, result, conversation_id: conversationIdFrom(req), assistant_mode: req.user?.role === 'superadmin' ? 'owner' : 'staff' });
@@ -299,3 +325,5 @@ module.exports.executionProof = executionProof;
 module.exports.directAutopilotSignal = directAutopilotSignal;
 module.exports.autopilotMessage = autopilotMessage;
 module.exports.directEntityMutationSignal = directEntityMutationSignal;
+module.exports.executionProhibited = executionProhibited;
+module.exports.directInspectionSignal = directInspectionSignal;
