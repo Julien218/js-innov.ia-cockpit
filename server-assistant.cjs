@@ -40,6 +40,11 @@ const ALLOWED_ACTIONS = {
     tenantScoped: true,
   },
   create_task: { method: 'POST', table: 'Tache', roles: STAFF_ROLES, fields: ['titre', 'description', 'priorite', 'date_echeance', 'projet_id', 'client_id', 'assigne_a'] },
+  create_video_generation: {
+    clientAction: '/api/video-generation/jobs',
+    roles: ADMIN_ROLES,
+    fields: ['provider', 'client_id', 'client_name', 'project_id', 'cost_center_id', 'campaign_name', 'prompt', 'sector', 'rights_confirmed', 'usage_rights', 'version', 'source_document_id'],
+  },
   update_task_status: { method: 'PATCH', table: 'Tache', roles: STAFF_ROLES, fields: ['statut'], requiresId: true },
   create_lead: { method: 'POST', table: 'Lead', roles: ADMIN_ROLES, fields: ['nom', 'prenom', 'email', 'telephone', 'entreprise', 'source', 'notes'] },
   create_project: { method: 'POST', table: 'Projet', roles: ADMIN_ROLES, fields: ['nom', 'client_id', 'client_nom', 'organisation_id', 'description', 'statut', 'date_debut', 'date_fin_prevue', 'budget', 'progression', 'priorite', 'notes'] },
@@ -341,6 +346,14 @@ function sanitizeAction(raw, user) {
   }
 
   if (raw.type === 'create_task') payload.statut = 'a_faire';
+  if (raw.type === 'create_task' && !String(payload.titre || '').trim()) return null;
+  if (raw.type === 'create_video_generation') {
+    if (!['auto', 'grok', 'xai', 'sora', 'openai'].includes(String(payload.provider || 'auto').toLowerCase())) return null;
+    payload.provider = String(payload.provider || 'auto').toLowerCase();
+    if (!payload.client_id && !String(payload.client_name || '').trim()) return null;
+    if (!String(payload.campaign_name || '').trim() || String(payload.prompt || '').trim().length < 20) return null;
+    if (payload.source_document_id && !/^[a-zA-Z0-9_-]{1,180}$/.test(String(payload.source_document_id))) return null;
+  }
   if (raw.type === 'update_task_status' && !['a_faire', 'en_cours', 'terminee', 'bloquee'].includes(payload.statut)) return null;
 
   if (['create_project', 'update_project'].includes(raw.type)) {
@@ -379,6 +392,23 @@ function sanitizeAction(raw, user) {
     definition,
     tenant: definition.tenantScoped ? cleanTenant(user.organisation) : null,
   };
+}
+
+function recoverProposedAction(raw, assistantData = {}, recentMedia = null) {
+  if (!raw || typeof raw !== 'object') return raw;
+  const recovered = { ...raw, payload: { ...(raw.payload || {}) } };
+  if (recovered.type === 'create_task' && !String(recovered.payload.titre || '').trim()) {
+    const statedTitle = String(
+      recovered.payload.title || recovered.titre || recovered.title || '',
+    ).trim() || String(assistantData.response || assistantData.reply || assistantData.message || '')
+      .match(/(?:^|\n)\s*[-*]?\s*(?:\*\*)?Titre(?:\*\*)?\s*:\s*([^\n]+)/i)?.[1]
+      ?.replace(/\*\*/g, '').trim();
+    if (statedTitle) recovered.payload.titre = statedTitle.slice(0, 240);
+  }
+  if (recovered.type === 'create_video_generation' && recentMedia?.documentId && !recovered.payload.source_document_id) {
+    recovered.payload.source_document_id = recentMedia.documentId;
+  }
+  return recovered;
 }
 
 router.get('/profile', async (req, res) => {
@@ -490,8 +520,11 @@ router.post('/chat', async (req, res) => {
         'Le finaliseur produit un MP4, inscrit les métadonnées invisibles, les relit avec FFprobe, calcule le SHA-256 et archive un JSON homonyme avec le MP4 dans Dropbox.',
         'Ne jamais ajouter de filigrane visible sans autorisation. Ne jamais attribuer le copyright si rightsConfirmed n’est pas vrai.',
         'Un rendu sans preuve finalized=true, verified=true, chemin MP4, chemin JSON et SHA-256 reste en cours ou bloqué; il n’est jamais terminé.',
+        recentMedia?.documentId
+          ? `Une image active est disponible (document Cockpit ${recentMedia.documentId}). Si l’utilisateur demande de créer ou générer une vidéo avec cette image, proposer create_video_generation, jamais create_task. Le serveur transmettra réellement cette image à Grok après confirmation.`
+          : '',
         '[/POLITIQUE VIDÉO JS-INNOV.IA]',
-      ].join('\n'),
+      ].filter(Boolean).join('\n'),
       [
         '[CONTRAT DE CAPACITÉS NOVA — état courant du serveur]',
         `Actions Cockpit autorisées pour cette session: ${availableActionsFor(req.user).join(', ') || 'aucune action d’écriture'}.`,
@@ -560,6 +593,10 @@ router.post('/chat', async (req, res) => {
           proposed_action: { type: 'one available action', id: 'required for updates/sends', payload: {} },
           action_summary: 'French confirmation summary',
           immutable_after_proposal: true,
+          requirements: {
+            create_task: 'payload.titre est obligatoire et doit reprendre exactement le titre annoncé à l’utilisateur.',
+            create_video_generation: 'Pour créer une vidéo depuis le média récent, utiliser payload { provider:"auto", client_name ou client_id, campaign_name, prompt, source_document_id }. Durée 8 s et 16:9 sont imposés par le serveur.',
+          },
         },
         available_actions: availableActionsFor(req.user),
       }),
@@ -592,7 +629,8 @@ router.post('/chat', async (req, res) => {
       }, req.user.email).catch((error) => console.warn('[assistant] AI cost logging failed:', error.message));
     }
 
-    const action = sanitizeAction(data.proposed_action || data.action, req.user);
+    const rawAction = recoverProposedAction(data.proposed_action || data.action, data, recentMedia);
+    const action = sanitizeAction(rawAction, req.user);
     let confirmation = null;
     if (action) {
       const token = crypto.randomBytes(24).toString('hex');
@@ -963,3 +1001,5 @@ module.exports.guardUnverifiedCapabilityRefusal = guardUnverifiedCapabilityRefus
 module.exports.projectInventoryRequested = projectInventoryRequested;
 module.exports.recentMediaFrom = recentMediaFrom;
 module.exports.recentMediaContext = recentMediaContext;
+module.exports.sanitizeAction = sanitizeAction;
+module.exports.recoverProposedAction = recoverProposedAction;

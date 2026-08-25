@@ -27,8 +27,17 @@ test('les requêtes fournisseurs imposent une vidéo paysage de huit secondes', 
   const sora = buildProviderRequest('openai', 'Une publicité JS-Innov.IA premium et élégante');
   assert.equal(xai.body.duration, 8);
   assert.equal(xai.body.aspect_ratio, '16:9');
+  assert.equal(xai.body.resolution, '1080p');
   assert.equal(sora.body.seconds, '8');
   assert.equal(sora.body.size, '1280x720');
+});
+
+test('Grok reçoit réellement l’image Dropbox comme source image-to-video', () => {
+  const image = 'data:image/png;base64,ZmFrZS1pbWFnZQ==';
+  const xai = buildProviderRequest('xai', 'Anime doucement cette publicité Proximedia en conservant le texte.', { imageDataUri: image });
+  assert.deepEqual(xai.body.image, { url: image });
+  assert.equal(xai.body.duration, 8);
+  assert.equal(xai.body.aspect_ratio, '16:9');
 });
 
 test('le coût xAI utilise les ticks réels et Sora le tarif officiel estimé', () => {
@@ -42,6 +51,15 @@ test('une génération ne part jamais sans attribution client et prompt exploita
   const normalized = validateJobInput({ client_id: 'client-1', client_name: 'JS-Innov.IA', campaign_name: 'Identité', prompt: 'Animation premium JS-Innov.IA sur fond bleu nuit.' });
   assert.equal(normalized.clientId, 'client-1');
   assert.equal(normalized.campaign, 'Identité');
+});
+
+test('le document Dropbox source est conservé dans le travail vidéo', () => {
+  const normalized = validateJobInput({
+    client_id: 'client-1', client_name: 'Proximedia', campaign_name: 'Écran géant Espace C',
+    prompt: 'Animation publicitaire fluide et lisible optimisée pour un écran LED extérieur.',
+    source_document_id: '0a8370a0-0e2d-41b9-a5ea-6cd8446e54af',
+  });
+  assert.equal(normalized.sourceDocumentId, '0a8370a0-0e2d-41b9-a5ea-6cd8446e54af');
 });
 
 test('la migration protège les exécutions vidéo par RLS service_role', () => {
@@ -62,6 +80,7 @@ test('le backend peut utiliser les clés serveur protégées sans les exposer au
   assert.match(server, /SUPABASE_CRM_KEY/);
   assert.match(server, /SUPABASE_SERVICE_ROLE_KEY/);
   assert.match(server, /SUPABASE_SECRET_KEY/);
+  assert.match(server, /data_uri_redacted:\s*true/);
   assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '..', 'src', 'pages', 'ApiVideoFactory.jsx'), 'utf8'), /SUPABASE_(CRM_KEY|SERVICE_ROLE_KEY|SECRET_KEY)/);
 });
 
