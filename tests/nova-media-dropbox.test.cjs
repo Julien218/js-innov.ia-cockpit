@@ -113,9 +113,14 @@ test('le Companion expose un dépôt média binaire sécurisé et indexé', () =
   assert.match(server, /crypto\.createHash\('sha256'\)/);
   assert.match(server, /referenceManifest/);
   assert.match(server, /reference\.referenceFilename/);
+  assert.match(server, /appendSessionMessages\(req/);
+  assert.match(server, /La prochaine demande de cette conversation peut faire référence à ce média/);
   assert.match(server, /journalId: `dropbox-\$\{crypto\.randomUUID\(\)\}`/);
   assert.match(ui, /\/api\/assistant\/upload-media/);
   assert.match(ui, /inspectMediaFile\(file\)/);
+  assert.match(ui, /nova_recent_media_v1/);
+  assert.match(ui, /recent_media: recentMedia/);
+  assert.match(ui, /upload-media\?conversation_id=/);
   assert.match(ui, /Média archivé et référencé dans Dropbox/);
   assert.match(ui, /type="file"/);
   assert.match(ui, /image\/jpeg/);

@@ -531,7 +531,10 @@ const server = http.createServer(async (req, res) => {
       const taskContext = body.context?.task_snapshot
         ? JSON.stringify(body.context.task_snapshot).slice(0, 30000)
         : 'Aucune copie locale de tâches disponible.';
-      const prompt = `${body.system_prompt || 'Tu es NOVA, assistant local JS-Innov.IA.'}\nOutils réels: ffmpeg_version, ffprobe_file, list_directory, find_local_workflows, workflow_documentation_audit, video_pipeline_audit, comfyui_health, avatar_factory_status, http_diagnose. N’invente jamais une exécution. Ne prétends jamais avoir exécuté un outil sans tool_run réel. Si une tâche exige un outil absent, marque-la bloquée et précise l’outil manquant.\nCopie locale des tâches: ${taskContext}\nHistorique: ${JSON.stringify(Array.isArray(body.history) ? body.history.slice(-20) : []).slice(0, 20000)}\nUtilisateur: ${String(body.message).slice(0, 4000)}\nNOVA:`;
+      const recentMediaContext = body.context?.recent_media
+        ? JSON.stringify(body.context.recent_media).slice(0, 5000)
+        : 'Aucun média récent.';
+      const prompt = `${body.system_prompt || 'Tu es NOVA, assistant local JS-Innov.IA.'}\nOutils réels: ffmpeg_version, ffprobe_file, list_directory, find_local_workflows, workflow_documentation_audit, video_pipeline_audit, comfyui_health, avatar_factory_status, http_diagnose. N’invente jamais une exécution. Ne prétends jamais avoir exécuté un outil sans tool_run réel. Si une tâche exige un outil absent, marque-la bloquée et précise l’outil manquant.\nCopie locale des tâches: ${taskContext}\nMédia récent actif: ${recentMediaContext}. La demande suivante peut concerner ce média; ne dis pas qu’aucun média n’existe quand ce contexte est présent.\nHistorique: ${JSON.stringify(Array.isArray(body.history) ? body.history.slice(-20) : []).slice(0, 20000)}\nUtilisateur: ${String(body.message).slice(0, 4000)}\nNOVA:`;
       const response = await ollama(prompt, body.model);
       if (!response) {
         return send(req, res, 200, { ok: true, response: 'NOVA locale n’a produit aucune réponse exploitable. Reformulez la demande ou précisez le fichier, le dossier ou l’action souhaitée.', model: body.model || DEFAULT_MODEL, mode: 'local', empty_model_response: true });

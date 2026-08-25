@@ -22,6 +22,7 @@ import { inspectMediaFile } from '@/lib/mediaReference';
 const LOCAL_NOVA_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
 const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
 const LOCAL_AUTOPILOT_LAST_RUN_KEY = 'nova_local_autopilot_last_run_v1';
+const RECENT_MEDIA_KEY = 'nova_recent_media_v1';
 const TTS_VOICE_KEY = 'nova_tts_voice_name';
 const LOCAL_TOOL_REQUEST = /\b(?:find_local_workflows|comfyui_health|avatar_factory_status|ffmpeg_version|ffprobe_file|list_directory|http_diagnose)\b|(?:ex[eé]cut|diagnosti|contr[oô]l|v[eé]rifi|recherch).*(?:comfyui|port\s*(?:8188|8791)|workflow|minimax|avatar|ffmpeg|ffprobe|dossier\s+local)/i;
 const LOCAL_NOVA_PROMPT = `Tu es NOVA, l’unique assistant visible du Cockpit JS-Innov.IA. Tu conserves le même nom et le même rôle en mode cloud et en mode local. Vérifie les outils réellement disponibles avant toute affirmation de capacité. Ne dis jamais que tu es une simple IA textuelle ni que tu ne peux rien exécuter uniquement parce qu’Internet est coupé.`;
@@ -235,11 +236,13 @@ const FloatingAgent = () => {
 
     try {
       const sendCloud = async () => {
+        let recentMedia = null;
+        try { recentMedia = JSON.parse(localStorage.getItem(RECENT_MEDIA_KEY) || 'null'); } catch {}
         const resp = await fetch('/api/assistant/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ message: msg, conversation_id: conversationId }),
+          body: JSON.stringify({ message: msg, conversation_id: conversationId, recent_media: recentMedia }),
         });
         if (!resp.ok) {
           const errData = await resp.json().catch(() => ({}));
@@ -251,7 +254,9 @@ const FloatingAgent = () => {
       const sendLocal = async () => {
         let lastError;
         let taskSnapshot = null;
+        let recentMedia = null;
         try { taskSnapshot = JSON.parse(localStorage.getItem(LOCAL_TASK_SNAPSHOT_KEY) || 'null'); } catch {}
+        try { recentMedia = JSON.parse(localStorage.getItem(RECENT_MEDIA_KEY) || 'null'); } catch {}
         for (const localUrl of LOCAL_NOVA_URLS) {
           try {
             const resp = await fetch(`${localUrl}/api/agent/chat`, {
@@ -261,7 +266,7 @@ const FloatingAgent = () => {
                 message: msg,
                 history: messages.slice(-20).map(({ role, content }) => ({ role, content })),
                 system_prompt: LOCAL_NOVA_PROMPT,
-                context: { source: 'cockpit-nova', conversation_id: conversationId, offline: true, task_snapshot: taskSnapshot },
+                context: { source: 'cockpit-nova', conversation_id: conversationId, offline: true, task_snapshot: taskSnapshot, recent_media: recentMedia },
               }),
               signal: AbortSignal.timeout(90000),
             });
@@ -313,6 +318,7 @@ const FloatingAgent = () => {
     stopSpeaking();
     setMessages([]);
     localStorage.removeItem('agent_chat_messages');
+    localStorage.removeItem(RECENT_MEDIA_KEY);
     try {
       await fetch('/api/assistant/history?conversation_id=floating', { method: 'DELETE', credentials: 'include' });
     } catch {}
@@ -339,7 +345,7 @@ const FloatingAgent = () => {
       ]);
       try {
         const mediaMetadata = await inspectMediaFile(file);
-        const resp = await fetch('/api/assistant/upload-media', {
+        const resp = await fetch(`/api/assistant/upload-media?conversation_id=${encodeURIComponent(conversationId)}`, {
           method: 'POST',
           headers: {
             'Content-Type': file.type || 'application/octet-stream',
@@ -363,9 +369,23 @@ const FloatingAgent = () => {
           ? `\n🏷️ Référencement: ${reference.title || 'contenu'}${reference.keywords?.length ? `\n🔎 Mots-clés: ${reference.keywords.join(', ')}` : ''}\n🧾 Fiche média: ${reference.dropboxPath}`
           : '';
         const renamedInfo = data.originalFileName && data.originalFileName !== data.fileName ? `\n↪️ Nom original: ${data.originalFileName}` : '';
+        const memoryInfo = data.memorySynced ? '\n🧠 Média relié à cette conversation' : `\n🧠 Mémoire: non synchronisée${data.memoryWarning ? ` (${data.memoryWarning})` : ''}`;
+        try {
+          localStorage.setItem(RECENT_MEDIA_KEY, JSON.stringify({
+            originalFileName: data.originalFileName,
+            fileName: data.fileName,
+            mediaType: cl.mediaType,
+            title: reference.title,
+            clientName: cl.matchedClient?.name || '',
+            projectName: cl.matchedProject?.name || '',
+            dropboxPath: data.dropboxPath,
+            documentId: data.documentId,
+            storedAt: data.storedAt,
+          }));
+        } catch {}
         setMessages(prev => prev.filter((message) => message.uploadId !== uploadId).concat({
           role: 'assistant',
-          content: `✅ Média archivé et référencé dans Dropbox\n\n📄 ${data.fileName}${renamedInfo}\n🎞️ Type: ${cl.mediaType || 'Média'}${clientInfo}${projectInfo}\n📂 ${data.dropboxPath}${referenceInfo}${indexInfo}\n🧾 Journal: ${data.journalId}\n🕒 ${data.storedAt}`,
+          content: `✅ Média archivé et référencé dans Dropbox\n\n📄 ${data.fileName}${renamedInfo}\n🎞️ Type: ${cl.mediaType || 'Média'}${clientInfo}${projectInfo}\n📂 ${data.dropboxPath}${referenceInfo}${indexInfo}${memoryInfo}\n🧾 Journal: ${data.journalId}\n🕒 ${data.storedAt}`,
           ts: Date.now(),
         }));
         speak(`Média ${data.fileName} classé et sauvegardé dans Dropbox`);
@@ -376,7 +396,7 @@ const FloatingAgent = () => {
     setUploading(false);
     setInput('');
     if (fileInputRef.current) fileInputRef.current.value = '';
-  }, [uploading, input, speak]);
+  }, [uploading, input, speak, conversationId]);
 
   const toggleVoice = useCallback(() => {
     if (isListening) stopListening();
