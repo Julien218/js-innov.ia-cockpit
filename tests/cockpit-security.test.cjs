@@ -70,6 +70,8 @@ test('NOVA peut modifier une fiche projet confirmée sans inventer un exécuteur
   assert.match(projects, /JS-Innov\.IA — projet interne/);
   assert.match(projects, /payload\.organisation_id = "jsinnovia"/);
   assert.doesNotMatch(projects, /Anomalie — aucun client/);
+  assert.match(assistant, /date_debut.*date_fin_prevue/);
+  assert.match(assistant, /Action \$\{action\.type\} non exécutée/);
 });
 
 test('un refus Dropbox mensonger est neutralisé quand la mémoire est connectée', () => {
