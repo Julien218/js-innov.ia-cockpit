@@ -799,6 +799,7 @@ router.post('/clients/:clientId/generate-draft', async (req, res) => {
 
 module.exports = {
   router,
+  createCostEvent,
   applyBillingRule,
   summarize,
   buildInvoiceLines,

@@ -97,6 +97,69 @@ export async function queueLocalWorkflow(workflow, clientId = undefined) {
   return bridge().queue({ workflow, clientId });
 }
 
+export async function queueLocalVideoBatch(payload = {}) {
+  if (!Array.isArray(payload.jobs) || payload.jobs.length === 0) throw new Error('Lot vidéo local vide.');
+  if (payload.jobs.length > 32) throw new Error('Un lot local est limité à 32 vidéos.');
+  if (typeof bridge().batchQueue !== 'function') {
+    throw new Error('Mets à jour l’application desktop JS-Innov.IA pour activer la production locale par lots.');
+  }
+  return bridge().batchQueue(payload);
+}
+
+export async function getLocalVideoBatchStatus(batchId) {
+  if (!batchId) throw new Error('Identifiant de lot vidéo manquant.');
+  if (typeof bridge().batchStatus !== 'function') {
+    throw new Error('Le suivi des lots nécessite la dernière application desktop JS-Innov.IA.');
+  }
+  return bridge().batchStatus(batchId);
+}
+
+export async function listLocalVideoBatches() {
+  if (typeof bridge().batchList !== 'function') return { batches: [], maxJobs: 32 };
+  return bridge().batchList();
+}
+
+export async function cancelLocalVideoBatch(batchId) {
+  if (!batchId) throw new Error('Identifiant de lot vidéo manquant.');
+  if (typeof bridge().batchCancel !== 'function') {
+    throw new Error('L’annulation des lots nécessite la dernière application desktop JS-Innov.IA.');
+  }
+  return bridge().batchCancel(batchId);
+}
+
+export async function createLocalReviewVideo(batchId) {
+  if (!batchId) throw new Error('Identifiant de lot vidéo manquant.');
+  if (typeof bridge().createReview !== 'function') {
+    throw new Error('Le montage comparatif nécessite la dernière application desktop JS-Innov.IA.');
+  }
+  return bridge().createReview(batchId);
+}
+
+export async function publishLocalVideoChoice(batchId, position) {
+  if (!batchId) throw new Error('Identifiant de lot vidéo manquant.');
+  if (![1, 2, 3].includes(Number(position))) throw new Error('Choisis la proposition 1, 2 ou 3.');
+  if (typeof bridge().publishChoice !== 'function') {
+    throw new Error('L’export écran géant nécessite la dernière application desktop JS-Innov.IA.');
+  }
+  return bridge().publishChoice({ batchId, position: Number(position) });
+}
+
+export async function openLocalGeneratedFolder(generatedPath) {
+  if (!generatedPath) throw new Error('Chemin de production manquant.');
+  if (typeof bridge().openGeneratedFolder !== 'function') {
+    throw new Error('La dernière application desktop JS-Innov.IA est nécessaire.');
+  }
+  return bridge().openGeneratedFolder(generatedPath);
+}
+
+export async function openLocalReviewFolder(reviewPath) {
+  if (!reviewPath) throw new Error('Chemin du montage de validation manquant.');
+  if (typeof bridge().openReviewFolder !== 'function') {
+    throw new Error('La dernière application desktop JS-Innov.IA est nécessaire.');
+  }
+  return bridge().openReviewFolder(reviewPath);
+}
+
 export async function getLocalHistory(promptId) {
   if (!promptId) throw new Error('promptId manquant.');
   return bridge().history(promptId);
