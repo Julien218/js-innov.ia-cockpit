@@ -18,12 +18,15 @@ test('les demandes multi-tâches et d’exécution sont reconnues sans intercept
   assert.equal(batchSignals('continue les tâches en cours'), true);
   assert.equal(batchSignals('bonjour'), false);
   assert.equal(batchSignals('analyse MiniMax H3'), false);
+  assert.equal(batchSignals('Analyse les trois actions puis délègue chaque diagnostic à l’agent responsable'), true);
 });
 
 test('une demande explicite d’exécution autorise le lot sans seconde confirmation', () => {
   assert.equal(explicitExecutionAuthorization('effectue toutes les tâches merci'), true);
   assert.equal(explicitExecutionAuthorization('exécute les actions nécessaires'), true);
   assert.equal(explicitExecutionAuthorization('ok, continue les tâches'), true);
+  assert.equal(explicitExecutionAuthorization('Je confirme explicitement l’exécution. Analyse réellement le DNS, HTTPS, TLS et le SEO de assurances-dour.be, puis délègue uniquement les actions exécutables à l’agent Base44 responsable du site.'), true);
+  assert.equal(explicitExecutionAuthorization('J’autorise explicitement NOVA à déléguer les diagnostics'), true);
   assert.equal(explicitExecutionAuthorization('analyse les tâches en cours'), false);
   assert.equal(explicitExecutionAuthorization('quelles tâches restent à faire ?'), false);
   assert.match(batchSource, /require_confirmation_for_actions:\s*!userAlreadyAuthorizedExecution/);
@@ -113,7 +116,7 @@ test('les modules batch sont présents dans l’image de production', () => {
 });
 
 test('le texte d’un batch déjà autorisé ne redemande jamais une confirmation', () => {
-  const cleaned = removeStaleConfirmationLanguage('Deux tâches sont prêtes à être confirmées. Ce lot nécessite votre confirmation. Veuillez confirmer maintenant. Souhaitez-vous que je les envoie ?');
+  const cleaned = removeStaleConfirmationLanguage('Deux tâches sont prêtes à être confirmées. Ce lot nécessite votre confirmation. Veuillez confirmer maintenant. Souhaitez-vous que je les envoie ? Veux-tu que je confirme et lance immédiatement l’exécution de ces tâches ?');
   assert.doesNotMatch(cleaned, /confirm[eé]|Souhaitez-vous/i);
   assert.match(batchSource, /removeStaleConfirmationLanguage\(data\.response/);
 });
