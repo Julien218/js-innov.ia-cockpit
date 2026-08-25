@@ -121,6 +121,16 @@ function comfyOutputCandidates() {
   ].filter(Boolean);
 }
 
+function comfyInputCandidates() {
+  return [
+    process.env.JSINNOVIA_COMFYUI_INPUT_DIR,
+    path.join(os.homedir(), "AI", "ComfyUI_windows_portable", "ComfyUI_windows_portable", "ComfyUI", "input"),
+    path.join(os.homedir(), "ComfyUI_windows_portable", "ComfyUI", "input"),
+    path.join(os.homedir(), "ComfyUI", "input"),
+    path.join(os.homedir(), "AppData", "Local", "Comfy-Desktop", "ComfyUI-Shared", "input"),
+  ].filter(Boolean);
+}
+
 function safeLocalName(value, fallback = "A-Classer") {
   const cleaned = String(value || "").replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim();
   return cleaned || fallback;
@@ -137,6 +147,27 @@ function resolveComfyOutputFile(output = {}) {
     if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
   }
   throw new Error(`Fichier ComfyUI introuvable: ${filename}. Configure JSINNOVIA_COMFYUI_OUTPUT_DIR si nécessaire.`);
+}
+
+function resolveComfyInputFile(filename) {
+  const name = String(filename || "");
+  if (!name) return "";
+  for (const rootCandidate of comfyInputCandidates()) {
+    const root = path.resolve(rootCandidate);
+    const candidate = path.resolve(root, name);
+    if (!candidate.startsWith(`${root}${path.sep}`)) continue;
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+  }
+  return "";
+}
+
+function escapeDrawtextText(value) {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/:/g, "\\:")
+    .replace(/%/g, "\\%")
+    .replace(/,/g, "\\,");
 }
 
 function reviewDrawtext(label, size = 82) {
@@ -454,11 +485,85 @@ ipcMain.handle("video-local-upload-image", async (_event, payload = {}) => {
   });
 });
 
+async function publishLocalVideoChoice(batch, position) {
+  await refreshLocalVideoBatch(batch);
+  const selectedPosition = Math.max(1, Math.min(3, Number(position) || 1));
+  const job = batch.jobs[selectedPosition - 1];
+  if (!job || job.status !== "completed") throw new Error(`La proposition ${selectedPosition} n’est pas terminée.`);
+  const sourceOutput = job.outputs.find((item) => item.kind === "videos")
+    || job.outputs.find((item) => item.kind === "gifs")
+    || job.outputs[0];
+  const sourcePath = resolveComfyOutputFile(sourceOutput);
+  const logoPath = resolveComfyInputFile(job.metadata?.firstFrameName);
+  const clientLabel = escapeDrawtextText(batch.clientName || job.metadata?.clientName || "CLIENT");
+  const phoneLabel = escapeDrawtextText(job.metadata?.phone || "");
+  if (!phoneLabel) throw new Error("Le numéro de téléphone exact est obligatoire pour l’écran final.");
+
+  const outputFolder = path.join(
+    app.getPath("videos"),
+    "JS-Innov.IA",
+    "Ecran-geant",
+    safeLocalName(batch.clientName),
+    safeLocalName(batch.campaignName, "Campagne"),
+  );
+  fs.mkdirSync(outputFolder, { recursive: true });
+  const outputPath = path.join(outputFolder, `${safeLocalName(batch.clientName)}-proposition-${selectedPosition}-8s.mp4`);
+  const args = [
+    "-y",
+    "-i", sourcePath,
+    "-f", "lavfi", "-t", "3", "-i", "color=c=0x081426:s=1920x1080:r=25",
+  ];
+  if (logoPath) args.push("-loop", "1", "-t", "3", "-i", logoPath);
+
+  const filters = [
+    "[0:v]trim=duration=5,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=25,format=yuv420p[clip]",
+  ];
+  if (logoPath) {
+    filters.push("[2:v]scale=900:420:force_original_aspect_ratio=decrease[logo]");
+    filters.push(`[1:v][logo]overlay=(W-w)/2:100,drawtext=text='${clientLabel}':fontcolor=white:fontsize=64:x=(w-text_w)/2:y=590,drawtext=text='${phoneLabel}':fontcolor=0xF5C542:fontsize=96:x=(w-text_w)/2:y=720,format=yuv420p[card]`);
+  } else {
+    filters.push(`[1:v]drawtext=text='${clientLabel}':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=390,drawtext=text='${phoneLabel}':fontcolor=0xF5C542:fontsize=104:x=(w-text_w)/2:y=560,format=yuv420p[card]`);
+  }
+  filters.push("[clip][card]concat=n=2:v=1:a=0[outv]");
+  args.push(
+    "-filter_complex", filters.join(";"),
+    "-map", "[outv]",
+    "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+    "-pix_fmt", "yuv420p", "-r", "25", "-t", "8", "-movflags", "+faststart",
+    "-metadata", `title=${batch.clientName || "Client"} - écran géant - proposition ${selectedPosition}`,
+    "-metadata", "artist=JS-Innov.IA",
+    "-metadata", `comment=Production locale cockpit; téléphone ${job.metadata?.phone || ""}; durée 8 secondes`,
+    outputPath,
+  );
+  await execFileStrict("ffmpeg", args, 30 * 60 * 1000);
+  batch.publication = {
+    status: "ready",
+    selectedPosition,
+    outputPath,
+    duration: 8,
+    width: 1920,
+    height: 1080,
+    fps: 25,
+    createdAt: new Date().toISOString(),
+    metadata: { creator: "JS-Innov.IA", phone: job.metadata?.phone || "", workflow: "local-signage-publish-v1" },
+  };
+  batch.updatedAt = new Date().toISOString();
+  saveLocalVideoBatches();
+  return { success: true, batchId: batch.id, ...batch.publication };
+}
+
 ipcMain.handle("video-local-batch-review", async (_event, batchId) => {
   loadLocalVideoBatches();
   const batch = localVideoBatches.get(String(batchId || ""));
   if (!batch) throw new Error("Lot vidéo local introuvable.");
   return createLocalReviewVideo(batch);
+});
+
+ipcMain.handle("video-local-batch-publish", async (_event, payload = {}) => {
+  loadLocalVideoBatches();
+  const batch = localVideoBatches.get(String(payload.batchId || ""));
+  if (!batch) throw new Error("Lot vidéo local introuvable.");
+  return publishLocalVideoChoice(batch, payload.position);
 });
 
 ipcMain.handle("video-local-review-open-folder", async (_event, reviewPath) => {
