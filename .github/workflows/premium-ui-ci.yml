@@ -5,9 +5,13 @@ on:
     paths:
       - 'src/index.css'
       - 'src/components/layout/**'
+      - 'src/lib/taskStatus.js'
+      - 'src/pages/Dashboard.jsx'
+      - 'src/pages/Taches.jsx'
       - 'src/pages/Emails.jsx'
       - 'src/pages/EmailCore.jsx'
       - 'tests/premium-ui.test.cjs'
+      - 'tests/task-status-normalization.test.cjs'
       - '.github/workflows/premium-ui-ci.yml'
   push:
     branches:
@@ -15,9 +19,13 @@ on:
     paths:
       - 'src/index.css'
       - 'src/components/layout/**'
+      - 'src/lib/taskStatus.js'
+      - 'src/pages/Dashboard.jsx'
+      - 'src/pages/Taches.jsx'
       - 'src/pages/Emails.jsx'
       - 'src/pages/EmailCore.jsx'
       - 'tests/premium-ui.test.cjs'
+      - 'tests/task-status-normalization.test.cjs'
       - '.github/workflows/premium-ui-ci.yml'
 
 permissions:

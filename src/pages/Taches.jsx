@@ -8,6 +8,7 @@ import ErrorState from "@/components/shared/ErrorState";
 import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, CheckCircle2, CircleDot, Clock3, Pencil, Trash2 } from "lucide-react";
+import { isTaskBlocked, isTaskCompleted, normalizeTaskStatus } from "@/lib/taskStatus";
 
 const formFields = [
   { name: "titre",         label: "Titre",         type: "text",   required: true },
@@ -56,16 +57,14 @@ export default function Taches() {
   });
 
   const rows = Array.isArray(taches) ? taches : [];
-  const isCompleted = (task) => ["termine", "terminee", "completed"].includes(task?.statut);
-  const isBlocked = (task) => ["bloque", "bloquee", "failed"].includes(task?.statut);
-  const isLate = (task) => task?.date_echeance && new Date(task.date_echeance) < new Date() && !isCompleted(task);
+  const isLate = (task) => task?.date_echeance && new Date(task.date_echeance) < new Date() && !isTaskCompleted(task);
 
   const counters = useMemo(() => ({
-    actives: rows.filter((task) => !isCompleted(task)).length,
-    en_cours: rows.filter((task) => task.statut === "en_cours").length,
-    bloquees: rows.filter(isBlocked).length,
+    actives: rows.filter((task) => !isTaskCompleted(task)).length,
+    en_cours: rows.filter((task) => normalizeTaskStatus(task.statut ?? task.status) === "en_cours").length,
+    bloquees: rows.filter(isTaskBlocked).length,
     retard: rows.filter(isLate).length,
-    terminees: rows.filter(isCompleted).length,
+    terminees: rows.filter(isTaskCompleted).length,
   }), [rows]);
 
   const filteredTasks = useMemo(() => {
@@ -73,19 +72,19 @@ export default function Taches() {
     const priorityRank = { urgente: 0, haute: 1, normale: 2, basse: 3 };
     return rows
       .filter((task) => {
-        if (statusFilter === "actives" && isCompleted(task)) return false;
-        if (statusFilter === "bloquees" && !isBlocked(task)) return false;
+        if (statusFilter === "actives" && isTaskCompleted(task)) return false;
+        if (statusFilter === "bloquees" && !isTaskBlocked(task)) return false;
         if (statusFilter === "retard" && !isLate(task)) return false;
-        if (statusFilter === "en_cours" && task.statut !== "en_cours") return false;
-        if (statusFilter === "terminees" && !isCompleted(task)) return false;
+        if (statusFilter === "en_cours" && normalizeTaskStatus(task.statut ?? task.status) !== "en_cours") return false;
+        if (statusFilter === "terminees" && !isTaskCompleted(task)) return false;
         if (!term) return true;
         return [task.titre, task.description, task.client_nom, task.projet_nom]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(term));
       })
       .sort((a, b) => {
-        const stateA = isBlocked(a) ? 0 : isLate(a) ? 1 : a.statut === "en_cours" ? 2 : isCompleted(a) ? 4 : 3;
-        const stateB = isBlocked(b) ? 0 : isLate(b) ? 1 : b.statut === "en_cours" ? 2 : isCompleted(b) ? 4 : 3;
+        const stateA = isTaskBlocked(a) ? 0 : isLate(a) ? 1 : normalizeTaskStatus(a.statut ?? a.status) === "en_cours" ? 2 : isTaskCompleted(a) ? 4 : 3;
+        const stateB = isTaskBlocked(b) ? 0 : isLate(b) ? 1 : normalizeTaskStatus(b.statut ?? b.status) === "en_cours" ? 2 : isTaskCompleted(b) ? 4 : 3;
         if (stateA !== stateB) return stateA - stateB;
         return (priorityRank[a.priorite] ?? 9) - (priorityRank[b.priorite] ?? 9);
       });

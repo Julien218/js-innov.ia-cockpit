@@ -16,6 +16,7 @@ import {
   PieChart, Pie, Cell, CartesianGrid
 } from "recharts";
 import { cn } from "@/lib/utils";
+import { isTaskBlocked, isTaskCompleted } from "@/lib/taskStatus";
 
 const COLORS = ["hsl(217,91%,50%)", "hsl(258,90%,62%)", "hsl(142,71%,45%)", "hsl(38,92%,50%)", "hsl(0,84%,60%)"];
 
@@ -35,13 +36,11 @@ export default function Dashboard() {
   const caTotal = factures.filter(f => f.statut === "payee").reduce((s, f) => s + (f.montant_ttc || 0), 0);
   const caEnAttente = factures.filter(f => ["envoyee", "en_retard"].includes(f.statut)).reduce((s, f) => s + (f.montant_ttc || 0), 0);
   const commTotal = commissions.filter(c => c.statut === "payee").reduce((s, c) => s + (c.montant || c.montant_commission || 0), 0);
-  const isCompleted = (task) => ["termine", "terminee", "completed"].includes(task?.statut);
-  const isBlocked = (task) => ["bloque", "bloquee", "failed"].includes(task?.statut);
   const leadsActifs = leads.filter(l => !["gagne", "perdu"].includes(l.statut)).length;
   const projetsEnCours = projets.filter(p => p.statut === "en_cours").length;
-  const tachesEnRetard = taches.filter(t => t.date_echeance && new Date(t.date_echeance) < new Date() && !isCompleted(t)).length;
-  const tachesBloquees = taches.filter(isBlocked).length;
-  const tachesActives = taches.filter(t => !isCompleted(t)).length;
+  const tachesEnRetard = taches.filter(t => t.date_echeance && new Date(t.date_echeance) < new Date() && !isTaskCompleted(t)).length;
+  const tachesBloquees = taches.filter(isTaskBlocked).length;
+  const tachesActives = taches.filter(t => !isTaskCompleted(t)).length;
   const demandesOuvertes = demandes.filter(d => d.statut === "ouverte").length;
 
   const leadsByStatus = [
@@ -63,8 +62,8 @@ export default function Dashboard() {
 
   const recentLeads = [...leads].sort((a, b) => new Date(b.created_at || b.created_date || 0).getTime() - new Date(a.created_at || a.created_date || 0).getTime()).slice(0, 5);
   const tachesUrgentes = taches
-    .filter(t => (t.priorite === "urgente" || t.priorite === "haute" || isBlocked(t)) && !isCompleted(t))
-    .sort((a, b) => Number(isBlocked(b)) - Number(isBlocked(a)))
+    .filter(t => (t.priorite === "urgente" || t.priorite === "haute" || isTaskBlocked(t)) && !isTaskCompleted(t))
+    .sort((a, b) => Number(isTaskBlocked(b)) - Number(isTaskBlocked(a)))
     .slice(0, 4);
   const heure = new Date().getHours();
   const salut = heure < 12 ? "Bonjour" : heure < 18 ? "Bon après-midi" : "Bonsoir";
