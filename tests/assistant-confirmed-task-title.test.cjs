@@ -31,3 +31,21 @@ test('le média actif est automatiquement rattaché à la génération vidéo', 
   assert.equal(action.payload.source_document_id, '0a8370a0-0e2d-41b9-a5ea-6cd8446e54af');
   assert.equal(action.definition.clientAction, '/api/video-generation/jobs');
 });
+
+test('NOVA peut rattacher le média actif à un client réel du Cockpit', () => {
+  const recovered = recoverProposedAction({
+    type: 'assign_media_client',
+    payload: { clientId: 'client-proxiled-01', clientName: 'Proxiled' },
+  }, {}, { documentId: '0a8370a0-0e2d-41b9-a5ea-6cd8446e54af' });
+  const action = sanitizeAction(recovered, admin);
+  assert.equal(action.id, '0a8370a0-0e2d-41b9-a5ea-6cd8446e54af');
+  assert.equal(action.payload.clientId, 'client-proxiled-01');
+  assert.equal(action.definition.clientMethod, 'PATCH');
+  assert.equal(action.definition.clientAction, '/api/documents/portfolio-assets/:id/client');
+});
+
+test('NOVA refuse un rattachement média sans client vérifiable', () => {
+  assert.equal(sanitizeAction({
+    type: 'assign_media_client', id: 'media-01', payload: { clientName: 'Inconnu' },
+  }, admin), null);
+});

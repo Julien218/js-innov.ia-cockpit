@@ -6,10 +6,13 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('la CSP du Cockpit autorise uniquement les endpoints loopback du Local Agent 8787', () => {
+test('la CSP du Cockpit autorise les services locaux NOVA et Avatar Factory', () => {
   const dockerfile = read('Dockerfile');
   assert.match(dockerfile, /connect-src[^\n]*http:\/\/127\.0\.0\.1:8787/);
   assert.match(dockerfile, /connect-src[^\n]*http:\/\/localhost:8787/);
+  assert.match(dockerfile, /connect-src[^\n]*http:\/\/127\.0\.0\.1:8791/);
+  assert.match(dockerfile, /connect-src[^\n]*http:\/\/127\.0\.0\.1:8792/);
+  assert.match(dockerfile, /connect-src[^\n]*http:\/\/127\.0\.0\.1:8793/);
   assert.match(dockerfile, /connect-src[^\n]*http:\/\/127\.0\.0\.1:8788/);
 });
 

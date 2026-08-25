@@ -1,5 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import PageHeader from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -15,23 +16,36 @@ const ACTIONS = [
   { label: "Créer prompt vidéo", icon: Video, color: "text-blue-600 bg-blue-500/10", route: "/video-studio/new" },
   { label: "Créer script voix-off", icon: Mic, color: "text-purple-600 bg-purple-500/10", route: "/ai-video" },
   { label: "Ajouter asset", icon: Plus, color: "text-emerald-600 bg-emerald-500/10", route: "/documents" },
-  { label: "Lier à client", icon: Link2, color: "text-amber-600 bg-amber-500/10", route: "/clients" },
+  { label: "Lier un média à un client", icon: Link2, color: "text-amber-600 bg-amber-500/10", route: "/portfolio?source=dropbox&client=unclassified" },
   { label: "Envoyer validation", icon: Send, color: "text-cyan-600 bg-cyan-500/10", route: "/validations" },
   { label: "Publier au portfolio", icon: FolderOpen, color: "text-rose-600 bg-rose-500/10", route: "/portfolio" },
 ];
 
-const CATEGORIES = [
-  { label: "Vidéos écran géant", icon: Clapperboard, count: 0, color: "text-blue-600 bg-blue-500/10", route: "/exported-videos" },
-  { label: "Prompts Grok/Sora/Canva", icon: Sparkles, count: 0, color: "text-purple-600 bg-purple-500/10", route: "/templates" },
-  { label: "Images générées", icon: Image, count: 0, color: "text-cyan-600 bg-cyan-500/10", route: "/thumbnail" },
-  { label: "Voix-off", icon: Mic, count: 0, color: "text-amber-600 bg-amber-500/10", route: "/ai-video" },
-  { label: "Assets clients", icon: FileText, count: 0, color: "text-emerald-600 bg-emerald-500/10", route: "/documents" },
-  { label: "Publications réseaux", icon: Send, count: 0, color: "text-rose-600 bg-rose-500/10", route: "/automations" },
-  { label: "Dossiers portfolio", icon: FolderOpen, count: 0, color: "text-indigo-600 bg-indigo-500/10", route: "/portfolio" },
-];
+function mediaType(asset) {
+  return String(asset?.mime_type || "").startsWith("video/") || /\.(mp4|mov|webm|avi|mkv|m4v)$/i.test(asset?.filename || "") ? "video" : "image";
+}
 
 export default function Production() {
   const navigate = useNavigate();
+  const { data: mediaLibrary = { assets: [] }, isLoading: mediaLoading } = useQuery({
+    queryKey: ["production-dropbox-assets"],
+    queryFn: async () => {
+      const response = await fetch("/api/documents/portfolio-assets?limit=500", { credentials: "same-origin" });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || "Bibliothèque indisponible");
+      return data;
+    },
+    staleTime: 30_000,
+  });
+  const mediaAssets = mediaLibrary.assets || [];
+  const categories = [
+    { label: "Vidéos", icon: Clapperboard, count: mediaAssets.filter((asset) => mediaType(asset) === "video").length, color: "text-blue-600 bg-blue-500/10", route: "/portfolio?source=dropbox&type=video" },
+    { label: "Images", icon: Image, count: mediaAssets.filter((asset) => mediaType(asset) === "image").length, color: "text-cyan-600 bg-cyan-500/10", route: "/portfolio?source=dropbox&type=image" },
+    { label: "Assets rattachés", icon: FileText, count: mediaAssets.filter((asset) => asset.client_id).length, color: "text-emerald-600 bg-emerald-500/10", route: "/portfolio?source=dropbox" },
+    { label: "À classer", icon: Link2, count: mediaAssets.filter((asset) => !asset.client_id).length, color: "text-amber-600 bg-amber-500/10", route: "/portfolio?source=dropbox&client=unclassified" },
+    { label: "Toute la bibliothèque", icon: FolderOpen, count: mediaAssets.length, color: "text-indigo-600 bg-indigo-500/10", route: "/portfolio?source=dropbox" },
+  ];
+  const quickActions = ACTIONS.slice(2);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -87,10 +101,10 @@ export default function Production() {
             <p className="workspace-eyebrow">Raccourcis</p>
             <h2 className="text-base font-semibold">Continuer le travail</h2>
           </div>
-          <span className="text-xs text-muted-foreground">5 outils</span>
+          <span className="text-xs text-muted-foreground">{quickActions.length} outils</span>
         </div>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-          {ACTIONS.slice(2).map(action => (
+          {quickActions.map(action => (
             <button
               type="button"
               key={action.label}
@@ -113,7 +127,7 @@ export default function Production() {
           <h2 className="text-base font-semibold">Retrouver les créations</h2>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
-          {CATEGORIES.map(cat => (
+          {categories.map(cat => (
             <button
               type="button"
               key={cat.label}
@@ -124,7 +138,7 @@ export default function Production() {
                 <cat.icon className="w-4 h-4" />
               </div>
               <p className="text-xs font-semibold leading-tight">{cat.label}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{cat.count} élément{cat.count > 1 ? "s" : ""}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{mediaLoading ? "Chargement…" : `${cat.count} élément${cat.count > 1 ? "s" : ""}`}</p>
             </button>
           ))}
         </div>

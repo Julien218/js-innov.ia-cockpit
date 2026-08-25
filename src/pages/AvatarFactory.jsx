@@ -182,7 +182,7 @@ export default function AvatarFactory() {
         </div>
       </section>
 
-      {!stationReady && <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-800 flex gap-3"><AlertTriangle className="w-5 h-5 shrink-0" /><div><p className="font-semibold">Station locale incomplète</p><p className="mt-1">Lance <code>scripts/start_avatar_factory.ps1</code>. Les services attendus sont 8791, 8792 et 8793.</p></div></div>}
+      {!stationReady && <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-800 flex gap-3"><AlertTriangle className="w-5 h-5 shrink-0" /><div><p className="font-semibold">Connexion locale incomplète</p><p className="mt-1">Vérifie les indicateurs ci-dessus. Depuis <code>compagnon-jsinnovia-production</code>, le script <code>scripts/start_avatar_factory.ps1</code> démarre les services 8791, 8792 et 8793.</p></div></div>}
       {notice && <div className={`rounded-xl px-4 py-3 text-sm flex items-center gap-2 border ${notice.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700' : 'bg-red-500/10 border-red-500/20 text-red-700'}`}>{notice.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}{notice.text}</div>}
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">

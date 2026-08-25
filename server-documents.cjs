@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const crypto = require('node:crypto');
 const { Readable } = require('node:stream');
 const { dropboxApiArg } = require('./server-dropbox-helper.cjs');
 
@@ -78,9 +79,11 @@ async function agentDocumentRequest(resource, options = {}) {
   if (table !== 'DocumentIndex') throw new Error('Ressource documentaire non autorisée');
 
   let target = `${AGENT_URL.replace(/\/$/, '')}/data/DocumentIndex`;
-  if (method === 'GET') {
-    const params = new URLSearchParams(rawQuery);
-    const idFilter = params.get('id');
+  const params = new URLSearchParams(rawQuery);
+  const idFilter = params.get('id');
+  if (idFilter?.startsWith('eq.') && ['GET', 'PATCH', 'PUT', 'DELETE'].includes(method)) {
+    target += `/${encodeURIComponent(idFilter.slice(3))}`;
+  } else if (method === 'GET') {
     if (idFilter?.startsWith('eq.')) {
       target += `/${encodeURIComponent(idFilter.slice(3))}`;
     } else {
@@ -238,6 +241,43 @@ function isPortfolioMedia(record = {}) {
   const mime = String(record.mime_type || '').toLowerCase();
   const extension = path.extname(String(record.filename || '')).toLowerCase();
   return mime.startsWith('image/') || mime.startsWith('video/') || PORTFOLIO_MEDIA_EXTENSIONS.has(extension);
+}
+
+function normalizeDocumentClientId(value) {
+  const clientId = String(value || '').trim();
+  if (!clientId) throw new Error('Sélectionne un client avant de confirmer');
+  if (!/^[A-Za-z0-9:_-]{1,160}$/.test(clientId)) throw new Error('Identifiant client invalide');
+  return clientId;
+}
+
+async function getAssignableClient(user, clientId) {
+  const tenant = resolveOrganisation(user);
+  let client;
+  if (AGENT_KEY) {
+    const response = await fetch(`${AGENT_URL.replace(/\/$/, '')}/data/Client/${encodeURIComponent(clientId)}`, {
+      headers: {
+        'x-agent-key': AGENT_KEY,
+        'x-organisation-id': tenant,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (response.ok) client = await response.json();
+    else if (response.status !== 404) throw new Error(`Vérification client impossible (Agent HTTP ${response.status})`);
+  } else {
+    assertSupabaseConfigured();
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/Client?id=eq.${encodeURIComponent(clientId)}&limit=1`, {
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) throw new Error(`Vérification client impossible (Supabase HTTP ${response.status})`);
+    const rows = await response.json();
+    client = Array.isArray(rows) ? rows[0] : rows;
+  }
+  if (!client?.id || String(client.id) !== clientId) throw new Error('Client introuvable ou non autorisé pour cette organisation');
+  return client;
 }
 
 async function indexDocument({ user, organisation, brand, clientId, category, filename, mimeType, sizeBytes, dropboxMeta, source = 'cockpit', emailMessageId = null }) {
@@ -425,6 +465,42 @@ router.get('/portfolio-assets', async (req, res) => {
   }
 });
 
+// Rattachement manuel d'un média Dropbox à un client. Le fichier n'est pas
+// déplacé : les conversations, sidecars JSON et liens de production restent valides.
+router.patch('/portfolio-assets/:id/client', async (req, res) => {
+  try {
+    const record = await getDocumentRecord(req.params.id);
+    assertDocumentAccess(req.user, record);
+    if (!isPortfolioMedia(record)) {
+      return res.status(415).json({ success: false, error: 'Ce document n’est pas un média du Portfolio' });
+    }
+
+    const clientId = normalizeDocumentClientId(req.body?.clientId);
+    const client = await getAssignableClient(req.user, clientId);
+    const clientName = String(
+      client.denomination_legale || client.entreprise || client.nom || client.name || req.body?.clientName || 'Client'
+    ).trim().slice(0, 200);
+    const rows = await supabaseRequest(`DocumentIndex?id=eq.${encodeURIComponent(record.id)}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ client_id: clientId }),
+    });
+    const updated = firstDocumentRecord(rows) || { ...record, client_id: clientId };
+    const journalId = `document-client-${crypto.randomUUID()}`;
+    console.info('[documents] client assigned', {
+      journal_id: journalId,
+      document_id: record.id,
+      client_id: clientId,
+      client_name: clientName || null,
+      assigned_by: req.user?.email || req.user?.id || 'cockpit',
+    });
+    return res.json({ success: true, document: updated, journalId });
+  } catch (error) {
+    console.error('[documents] assign client:', error.message);
+    return res.status(error.message.includes('autorisé') ? 403 : 400).json({ success: false, error: error.message });
+  }
+});
+
 router.get('/:id/content', async (req, res) => {
   try {
     const record = await getDocumentRecord(req.params.id);
@@ -474,3 +550,5 @@ module.exports.MAX_FILE_BYTES = MAX_FILE_BYTES;
 module.exports.firstDocumentRecord = firstDocumentRecord;
 module.exports.indexDocument = indexDocument;
 module.exports.isPortfolioMedia = isPortfolioMedia;
+module.exports.normalizeDocumentClientId = normalizeDocumentClientId;
+module.exports.getAssignableClient = getAssignableClient;
