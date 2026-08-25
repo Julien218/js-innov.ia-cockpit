@@ -142,10 +142,8 @@ test('NOVA extrait uniquement les champs projet explicitement fournis', () => {
   }, { notes: 'Projet interne' });
   assert.deepEqual(patch, {
     statut: 'en_cours',
-    priorite: 'haute',
     date_fin_prevue: '2026-10-01',
-    progression: 40,
-    notes: 'Projet interne\nCréateur/concepteur: Julien',
+    notes: 'Projet interne\nPriorité: haute\nProgression: 40 %\nCréateur/concepteur: Julien',
   });
   assert.deepEqual(projectPatchFromTask({ description: 'Complète ce projet au mieux.' }), {});
 });
@@ -162,8 +160,9 @@ test('l’exécuteur Projet met à jour une cible unique et journalise les champ
     description: 'Statut: en cours\nPriorité: haute\nObjectif de lancement: 1er octobre 2026',
   }, agentRequest);
   assert.equal(result.completed, true);
-  assert.deepEqual(result.result.updated_fields, ['statut', 'priorite', 'date_fin_prevue']);
+  assert.deepEqual(result.result.updated_fields, ['statut', 'date_fin_prevue', 'notes']);
   assert.equal(state.projects[0].date_fin_prevue, '2026-10-01');
+  assert.match(state.projects[0].notes, /Priorité: haute/);
 });
 
 test('l’exécuteur Projet refuse une mise à jour sans valeurs explicites', async () => {

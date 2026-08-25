@@ -88,6 +88,15 @@ test('une tâche supportée en attente de permission n’est plus comptée comme
   assert.match(server, /awaiting_authorization:/);
 });
 
+test('le mode inspection classe les tâches sans appeler le moteur d’exécution', () => {
+  const source = fs.readFileSync(path.join(root, 'server-task-autopilot.cjs'), 'utf8');
+  assert.match(source, /inspectOnly = false/);
+  assert.match(source, /if \(inspectOnly\) \{/);
+  assert.match(source, /reason: 'inspection_sans_effet'/);
+  assert.match(source, /inspection_only: inspectOnly/);
+  assert.match(source, /ready, blocked/);
+});
+
 test('un échec technique déjà enregistré reste un vrai blocage', () => {
   assert.equal(
     autopilot.recordedExecutionFailure({ notes: 'Blocage d’exécution réel: Base44 quota exhausted\nAutre note' }),

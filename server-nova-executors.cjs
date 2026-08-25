@@ -170,14 +170,20 @@ function projectPatchFromTask(task = {}, current = {}) {
   const budget = explicitLine(source, ['budget']);
 
   if (status) patch.statut = normalized(status).replace(/\s+/g, '_');
-  if (priority) patch.priorite = normalized(priority).replace(/\s+/g, '_');
   if (startDate) patch.date_debut = startDate;
   if (targetDate) patch.date_fin_prevue = targetDate;
   if (description) patch.description = description;
-  if (progress && Number.isFinite(Number(progress.replace(',', '.')))) patch.progression = Math.max(0, Math.min(100, Number(progress.replace(',', '.'))));
   if (budget && Number.isFinite(Number(budget.replace(/[^0-9,.-]/g, '').replace(',', '.')))) patch.budget = Number(budget.replace(/[^0-9,.-]/g, '').replace(',', '.'));
 
-  const additions = [notes, creator ? `Créateur/concepteur: ${creator}` : ''].filter(Boolean);
+  const progressNumber = progress && Number.isFinite(Number(progress.replace(',', '.')))
+    ? Math.max(0, Math.min(100, Number(progress.replace(',', '.'))))
+    : null;
+  const additions = [
+    notes,
+    priority ? `Priorité: ${priority}` : '',
+    progressNumber !== null ? `Progression: ${progressNumber} %` : '',
+    creator ? `Créateur/concepteur: ${creator}` : '',
+  ].filter(Boolean);
   if (additions.length) {
     const existing = clean(current.notes, 3000);
     patch.notes = [existing, ...additions.filter((item) => !existing.includes(item))].filter(Boolean).join('\n').slice(0, 4000);
