@@ -202,6 +202,10 @@ test('une confirmation formulée en phrase complète est consommée par le pont 
 
 test('effectue toutes les tâches déclenche directement l’autopilote sans réponse LLM', () => {
   assert.equal(directAutopilotSignal('Effectue toutes les tâches non terminées'), true);
+  assert.equal(directAutopilotSignal('Finalise les tâches ouvertes'), true);
+  assert.equal(batchSignals('Finalise les tâches ouvertes'), true);
+  assert.equal(explicitExecutionAuthorization('Finalise les tâches ouvertes'), true);
+  assert.equal(directAutopilotSignal('Finalise la tâche bdcb55aa-e09a-45e3-9132-848400bf1c5d'), false);
   assert.equal(directAutopilotSignal('liste les tâches'), false);
   const message = autopilotMessage({ run_id: 'auto-1', unique: 2, executed: [{ task_id: 't1', run_id: 'r1', status: 'completed' }], blocked: [{ task_id: 't2', reason: 'accès manquant' }] });
   assert.match(message, /run_id=auto-1/);

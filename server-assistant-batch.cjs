@@ -44,8 +44,8 @@ function batchSignals(text) {
   const hasWorkItem = /t[aâ]ches?|tasks?|actions?|diagnostics?|audits?/.test(source);
   const hasAgent = /agents?|d[eé]l[eé]gu|sp[eé]cialistes?|qa|devops|backend|support|produit|vid[eé]o/.test(source);
   const hasPlural = /plusieurs|toutes?|chacun|chaque|liste|six|6|diff[eé]rentes?/.test(source);
-  const hasExecutionIntent = /(effectue|ex[eé]cute|lance|fais|faites|continue|poursuis|traite|r[eé]alise).*(t[aâ]ches?|actions?)/.test(source)
-    || /(toutes?|chaque).*(t[aâ]ches?|actions?).*(effectue|ex[eé]cute|lance|fais|traite|r[eé]alise)/.test(source);
+  const hasExecutionIntent = /(effectue|ex[eé]cute|lance|fais|faites|continue|poursuis|traite|r[eé]alise|finalis(?:e|er)|termin(?:e|er)|cl[oô]tur(?:e|er)|ach[eè]v(?:e|er)).*(t[aâ]ches?|actions?)/.test(source)
+    || /(toutes?|chaque).*(t[aâ]ches?|actions?).*(effectue|ex[eé]cute|lance|fais|traite|r[eé]alise|finalis(?:e|er)|termin(?:e|er)|cl[oô]tur(?:e|er)|ach[eè]v(?:e|er))/.test(source);
   return (hasWorkItem && (hasAgent || hasPlural)) || hasExecutionIntent;
 }
 
@@ -97,7 +97,7 @@ function explicitExecutionAuthorization(message) {
   if (executionProhibited(message)) return false;
   return /\b(?:je\s+)?confirme(?:\s+explicitement)?\s+(?:l['’]\s*)?(?:ex[eé]cution|lancement|d[eé]l[eé]gation)\b/.test(source)
     || /\b(?:j['’]\s*)?autorise(?:\s+explicitement)?\b.*\b(?:ex[eé]cuter|lancer|d[eé]l[eé]guer|effectuer)\b/.test(source)
-    || /(effectue|ex[eé]cute|lance|fais|faites|continue|poursuis|traite|r[eé]alise|applique|d[eé]l[eè]gue).*(toutes?|chaque|les|la|le)?\s*(t[aâ]ches?|actions?|changements?|modifications?|diagnostics?|audits?)/.test(source)
+    || /(effectue|ex[eé]cute|lance|fais|faites|continue|poursuis|traite|r[eé]alise|finalis(?:e|er)|termin(?:e|er)|cl[oô]tur(?:e|er)|ach[eè]v(?:e|er)|applique|d[eé]l[eè]gue).*(toutes?|chaque|les|la|le|mes)?\s*(t[aâ]ches?|actions?|changements?|modifications?|diagnostics?|audits?)/.test(source)
     || /(go|oki|ok|oui)[,\s!-]*(effectue|ex[eé]cute|lance|continue|poursuis)/.test(source);
 }
 
@@ -105,7 +105,8 @@ function directAutopilotSignal(message) {
   const source = String(message || '').toLowerCase();
   if (executionProhibited(message)) return false;
   return /(effectue|ex[eé]cute|lance|traite|r[eé]alise).*(toutes?|les)\s+t[aâ]ches?/.test(source)
-    || /toutes?\s+les\s+t[aâ]ches?.*(effectue|ex[eé]cute|lance|traite|r[eé]alise)/.test(source);
+    || /toutes?\s+les\s+t[aâ]ches?.*(effectue|ex[eé]cute|lance|traite|r[eé]alise)/.test(source)
+    || /(finalis(?:e|er)|termin(?:e|er)|cl[oô]tur(?:e|er)|ach[eè]v(?:e|er)).*(?:toutes?\s+les\s+|les\s+|mes\s+)t[aâ]ches?(?:\s+(?:ouvertes?|non\s+termin[eé]es?|en\s+cours|[àa]\s+faire))?/.test(source);
 }
 
 function directInspectionSignal(message) {
