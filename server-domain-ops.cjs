@@ -12,7 +12,13 @@ const BASE44_AGENT_URL = String(process.env.BASE44_AGENT_URL || 'https://app.bas
 const pendingDomainActions = new Map();
 
 const MANAGED_DOMAINS = Object.freeze({
-  'jsinnovia.com': { app: 'JS-INNOV.IA', agent_hint: 'JsInnov-Agent' },
+  'jsinnovia.com': {
+    app: 'js-innovia-site',
+    agent_hint: 'JsInnov-Agent',
+    hosting: 'Railway',
+    primary_url: 'https://www.jsinnovia.com',
+    repository: 'Julien218/jsinnovia',
+  },
   'cockpit.jsinnovia.com': { app: 'cockpit-v3', agent_hint: 'JsInnov-Agent' },
   'jsinnovia.store': { app: 'JS-INNOV.IA', agent_hint: 'JsInnov-Agent' },
   'assurances-dour.be': { app: 'assurances-dour.be', agent_hint: 'Agent Assurances-Dour.be' },
@@ -182,6 +188,9 @@ async function analyzeDomain(domain) {
     domain,
     app: meta.app,
     agent_hint: meta.agent_hint,
+    hosting: meta.hosting || null,
+    primary_url: meta.primary_url || `https://${domain}`,
+    repository: meta.repository || null,
     checked_at: new Date().toISOString(),
     healthy: issues.every((item) => item.severity !== 'critical'),
     dns: { apex: dnsApex, www: dnsWww },
