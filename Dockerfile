@@ -34,6 +34,9 @@ COPY --from=builder /app/server-email-compose.cjs ./server-email-compose.cjs
 COPY --from=builder /app/server-billing.cjs ./server-billing.cjs
 COPY --from=builder /app/server-billing-template.cjs ./server-billing-template.cjs
 COPY --from=builder /app/server-security.cjs ./server-security.cjs
+COPY --from=builder /app/server-role-policy.cjs ./server-role-policy.cjs
+COPY --from=builder /app/server-client-onboarding.cjs ./server-client-onboarding.cjs
+COPY --from=builder /app/server-user-access.cjs ./server-user-access.cjs
 COPY --from=builder /app/server-tenant.cjs ./server-tenant.cjs
 COPY --from=builder /app/server-data-proxy.cjs ./server-data-proxy.cjs
 COPY --from=builder /app/server-bce.cjs ./server-bce.cjs
@@ -76,6 +79,9 @@ COPY public ./public
 
 RUN npm ci --omit=dev --legacy-peer-deps
 RUN test -f /app/server-ai-cost-attribution.cjs \
+ && test -f /app/server-role-policy.cjs \
+ && test -f /app/server-client-onboarding.cjs \
+ && test -f /app/server-user-access.cjs \
  && test -f /app/server-nova-routing.cjs \
  && test -f /app/server-ai-cost-ledger-aggregate.cjs \
  && test -f /app/server-cost-centers.cjs \
@@ -98,6 +104,9 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-task-autopilot.cjs \
  && test -f /app/server-bce.cjs \
  && node --check /app/server-ai-cost-attribution.cjs \
+ && node --check /app/server-role-policy.cjs \
+ && node --check /app/server-client-onboarding.cjs \
+ && node --check /app/server-user-access.cjs \
  && node --check /app/server-nova-routing.cjs \
  && node --check /app/server-ai-cost-ledger-aggregate.cjs \
  && node --check /app/server-cost-centers.cjs \

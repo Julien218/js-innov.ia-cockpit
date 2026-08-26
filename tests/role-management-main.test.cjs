@@ -42,3 +42,11 @@ test('invitations have a complete activation flow', () => {
   assert.match(auth, /router\.get\('\/invite'/);
   assert.match(auth, /router\.post\('\/activate'/);
 });
+
+test('the production image embeds every role-management runtime module', () => {
+  const dockerfile = read('Dockerfile');
+  for (const file of ['server-role-policy.cjs', 'server-client-onboarding.cjs', 'server-user-access.cjs']) {
+    assert.match(dockerfile, new RegExp(`COPY --from=builder /app/${file.replace('.', '\\.')}`));
+    assert.match(dockerfile, new RegExp(`node --check /app/${file.replace('.', '\\.')}`));
+  }
+});
