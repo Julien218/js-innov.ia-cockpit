@@ -52,9 +52,9 @@ alter table public.client_signage_requests enable row level security;
 alter table public.client_signage_request_assets enable row level security;
 alter table public.client_content_reviews enable row level security;
 
-revoke all on public.client_signage_requests from anon, authenticated;
-revoke all on public.client_signage_request_assets from anon, authenticated;
-revoke all on public.client_content_reviews from anon, authenticated;
+-- Railway PostgreSQL does not define Supabase's anon/authenticated roles.
+-- RLS without public policies still fails closed, while the backend connects
+-- through DATABASE_URL as the table owner.
 
 comment on table public.client_signage_requests is 'Demandes vidéo du portail client Signage, isolées par owner_email.';
 comment on table public.client_content_reviews is 'Versions soumises à validation client; publication automatique uniquement si préautorisée.';
