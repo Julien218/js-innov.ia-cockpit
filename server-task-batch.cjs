@@ -23,6 +23,12 @@ function rowsFrom(payload) {
   return [];
 }
 
+function recordFrom(payload) {
+  if (payload && typeof payload === 'object' && !Array.isArray(payload) && payload.data && !Array.isArray(payload.data)) return payload.data;
+  if (payload && typeof payload === 'object' && !Array.isArray(payload) && !payload.data && !payload.items) return payload;
+  return rowsFrom(payload)[0] || null;
+}
+
 function canonicalTaskTitle(value) {
   return cleanText(value, 240)
     .normalize('NFD')
@@ -80,6 +86,7 @@ function sanitizeTaskItem(item = {}) {
       provider_agent_id: cleanText(item.provider_agent_id || item.base44_agent_id, 180) || null,
     },
     read_only: item.read_only === true,
+    existing_task_id: cleanText(item.task_id || item.existing_task_id, 80) || null,
   };
 }
 
@@ -176,9 +183,20 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
   for (let index = 0; index < payload.tasks.length; index += 1) {
     const item = payload.tasks[index];
     const executor = resolveNovaExecutor(item.record);
-    let task = existingByTitle.get(canonicalTaskTitle(item.record.titre)) || null;
+    let task = null;
     let run = null;
     try {
+      if (item.existing_task_id) {
+        const exactResponse = await agentFetch(`/data/Tache/${encodeURIComponent(item.existing_task_id)}`, {
+          headers: { 'x-organisation-id': organisation },
+        });
+        task = recordFrom(await readJson(exactResponse, `Lecture tâche ciblée HTTP ${exactResponse.status}`));
+        if (!task?.id || String(task.id) !== String(item.existing_task_id)) {
+          throw new Error('Tâche ciblée introuvable; aucune nouvelle tâche créée.');
+        }
+      } else {
+        task = existingByTitle.get(canonicalTaskTitle(item.record.titre)) || null;
+      }
       const reused = Boolean(task);
       if (task) {
         const active = await activeRunForTask(agentFetch, task.id, organisation);
