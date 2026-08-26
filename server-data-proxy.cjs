@@ -1,11 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const { cleanTenant, resolveTenant } = require('./server-tenant.cjs');
+const { hasPermission } = require('./server-permission-policy.cjs');
 
 const ROLE_LEVEL = { client: 1, collaborateur: 2, admin: 3, superadmin: 4 };
 const TENANT_TABLES = new Set(['Client', 'Projet', 'Tache', 'Devis', 'Facture', 'Demande']);
 const CLIENT_READ_TABLES = new Set(['Projet', 'Devis', 'Facture', 'Demande']);
 const ADMIN_TABLES = new Set(['LogAction', 'Validation', 'Commission']);
+const TABLE_PERMISSIONS = Object.freeze({
+  Client: 'clients', Projet: 'projects', Tache: 'tasks', Devis: 'quotes', Facture: 'invoices', Demande: 'requests',
+  LogAction: 'logs', Validation: 'validations', Commission: 'commissions',
+});
 const AGENT_PROXY_URL = process.env.JSINNOVIA_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_PROXY_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
 
@@ -58,6 +63,10 @@ router.use(async (req, res) => {
   try {
     const table = req.path.split('/').filter(Boolean)[0];
     const role = req.user?.role || 'client';
+    const requiredPermission = TABLE_PERMISSIONS[table];
+    if (requiredPermission && !hasPermission(req.user, requiredPermission)) {
+      return res.status(403).json({ error: 'Accès à cette ressource non autorisé' });
+    }
     if (role === 'client' && (req.method !== 'GET' || !CLIENT_READ_TABLES.has(table))) {
       return res.status(403).json({ error: 'Cette opération nécessite un collaborateur.' });
     }

@@ -5,6 +5,8 @@ import { hasMinRole, hasRouteAccess, ROLE_LEVEL } from '@/lib/roles';
 export function usePermissions() {
   const { user } = useAuth();
   const role = user?.role || "client";
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+  const hasPermission = code => role === 'superadmin' || permissions.includes(code);
 
   return {
     role,
@@ -12,13 +14,15 @@ export function usePermissions() {
     isAdmin: role === "admin" || role === "superadmin",
     isCollaborateur: role === "collaborateur",
     isClient: role === "client",
-    canAccess: (path) => hasRouteAccess(role, path),
+    permissions,
+    hasPermission,
+    canAccess: (path) => hasRouteAccess(role, path, permissions),
     hasMinRole: (requiredRole) => hasMinRole(role, requiredRole),
     // Raccourcis utiles
-    canManageUsers: hasMinRole(role, "admin"),
-    canViewFinance: hasMinRole(role, "admin"),
-    canViewLogs: role === "superadmin",
-    canInvite: hasMinRole(role, "admin"),
-    canManageClients: hasMinRole(role, "collaborateur"),
+    canManageUsers: role === "superadmin",
+    canViewFinance: hasPermission('invoices'),
+    canViewLogs: hasPermission('logs'),
+    canInvite: role === "superadmin",
+    canManageClients: hasPermission('clients'),
   };
 }

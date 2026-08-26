@@ -1,5 +1,6 @@
 const cookie = require('cookie');
 const { ROLE_LEVEL, applyRolePolicy } = require('./server-role-policy.cjs');
+const { effectivePermissions, hasPermission } = require('./server-permission-policy.cjs');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://rzvvwcwyaddzsaattwqt.supabase.co';
 const SUPABASE_SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -20,7 +21,10 @@ async function resolveSession(req) {
   const session = sessions[0];
   if (!session || new Date(session.expires_at) <= new Date()) return null;
   const users = await select(`cockpit_users?select=id,email,full_name,role,organisation,is_active&id=eq.${encodeURIComponent(session.user_id)}&is_active=eq.true&limit=1`);
-  return applyRolePolicy(users[0] || null);
+  const user = applyRolePolicy(users[0] || null);
+  if (!user) return null;
+  const permission_overrides = await select(`cockpit_user_permissions?select=permission_code,enabled&user_id=eq.${encodeURIComponent(user.id)}`);
+  return { ...user, permission_overrides, permissions: effectivePermissions(user, permission_overrides) };
 }
 
 function requireSession(minRole = 'client') {
@@ -41,6 +45,18 @@ function requireSession(minRole = 'client') {
   };
 }
 
+function requirePermission(permissionCode, minRole = 'client') {
+  return async (req, res, next) => {
+    const sessionGuard = requireSession(minRole);
+    return sessionGuard(req, res, () => {
+      if (!hasPermission(req.user, permissionCode)) {
+        return res.status(403).json({ error: 'Accès à ce module non autorisé' });
+      }
+      next();
+    });
+  };
+}
+
 function requireSameOrigin(req, res, next) {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
   const origin = req.headers.origin;
@@ -50,4 +66,4 @@ function requireSameOrigin(req, res, next) {
   return res.status(403).json({ error: 'Origine non autorisée' });
 }
 
-module.exports = { requireSession, requireSameOrigin, ROLE_LEVEL };
+module.exports = { requireSession, requirePermission, requireSameOrigin, resolveSession, ROLE_LEVEL };

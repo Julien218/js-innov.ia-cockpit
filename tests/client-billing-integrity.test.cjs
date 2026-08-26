@@ -95,6 +95,6 @@ test('le coût LLM client est attribué au Client.id canonique, jamais à un sim
 test('la route client-costs est réservée aux admins', () => {
   const source = read('server.cjs');
   assert.match(source, /const adminGuard = requireSession\('admin'\)/);
-  assert.match(source, /app\.use\('\/api\/client-costs', adminGuard, aiCostLedgerAggregateRouter\)/);
-  assert.match(source, /app\.use\('\/api\/client-costs', adminGuard, clientCostsRouter\)/);
+  assert.match(source, /app\.use\('\/api\/client-costs', adminGuard, requirePermission\('ai_cost_control', 'admin'\), aiCostLedgerAggregateRouter\)/);
+  assert.match(source, /app\.use\('\/api\/client-costs', adminGuard, requirePermission\('ai_cost_control', 'admin'\), clientCostsRouter\)/);
 });

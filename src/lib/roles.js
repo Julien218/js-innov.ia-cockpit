@@ -1,3 +1,5 @@
+import permissionCatalog from '../../permission-catalog.json' with { type: 'json' };
+
 // ─── CONFIGURATION DES RÔLES JS-INNOV.IA COCKPIT ─────────────────────────────
 
 export const ROLES = {
@@ -51,14 +53,28 @@ export const ROLE_ROUTES = {
   ],
 };
 
-export const hasRouteAccess = (role, path) => {
+export const PERMISSION_CATALOG = permissionCatalog;
+
+const routeMatches = (route, path) => {
+  if (route === path) return true;
+  if (!route.endsWith("/*")) return false;
+  const prefix = route.slice(0, -2);
+  return path.startsWith(`${prefix}/`);
+};
+
+export const permissionForPath = path => permissionCatalog.find(permission =>
+  permission.routes.some(route => routeMatches(route, path))
+);
+
+export const hasRouteAccess = (role, path, permissions) => {
+  const modulePermission = permissionForPath(path);
+  if (!modulePermission) return false;
+  if (role === 'superadmin') return true;
+  if (Array.isArray(permissions)) {
+    return modulePermission.roles.includes(role) && permissions.includes(modulePermission.code);
+  }
   const routes = ROLE_ROUTES[role] || [];
-  return routes.some(route => {
-    if (route === path) return true;
-    if (!route.endsWith("/*")) return false;
-    const prefix = route.slice(0, -2);
-    return path.startsWith(`${prefix}/`);
-  });
+  return routes.some(route => routeMatches(route, path));
 };
 
 export const hasMinRole = (userRole, requiredRole) => {

@@ -69,7 +69,7 @@ test('les sessions client sont séparées par organisation et utilisateur', () =
 });
 
 test('le backend expose le Companion aux clients mais impose le mode depuis la session', () => {
-  assert.match(mainServer, /app\.use\('\/api\/assistant', requireSession\('client'\), assistantRouter\)/);
+  assert.match(mainServer, /app\.use\('\/api\/assistant', requireSession\('client'\), requirePermission\('nova', 'client'\), assistantRouter\)/);
   assert.equal(assistantModeFor({ role: 'client' }), 'client');
   assert.equal(assistantModeFor({ role: 'superadmin' }), 'owner');
   assert.equal(assistantModeFor({ role: 'admin' }), 'staff');
