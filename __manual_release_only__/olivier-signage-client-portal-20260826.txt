@@ -1,0 +1,4 @@
+Release trigger: Signage client request and approval portal.
+Validated PR: #159
+Merge commit: a1346346140f30c2d1a02e01bcc8b69042981276
+Scope: /demandes client video briefs, assets, approvals, guarded publication, secure invitations.
