@@ -46,14 +46,21 @@ export default function AvatarFactory() {
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState('');
   const [previewUrl, setPreviewUrl] = useState('');
+  const [leftPreviewUrl, setLeftPreviewUrl] = useState('');
+  const [backPreviewUrl, setBackPreviewUrl] = useState('');
   const [rightPreviewUrl, setRightPreviewUrl] = useState('');
   const [uploadedReference, setUploadedReference] = useState(null);
+  const [uploadedLeftReference, setUploadedLeftReference] = useState(null);
+  const [uploadedBackReference, setUploadedBackReference] = useState(null);
   const [uploadedRightReference, setUploadedRightReference] = useState(null);
   const fileInputRef = useRef(null);
+  const leftFileInputRef = useRef(null);
+  const backFileInputRef = useRef(null);
   const rightFileInputRef = useRef(null);
+  const previewUrlsRef = useRef(new Set());
   const [form, setForm] = useState({
     client_id: 'olivier', entity_id: 'les-vaincriez-dour', project_id: 'canari-3d',
-    character_id: 'vaincriez-canary', reference_path: '', right_reference_path: '',
+    character_id: 'vaincriez-canary', reference_path: '', left_reference_path: '', back_reference_path: '', right_reference_path: '',
     billing_policy: 'technical_costs_only', preset: 'diagnostic', seed: 2182026,
   });
 
@@ -74,9 +81,9 @@ export default function AvatarFactory() {
     }
   }, [form.client_id, form.billing_policy]);
   useEffect(() => () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    if (rightPreviewUrl) URL.revokeObjectURL(rightPreviewUrl);
-  }, [previewUrl, rightPreviewUrl]);
+    previewUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+    previewUrlsRef.current.clear();
+  }, []);
 
   const counts = useMemo(() => {
     const rows = jobs.data?.jobs || [];
@@ -100,7 +107,8 @@ export default function AvatarFactory() {
     setNotice(null); setBusy('upload');
     try {
       const localPreview = URL.createObjectURL(file);
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrlsRef.current.add(localPreview);
+      if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrlsRef.current.delete(previewUrl); }
       setPreviewUrl(localPreview);
       const result = await avatarFactory.uploadReference(file, form.character_id);
       setUploadedReference(result);
@@ -113,8 +121,56 @@ export default function AvatarFactory() {
   };
 
   const clearReference = () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrlsRef.current.delete(previewUrl); }
     setPreviewUrl(''); setUploadedReference(null); setForm(current => ({ ...current, reference_path: '' }));
+  };
+
+  const uploadLeftReference = async file => {
+    if (!file) return;
+    setNotice(null); setBusy('upload-left');
+    try {
+      const localPreview = URL.createObjectURL(file);
+      previewUrlsRef.current.add(localPreview);
+      if (leftPreviewUrl) { URL.revokeObjectURL(leftPreviewUrl); previewUrlsRef.current.delete(leftPreviewUrl); }
+      setLeftPreviewUrl(localPreview);
+      const result = await avatarFactory.uploadReference(file, `${form.character_id}-left`);
+      setUploadedLeftReference(result);
+      setForm(current => ({ ...current, left_reference_path: result.reference_path }));
+      setNotice({ type: 'success', text: 'Vue gauche transférée et liée à la prochaine production.' });
+    } catch (error) {
+      setUploadedLeftReference(null); setForm(current => ({ ...current, left_reference_path: '' }));
+      setNotice({ type: 'error', text: error.message });
+    } finally { setBusy(''); }
+  };
+
+  const clearLeftReference = () => {
+    if (leftPreviewUrl) { URL.revokeObjectURL(leftPreviewUrl); previewUrlsRef.current.delete(leftPreviewUrl); }
+    setLeftPreviewUrl(''); setUploadedLeftReference(null);
+    setForm(current => ({ ...current, left_reference_path: '' }));
+  };
+
+  const uploadBackReference = async file => {
+    if (!file) return;
+    setNotice(null); setBusy('upload-back');
+    try {
+      const localPreview = URL.createObjectURL(file);
+      previewUrlsRef.current.add(localPreview);
+      if (backPreviewUrl) { URL.revokeObjectURL(backPreviewUrl); previewUrlsRef.current.delete(backPreviewUrl); }
+      setBackPreviewUrl(localPreview);
+      const result = await avatarFactory.uploadReference(file, `${form.character_id}-back`);
+      setUploadedBackReference(result);
+      setForm(current => ({ ...current, back_reference_path: result.reference_path }));
+      setNotice({ type: 'success', text: 'Vue arrière transférée et liée à la prochaine production.' });
+    } catch (error) {
+      setUploadedBackReference(null); setForm(current => ({ ...current, back_reference_path: '' }));
+      setNotice({ type: 'error', text: error.message });
+    } finally { setBusy(''); }
+  };
+
+  const clearBackReference = () => {
+    if (backPreviewUrl) { URL.revokeObjectURL(backPreviewUrl); previewUrlsRef.current.delete(backPreviewUrl); }
+    setBackPreviewUrl(''); setUploadedBackReference(null);
+    setForm(current => ({ ...current, back_reference_path: '' }));
   };
 
   const uploadRightReference = async file => {
@@ -122,7 +178,8 @@ export default function AvatarFactory() {
     setNotice(null); setBusy('upload-right');
     try {
       const localPreview = URL.createObjectURL(file);
-      if (rightPreviewUrl) URL.revokeObjectURL(rightPreviewUrl);
+      previewUrlsRef.current.add(localPreview);
+      if (rightPreviewUrl) { URL.revokeObjectURL(rightPreviewUrl); previewUrlsRef.current.delete(rightPreviewUrl); }
       setRightPreviewUrl(localPreview);
       const result = await avatarFactory.uploadReference(file, `${form.character_id}-right`);
       setUploadedRightReference(result);
@@ -135,19 +192,21 @@ export default function AvatarFactory() {
   };
 
   const clearRightReference = () => {
-    if (rightPreviewUrl) URL.revokeObjectURL(rightPreviewUrl);
+    if (rightPreviewUrl) { URL.revokeObjectURL(rightPreviewUrl); previewUrlsRef.current.delete(rightPreviewUrl); }
     setRightPreviewUrl(''); setUploadedRightReference(null);
     setForm(current => ({ ...current, right_reference_path: '' }));
   };
 
   const create = async event => {
     event.preventDefault(); setNotice(null);
-    if (!form.reference_path) return setNotice({ type: 'error', text: 'Ajoute d’abord une image de référence.' });
+    if (![form.reference_path, form.left_reference_path, form.back_reference_path, form.right_reference_path].every(Boolean)) {
+      return setNotice({ type: 'error', text: 'Ajoute les quatre vues : face, gauche, arrière et droite.' });
+    }
     setBusy('create');
     try {
       const created = await avatarFactory.createJob(form);
       setSelectedId(created.id);
-      setNotice({ type: 'success', text: `Production lancée en mode ${form.right_reference_path ? 'multivue' : 'monovue'} : 3D → nettoyage → rig/idle → QA → validation humaine.` });
+      setNotice({ type: 'success', text: 'Production quatre vues lancée : 3D → nettoyage → rig/idle → QA → validation humaine.' });
       await refresh();
     } catch (error) { setNotice({ type: 'error', text: error.message }); } finally { setBusy(''); }
   };
@@ -194,12 +253,16 @@ export default function AvatarFactory() {
 
       <div className="grid grid-cols-1 2xl:grid-cols-[0.95fr_1fr_1.35fr] gap-5 items-start">
         <form onSubmit={create} className="premium-panel p-5 space-y-4">
-          <div><h2 className="font-semibold">Nouvelle production</h2><p className="text-xs text-muted-foreground mt-1">Dépose une vue avant et, idéalement, une vue droite cohérente.</p></div>
-          <div className="grid sm:grid-cols-2 2xl:grid-cols-1 gap-3">
+          <div><h2 className="font-semibold">Nouvelle production</h2><p className="text-xs text-muted-foreground mt-1">Dépose quatre images cohérentes : face, gauche, arrière et droite.</p></div>
+          <div className="grid sm:grid-cols-2 gap-3">
             <ReferenceUploader title="Vue avant · obligatoire" previewUrl={previewUrl} uploadedReference={uploadedReference} busy={busy === 'upload'} online={uploaderOnline} onBrowse={() => fileInputRef.current?.click()} onDrop={event => { event.preventDefault(); const file = event.dataTransfer.files?.[0]; if (file) uploadReference(file); }} onClear={clearReference} />
-            <ReferenceUploader title="Vue droite · multivue" previewUrl={rightPreviewUrl} uploadedReference={uploadedRightReference} busy={busy === 'upload-right'} online={uploaderOnline} onBrowse={() => rightFileInputRef.current?.click()} onDrop={event => { event.preventDefault(); const file = event.dataTransfer.files?.[0]; if (file) uploadRightReference(file); }} onClear={clearRightReference} />
+            <ReferenceUploader title="Vue arrière · obligatoire" previewUrl={backPreviewUrl} uploadedReference={uploadedBackReference} busy={busy === 'upload-back'} online={uploaderOnline} onBrowse={() => backFileInputRef.current?.click()} onDrop={event => { event.preventDefault(); const file = event.dataTransfer.files?.[0]; if (file) uploadBackReference(file); }} onClear={clearBackReference} />
+            <ReferenceUploader title="Vue gauche · obligatoire" previewUrl={leftPreviewUrl} uploadedReference={uploadedLeftReference} busy={busy === 'upload-left'} online={uploaderOnline} onBrowse={() => leftFileInputRef.current?.click()} onDrop={event => { event.preventDefault(); const file = event.dataTransfer.files?.[0]; if (file) uploadLeftReference(file); }} onClear={clearLeftReference} />
+            <ReferenceUploader title="Vue droite · obligatoire" previewUrl={rightPreviewUrl} uploadedReference={uploadedRightReference} busy={busy === 'upload-right'} online={uploaderOnline} onBrowse={() => rightFileInputRef.current?.click()} onDrop={event => { event.preventDefault(); const file = event.dataTransfer.files?.[0]; if (file) uploadRightReference(file); }} onClear={clearRightReference} />
           </div>
           <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) uploadReference(file); event.target.value = ''; }} />
+          <input ref={backFileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) uploadBackReference(file); event.target.value = ''; }} />
+          <input ref={leftFileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) uploadLeftReference(file); event.target.value = ''; }} />
           <input ref={rightFileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) uploadRightReference(file); event.target.value = ''; }} />
           <div className="grid sm:grid-cols-2 2xl:grid-cols-1 gap-3">
             <Field label="Client ID"><input className={inputClass} value={form.client_id} onChange={e => setForm(v => ({ ...v, client_id: e.target.value }))} required /></Field>
@@ -208,11 +271,11 @@ export default function AvatarFactory() {
             <Field label="Personnage"><input className={inputClass} value={form.character_id} onChange={e => setForm(v => ({ ...v, character_id: e.target.value }))} required /></Field>
           </div>
           {uploadedReference && <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-xs"><p className="font-semibold text-emerald-700">Référence prête</p><p className="text-muted-foreground mt-1 break-all">{uploadedReference.relative_path || uploadedReference.reference_path}</p></div>}
-          <div className={`rounded-xl px-3 py-2 text-xs border ${form.right_reference_path ? 'border-cyan-500/20 bg-cyan-500/5 text-cyan-700' : 'border-border bg-muted/40 text-muted-foreground'}`}>{form.right_reference_path ? `Multivue active · graine reproductible ${form.seed}` : 'Mode monovue actif · ajoute la vue droite pour stabiliser la géométrie.'}</div>
+          <div className={`rounded-xl px-3 py-2 text-xs border ${[form.reference_path, form.left_reference_path, form.back_reference_path, form.right_reference_path].every(Boolean) ? 'border-cyan-500/20 bg-cyan-500/5 text-cyan-700' : 'border-border bg-muted/40 text-muted-foreground'}`}>{[form.reference_path, form.left_reference_path, form.back_reference_path, form.right_reference_path].filter(Boolean).length}/4 vues prêtes · {[form.reference_path, form.left_reference_path, form.back_reference_path, form.right_reference_path].every(Boolean) ? `multivue complète · graine ${form.seed}` : 'complète les vues manquantes pour lancer'}</div>
           <Field label="Qualité"><select className={inputClass} value={form.preset} onChange={e => setForm(v => ({ ...v, preset: e.target.value }))}><option value="diagnostic">Diagnostic 1024 — recommandé 6 Go VRAM</option><option value="production">Production 2048 — si mémoire suffisante</option></select></Field>
           <Field label="Politique de facturation"><select disabled={form.client_id.trim().toLowerCase() === 'olivier'} className={`${inputClass} disabled:opacity-60`} value={form.billing_policy} onChange={e => setForm(v => ({ ...v, billing_policy: e.target.value }))}>{POLICIES.map(policy => <option key={policy.value} value={policy.value}>{policy.label}</option>)}</select></Field>
           {form.client_id.trim().toLowerCase() === 'olivier' && <p className="text-[11px] text-muted-foreground">Olivier : coûts techniques uniquement, ventilés par entité.</p>}
-          <button disabled={!online || !uploaderOnline || !form.reference_path || Boolean(busy)} className="w-full h-11 rounded-xl gradient-primary text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-lg shadow-primary/20 disabled:opacity-50">{busy === 'create' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}Lancer la production</button>
+          <button disabled={!online || !uploaderOnline || ![form.reference_path, form.left_reference_path, form.back_reference_path, form.right_reference_path].every(Boolean) || Boolean(busy)} className="w-full h-11 rounded-xl gradient-primary text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-lg shadow-primary/20 disabled:opacity-50">{busy === 'create' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}Lancer la production quatre vues</button>
         </form>
 
         <section className="premium-panel p-5 min-w-0">
@@ -256,14 +319,18 @@ function JobDetail({ job, previewOnline, onApprove, onReject, busy }) {
   const candidate = job.output?.candidate_glb;
   const qaReady = job.output?.validation_ready;
   const reference = job.output?.reference_path || job.input?.reference_path;
+  const leftReference = job.output?.left_reference_path || job.input?.left_reference_path;
+  const backReference = job.output?.back_reference_path || job.input?.back_reference_path;
   const rightReference = job.output?.right_reference_path || job.input?.right_reference_path;
-  const multiview = Boolean(job.output?.multiview || rightReference);
+  const multiview = Boolean(job.output?.multiview || (leftReference && backReference && rightReference));
   const jobCosts = job.costs || [];
   return <div className="mt-4 space-y-4">
     <div className="grid grid-cols-2 gap-2"><Mini label="Statut" value={STATUS_LABELS[job.status] || job.status} /><Mini label="Étape" value={job.current_stage || '—'} /><Mini label="Coût" value={euro(job.cost_total_eur)} /><Mini label="Génération" value={multiview ? `Multivue · seed ${job.output?.seed || job.input?.seed || 2182026}` : 'Monovue'} /></div>
     {candidate && previewOnline && <Avatar3DViewer src={avatarFactory.candidateUrl(job.id)} title={`${job.character_id} · candidat 3D`} />}
     {candidate && !previewOnline && <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-700 flex gap-2"><Rotate3D className="w-4 h-4 shrink-0" /><span>Le candidat existe, mais le service Preview 8793 n’est pas connecté.</span></div>}
     {reference && <div className="rounded-xl bg-muted/50 p-3 text-xs"><p className="font-semibold">Référence utilisée</p><p className="text-muted-foreground mt-1 break-all">{reference}</p></div>}
+    {backReference && <div className="rounded-xl bg-muted/50 p-3 text-xs"><p className="font-semibold">Vue arrière utilisée</p><p className="text-muted-foreground mt-1 break-all">{backReference}</p></div>}
+    {leftReference && <div className="rounded-xl bg-muted/50 p-3 text-xs"><p className="font-semibold">Vue gauche utilisée</p><p className="text-muted-foreground mt-1 break-all">{leftReference}</p></div>}
     {rightReference && <div className="rounded-xl bg-muted/50 p-3 text-xs"><p className="font-semibold">Vue droite utilisée</p><p className="text-muted-foreground mt-1 break-all">{rightReference}</p></div>}
     {candidate && <div className="rounded-xl bg-muted/50 p-3 text-xs"><p className="font-semibold">Candidat local</p><p className="text-muted-foreground mt-1 break-all">{candidate}</p><p className={`mt-2 font-medium ${qaReady ? 'text-emerald-600' : 'text-amber-600'}`}>{qaReady ? 'QA automatique réussie' : 'QA en attente'}</p></div>}
     {job.error && <div className="rounded-xl bg-red-500/10 text-red-700 p-3 text-xs">{job.error}</div>}
