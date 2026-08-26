@@ -9,7 +9,7 @@ const taskBatchSource = fs.readFileSync(path.join(root, 'server-task-batch.cjs')
 const serverSource = fs.readFileSync(path.join(root, 'server.cjs'), 'utf8');
 const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
 
-const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage, executionProof, directAutopilotSignal, autopilotMessage, directEntityMutationSignal, executionProhibited, directInspectionSignal } = require(path.join(root, 'server-assistant-batch.cjs'));
+const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage, executionProof, directAutopilotSignal, autopilotMessage, directEntityMutationSignal, executionProhibited, directInspectionSignal, targetedInspectionSignal, idAfterLabel } = require(path.join(root, 'server-assistant-batch.cjs'));
 const { canonicalTaskTitle, latestActiveRun, sanitizeTaskBatchPayload } = require(path.join(root, 'server-task-batch.cjs'));
 
 test('les demandes multi-tâches et d’exécution sont reconnues sans intercepter un chat banal', () => {
@@ -50,6 +50,17 @@ test('une interdiction explicite d’écrire ne peut jamais devenir une autorisa
   assert.equal(executionProhibited('Effectue toutes les tâches non terminées'), false);
   assert.equal(explicitExecutionAuthorization('Effectue toutes les tâches non terminées'), true);
   assert.match(batchSource, /runAutopilot\(\{ inspectOnly: true/);
+});
+
+test('une inspection ciblée de projet ne déclenche jamais l’inventaire global des tâches', () => {
+  const request = 'Effectue un contrôle strictement en lecture seule de l’action update_project exécutée sur le projet 4e2424fc-5e4c-4b60-b5cc-54166d59d85a. Affiche le lien avec la tâche bdcb55aa-e09a-45e3-9132-848400bf1c5d. N’effectue aucune nouvelle écriture.';
+  assert.equal(targetedInspectionSignal(request), true);
+  assert.equal(directInspectionSignal(request), false);
+  assert.equal(idAfterLabel(request, ['projet']), '4e2424fc-5e4c-4b60-b5cc-54166d59d85a');
+  assert.equal(idAfterLabel(request, ['tâche', 'tache']), 'bdcb55aa-e09a-45e3-9132-848400bf1c5d');
+  assert.match(batchSource, /inspectTargetedProject\(message\)/);
+  assert.match(batchSource, /Inspection ciblée sans effet terminée/);
+  assert.match(batchSource, /\/data\/LogAction\?limit=250/);
 });
 
 test('un batch exige des tâches avec un titre non vide', () => {

@@ -104,3 +104,10 @@ test('un échec technique déjà enregistré reste un vrai blocage', () => {
   );
   assert.equal(autopilot.recordedExecutionFailure({ notes: 'Blocage NOVA: ancien exécuteur absent.' }), null);
 });
+
+test('l’ancien défaut de colonne Projet corrigé ne bloque plus une relance', () => {
+  assert.equal(
+    autopilot.recordedExecutionFailure({ notes: "Blocage d’exécution réel: Could not find the 'priorite' column of 'Projet' in the schema cache" }),
+    null,
+  );
+});
