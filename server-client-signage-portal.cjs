@@ -1,4 +1,5 @@
 const express = require('express');
+const { createHash } = require('node:crypto');
 const { ROLE_LEVEL } = require('./server-security.cjs');
 const { postgresRest } = require('./server-postgres.cjs');
 const { ensureClientInvitation } = require('./server-client-onboarding.cjs');
@@ -9,6 +10,10 @@ const FINAL_STATES = new Set(['approved', 'changes_requested']);
 const COMPARISON_TEMPLATE_URL = process.env.SIGNAGE_COMPARISON_TEMPLATE_URL || 'https://canva.link/vps9laitxuyp8c8';
 const clean = (value, max = 1000) => String(value || '').trim().slice(0, max);
 const isAdmin = req => (ROLE_LEVEL[req.user?.role] || 0) >= ROLE_LEVEL.admin;
+
+function viewerReference(email) {
+  return createHash('sha256').update(String(email || '').trim().toLowerCase()).digest('hex').slice(0, 10).toUpperCase();
+}
 
 async function db(resource, options = {}) {
   return postgresRest(resource, options);
@@ -137,6 +142,12 @@ router.get('/requests', async (req, res) => {
     ]);
     res.json({
       requests: requests || [], assets: assets || [], reviews: reviews || [], proposals: proposals || [],
+      previewProtection: {
+        watermarkText: 'JS-Innov.IA - APERÇU CLIENT',
+        viewerReference: viewerReference(email),
+        downloadDisabled: true,
+        pictureInPictureDisabled: true,
+      },
       comparisonTemplate: {
         provider: 'canva',
         url: COMPARISON_TEMPLATE_URL,
@@ -250,6 +261,39 @@ router.post('/requests/:id/reviews', requireAdmin, async (req, res) => {
   }
 });
 
+router.post('/reviews/:id/proposals/:slot/viewed', async (req, res) => {
+  try {
+    const email = owner(req);
+    const proposalSlot = Math.trunc(Number(req.params.slot));
+    if (proposalSlot < 1 || proposalSlot > 3) return res.status(400).json({ error: 'Proposition invalide' });
+    const reviews = await db(`client_content_reviews?select=id,request_id,status&id=eq.${encodeURIComponent(req.params.id)}&owner_email=eq.${encodeURIComponent(email)}&limit=1`);
+    const review = reviews?.[0];
+    if (!review) return res.status(404).json({ error: 'Validation introuvable' });
+    const proposals = await db(`client_content_review_proposals?select=media_id,proposal_slot&review_id=eq.${encodeURIComponent(review.id)}&owner_email=eq.${encodeURIComponent(email)}&proposal_slot=eq.${encodeURIComponent(proposalSlot)}&limit=1`);
+    const proposal = proposals?.[0];
+    if (!proposal) return res.status(404).json({ error: 'Proposition introuvable' });
+    await db('signage_audit_events', {
+      method: 'POST',
+      body: JSON.stringify({
+        owner_email: email,
+        actor_email: req.user?.email || email,
+        action: 'proposal.preview_opened',
+        entity_type: 'client_content_review',
+        entity_id: review.id,
+        details: {
+          requestId: review.request_id,
+          mediaId: proposal.media_id,
+          proposalSlot,
+          viewerReference: viewerReference(email),
+        }
+      })
+    });
+    res.json({ success: true, viewerReference: viewerReference(email) });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 router.post('/reviews/:id/decision', async (req, res) => {
   try {
     const email = owner(req);
@@ -351,4 +395,5 @@ router.post('/reviews/:id/finalize', requireAdmin, async (req, res) => {
 
 module.exports = router;
 module.exports.owner = owner;
+module.exports.viewerReference = viewerReference;
 module.exports.scheduleApprovedMedia = scheduleApprovedMedia;

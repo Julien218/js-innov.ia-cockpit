@@ -11,7 +11,7 @@ const proposalMigration = fs.readFileSync(path.join(root, 'migrations/010_signag
 const staffPageSource = fs.readFileSync(path.join(root, 'src/components/signage/StaffClientRequests.jsx'), 'utf8');
 const postgresSource = fs.readFileSync(path.join(root, 'server-postgres.cjs'), 'utf8');
 const onboarding = fs.readFileSync(path.join(root, 'server-client-onboarding.cjs'), 'utf8');
-const { owner } = require('../server-client-signage-portal.cjs');
+const { owner, viewerReference } = require('../server-client-signage-portal.cjs');
 
 test('a client can never select another client account through a header', () => {
   const req = {
@@ -69,6 +69,19 @@ test('the client chooses one of exactly three labelled proposals', () => {
   assert.match(pageSource, /Valider la proposition/);
   assert.match(portalSource, /Choisissez exactement trois vidéos différentes/);
   assert.match(proposalMigration, /proposal_slot between 1 and 3/);
+});
+
+test('proposal previews are visibly watermarked, download-restricted and audited', () => {
+  assert.match(pageSource, /JS-Innov\.IA®/);
+  assert.match(pageSource, /APERÇU CLIENT · RÉF\./);
+  assert.match(pageSource, /controlsList="nodownload noplaybackrate"/);
+  assert.match(pageSource, /disablePictureInPicture/);
+  assert.match(pageSource, /onContextMenu=\{event => event\.preventDefault\(\)\}/);
+  assert.doesNotMatch(pageSource, /window\.open\(body\.url/);
+  assert.match(portalSource, /proposal\.preview_opened/);
+  assert.match(portalSource, /viewerReference/);
+  assert.equal(viewerReference('CLIENT@EXAMPLE.BE'), viewerReference('client@example.be'));
+  assert.match(viewerReference('client@example.be'), /^[A-F0-9]{10}$/);
 });
 
 test('staff sends three candidates then performs the final broadcast approval', () => {

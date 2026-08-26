@@ -57,7 +57,7 @@ function StatusPill({ status }) {
 }
 
 export default function ClientSignageRequests() {
-  const [data, setData] = React.useState({ requests: [], assets: [], reviews: [], proposals: [] });
+  const [data, setData] = React.useState({ requests: [], assets: [], reviews: [], proposals: [], previewProtection: null });
   const [media, setMedia] = React.useState([]);
   const [form, setForm] = React.useState({ title: "", brief: "", desiredAt: "", durationSeconds: 8, format: "16:9" });
   const [files, setFiles] = React.useState([]);
@@ -67,6 +67,8 @@ export default function ClientSignageRequests() {
   const [message, setMessage] = React.useState("");
   const [comments, setComments] = React.useState({});
   const [choices, setChoices] = React.useState({});
+  const [previewState, setPreviewState] = React.useState(null);
+  const [previewBusy, setPreviewBusy] = React.useState(false);
 
   const load = React.useCallback(async () => {
     try {
@@ -137,14 +139,30 @@ export default function ClientSignageRequests() {
     }
   };
 
-  const preview = async mediaId => {
+  React.useEffect(() => {
+    if (!previewState) return undefined;
+    const closeOnEscape = event => { if (event.key === "Escape") setPreviewState(null); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [previewState]);
+
+  const preview = async (review, proposal, item) => {
+    setPreviewBusy(true);
     try {
-      const response = await fetch(`/api/signage/manage/media/${mediaId}/download`, { credentials: "same-origin" });
+      const audit = await api(`/reviews/${review.id}/proposals/${proposal.proposal_slot}/viewed`, { method: "POST", body: "{}" });
+      const response = await fetch(`/api/signage/manage/media/${proposal.media_id}/download`, { credentials: "same-origin" });
       const body = await response.json();
       if (!response.ok || !body.url) throw new Error(body.error || "Aperçu indisponible");
-      window.open(body.url, "_blank", "noopener,noreferrer");
+      setPreviewState({
+        url: body.url,
+        slot: proposal.proposal_slot,
+        name: item?.name || `Vidéo ${proposal.proposal_slot}`,
+        viewerReference: audit.viewerReference || data.previewProtection?.viewerReference || "",
+      });
     } catch (previewError) {
       setError(previewError.message);
+    } finally {
+      setPreviewBusy(false);
     }
   };
 
@@ -186,7 +204,7 @@ export default function ClientSignageRequests() {
                   </div>
                   <div className="space-y-3 p-4">
                     <p className="truncate text-sm font-medium">{item?.name || `Vidéo ${proposal.proposal_slot}`}</p>
-                    <span onClick={event => { event.stopPropagation(); preview(proposal.media_id); }} className="inline-flex items-center text-sm font-semibold text-primary"><PlayCircle className="mr-2 h-4 w-4" />Voir la vidéo</span>
+                    <span onClick={event => { event.stopPropagation(); preview(review, proposal, item); }} className="inline-flex items-center text-sm font-semibold text-primary"><PlayCircle className="mr-2 h-4 w-4" />{previewBusy ? "Ouverture…" : "Voir la vidéo protégée"}</span>
                     <p className={`text-xs font-semibold ${selected ? "text-amber-700" : "text-muted-foreground"}`}>{selected ? "✓ Votre choix" : "Sélectionner"}</p>
                   </div>
                 </button>;
@@ -201,6 +219,26 @@ export default function ClientSignageRequests() {
           </article>;
         })}
       </section>}
+
+      {previewState && <div role="dialog" aria-modal="true" aria-label={`Aperçu protégé de la proposition ${previewState.slot}`} className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/90 p-4" onMouseDown={event => { if (event.target === event.currentTarget) setPreviewState(null); }}>
+        <div className="w-full max-w-5xl overflow-hidden rounded-2xl border border-white/20 bg-slate-950 shadow-2xl">
+          <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 text-white">
+            <div><p className="font-semibold">Proposition {previewState.slot}</p><p className="text-xs text-slate-300">{previewState.name}</p></div>
+            <button type="button" onClick={() => setPreviewState(null)} className="rounded-lg border border-white/20 px-3 py-1.5 text-sm hover:bg-white/10">Fermer</button>
+          </div>
+          <div className="relative bg-black" onContextMenu={event => event.preventDefault()}>
+            <video src={previewState.url} controls autoPlay playsInline controlsList="nodownload noplaybackrate" disablePictureInPicture onContextMenu={event => event.preventDefault()} onDragStart={event => event.preventDefault()} className="aspect-video w-full bg-black object-contain" />
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0 select-none">
+              <div className="absolute right-4 top-4 rounded-md bg-black/55 px-3 py-2 text-sm font-bold tracking-wide text-white/90">PROPOSITION {previewState.slot}</div>
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-xl bg-black/20 px-5 py-3 text-center text-white/35 shadow-sm">
+                <p className="text-2xl font-black md:text-4xl">JS-Innov.IA®</p>
+                <p className="mt-1 text-xs font-bold tracking-[0.2em] md:text-sm">APERÇU CLIENT · RÉF. {previewState.viewerReference}</p>
+              </div>
+            </div>
+          </div>
+          <p className="px-4 py-3 text-xs text-slate-300">Aperçu confidentiel et journalisé. Le téléchargement et le mode image dans l’image sont désactivés. La version finale validée sera livrée sans ce filigrane visible.</p>
+        </div>
+      </div>}
 
       <form onSubmit={submit} className="rounded-2xl border bg-card p-5 md:p-6">
         <h2 className="text-lg font-semibold">Nouvelle demande</h2>
