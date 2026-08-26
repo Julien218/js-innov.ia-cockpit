@@ -101,10 +101,10 @@ const allNavGroups = [
   },
   {
     label: "Finance",
-    minRole: "admin",
+    minRole: "collaborateur",
     items: [
-      { label: "Devis", icon: FileText, path: "/devis" },
-      { label: "Factures", icon: Receipt, path: "/factures" },
+      { label: "Devis", icon: FileText, path: "/devis", minRole: "collaborateur" },
+      { label: "Factures", icon: Receipt, path: "/factures", minRole: "admin" },
     ]
   },
   {
@@ -141,6 +141,7 @@ const allNavGroups = [
       { label: "Agents IA", icon: Network, path: "/agents-ia" },
       { label: "Mobile Hub", icon: Smartphone, path: "/mobile-hub" },
       { label: "AI Cost Control", icon: Gauge, path: "/ai-cost-control", minRole: "admin" },
+      { label: "Utilisateurs & accès", icon: Users, path: "/invitations", minRole: "admin" },
       { label: "Paramètres", icon: Settings, path: "/parametres", minRole: "admin" },
     ]
   },

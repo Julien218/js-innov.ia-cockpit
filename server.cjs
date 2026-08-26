@@ -22,6 +22,15 @@ try {
   console.warn('⚠️ Route auth indisponible:', e.message);
 }
 
+// ── Utilisateurs, invitations et rôles ─────────────────────
+try {
+  const userAccessRouter = require('./server-user-access.cjs');
+  app.use('/api/user-access', requireSession('superadmin'), userAccessRouter);
+  console.log('✅ Gestion des rôles Cockpit activée');
+} catch (e) {
+  console.warn('⚠️ Gestion des rôles indisponible:', e.message);
+}
+
 // ── API Emails IMAP ──────────────────────────────────────────
 try {
   const emailRouter = require('./server-email.cjs');
