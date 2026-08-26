@@ -29,6 +29,7 @@ COPY --from=builder /app/package-lock.json ./package-lock.json
 COPY --from=builder /app/server.cjs ./server.cjs
 COPY --from=builder /app/server-auth.cjs ./server-auth.cjs
 COPY --from=builder /app/server-email.cjs ./server-email.cjs
+COPY --from=builder /app/server-email-branding.cjs ./server-email-branding.cjs
 COPY --from=builder /app/server-email-core.cjs ./server-email-core.cjs
 COPY --from=builder /app/server-email-compose.cjs ./server-email-compose.cjs
 COPY --from=builder /app/server-billing.cjs ./server-billing.cjs
