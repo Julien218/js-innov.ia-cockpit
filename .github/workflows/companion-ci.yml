@@ -1,6 +1,7 @@
 name: Companion dual-audience CI
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'server-assistant.cjs'
