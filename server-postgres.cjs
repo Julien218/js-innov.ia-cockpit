@@ -8,7 +8,7 @@ const ALLOWED_TABLES = new Set([
   'signage_players','signage_media','signage_playlists','signage_publications','camera_gateways','cameras',
   'camera_recordings','signage_audit_events','signage_player_schedule_settings','signage_player_schedule_ranges',
   'signage_player_schedule_exceptions','signage_schedule_audit','signage_sites','signage_display_profiles',
-  'client_signage_requests','client_signage_request_assets','client_content_reviews'
+  'client_signage_requests','client_signage_request_assets','client_content_reviews','client_content_review_proposals'
 ]);
 const JSON_COLUMNS = new Map([
   ['signage_players', new Set(['diagnostics','runtime_diagnostics'])],
