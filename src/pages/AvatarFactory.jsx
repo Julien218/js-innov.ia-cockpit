@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { avatarFactory } from '@/api/avatarFactoryClient';
 import Avatar3DViewer from '@/components/avatar/Avatar3DViewer';
+import { formatAvatarFactoryError, formatAvatarStage, getAvatarProductionProgress } from '@/lib/avatarFactoryProgress';
 
 const POLICIES = [
   { value: 'standard_margin', label: 'Standard + marge' },
@@ -94,6 +95,8 @@ export default function AvatarFactory() {
       failed: rows.filter(job => ['failed', 'rejected'].includes(job.status)).length,
     };
   }, [jobs.data]);
+
+  const selectedJob = detail.data || (jobs.data?.jobs || []).find(job => job.id === selectedId) || null;
 
   const online = Boolean(health.isSuccess && health.data?.ok);
   const uploaderOnline = Boolean(uploadHealth.isSuccess && uploadHealth.data?.ok);
@@ -251,6 +254,8 @@ export default function AvatarFactory() {
         <Kpi icon={CircleDollarSign} label="Coût local" value={euro(costs.data?.cost_eur)} tone="gold" />
       </div>
 
+      {selectedJob && <ProductionProgress job={selectedJob} prominent />}
+
       <div className="grid grid-cols-1 2xl:grid-cols-[0.95fr_1fr_1.35fr] gap-5 items-start">
         <form onSubmit={create} className="premium-panel p-5 space-y-4">
           <div><h2 className="font-semibold">Nouvelle production</h2><p className="text-xs text-muted-foreground mt-1">Dépose quatre images cohérentes : face, gauche, arrière et droite.</p></div>
@@ -281,7 +286,7 @@ export default function AvatarFactory() {
         <section className="premium-panel p-5 min-w-0">
           <div className="flex items-center justify-between mb-4"><div><h2 className="font-semibold">Productions</h2><p className="text-xs text-muted-foreground">Actualisation automatique</p></div><button onClick={() => jobs.refetch()} className="p-2 rounded-lg hover:bg-muted"><RefreshCw className="w-4 h-4" /></button></div>
           <div className="space-y-2 max-h-[760px] overflow-y-auto">
-            {(jobs.data?.jobs || []).map(job => <button key={job.id} onClick={() => setSelectedId(job.id)} className={`w-full text-left rounded-2xl border p-3 transition ${selectedId === job.id ? 'border-primary/40 bg-primary/[0.08] shadow-md shadow-primary/5' : 'border-border/70 hover:bg-muted/40'}`}><div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold truncate">{job.character_id}</p><span className={`text-[10px] px-2 py-1 rounded-full border font-semibold ${STATUS_CLASS[job.status] || 'bg-muted border-border'}`}>{STATUS_LABELS[job.status] || job.status}</span></div><p className="text-xs text-muted-foreground mt-1 truncate">{job.entity_id} · {job.project_id}</p><p className="text-[11px] text-muted-foreground mt-1">Étape : {job.current_stage || '—'}</p></button>)}
+            {(jobs.data?.jobs || []).map(job => <button key={job.id} onClick={() => setSelectedId(job.id)} className={`w-full text-left rounded-2xl border p-3 transition ${selectedId === job.id ? 'border-primary/40 bg-primary/[0.08] shadow-md shadow-primary/5' : 'border-border/70 hover:bg-muted/40'}`}><div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold truncate">{job.character_id}</p><span className={`text-[10px] px-2 py-1 rounded-full border font-semibold ${STATUS_CLASS[job.status] || 'bg-muted border-border'}`}>{STATUS_LABELS[job.status] || job.status}</span></div><p className="text-xs text-muted-foreground mt-1 truncate">{job.entity_id} · {job.project_id}</p><ProductionProgress job={job} compact /></button>)}
             {!jobs.isLoading && !(jobs.data?.jobs || []).length && <p className="text-sm text-muted-foreground text-center py-10">Aucune production.</p>}
           </div>
         </section>
@@ -325,7 +330,7 @@ function JobDetail({ job, previewOnline, onApprove, onReject, busy }) {
   const multiview = Boolean(job.output?.multiview || (leftReference && backReference && rightReference));
   const jobCosts = job.costs || [];
   return <div className="mt-4 space-y-4">
-    <div className="grid grid-cols-2 gap-2"><Mini label="Statut" value={STATUS_LABELS[job.status] || job.status} /><Mini label="Étape" value={job.current_stage || '—'} /><Mini label="Coût" value={euro(job.cost_total_eur)} /><Mini label="Génération" value={multiview ? `Multivue · seed ${job.output?.seed || job.input?.seed || 2182026}` : 'Monovue'} /></div>
+    <div className="grid grid-cols-2 gap-2"><Mini label="Statut" value={STATUS_LABELS[job.status] || job.status} /><Mini label="Étape" value={formatAvatarStage(job.current_stage)} /><Mini label="Coût" value={euro(job.cost_total_eur)} /><Mini label="Génération" value={multiview ? `Multivue · seed ${job.output?.seed || job.input?.seed || 2182026}` : 'Monovue'} /></div>
     {candidate && previewOnline && <Avatar3DViewer src={avatarFactory.candidateUrl(job.id)} title={`${job.character_id} · candidat 3D`} />}
     {candidate && !previewOnline && <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-700 flex gap-2"><Rotate3D className="w-4 h-4 shrink-0" /><span>Le candidat existe, mais le service Preview 8793 n’est pas connecté.</span></div>}
     {reference && <div className="rounded-xl bg-muted/50 p-3 text-xs"><p className="font-semibold">Référence utilisée</p><p className="text-muted-foreground mt-1 break-all">{reference}</p></div>}
@@ -333,11 +338,35 @@ function JobDetail({ job, previewOnline, onApprove, onReject, busy }) {
     {leftReference && <div className="rounded-xl bg-muted/50 p-3 text-xs"><p className="font-semibold">Vue gauche utilisée</p><p className="text-muted-foreground mt-1 break-all">{leftReference}</p></div>}
     {rightReference && <div className="rounded-xl bg-muted/50 p-3 text-xs"><p className="font-semibold">Vue droite utilisée</p><p className="text-muted-foreground mt-1 break-all">{rightReference}</p></div>}
     {candidate && <div className="rounded-xl bg-muted/50 p-3 text-xs"><p className="font-semibold">Candidat local</p><p className="text-muted-foreground mt-1 break-all">{candidate}</p><p className={`mt-2 font-medium ${qaReady ? 'text-emerald-600' : 'text-amber-600'}`}>{qaReady ? 'QA automatique réussie' : 'QA en attente'}</p></div>}
-    {job.error && <div className="rounded-xl bg-red-500/10 text-red-700 p-3 text-xs">{job.error}</div>}
+    {job.error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 text-red-700 p-3 text-xs"><p className="font-semibold">Production arrêtée au contrôle qualité</p><p className="mt-1">{formatAvatarFactoryError(job.error)}</p><details className="mt-2"><summary className="cursor-pointer font-medium">Voir le détail technique</summary><p className="mt-1 break-words opacity-80">{job.error}</p></details></div>}
     {job.status === 'awaiting_approval' && <div className="grid grid-cols-2 gap-2"><button onClick={onReject} disabled={Boolean(busy)} className="h-10 rounded-xl border border-red-500/30 text-red-700 text-sm font-semibold flex items-center justify-center gap-2"><XCircle className="w-4 h-4" />Refuser</button><button onClick={onApprove} disabled={Boolean(busy)} className="h-10 rounded-xl bg-emerald-600 text-white text-sm font-semibold flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20">{busy === 'approve' ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}Valider</button></div>}
     <div><p className="text-xs font-semibold text-muted-foreground mb-2">Événements récents</p><div className="space-y-2 max-h-48 overflow-y-auto">{(job.events || []).slice(0, 20).map(event => <div key={event.id} className="rounded-lg bg-muted/50 px-3 py-2"><div className="flex justify-between gap-2"><span className="text-xs font-medium">{event.stage || 'orchestrateur'}</span><span className="text-[10px] text-muted-foreground">{new Date(event.created_at).toLocaleTimeString('fr-BE')}</span></div><p className={`text-xs mt-1 ${event.level === 'error' ? 'text-red-600' : 'text-muted-foreground'}`}>{event.message}</p></div>)}</div></div>
     <div><p className="text-xs font-semibold text-muted-foreground mb-2">Coûts du job</p>{jobCosts.length ? <div className="space-y-1">{jobCosts.map(cost => <div key={cost.id} className="flex justify-between text-xs border-b border-border/50 py-1.5"><span>{cost.category}</span><span>{euro(cost.cost_eur)}</span></div>)}</div> : <p className="text-xs text-muted-foreground">Aucun coût enregistré.</p>}</div>
   </div>;
+}
+
+/** @param {any} props */
+function ProductionProgress({ job, prominent = false, compact = false }) {
+  const progress = getAvatarProductionProgress(job);
+  const colors = {
+    active: 'bg-blue-500', approval: 'bg-amber-500', success: 'bg-emerald-500', error: 'bg-red-500', queued: 'bg-slate-400',
+  };
+  const textColors = {
+    active: 'text-blue-700', approval: 'text-amber-700', success: 'text-emerald-700', error: 'text-red-700', queued: 'text-slate-600',
+  };
+  const bar = <div className="h-2 rounded-full bg-muted overflow-hidden" role="progressbar" aria-label={`Avancement de ${job.character_id || 'la production'}`} aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress.percent}><div className={`h-full rounded-full transition-all duration-700 ${colors[progress.tone]}`} style={{ width: `${progress.percent}%` }} /></div>;
+
+  if (compact) return <div className="mt-2 space-y-1"><div className="flex items-center justify-between gap-2 text-[10px]"><span className="text-muted-foreground truncate">{progress.label}</span><span className={`font-bold ${textColors[progress.tone]}`}>{progress.percent}%</span></div>{bar}</div>;
+
+  return <section className={`rounded-2xl border p-4 sm:p-5 ${progress.tone === 'error' ? 'border-red-500/20 bg-red-500/[0.06]' : 'border-border/70 bg-card/80'} ${prominent ? 'shadow-sm' : ''}`}>
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+      <div><p className={`text-xs font-bold uppercase tracking-[0.12em] ${textColors[progress.tone]}`}>{progress.title}</p><p className="font-semibold mt-1">{job.character_id || 'Avatar'} · {progress.label}</p></div>
+      <div className="text-left sm:text-right"><p className={`text-2xl font-bold ${textColors[progress.tone]}`}>{progress.percent}%</p><p className="text-[11px] text-muted-foreground">Étape {progress.step}</p></div>
+    </div>
+    {bar}
+    <div className="flex flex-wrap justify-between gap-2 mt-2 text-[11px] text-muted-foreground"><span>Progression par étapes réelles, sans estimation du temps restant</span>{job.updated_at && <span>Mis à jour {new Date(job.updated_at).toLocaleString('fr-BE')}</span>}</div>
+    {job.error && <p className="mt-3 text-xs font-medium text-red-700">{formatAvatarFactoryError(job.error)}</p>}
+  </section>;
 }
 
 /** @param {any} props */
