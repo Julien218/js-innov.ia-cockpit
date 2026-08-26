@@ -1,8 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { executeProjectTask, executeSiteTask, executeVideoTask, isBase44QuotaError, isReadOnlySiteTask, projectPatchFromTask, resolveNovaExecutor, siteExecutorForTask } = require('../server-nova-executors.cjs');
-const { base44ErrorMessage } = require('../server-domain-ops.cjs');
+const { executeProjectTask, executeSiteTask, executeVideoTask, isReadOnlySiteTask, projectPatchFromTask, resolveNovaExecutor, siteExecutorForTask } = require('../server-nova-executors.cjs');
 const { executeTaskBatch, sanitizeTaskBatchPayload } = require('../server-task-batch.cjs');
 
 function jsonResponse(data, status = 200) {
@@ -63,28 +62,22 @@ function memoryAgent() {
   return { state, fetcher };
 }
 
-test('NOVA réserve chaque agent Base44 au site dont il est responsable', () => {
+test('NOVA réserve un spécialiste interne à chaque site sans dépendre de Base44', () => {
   const js = siteExecutorForTask({ titre: 'Réparation IA — jsinnovia.com' });
   const assurances = siteExecutorForTask({ titre: 'SEO automatique — assurances-dour.be' });
   const synergie = siteExecutorForTask({ titre: 'SEO — synergiedour.be' });
-  assert.equal(js.provider, 'base44');
-  assert.equal(js.id, 'base44-site:jsinnov-agent');
+  assert.equal(js.provider, 'cockpit-server');
+  assert.equal(js.id, 'nova-site-ops:jsinnov-agent');
   assert.equal(js.domain, 'jsinnovia.com');
-  assert.equal(siteExecutorForTask({ titre: 'SEO automatique — jsinnovia.store' }).id, 'base44-site:jsinnov-agent');
-  assert.equal(assurances.id, 'base44-site:assurances-dour');
-  assert.equal(assurances.provider_agent_id, '6a008b3e1571ea9f6ac3839d');
+  assert.equal(siteExecutorForTask({ titre: 'SEO automatique — jsinnovia.store' }).id, 'nova-site-ops:jsinnov-agent');
+  assert.equal(assurances.id, 'nova-site-ops:assurances-dour');
+  assert.equal(assurances.provider_agent_id, 'nova-site-ops');
+  assert.equal(assurances.repository, 'Julien218/PV_Agence_de_Dour');
   assert.equal(assurances.domain, 'assurances-dour.be');
-  assert.equal(synergie.id, 'base44-site:synergie-dour');
+  assert.equal(synergie.id, 'nova-site-ops:synergie-dour');
   assert.equal(siteExecutorForTask({ titre: 'Mettre à jour tous les clients' }), null);
   assert.equal(siteExecutorForTask({ titre: 'Contrôler MiniMax dans ComfyUI' }), null);
-  assert.equal(siteExecutorForTask({ titre: 'Contrôler video-studio.jsinnovia.com' }).id, 'base44-site:generatvideopro');
-});
-
-test('les erreurs Base44 conservent le détail exploitable du fournisseur', () => {
-  assert.equal(
-    base44ErrorMessage({ message: 'Agent tools are not enabled for this operation' }, 400, 'agent'),
-    'Base44 agent HTTP 400: Agent tools are not enabled for this operation',
-  );
+  assert.equal(siteExecutorForTask({ titre: 'Contrôler video-studio.jsinnovia.com' }).id, 'nova-site-ops:generatvideopro');
 });
 
 test('un diagnostic de site reste en lecture seule même si le modèle omet le drapeau', () => {
@@ -93,17 +86,15 @@ test('un diagnostic de site reste en lecture seule même si le modèle omet le d
   assert.equal(isReadOnlySiteTask({ titre: 'Corriger le TLS — assurances-dour.be' }), false);
 });
 
-test('le quota Base44 déclenche un diagnostic Cockpit prouvé sans simuler une correction', async () => {
+test('un diagnostic de site est exécuté directement par le Cockpit sans appel Base44', async () => {
   const executor = siteExecutorForTask({ titre: 'Diagnostic DNS — assurances-dour.be' });
   const result = await executeSiteTask(executor, { titre: 'Diagnostic DNS — assurances-dour.be' }, {
-    dispatch: async () => { throw new Error('You have reached your limit of messages for this month. Please upgrade to a paid plan to continue.'); },
     analyze: async (domain) => ({ tool: 'cockpit_domain_probe', run_id: 'domain-proof-1', checked_at: '2026-08-25T12:00:00Z', domain, dns: { apex: { a: ['192.0.2.1'] } }, http: {}, tls: {}, seo: {}, issues: [] }),
   });
-  assert.equal(isBase44QuotaError(result.result.base44_fallback.error), true);
   assert.equal(result.completed, true);
   assert.equal(result.provider, 'cockpit-server');
   assert.equal(result.result.run_id, 'domain-proof-1');
-  assert.equal(result.result.base44_fallback.status, 'quota_exhausted');
+  assert.equal(result.result.domain, 'assurances-dour.be');
 });
 
 test('NOVA attribue Windows et les données métier à ses exécuteurs internes', () => {
@@ -246,7 +237,7 @@ test('un site appelle son exécuteur réel avant toute clôture', async () => {
     payload, token: 'site', user: { id: 'owner' }, tenant: 'jsinnovia', agentFetch: fetcher,
     executionHandlers: { site: async (executor, task) => { call = { executor, task }; return { completed: true, result: { verified: true } }; } },
   });
-  assert.equal(call.executor.id, 'base44-site:jsinnov-agent');
+  assert.equal(call.executor.id, 'nova-site-ops:jsinnov-agent');
   assert.equal(result.results[0].status, 'completed');
-  assert.equal(state.runs[0].provider_name, 'base44');
+  assert.equal(state.runs[0].provider_name, 'cockpit-server');
 });

@@ -1,7 +1,5 @@
 const { AGENT_REGISTRY } = require('./server-agent-registry.cjs');
 
-const BASE44_API_KEY = String(process.env.BASE44_API_KEY || process.env.BASE44_SERVER_API_KEY || '').trim();
-const BASE44_AGENT_URL = String(process.env.BASE44_AGENT_URL || 'https://app.base44.com/api/agents').replace(/\/$/, '');
 const JS_AGENT_URL = String(process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app').replace(/\/$/, '');
 const JS_AGENT_KEY = String(process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '').trim();
 const MAX_DELEGATES = Math.max(1, Math.min(3, Number(process.env.COMPANION_MAX_SPECIALISTS || 2)));
@@ -180,10 +178,9 @@ function buildAgentRoutingContext(message) {
   const plan = resolveAgentPlan(message);
   const lines = [
     '[ROUTAGE AGENTS MÉTIER JS-INNOV.IA — lecture seule]',
-    `Provider Base44 serveur configuré: ${BASE44_API_KEY ? 'oui' : 'non'}.`,
     `Provider jsinnovia-agent configuré: ${JS_AGENT_KEY ? 'oui' : 'non'}.`,
-    'Politique: Base44 intervient uniquement quand le domaine exact de son site est présent dans la demande.',
-    'Chaque agent Base44 reste strictement limité à ses domaines enregistrés. Les tâches Windows, vidéo locale, CRM et métier restent sous NOVA.',
+    'Politique: tous les spécialistes sont internes à NOVA. Base44 est retiré du chemin d’exécution.',
+    'Chaque spécialiste de site reste strictement limité à ses domaines enregistrés. Les tâches Windows, vidéo locale, CRM, GitHub et Railway restent sous NOVA.',
   ];
   if (!plan.length) {
     const virtual = buildVirtualAgent(message);
@@ -234,42 +231,6 @@ function hasOperationalEvidence(content) {
   return hasTool && hasRawOutput && hasRunId && hasTime;
 }
 
-async function delegateBase44ReadOnly(agent, message) {
-  if (!BASE44_API_KEY) {
-    return { ok: false, skipped: true, reason: 'base44_server_key_missing', agent };
-  }
-  if (!agent?.provider_agent_id) {
-    return { ok: false, skipped: true, reason: 'agent_id_missing', agent };
-  }
-  if (!SITE_AGENT_REGISTRY.some((candidate) => candidate.key === agent.key && candidate.provider_agent_id === agent.provider_agent_id)) {
-    return { ok: false, skipped: true, reason: 'base44_agent_not_authorized_for_site_routing', agent };
-  }
-
-  const headers = { api_key: BASE44_API_KEY, 'Content-Type': 'application/json' };
-  const conversation = await fetchJson(`${BASE44_AGENT_URL}/${encodeURIComponent(agent.provider_agent_id)}/conversations`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({}),
-  });
-  if (!conversation?.id) throw new Error(`Base44 n'a pas retourné de conversation pour ${agent.name}.`);
-
-  const answer = await fetchJson(`${BASE44_AGENT_URL}/${encodeURIComponent(agent.provider_agent_id)}/conversations/${encodeURIComponent(conversation.id)}/messages`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ role: 'user', content: specialistPrompt(agent, message) }),
-  }, 60000);
-
-  const content = String(answer?.content || answer?.message || answer?.response || '').trim();
-  return {
-    ok: Boolean(content),
-    skipped: false,
-    provider: 'base44',
-    agent,
-    conversation_id: conversation.id,
-    content: content.slice(0, 8000),
-  };
-}
-
 async function delegateVirtualReadOnly(agent, message) {
   if (!JS_AGENT_KEY) {
     return { ok: false, skipped: true, reason: 'jsinnovia_agent_key_missing', agent };
@@ -306,9 +267,6 @@ async function delegateVirtualReadOnly(agent, message) {
 }
 
 async function delegateSpecialistReadOnly(agent, message) {
-  if (agent?.provider === 'base44' && BASE44_API_KEY) {
-    return delegateBase44ReadOnly(agent, message);
-  }
   return delegateVirtualReadOnly(buildVirtualAgent(message, agent), message);
 }
 
@@ -357,7 +315,6 @@ module.exports = {
   buildVirtualAgent,
   shouldAutoDelegate,
   buildAgentRoutingContext,
-  delegateBase44ReadOnly,
   delegateVirtualReadOnly,
   delegateSpecialistReadOnly,
   runReadOnlyDelegations,

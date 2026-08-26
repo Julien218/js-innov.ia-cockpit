@@ -1,8 +1,8 @@
 /**
- * AgentsIA.jsx — Page de gestion des agents IA Base44
+ * AgentsIA.jsx — Page de gestion des spécialistes internes NOVA
  *
  * Architecture sécurisée :
- *   Frontend → /api/base44-agents (backend Cockpit) → Base44 Agents API
+ *   Frontend → /api/base44-agents (URL de compatibilité) → NOVA interne
  *
  * Aucune clé API n'est présente dans ce fichier.
  * Toutes les requêtes passent par le backend sécurisé du Cockpit.
@@ -147,7 +147,7 @@ export default function AgentsIA() {
       {/* En-tête */}
       <div style={{ marginBottom: '32px' }}>
         <h1 style={{ fontSize: '28px', fontWeight: 700, color: COLORS.textPrimary, margin: 0 }}>
-          Agents IA — Base44
+          Spécialistes IA — NOVA
         </h1>
         <p style={{ color: COLORS.textSecondary, marginTop: '8px', fontSize: '14px' }}>
           {agents.filter(a => a.status === 'active').length} agents actifs sur {agents.length} •
@@ -399,7 +399,7 @@ export default function AgentsIA() {
         color: COLORS.green
       }}>
         🔒 Sécurité : Cette page n'utilise aucune clé API côté navigateur. Toutes les requêtes passent par
-        le backend sécurisé du Cockpit via <code style={{ color: COLORS.cyan }}>/api/base44-agents</code>.
+        le moteur interne sécurisé de NOVA. L’ancienne URL technique est conservée uniquement pour compatibilité.
         La clé <code style={{ color: COLORS.cyan }}>BASE44_API_KEY</code> est stockée uniquement côté serveur.
       </div>
     </div>

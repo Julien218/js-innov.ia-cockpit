@@ -1,7 +1,7 @@
 /**
  * AppsAgents.jsx — Page Apps & Agents (registre dynamique)
  *
- * Affiche le registre actuel des agents Base44 avec :
+ * Affiche le registre actuel des spécialistes internes NOVA avec :
  * - agent actif / provider / ID provider / site associé
  * - dernière vérification / dernière exécution / état / erreur éventuelle
  *
@@ -310,7 +310,7 @@ export default function AppsAgents() {
         fontSize: '12px',
         color: COLORS.green
       }}>
-        🔒 Registre dynamique alimenté par <code style={{ color: COLORS.cyan }}>/api/base44-agents</code>.
+        🔒 Registre dynamique des spécialistes internes NOVA. Base44 n’est plus requis pour exécuter les tâches.
         Aucune clé API exposée côté navigateur. La clé <code style={{ color: COLORS.cyan }}>BASE44_API_KEY</code>
         est stockée uniquement côté serveur Railway.
       </div>

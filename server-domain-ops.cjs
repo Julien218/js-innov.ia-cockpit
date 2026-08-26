@@ -7,8 +7,6 @@ const { SITE_AGENT_REGISTRY } = require('./server-agent-orchestrator.cjs');
 const router = express.Router();
 const JS_AGENT_URL = String(process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app').replace(/\/$/, '');
 const JS_AGENT_KEY = String(process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '').trim();
-const BASE44_API_KEY = String(process.env.BASE44_API_KEY || process.env.BASE44_SERVER_API_KEY || '').trim();
-const BASE44_AGENT_URL = String(process.env.BASE44_AGENT_URL || 'https://app.base44.com/api/agents').replace(/\/$/, '');
 const pendingDomainActions = new Map();
 
 const MANAGED_DOMAINS = Object.freeze({
@@ -19,14 +17,14 @@ const MANAGED_DOMAINS = Object.freeze({
     primary_url: 'https://www.jsinnovia.com',
     repository: 'Julien218/jsinnovia',
   },
-  'cockpit.jsinnovia.com': { app: 'cockpit-v3', agent_hint: 'JsInnov-Agent' },
-  'jsinnovia.store': { app: 'JS-INNOV.IA', agent_hint: 'JsInnov-Agent' },
-  'assurances-dour.be': { app: 'assurances-dour.be', agent_hint: 'Agent Assurances-Dour.be' },
-  'letourdedour.com': { app: 'Multi site', agent_hint: 'Site Olivier landing Page' },
-  'oliviertrevis.be': { app: 'Multi site', agent_hint: 'Site Olivier landing Page' },
-  'synergiedour.be': { app: 'SynergieDour.be', agent_hint: 'Synergie Dour Assistant' },
-  'missetmisterdour.be': { app: 'Miss DOUR', agent_hint: 'Agent Miss & Mister Dour' },
-  'fashionistartdour.be': { app: "Fashionist'ART", agent_hint: 'Agent Fashionistart' },
+  'cockpit.jsinnovia.com': { app: 'cockpit-v3', agent_hint: 'NOVA Sites JS-Innov.IA', hosting: 'Railway', repository: 'Julien218/js-innov.ia-cockpit' },
+  'jsinnovia.store': { app: 'JS-INNOV.IA', agent_hint: 'NOVA Sites JS-Innov.IA', hosting: 'Railway', repository: 'Julien218/jsinnovia' },
+  'assurances-dour.be': { app: 'assurances-dour.be', agent_hint: 'NOVA Site Assurances-Dour.be', hosting: 'Railway', repository: 'Julien218/PV_Agence_de_Dour' },
+  'letourdedour.com': { app: 'letourdedour-site', agent_hint: 'NOVA Site Olivier Trévis', hosting: 'Railway', repository: 'Julien218/letourdedour-site' },
+  'oliviertrevis.be': { app: 'oliviertrevis-site', agent_hint: 'NOVA Site Olivier Trévis', hosting: 'Railway', repository: 'Julien218/oliviertrevis-site' },
+  'synergiedour.be': { app: 'SynergieDour.be', agent_hint: 'NOVA Site Synergie Dour', hosting: 'Railway', repository: 'Julien218/synergie-dour' },
+  'missetmisterdour.be': { app: 'Miss DOUR', agent_hint: 'NOVA Site Miss & Mister Dour', hosting: 'Railway', repository: 'Julien218/miss-mister-dour-web' },
+  'fashionistartdour.be': { app: "fashionist-art", agent_hint: "NOVA Site Fashionist'art", hosting: 'Railway', repository: 'Julien218/fashionist-art' },
 });
 
 function safeDomain(value) {
@@ -208,18 +206,6 @@ function agentForDomain(domain) {
     || null;
 }
 
-function base44ErrorMessage(payload, status, operation = 'agent') {
-  const detail = payload?.error ?? payload?.message ?? payload?.detail ?? payload?.details;
-  let text = '';
-  if (typeof detail === 'string') text = detail;
-  else if (detail && typeof detail === 'object') {
-    try { text = JSON.stringify(detail); }
-    catch { text = String(detail); }
-  }
-  text = text.replace(/\s+/g, ' ').trim().slice(0, 800);
-  return `Base44 ${operation} HTTP ${status}${text ? `: ${text}` : ''}`;
-}
-
 async function jsAgentRequest(path, options = {}) {
   if (!JS_AGENT_KEY) throw new Error('JSINNOVIA_AGENT_KEY non configurée.');
   const response = await fetch(`${JS_AGENT_URL}${path}`, {
@@ -278,56 +264,19 @@ async function recordRun({ task, agent, domain, kind, status, result, error, con
       agent_id: String(agent?.key || agent?.provider_agent_id || 'domain-agent'),
       functional_role: String(agent?.role || 'domain_ops'),
       provider_agent_id: agent?.provider_agent_id || null,
-      provider_name: agent ? 'base44' : 'unavailable',
+      provider_name: agent ? 'cockpit-server' : 'unavailable',
       status,
       execution_mode: 'confirmed_write',
       input: { domain, kind },
       result: result ? { summary: String(result).slice(0, 4000), conversation_id: conversationId || null } : null,
       error: error ? String(error).slice(0, 500) : null,
       requested_by: 'cockpit-domaines',
-      base44_agent_id: agent?.provider_agent_id || null,
-      base44_conv_id: conversationId || null,
+      base44_agent_id: null,
+      base44_conv_id: null,
       started_at: new Date().toISOString(),
-      completed_at: new Date().toISOString(),
+      completed_at: ['completed', 'failed', 'blocked'].includes(status) ? new Date().toISOString() : null,
     }),
   }).catch(() => null);
-}
-
-async function executeBase44Agent(agent, domain, kind, before) {
-  if (!agent?.provider_agent_id) throw new Error('Aucun agent Base44 métier associé à ce domaine.');
-  if (!BASE44_API_KEY) throw new Error('BASE44_API_KEY serveur non configurée.');
-  const headers = { api_key: BASE44_API_KEY, 'Content-Type': 'application/json' };
-  const convResponse = await fetch(`${BASE44_AGENT_URL}/${encodeURIComponent(agent.provider_agent_id)}/conversations`, {
-    method: 'POST', headers, body: JSON.stringify({}), signal: AbortSignal.timeout(15000),
-  });
-  const conv = await convResponse.json().catch(() => ({}));
-  if (!convResponse.ok || !conv?.id) throw new Error(base44ErrorMessage(conv, convResponse.status, 'conversation'));
-
-  const issues = (before.issues || []).map((item) => `- ${item.code}: ${item.label}`).join('\n') || '- optimisation proactive';
-  const seo = (before.seo?.recommendations || []).map((item) => `- ${item}`).join('\n') || '- aucune recommandation SEO';
-  const prompt = [
-    `Tu es l’agent métier responsable du site ${domain}.`,
-    'Cette intervention a reçu la confirmation explicite de l’administrateur JS-Innov.IA.',
-    `Mission: ${kind === 'seo' ? 'appliquer les corrections SEO techniques sûres et vérifiables' : 'corriger les incidents techniques du site que tes outils permettent réellement de modifier'}.`,
-    'Ne modifie aucun autre site, domaine, client ou projet.',
-    'Ne supprime aucune donnée métier. Ne change pas de facturation.',
-    'Si une correction nécessite DNS/registrar ou un accès que tu ne possèdes pas, ne simule pas la réussite: indique précisément le blocage.',
-    '',
-    'Incidents mesurés avant intervention:',
-    issues,
-    '',
-    'SEO mesuré avant intervention:',
-    seo,
-    '',
-    'Applique uniquement les corrections que tu peux réellement exécuter, puis retourne un compte rendu précis des changements effectués et des blocages restants.',
-  ].join('\n').slice(0, 7000);
-
-  const answerResponse = await fetch(`${BASE44_AGENT_URL}/${encodeURIComponent(agent.provider_agent_id)}/conversations/${encodeURIComponent(conv.id)}/messages`, {
-    method: 'POST', headers, body: JSON.stringify({ role: 'user', content: prompt }), signal: AbortSignal.timeout(120000),
-  });
-  const answer = await answerResponse.json().catch(() => ({}));
-  if (!answerResponse.ok) throw new Error(base44ErrorMessage(answer, answerResponse.status, 'agent'));
-  return { conversationId: conv.id, content: String(answer?.content || answer?.response || answer?.message || '').trim() };
 }
 
 function verifiedImprovement(kind, before, after) {
@@ -415,7 +364,6 @@ router.post('/repair', async (req, res) => {
   const { domain, kind, before } = resolved.item;
   let task = null;
   let agent = null;
-  let execution = null;
   try {
     task = await createRepairTask(domain, kind, before);
     agent = agentForDomain(domain);
@@ -426,38 +374,28 @@ router.post('/repair', async (req, res) => {
       return res.status(409).json({ success: false, verified: false, domain, task, before, error: 'Aucun agent métier compatible associé au domaine.' });
     }
 
-    execution = await executeBase44Agent(agent, domain, kind, before);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    const after = await analyzeDomain(domain);
-    const verified = verifiedImprovement(kind, before, after);
-
-    await patchTask(task?.id, {
-      statut: verified ? 'terminee' : 'bloquee',
-      notes: verified
-        ? `Correction vérifiée automatiquement. Agent: ${agent.name}.`
-        : `Intervention agent reçue mais aucune amélioration mesurable. Vérification manuelle/provider requise. Agent: ${agent.name}.`,
-    });
+    const repository = MANAGED_DOMAINS[domain]?.repository || null;
+    const result = { domain, kind, repository, hosting: MANAGED_DOMAINS[domain]?.hosting || null, before, queued_at: new Date().toISOString() };
+    await patchTask(task?.id, { statut: 'en_cours', notes: `Prise en charge interne par NOVA Site Ops${repository ? ` sur ${repository}` : ''}. Base44 n’est pas utilisé.` });
     await recordRun({
       task,
       agent,
       domain,
       kind,
-      status: verified ? 'completed' : 'blocked',
-      result: execution.content,
-      conversationId: execution.conversationId,
-      error: verified ? null : 'no_verified_improvement',
+      status: 'pending',
+      result: JSON.stringify(result),
+      error: repository ? null : 'repository_missing',
     });
-
-    return res.status(verified ? 200 : 409).json({
-      success: verified,
-      verified,
+    return res.status(202).json({
+      success: true,
+      verified: false,
+      status: 'queued_internal',
       domain,
       kind,
       task,
       agent: { name: agent.name, role: agent.role, provider_agent_id: agent.provider_agent_id },
-      execution: { summary: execution.content.slice(0, 5000), conversation_id: execution.conversationId },
+      execution: result,
       before,
-      after,
     });
   } catch (error) {
     if (task?.id) await patchTask(task.id, { statut: 'bloquee', notes: `Réparation automatique bloquée: ${String(error.message || error).slice(0, 400)}` });
@@ -472,5 +410,3 @@ module.exports.safeDomain = safeDomain;
 module.exports.MANAGED_DOMAINS = MANAGED_DOMAINS;
 module.exports.verifiedImprovement = verifiedImprovement;
 module.exports.agentForDomain = agentForDomain;
-module.exports.executeBase44Agent = executeBase44Agent;
-module.exports.base44ErrorMessage = base44ErrorMessage;

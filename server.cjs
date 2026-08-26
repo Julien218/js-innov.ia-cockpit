@@ -234,13 +234,13 @@ try {
   console.warn('⚠️ Route governance indisponible:', e.message);
 }
 
-// ── Base44 Agents Proxy (sécurisé, sans clé frontend) ─────
+// ── Spécialistes internes NOVA (URL historique conservée pour compatibilité UI) ─────
 try {
   const base44AgentsRouter = require('./server-base44-agents.cjs');
   app.use('/api/base44-agents', requireSession('collaborateur'), requirePermission('ai_agents', 'collaborateur'), base44AgentsRouter.router);
-  console.log('✅ Route /api/base44-agents activée (proxy sécurisé vers Base44 Agents API)');
+  console.log('✅ Spécialistes internes NOVA activés (Base44 retiré du chemin actif)');
 } catch (e) {
-  console.warn('⚠️ Route base44-agents indisponible:', e.message);
+  console.warn('⚠️ Registre des spécialistes NOVA indisponible:', e.message);
 }
 
 
