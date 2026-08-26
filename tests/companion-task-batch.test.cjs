@@ -106,7 +106,8 @@ test('un même titre ne peut apparaître deux fois dans un lot', () => {
 test('l’assignation proposée par le modèle reste une métadonnée non fiable', () => {
   assert.doesNotMatch(taskBatchSource, /record\s*=\s*\{[\s\S]*assigne_a\s*:/);
   assert.match(taskBatchSource, /requested_agent/);
-  assert.match(taskBatchSource, /resolveNovaExecutor\(item\.record\)/);
+  assert.match(taskBatchSource, /resolveNovaExecutor\(item\.existing_task_id/);
+  assert.doesNotMatch(taskBatchSource, /resolveNovaExecutor\(item\.requested_agent/);
 });
 
 test('chaque tâche créée reçoit un agent_run relié et un idempotency key', () => {
