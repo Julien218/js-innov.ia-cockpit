@@ -442,13 +442,14 @@ describe('POST /api/emails/official — Envoi SMTP mocké', () => {
     assert.strictEqual(res.body.messageId, 'mock-message-id-123');
   });
 
-  test('32. mailbox réellement forcée à store (from contient info@jsinnovia.store)', async () => {
+  test('32. identité réellement forcée à JS-Innov.IA (from contient info@jsinnovia.com)', async () => {
     await makeRequest('/api/emails/official', {
       headers: validHeaders(), body: validBody(),
     });
     assert.ok(lastMailOptions, 'sendMail should have been called');
-    assert.ok(lastMailOptions.from.includes('info@jsinnovia.store'),
-      `Expected from to contain info@jsinnovia.store, got: ${lastMailOptions.from}`);
+    assert.ok(lastMailOptions.from.includes('info@jsinnovia.com'),
+      `Expected from to contain info@jsinnovia.com, got: ${lastMailOptions.from}`);
+    assert.ok((lastMailOptions.html || '').includes('data-jsinnovia-signature="js-innov-ia"') || (lastMailOptions.text || '').includes('JS-Innov.IA'));
   });
 
   test('33. replyTo transmis à Nodemailer', async () => {

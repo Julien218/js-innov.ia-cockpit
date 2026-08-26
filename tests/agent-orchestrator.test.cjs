@@ -15,35 +15,36 @@ const {
   hasOperationalEvidence,
 } = orchestrator;
 
-test('route Synergie Dour vers son agent Base44 dédié', () => {
+test('route Synergie Dour vers son spécialiste NOVA dédié', () => {
   const plan = resolveAgentPlan('Analyse le site synergiedour.be et ses événements');
   assert.ok(plan.length > 0);
-  assert.equal(plan[0].agent.name, 'Synergie Dour Assistant');
-  assert.equal(plan[0].agent.provider_agent_id, '6a0208edd1e235b62b4bda38');
+  assert.equal(plan[0].agent.name, 'NOVA Site Synergie Dour');
+  assert.equal(plan[0].agent.provider, 'jsinnovia-agent');
 });
 
-test('route Assurances-Dour vers son agent Base44 exclusif', () => {
+test('route Assurances-Dour vers son spécialiste NOVA exclusif', () => {
   const plan = resolveAgentPlan('Contrôle le DNS, le TLS et le SEO de assurances-dour.be');
   assert.equal(plan.length, 1);
-  assert.equal(plan[0].agent.name, 'Agent Assurances-Dour.be');
-  assert.equal(plan[0].agent.provider_agent_id, '6a008b3e1571ea9f6ac3839d');
+  assert.equal(plan[0].agent.name, 'NOVA Site Assurances-Dour.be');
+  assert.equal(plan[0].agent.provider, 'jsinnovia-agent');
 });
 
 test('MiniMax local reste sous NOVA sans appel Base44 générique', () => {
   const plan = resolveAgentPlan('Continue Video Studio et vérifie MiniMax H3 dans ComfyUI');
   assert.equal(plan.length, 0);
   const sitePlan = resolveAgentPlan('Contrôle le site video-studio.jsinnovia.com');
-  assert.equal(sitePlan[0].agent.provider_agent_id, '69e467a9d6329bb2ead81fa3');
+  assert.equal(sitePlan[0].agent.provider, 'jsinnovia-agent');
 });
 
 test('route DNS, TLS et SEO vers JsInnov-Agent', () => {
   const plan = resolveAgentPlan('Diagnostique réellement le DNS, HTTPS, TLS et SEO de jsinnovia.com');
-  assert.equal(plan[0].agent.provider_agent_id, '6a1845e17cc526d1e44965bc');
+  assert.equal(plan[0].agent.key, 'jsinnov-agent');
+  assert.equal(plan[0].agent.provider, 'jsinnovia-agent');
 });
 
 test('distingue DourConnect et VilleConnect', () => {
-  assert.equal(resolveAgentPlan('Analyse dourconnect.be')[0].agent.provider_agent_id, '6a22f0c096ce009a943f4a05');
-  assert.equal(resolveAgentPlan('Analyse villeconnect.be')[0].agent.provider_agent_id, '6a11d1493754e75ce76ee0de');
+  assert.equal(resolveAgentPlan('Analyse dourconnect.be')[0].agent.key, 'dourconnect');
+  assert.equal(resolveAgentPlan('Analyse villeconnect.be')[0].agent.key, 'villeconnect');
 });
 
 test('le CRM Cockpit reste sous NOVA sans appel au doublon Base44', () => {
@@ -91,12 +92,12 @@ test('un diagnostic complet avec journal non-URL est reconnu comme rapport prouv
   assert.match(context, /preuve_diagnostic=présente/);
 });
 
-test('le contexte de routage interdit les clés Base44 côté frontend', () => {
+test('le contexte de routage retire Base44 du chemin actif', () => {
   const ctx = buildAgentRoutingContext('Analyse Fashionistart').context;
-  assert.match(ctx, /domaine exact de son site/i);
+  assert.match(ctx, /Base44 est retiré du chemin d’exécution/i);
   const env = fs.readFileSync(path.join(root, '.env.example'), 'utf8');
-  assert.match(env, /BASE44_API_KEY=/);
-  assert.match(env, /Ne jamais remplacer par une variable VITE_\*/);
+  assert.doesNotMatch(env, /BASE44_API_KEY=/);
+  assert.match(env, /Aucune clé Base44 n'est requise/);
 });
 
 test('la mémoire owner intègre routage, délégation et journal agent_runs', () => {
@@ -115,11 +116,13 @@ test('Docker embarque les modules d’orchestration', () => {
   assert.match(docker, /server-agent-run-log\.cjs/);
 });
 
-test('le proxy et NOVA utilisent un registre Base44 unique', () => {
+test('NOVA utilise un registre interne unique sans identifiant Base44 actif', () => {
   const registry = require(path.join(root, 'server-agent-registry.cjs')).AGENT_REGISTRY;
   const active = registry.filter((agent) => agent.status === 'active');
   assert.equal(active.length, 11);
-  assert.equal(new Set(active.map((agent) => agent.provider_agent_id)).size, 11);
+  assert.ok(active.every((agent) => agent.provider === 'jsinnovia-agent'));
+  assert.ok(active.every((agent) => agent.provider_agent_id === null));
+  assert.ok(active.every((agent) => agent.legacy_base44_agent_id));
   assert.ok(orchestrator.SITE_AGENT_REGISTRY.length < active.length);
   assert.ok(orchestrator.SITE_AGENT_REGISTRY.every((agent) => agent.domains.length > 0));
   assert.ok(orchestrator.SITE_AGENT_REGISTRY.every((agent) => !['nova', 'creative-director'].includes(agent.key)));

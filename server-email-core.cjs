@@ -16,6 +16,7 @@
 
 const express = require('express');
 const nodemailer = require('nodemailer');
+const { applyBrandSignature, identityForBrand } = require('./server-email-branding.cjs');
 const crypto = require('crypto');
 const { requireSession, ROLE_LEVEL } = require('./server-security.cjs');
 
@@ -27,8 +28,8 @@ const SUPABASE_SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_
 
 // ── Fallback 7 Marques Hardcodées (si Supabase indisponible) ──────
 const FALLBACK_BRANDS = [
-  { slug: 'js-innov-ia', name: 'JS-Innov.IA', default_from: 'JS-Innov.IA <info@jsinnovia.store>', is_active: true },
-  { slug: 'assurances-dour', name: 'Assurances Dour', default_from: 'Assurances Dour <info@assurances-dour.be>', is_active: true },
+  { slug: 'js-innov-ia', name: 'JS-Innov.IA', from_name: 'JS-Innov.IA', from_address: 'info@jsinnovia.com', default_from: '"JS-Innov.IA" <info@jsinnovia.com>', is_active: true, active: true },
+  { slug: 'assurances-dour', name: 'Assurances-Dour.be', from_name: 'Assurances-Dour.be', from_address: 'info@assurances-dour.be', default_from: '"Assurances-Dour.be" <info@assurances-dour.be>', is_active: true, active: true },
   { slug: 'store', name: 'JS-Innov.IA Store', default_from: 'JS-Innov.IA Store <info@jsinnovia.store>', is_active: true },
   { slug: 'villeconnect', name: 'VilleConnect', default_from: 'VilleConnect <info@jsinnovia.store>', is_active: true },
   { slug: 'cockpit', name: 'Cockpit JS-Innov.IA', default_from: 'Cockpit JS-Innov.IA <info@jsinnovia.store>', is_active: true },
@@ -140,18 +141,20 @@ refreshBrands().catch(() => {});
 function getSmtpConfig(brandSlug) {
   const resolved = resolveBrandSlug(brandSlug);
   const brand = getBrand(resolved);
+  const identity = identityForBrand(resolved);
 
   const config = {
     host: process.env.SMTP_HOST || 'smtp.ionos.fr',
     port: parseInt(process.env.SMTP_PORT || '465', 10),
-    user: process.env.EMAIL_STORE_ADDRESS || 'info@jsinnovia.store',
-    pass: process.env.EMAIL_PASSWORD_STORE || '',
-    from: (brand && (brand.default_from || brand.from)) || 'JS-Innov.IA <info@jsinnovia.store>',
+    user: process.env.EMAIL_JSINNOVIA_ADDRESS || 'info@jsinnovia.com',
+    pass: process.env.EMAIL_PASSWORD_JSINNOVIA || process.env.EMAIL_JSINNOVIA_PASSWORD || process.env.EMAIL_PASSWORD || process.env.EMAIL_PASSWORD_STORE || process.env.EMAIL_STORE_PASSWORD || '',
+    from: identity.from,
+    replyTo: identity.replyTo,
   };
 
   if (resolved === 'assurances-dour' || resolved === 'assurances') {
     config.user = process.env.EMAIL_ASSURANCES_ADDRESS || 'info@assurances-dour.be';
-    config.pass = process.env.EMAIL_PASSWORD_ASSURANCES || config.pass;
+    config.pass = process.env.EMAIL_PASSWORD_ASSURANCES || process.env.EMAIL_ASSURANCES_PASSWORD || config.pass;
   }
 
   if (brand && brand.smtp_override) {
@@ -164,7 +167,6 @@ function getSmtpConfig(brandSlug) {
       if (override.port) config.port = parseInt(override.port, 10);
       if (override.user) config.user = override.user;
       if (override.pass) config.pass = override.pass;
-      if (override.from) config.from = override.from;
     }
   }
 
@@ -335,6 +337,7 @@ async function processQueue() {
     try {
       const mailOptions = {
         from: smtpCfg.from,
+        replyTo: smtpCfg.replyTo,
         to: emailLog.to,
         cc: emailLog.cc || undefined,
         bcc: emailLog.bcc || undefined,
@@ -593,14 +596,23 @@ async function sendEmail({ to, cc, bcc, subject, text, html, brand, application,
   const attachmentMeta = parsedAttachments.length > 0 ? parsedAttachments.map(a => a.metadata) : [];
 
   const smtpConfig = getSmtpConfig(resolvedSlug);
+  if (from && String(from).trim().toLowerCase() !== String(smtpConfig.from).trim().toLowerCase()) {
+    throw new Error(`Expéditeur refusé pour la marque ${resolvedSlug}`);
+  }
+  const signed = applyBrandSignature({
+    text,
+    html,
+    brand: resolvedSlug,
+    signatureHtml: brandConfig.signature_html || undefined,
+  });
 
   const emailLogId = await logEmail({
     to,
     cc,
     bcc,
     subject,
-    text,
-    html,
+    text: signed.text,
+    html: signed.html,
     brand: resolvedSlug,
     application: application || 'cockpit',
     idempotencyKey,
@@ -614,13 +626,14 @@ async function sendEmail({ to, cc, bcc, subject, text, html, brand, application,
   try {
     const transport = getOrCreateTransport(smtpConfig);
     const mailOptions = {
-      from: from || smtpConfig.from,
+      from: smtpConfig.from,
+      replyTo: smtpConfig.replyTo,
       to,
       cc: cc || undefined,
       bcc: bcc || undefined,
       subject,
-      text: text || undefined,
-      html: html || undefined,
+      text: signed.text || undefined,
+      html: signed.html || undefined,
       attachments: parsedAttachments.length > 0 ? parsedAttachments.map(a => ({ filename: a.filename, content: a.content, contentType: a.contentType })) : undefined,
     };
 

@@ -12,7 +12,7 @@ const MAX_ATTACHMENTS = 8;
 const ACCEPTED_FILES = '.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx,.xls,.xlsx,.csv,.txt';
 
 const MAILBOXES = [
-  { id: 'jsinnovia',  label: 'JS-Innov.IA',     email: 'info@jsinnovia.com',       icon: Mail,   color: '#D4AF37', isAlias: true,  canSend: false, brand: 'js-innov-ia' },
+  { id: 'jsinnovia',  label: 'JS-Innov.IA',     email: 'info@jsinnovia.com',       icon: Mail,   color: '#D4AF37', isAlias: true,  canSend: true,  brand: 'js-innov-ia' },
   { id: 'assurances', label: 'Assurances Dour', email: 'info@assurances-dour.be', icon: Shield, color: '#22D3EE', isAlias: false, canSend: true,  brand: 'assurances-dour' },
   { id: 'store',      label: 'JS Store',         email: 'info@jsinnovia.store',    icon: Store,  color: '#A78BFA', isAlias: false, canSend: true,  brand: 'js-innov-ia' },
 ];
@@ -418,7 +418,7 @@ export default function Emails() {
   };
 
   const handleSend = async (payload) => {
-    if (activeMailboxCfg?.isAlias) throw new Error('Alias — envoi non disponible.');
+    if (!activeMailboxCfg?.canSend) throw new Error('Envoi non disponible pour cette boîte.');
     const res = await fetch(`${API_BASE}/api/email-compose/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -446,7 +446,7 @@ export default function Emails() {
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2"><Mail className="w-5 h-5 text-[#D4AF37]" />{isSentFolder ? 'Emails envoyés' : 'Boîtes mail'}{unreadCount > 0 && <span className="ml-1 bg-[#D4AF37] text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full">{unreadCount}</span>}</h1>
           <div className="flex items-center gap-2">
-            <button onClick={() => { setReplyTo(null); setComposeOpen(true); }} disabled={activeMailboxCfg?.isAlias} className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg min-h-[36px] border ${activeMailboxCfg?.isAlias ? 'bg-white/5 text-gray-600 border-white/10 cursor-not-allowed' : 'bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30 hover:bg-[#D4AF37]/25'}`}><Send className="w-3.5 h-3.5" /><span className="hidden sm:inline">Écrire</span></button>
+            <button onClick={() => { setReplyTo(null); setComposeOpen(true); }} disabled={!activeMailboxCfg?.canSend} className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg min-h-[36px] border ${!activeMailboxCfg?.canSend ? 'bg-white/5 text-gray-600 border-white/10 cursor-not-allowed' : 'bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30 hover:bg-[#D4AF37]/25'}`}><Send className="w-3.5 h-3.5" /><span className="hidden sm:inline">Écrire</span></button>
             <button onClick={fetchList} disabled={loading} className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/5 min-h-[36px]"><RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /><span className="hidden sm:inline">Actualiser</span></button>
           </div>
         </div>

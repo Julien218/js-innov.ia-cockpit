@@ -146,11 +146,11 @@ describe('server-email-core — Tests unitaires & métriques', () => {
   });
 
   describe('2. Config SMTP & Multi-marques (getSmtpConfig)', () => {
-    test('Marque par défaut (js-innov-ia) utilise EMAIL_STORE_ADDRESS', () => {
+    test('Marque par défaut (js-innov-ia) utilise l’adresse officielle jsinnovia.com', () => {
       const cfg = emailCore.getSmtpConfig('js-innov-ia');
       assert.strictEqual(cfg.host, 'smtp.ionos.fr');
       assert.strictEqual(cfg.port, 465);
-      assert.strictEqual(cfg.user, 'info@jsinnovia.store');
+      assert.strictEqual(cfg.user, 'info@jsinnovia.com');
     });
 
     test('Marque assurances-dour utilise EMAIL_ASSURANCES_ADDRESS', () => {

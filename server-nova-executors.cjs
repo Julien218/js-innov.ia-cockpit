@@ -4,17 +4,10 @@ const { AGENT_REGISTRY } = require('./server-agent-registry.cjs');
 const { lookupBce } = require('./server-bce.cjs');
 const {
   analyzeDomain,
-  agentForDomain,
-  executeBase44Agent,
+  MANAGED_DOMAINS,
   verifiedImprovement,
 } = require('./server-domain-ops.cjs');
-const { hasOperationalEvidence } = require('./server-agent-orchestrator.cjs');
-
-const BASE44_API_URL = String(process.env.BASE44_AGENT_URL || 'https://app.base44.com/api/agents').replace(/\/$/, '');
-const BASE44_API_KEY = String(process.env.BASE44_API_KEY || process.env.BASE44_SERVER_API_KEY || '').trim();
-
-// Base44 reste strictement réservé aux agents responsables d'un site précis.
-// NOVA, Creative Director et GeneratVideoPro ne sont pas utilisés comme workers génériques.
+// Les spécialistes de domaine sont désormais des profils internes NOVA.
 const SITE_AGENT_KEYS = new Set([
   'jsinnov-agent',
   'assurances-dour',
@@ -56,6 +49,13 @@ const INTERNAL_EXECUTORS = Object.freeze({
     role: 'video_generation_execution',
     execution_mode: 'autonomous',
   },
+  site_ops: {
+    id: 'nova-site-ops',
+    name: 'NOVA Sites · GitHub + Railway',
+    provider: 'cockpit-server',
+    role: 'site_repository_operations',
+    execution_mode: 'autonomous',
+  },
 });
 
 function clean(value, max = 1000) {
@@ -78,10 +78,6 @@ function isReadOnlySiteTask(task = {}, declaredReadOnly = false) {
   return diagnostic && !mutation;
 }
 
-function isBase44QuotaError(error) {
-  return /(limit of messages|message limit|monthly limit|quota|usage limit|rate limit|upgrade to a paid plan)/i.test(String(error?.message || error || ''));
-}
-
 function siteAgents() {
   return AGENT_REGISTRY.filter((agent) => agent.status === 'active' && SITE_AGENT_KEYS.has(agent.key));
 }
@@ -95,13 +91,15 @@ function siteExecutorForTask(task = {}) {
   if (!found) return null;
   return {
     kind: 'site',
-    id: `base44-site:${found.agent.key}`,
-    name: found.agent.name,
-    provider: 'base44',
-    provider_agent_id: found.agent.provider_agent_id,
+    id: `${INTERNAL_EXECUTORS.site_ops.id}:${found.agent.key}`,
+    name: INTERNAL_EXECUTORS.site_ops.name,
+    provider: INTERNAL_EXECUTORS.site_ops.provider,
+    provider_agent_id: INTERNAL_EXECUTORS.site_ops.id,
     role: found.agent.role,
     execution_mode: 'autonomous',
     domain: found.domain,
+    repository: MANAGED_DOMAINS[found.domain]?.repository || null,
+    hosting: MANAGED_DOMAINS[found.domain]?.hosting || null,
   };
 }
 
@@ -324,98 +322,61 @@ async function executeVideoTask(task, agentRequest, createJob = null, context = 
   };
 }
 
-async function jsonFetch(url, options = {}, timeoutMs = 120000) {
-  const response = await fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data?.error || data?.message || `HTTP ${response.status}`);
-  return data;
-}
-
-async function dispatchGenericSiteTask(executor, task, readOnly) {
-  if (!BASE44_API_KEY) throw new Error('BASE44_API_KEY serveur non configurée.');
-  const official = siteAgents().find((agent) => agent.key === executor.id.split(':').pop());
-  if (!official || official.provider_agent_id !== executor.provider_agent_id || !official.domains.includes(executor.domain)) {
-    throw new Error('Agent Base44 refusé: il n’est pas le responsable enregistré de ce site.');
-  }
-  const headers = { api_key: BASE44_API_KEY, 'Content-Type': 'application/json' };
-  const conversation = await jsonFetch(`${BASE44_API_URL}/${encodeURIComponent(official.provider_agent_id)}/conversations`, {
-    method: 'POST', headers, body: JSON.stringify({}),
-  }, 15000);
-  if (!conversation?.id) throw new Error(`Conversation Base44 absente pour ${official.name}.`);
-  const prompt = [
-    `Tu es l’agent Base44 exclusivement responsable du site ${executor.domain}.`,
-    `Ne consulte et ne modifie aucun autre domaine, site, client ou projet.`,
-    readOnly
-      ? 'Mission en lecture seule: exécute uniquement les contrôles réellement disponibles et fournis les preuves techniques.'
-      : 'Cette action a reçu l’autorisation explicite de l’administrateur. Applique uniquement les modifications sûres que tes outils permettent réellement sur ce site.',
-    'Ne simule jamais une réussite. Une recommandation ou une URL documentaire ne constitue pas une exécution.',
-    `Tâche: ${clean(task.titre || task.title, 240)}`,
-    task.description ? `Description: ${clean(task.description, 5000)}` : '',
-    'Retour obligatoire: action ou outil réellement utilisé, heure, résultat brut, blocages et identifiant de journal non-URL.',
-  ].filter(Boolean).join('\n');
-  const answer = await jsonFetch(`${BASE44_API_URL}/${encodeURIComponent(official.provider_agent_id)}/conversations/${encodeURIComponent(conversation.id)}/messages`, {
-    method: 'POST', headers, body: JSON.stringify({ role: 'user', content: prompt }),
-  });
-  const content = clean(answer?.content || answer?.message || answer?.response, 12000);
-  if (!content) throw new Error(`L’agent ${official.name} n’a renvoyé aucun résultat.`);
-  return { conversation_id: conversation.id, content, evidence: hasOperationalEvidence(content) };
-}
-
-async function executeSiteTask(executor, task, { readOnly = false, dispatch = dispatchGenericSiteTask, analyze = analyzeDomain } = {}) {
+async function executeSiteTask(executor, task, { readOnly = false, dispatch = null, analyze = analyzeDomain } = {}) {
   const text = normalized(taskText(task));
   const effectiveReadOnly = isReadOnlySiteTask(task, readOnly);
-  if (!effectiveReadOnly && /(reparation|corrig|seo automatique|tls|https|dns)/.test(text)) {
-    const before = await analyze(executor.domain);
-    const officialAgent = agentForDomain(executor.domain);
-    if (!officialAgent || officialAgent.provider_agent_id !== executor.provider_agent_id) {
-      throw new Error('Le domaine n’est pas relié à son agent Base44 officiel.');
-    }
-    const dispatched = await executeBase44Agent(officialAgent, executor.domain, /seo/.test(text) ? 'seo' : 'repair', before);
-    const after = await analyze(executor.domain);
-    const verified = verifiedImprovement(/seo/.test(text) ? 'seo' : 'repair', before, after);
-    return {
-      completed: verified,
-      awaiting_review: !verified,
-      provider: 'base44',
-      conversation_id: dispatched.conversationId,
-      report: clean(dispatched.content, 12000),
-      result: { domain: executor.domain, verified, before, after },
-      reason: verified ? null : 'intervention_agent_recue_mais_amelioration_non_mesuree',
-    };
-  }
-
-  let dispatched;
-  try {
-    dispatched = await dispatch(executor, task, effectiveReadOnly);
-  } catch (error) {
-    if (!effectiveReadOnly || !isBase44QuotaError(error)) throw error;
-    const probe = await analyze(executor.domain);
+  const before = await analyze(executor.domain);
+  if (effectiveReadOnly) {
     return {
       completed: true,
       awaiting_review: false,
       provider: 'cockpit-server',
       conversation_id: null,
-      report: JSON.stringify(probe),
-      result: {
-        ...probe,
-        base44_fallback: {
-          attempted: true,
-          provider_agent_id: executor.provider_agent_id,
-          status: 'quota_exhausted',
-          error: clean(error.message, 800),
-        },
-      },
+      report: JSON.stringify(before),
+      result: before,
       reason: null,
     };
   }
+
+  const repairKind = /seo/.test(text) ? 'seo' : 'repair';
+  const alreadyCompliant = repairKind === 'seo'
+    ? before.http?.apex?.ok && Number(before.seo?.score || 0) >= 85
+    : before.healthy === true;
+  if (alreadyCompliant) {
+    return {
+      completed: true,
+      awaiting_review: false,
+      provider: 'cockpit-server',
+      conversation_id: null,
+      report: JSON.stringify(before),
+      result: { domain: executor.domain, verified: true, already_compliant: true, repository: executor.repository, probe: before },
+      reason: null,
+    };
+  }
+
+  if (typeof dispatch !== 'function') {
+    return {
+      completed: false,
+      awaiting_review: true,
+      provider: 'cockpit-server',
+      conversation_id: null,
+      report: `Correction préparée pour ${executor.repository || executor.domain}; aucune réussite n’est simulée avant commit et nouveau contrôle public.`,
+      result: { domain: executor.domain, repository: executor.repository, hosting: executor.hosting, before, dispatched: false },
+      reason: executor.repository ? 'correction_repertoire_interne_a_executer' : 'depot_github_non_renseigne',
+    };
+  }
+
+  const dispatched = await dispatch(executor, task, { before, kind: repairKind });
+  const after = await analyze(executor.domain);
+  const verified = verifiedImprovement(repairKind, before, after);
   return {
-    completed: effectiveReadOnly && dispatched.evidence,
-    awaiting_review: !effectiveReadOnly || !dispatched.evidence,
-    provider: 'base44',
-    conversation_id: dispatched.conversation_id,
-    report: dispatched.content,
-    result: { domain: executor.domain, evidence_verified: dispatched.evidence },
-    reason: dispatched.evidence ? null : 'rapport_agent_recu_sans_preuve_operationnelle_complete',
+    completed: verified,
+    awaiting_review: !verified,
+    provider: 'cockpit-server',
+    conversation_id: dispatched.run_id || dispatched.conversation_id || null,
+    report: clean(dispatched.report || dispatched.content, 12000),
+    result: { domain: executor.domain, repository: executor.repository, verified, before, after, dispatch: dispatched },
+    reason: verified ? null : 'correction_interne_executee_mais_amelioration_non_mesuree',
   };
 }
 
@@ -523,7 +484,6 @@ module.exports = {
   executeProjectTask,
   executeSiteTask,
   executeVideoTask,
-  isBase44QuotaError,
   isReadOnlySiteTask,
   missingLegalFields,
   projectForTask,

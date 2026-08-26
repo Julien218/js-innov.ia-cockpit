@@ -2,6 +2,7 @@ const express = require('express');
 const nodemailer = require('nodemailer');
 const path = require('path');
 const documents = require('./server-documents.cjs');
+const { applyBrandSignature, assertMailboxMatchesBrand, identityForMailbox } = require('./server-email-branding.cjs');
 
 const router = express.Router();
 
@@ -15,17 +16,28 @@ const ALLOWED_EXTENSIONS = new Set([
 ]);
 
 const MAILBOXES = {
+  jsinnovia: {
+    label: 'JS-Innov.IA',
+    brand: 'js-innov-ia',
+    email: process.env.EMAIL_JSINNOVIA_ADDRESS || 'info@jsinnovia.com',
+    smtpUser: process.env.EMAIL_JSINNOVIA_SMTP_USER || process.env.EMAIL_STORE_ADDRESS || process.env.EMAIL_JSINNOVIA_ADDRESS || 'info@jsinnovia.com',
+    password: process.env.EMAIL_PASSWORD_JSINNOVIA || process.env.EMAIL_JSINNOVIA_PASSWORD || process.env.EMAIL_PASSWORD || process.env.EMAIL_PASSWORD_STORE || process.env.EMAIL_STORE_PASSWORD || '',
+    host: process.env.SMTP_HOST_JSINNOVIA || 'smtp.ionos.fr',
+    port: Number(process.env.SMTP_PORT_JSINNOVIA || 465),
+  },
   assurances: {
     label: 'Assurances-Dour.be',
+    brand: 'assurances-dour',
     email: process.env.EMAIL_ASSURANCES_ADDRESS || 'info@assurances-dour.be',
-    password: process.env.EMAIL_PASSWORD_ASSURANCES || '',
+    password: process.env.EMAIL_PASSWORD_ASSURANCES || process.env.EMAIL_ASSURANCES_PASSWORD || '',
     host: process.env.SMTP_HOST_ASSURANCES || 'smtp.ionos.fr',
     port: Number(process.env.SMTP_PORT_ASSURANCES || 465),
   },
   store: {
     label: 'JS-Innov.IA',
+    brand: 'js-innov-ia',
     email: process.env.EMAIL_STORE_ADDRESS || 'info@jsinnovia.store',
-    password: process.env.EMAIL_PASSWORD_STORE || '',
+    password: process.env.EMAIL_PASSWORD_STORE || process.env.EMAIL_STORE_PASSWORD || '',
     host: process.env.SMTP_HOST_STORE || 'smtp.ionos.fr',
     port: Number(process.env.SMTP_PORT_STORE || 465),
   },
@@ -47,7 +59,7 @@ function getTransport(mailboxKey) {
     host: mailbox.host,
     port: mailbox.port,
     secure: mailbox.port === 465,
-    auth: { user: mailbox.email, pass: mailbox.password },
+    auth: { user: mailbox.smtpUser || mailbox.email, pass: mailbox.password },
     tls: { rejectUnauthorized: process.env.SMTP_ALLOW_INVALID_CERT !== 'true' },
   });
   transports.set(mailboxKey, transport);
@@ -153,8 +165,10 @@ router.get('/status', (req, res) => {
 router.post('/send', async (req, res) => {
   try {
     const body = req.body || {};
-    const mailboxKey = body.mailbox || 'assurances';
+    const mailboxKey = body.mailbox || 'jsinnovia';
     const mailbox = getMailbox(mailboxKey);
+    const brand = body.brand || mailbox.brand;
+    assertMailboxMatchesBrand(mailboxKey, brand);
 
     const to = validateRecipientList(body.to, 'to');
     const cc = validateRecipientList(body.cc, 'cc');
@@ -169,16 +183,19 @@ router.post('/send', async (req, res) => {
 
     const { prepared, archivedDocuments, totalBytes } = await prepareAttachments(req);
     const transport = getTransport(mailboxKey);
+    const signed = applyBrandSignature({ text, html, brand });
+    const identity = identityForMailbox(mailboxKey);
     const replyToMessageId = body.replyToMessageId ? String(body.replyToMessageId).slice(0, 500) : undefined;
 
     const info = await transport.sendMail({
-      from: `"${mailbox.label}" <${mailbox.email}>`,
+      from: `"${identity.name}" <${mailbox.email}>`,
+      replyTo: identity.replyTo,
       to,
       cc,
       bcc,
       subject,
-      text: text || undefined,
-      html,
+      text: signed.text || undefined,
+      html: signed.html,
       attachments: prepared.length ? prepared : undefined,
       inReplyTo: replyToMessageId,
       references: replyToMessageId,

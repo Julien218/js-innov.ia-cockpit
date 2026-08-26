@@ -17,15 +17,18 @@ const Imap = require('imap');
 const { simpleParser } = require('mailparser');
 const nodemailer = require('nodemailer');
 const express = require('express');
+const { applyBrandSignature, identityForMailbox } = require('./server-email-branding.cjs');
 const router = express.Router();
 
 // ── Configuration multi-mailboxes ────────────────────────────
 const MAILBOXES = {
   jsinnovia: {
     label: 'JS-Innov.IA',
-    isAlias: true,
+    isAlias: process.env.EMAIL_JSINNOVIA_ALIAS_ONLY !== 'false',
+    brand: 'js-innov-ia',
     email: process.env.EMAIL_JSINNOVIA_ADDRESS || 'info@jsinnovia.com',
-    password: process.env.EMAIL_PASSWORD || '',
+    smtpUser: process.env.EMAIL_JSINNOVIA_SMTP_USER || process.env.EMAIL_STORE_ADDRESS || process.env.EMAIL_JSINNOVIA_ADDRESS || 'info@jsinnovia.com',
+    password: process.env.EMAIL_PASSWORD_JSINNOVIA || process.env.EMAIL_JSINNOVIA_PASSWORD || process.env.EMAIL_PASSWORD || process.env.EMAIL_PASSWORD_STORE || process.env.EMAIL_STORE_PASSWORD || '',
     host: 'imap.ionos.fr',
     port: 993,
     tls: true,
@@ -35,8 +38,9 @@ const MAILBOXES = {
   },
   assurances: {
     label: 'Assurances Dour',
+    brand: 'assurances-dour',
     email: process.env.EMAIL_ASSURANCES_ADDRESS || 'info@assurances-dour.be',
-    password: process.env.EMAIL_PASSWORD_ASSURANCES || '',
+    password: process.env.EMAIL_PASSWORD_ASSURANCES || process.env.EMAIL_ASSURANCES_PASSWORD || '',
     host: 'imap.ionos.fr',
     port: 993,
     tls: true,
@@ -46,8 +50,9 @@ const MAILBOXES = {
   },
   store: {
     label: 'JS-Innov.IA Store',
+    brand: 'js-innov-ia',
     email: process.env.EMAIL_STORE_ADDRESS || 'info@jsinnovia.store',
-    password: process.env.EMAIL_PASSWORD_STORE || '',
+    password: process.env.EMAIL_PASSWORD_STORE || process.env.EMAIL_STORE_PASSWORD || '',
     host: 'imap.ionos.fr',
     port: 993,
     tls: true,
@@ -93,7 +98,7 @@ function getSmtpTransport(mailboxKey) {
     host: cfg.smtpHost,
     port: cfg.smtpPort,
     secure: cfg.smtpPort === 465,
-    auth: { user: cfg.email, pass: cfg.password },
+    auth: { user: cfg.smtpUser || cfg.email, pass: cfg.password },
     tls: { rejectUnauthorized: false },
   });
   smtpCache[mailboxKey] = transport;
@@ -281,9 +286,6 @@ function fetchEmailById(mailboxKey, uid, includeAttachments = false) {
 
 // ── Envoyer un email (SMTP) ──────────────────────────────────
 async function sendEmail(mailboxKey, { to, subject, text, html, cc, bcc, replyTo, replyToMessageId, attachments }) {
-  if (isAliasMailbox(mailboxKey)) {
-    throw new Error('Cette adresse est un alias, impossible d\'envoyer directement depuis cette boîte. Utilisez JS-Innov.IA Store ou Assurances Dour.');
-  }
   const cfg = getMailboxConfig(mailboxKey);
   if (!cfg) throw new Error(`Mailbox "${mailboxKey}" non configurée`);
   if (!cfg.password) throw new Error(`Mot de passe SMTP non configuré pour "${mailboxKey}". Vérifiez la variable EMAIL_PASSWORD sur Railway.`);
@@ -291,6 +293,8 @@ async function sendEmail(mailboxKey, { to, subject, text, html, cc, bcc, replyTo
 
   const transport = getSmtpTransport(mailboxKey);
   if (!transport) throw new Error(`Transport SMTP non disponible pour "${mailboxKey}".`);
+  const signed = applyBrandSignature({ text, html, brand: cfg.brand });
+  const identity = identityForMailbox(mailboxKey);
 
   // ── Pièces jointes (format base64) ──
   const parsedAttachments = [];
@@ -307,14 +311,14 @@ async function sendEmail(mailboxKey, { to, subject, text, html, cc, bcc, replyTo
   }
 
   const mailOptions = {
-    from: `"${cfg.label}" <${cfg.email}>`,
+    from: `"${identity.name}" <${cfg.email}>`,
     to,
     cc: cc || undefined,
     bcc: bcc || undefined,
-    replyTo: replyTo || undefined,
+    replyTo: replyTo || identity.replyTo,
     subject: subject || '(sans objet)',
-    text: text || '',
-    html: html || undefined,
+    text: signed.text || '',
+    html: signed.html || undefined,
     inReplyTo: replyToMessageId || undefined,
     headers: replyToMessageId ? { 'References': replyToMessageId } : undefined,
     attachments: parsedAttachments.length > 0 ? parsedAttachments : undefined,
@@ -339,7 +343,7 @@ router.get('/', requireApiKey, async (req, res) => {
 });
 
 // ── POST /api/emails/official ──────────────────────────────
-// Envoi d'emails officiels exclusivement depuis info@jsinnovia.store
+// Envoi d'emails officiels exclusivement sous l'identité JS-Innov.IA.
 // Authentification stricte: x-agent-key header uniquement (jamais query string)
 // Idempotence via header Idempotency-Key (OBLIGATOIRE pour cette route)
 // Rate limit dédié: 10 req/min par empreinte de clé d'API
@@ -529,7 +533,7 @@ router.post('/official', requireOfficialApiKey, async (req, res) => {
   if (Object.prototype.hasOwnProperty.call(req.body, 'from') ||
       Object.prototype.hasOwnProperty.call(req.body, 'mailbox')) {
     return res.status(400).json({
-      error: 'Fields "from" and "mailbox" are not accepted — sender is fixed to info@jsinnovia.store'
+      error: 'Fields "from" and "mailbox" are not accepted — sender is fixed to JS-Innov.IA'
     });
   }
 
@@ -630,9 +634,9 @@ router.post('/official', requireOfficialApiKey, async (req, res) => {
     return res.status(429).json({ error: 'Rate limit exceeded — maximum 10 requests per minute' });
   }
 
-  // ── 6. Envoyer via sendEmail() existant — mailbox fixée à "store" ──
+  // ── 6. Envoyer via sendEmail() existant — identité fixée à JS-Innov.IA ──
   try {
-    const info = await sendEmail('store', {
+    const info = await sendEmail('jsinnovia', {
       to: toList.join(', '),
       subject,
       text: text || undefined,
