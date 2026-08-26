@@ -35,8 +35,8 @@ export const PLATFORM_SERVICES = Object.freeze({
     status: "module",
     note: "Module spécialisé relié au Cockpit, distinct du site public.",
   }),
-  signageLegacySite: Object.freeze({
-    title: "Ancienne vitrine Signage",
+  signageProductSite: Object.freeze({
+    title: "Vitrine produit Signage",
     url: "https://olivier-signage-site-production.up.railway.app",
     domain: "olivier-signage-site-production.up.railway.app",
     hosting: "Railway",
@@ -44,8 +44,8 @@ export const PLATFORM_SERVICES = Object.freeze({
     repository: "Julien218/js-innov.ia",
     repositoryUrl: "https://github.com/Julien218/js-innov.ia",
     branch: "feature/digital-signage-product-release",
-    status: "legacy",
-    note: "Service technique historique sans domaine officiel. Ne pas utiliser comme site JS-Innov.IA.",
+    status: "module",
+    note: "Adresse Railway technique du produit Signage. Ce n’est pas le site général JS-Innov.IA.",
   }),
 });
 
