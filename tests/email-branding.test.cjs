@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
   applyBrandSignature,
@@ -42,4 +44,9 @@ test('le serveur refuse tout croisement entre boîte et marque', () => {
   assert.equal(identityForMailbox('assurances').slug, 'assurances-dour');
   assert.equal(identityForBrand('store').slug, 'js-innov-ia');
   assert.equal(identityForBrand('villeconnect').slug, 'js-innov-ia');
+});
+
+test('l’image Railway embarque le module de signature e-mail', () => {
+  const dockerfile = fs.readFileSync(path.join(__dirname, '..', 'Dockerfile'), 'utf8');
+  assert.match(dockerfile, /COPY --from=builder \/app\/server-email-branding\.cjs \.\/server-email-branding\.cjs/);
 });
