@@ -1,0 +1,9 @@
+Release trigger for the managed Cockpit access roles.
+
+Scope:
+- Julien: super administrator
+- Olivier: administrator
+- Fabiano: commercial role available for invitation or assignment
+- customers: isolated client access
+
+Production target: Olivier Signage Cockpit.
