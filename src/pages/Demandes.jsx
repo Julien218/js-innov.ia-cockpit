@@ -11,6 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Pencil, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
+import { useAuth } from "@/lib/AuthContext";
+import ClientSignageRequests from "@/pages/ClientSignageRequests";
+import StaffClientRequests from "@/components/signage/StaffClientRequests";
 
 const formFields = [
   { key: "titre", label: "Titre", required: true },
@@ -40,6 +43,12 @@ const formFields = [
 ];
 
 export default function Demandes() {
+  const { user } = useAuth();
+  if (user?.role === "client") return <ClientSignageRequests />;
+  return <StaffDemandes />;
+}
+
+function StaffDemandes() {
   const [modalOpen, setModalOpen] = useState(false);
   const [formData, setFormData] = useState({});
   const [editingId, setEditingId] = useState(null);
@@ -121,6 +130,7 @@ export default function Demandes() {
 
   return (
     <div>
+      <StaffClientRequests />
       <PageHeader
         title="Demandes"
         subtitle={`${ouvertes} ouvertes · ${enTraitement} en traitement`}

@@ -107,6 +107,14 @@ try {
   console.warn('Signage runtime unavailable:', e.message);
 }
 
+try {
+  const clientSignagePortalRouter = require('./server-client-signage-portal.cjs');
+  app.use('/api/client-signage', requireSession('client'), clientSignagePortalRouter);
+  console.log('Portail demandes et validations Signage activé');
+} catch (e) {
+  console.warn('Portail client Signage indisponible:', e.message);
+}
+
 const AGENT_PROXY_URL = process.env.JSINNOVIA_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_PROXY_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
 

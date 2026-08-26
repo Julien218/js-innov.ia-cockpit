@@ -3,7 +3,10 @@ const nodemailer = require('nodemailer');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const COCKPIT_URL = String(process.env.COCKPIT_URL || 'https://cockpit.jsinnovia.com').replace(/\/$/, '');
+const COCKPIT_URL = String(
+  process.env.CLIENT_PORTAL_URL
+  || 'https://olivier-signage-cockpit-production.up.railway.app'
+).replace(/\/$/, '');
 
 async function authDb(resource, options = {}) {
   if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error('Auth Supabase non configurée');

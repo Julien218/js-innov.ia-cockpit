@@ -7,7 +7,8 @@ const ALLOWED_TABLES = new Set([
   'commerce_orders','commerce_events','client_module_entitlements','commerce_onboarding_tasks',
   'signage_players','signage_media','signage_playlists','signage_publications','camera_gateways','cameras',
   'camera_recordings','signage_audit_events','signage_player_schedule_settings','signage_player_schedule_ranges',
-  'signage_player_schedule_exceptions','signage_schedule_audit','signage_sites','signage_display_profiles'
+  'signage_player_schedule_exceptions','signage_schedule_audit','signage_sites','signage_display_profiles',
+  'client_signage_requests','client_signage_request_assets','client_content_reviews'
 ]);
 const JSON_COLUMNS = new Map([
   ['signage_players', new Set(['diagnostics','runtime_diagnostics'])],
@@ -50,7 +51,8 @@ async function migrate() {
       '005_signage_camera_finalization.sql',
       '006_signage_scheduling.sql',
       '007_signage_display_manager.sql',
-      '008_signage_player_runtime_health.sql'
+      '008_signage_player_runtime_health.sql',
+      '009_signage_client_portal.sql'
     ]) {
       const exists = await client.query('select 1 from pilot_schema_migrations where name=$1', [file]);
       if (exists.rowCount) continue;
