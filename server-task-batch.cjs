@@ -182,7 +182,7 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
   const results = [];
   for (let index = 0; index < payload.tasks.length; index += 1) {
     const item = payload.tasks[index];
-    const executor = resolveNovaExecutor(item.record);
+    const executor = resolveNovaExecutor(item.existing_task_id ? { titre: item.record.titre } : item.record);
     let task = null;
     let run = null;
     try {
@@ -201,8 +201,16 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
       if (task) {
         const active = await activeRunForTask(agentFetch, task.id, organisation);
         if (active?.id) {
-          results.push({ index, success: true, task_id: task.id, run_id: active.id, executor: executor.id, status: 'already_running', reused: true });
-          continue;
+          if (item.existing_task_id && String(active.agent_id || '') !== String(executor.id)) {
+            await patchRun(agentFetch, active.id, {
+              status: 'failed',
+              error: `Exécuteur incorrect remplacé: ${active.agent_id || 'inconnu'} -> ${executor.id}`,
+              completed_at: new Date().toISOString(),
+            }, organisation);
+          } else {
+            results.push({ index, success: true, task_id: task.id, run_id: active.id, executor: executor.id, status: 'already_running', reused: true });
+            continue;
+          }
         }
       } else {
         const response = await agentFetch('/data/Tache', {
