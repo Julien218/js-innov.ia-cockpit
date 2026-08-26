@@ -228,12 +228,35 @@ async function executeProjectTask(task, agentRequest) {
     };
   }
   await agentRequest(`/data/Projet/${encodeURIComponent(project.id)}`, { method: 'PATCH', body: patch });
+  const verifiedPayload = await agentRequest(`/data/Projet/${encodeURIComponent(project.id)}`);
+  const verifiedProject = recordFrom(verifiedPayload);
+  const mismatchedFields = Object.entries(patch)
+    .filter(([field, expected]) => JSON.stringify(verifiedProject?.[field] ?? null) !== JSON.stringify(expected))
+    .map(([field]) => field);
+  if (mismatchedFields.length) {
+    return {
+      completed: false,
+      awaiting_review: true,
+      provider: 'cockpit-server',
+      result: {
+        checked_at: new Date().toISOString(),
+        project_id: project.id,
+        expected: patch,
+        observed: verifiedProject,
+        mismatched_fields: mismatchedFields,
+      },
+      report: `Relecture après écriture non conforme: ${mismatchedFields.join(', ')}.`,
+      reason: 'verification_ecriture_projet_echouee',
+    };
+  }
   const result = {
     update_id: `project-${crypto.randomUUID()}`,
     updated_at: new Date().toISOString(),
     project_id: project.id,
     project_name: projectName(project),
     updated_fields: Object.keys(patch),
+    verified_fields: Object.keys(patch),
+    verified_project: verifiedProject,
   };
   return { completed: true, provider: 'cockpit-server', result, report: JSON.stringify(result) };
 }
@@ -401,6 +424,12 @@ function rowsFrom(payload) {
   if (Array.isArray(payload?.data)) return payload.data;
   if (Array.isArray(payload?.items)) return payload.items;
   return [];
+}
+
+function recordFrom(payload) {
+  if (payload && typeof payload === 'object' && !Array.isArray(payload) && payload.data && !Array.isArray(payload.data)) return payload.data;
+  if (payload && typeof payload === 'object' && !Array.isArray(payload) && !payload.data && !payload.items) return payload;
+  return rowsFrom(payload)[0] || null;
 }
 
 function missingLegalFields(client = {}) {

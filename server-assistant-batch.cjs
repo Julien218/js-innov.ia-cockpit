@@ -64,6 +64,33 @@ function scopedTaskExecutionAuthorization(message) {
   return scopedIntent && /\b[a-f0-9]{8}-[a-f0-9-]{20,}\b/.test(source);
 }
 
+function scopedTaskId(message) {
+  const match = String(message || '').match(/\b(?:task_id|t[aâ]che(?:\s+existante)?)\s*[:=]?\s*([a-f0-9]{8}-[a-f0-9-]{20,})\b/i);
+  return match?.[1] || null;
+}
+
+function scopedProjectId(message) {
+  const match = String(message || '').match(/\bprojet(?:\s+cible)?\s*[:=]?\s*([a-f0-9]{8}-[a-f0-9-]{20,})\b/i);
+  return match?.[1] || null;
+}
+
+function scopedTaskBatchPayload(message, task) {
+  if (!task?.id || !String(task.titre || '').trim()) return null;
+  return sanitizeTaskBatchPayload({
+    tasks: [{
+      task_id: task.id,
+      titre: task.titre,
+      description: String(message || '').slice(0, 4000),
+      priorite: task.priorite,
+      date_echeance: task.date_echeance,
+      projet_id: scopedProjectId(message) || task.projet_id,
+      client_id: task.client_id,
+      notes: task.notes,
+      read_only: false,
+    }],
+  });
+}
+
 function explicitExecutionAuthorization(message) {
   const source = String(message || '').trim().toLowerCase();
   if (scopedTaskExecutionAuthorization(message)) return true;
@@ -234,6 +261,7 @@ async function recentContext(req) {
 
 async function shouldHandleBatch(req, message) {
   if (!canBatch(req.user)) return false;
+  if (scopedTaskExecutionAuthorization(message)) return true;
   if (directEntityMutationSignal(message)) return false;
   if (batchSignals(message)) return true;
   const normalized = String(message || '').trim().toLowerCase();
@@ -260,6 +288,30 @@ router.post('/chat', async (req, res, next) => {
   const sessionId = sessionIdFor(req);
   const userAlreadyAuthorizedExecution = explicitExecutionAuthorization(message);
   try {
+    if (scopedTaskExecutionAuthorization(message)) {
+      const taskId = scopedTaskId(message);
+      if (!taskId) return res.status(422).json({ error: 'task_id ciblé absent ou invalide', confirmation: null });
+      const task = recordFrom(await readAgentJson(`/data/Tache/${encodeURIComponent(taskId)}`));
+      const payload = scopedTaskBatchPayload(message, task);
+      if (!payload) return res.status(422).json({ error: 'Tâche ciblée introuvable ou incomplète', confirmation: null });
+      const result = await executeTaskBatch({
+        payload,
+        token: crypto.randomBytes(24).toString('hex'),
+        user: req.user,
+        tenant: cleanTenant(req.user?.organisation) || 'jsinnovia',
+        agentFetch,
+      });
+      const completed = result.results.filter((item) => item.status === 'completed').length;
+      const following = result.results.filter((item) => ['queued_local', 'awaiting_review', 'already_running'].includes(item.status)).length;
+      const blocked = result.results.length - completed - following;
+      return res.status(result.success ? 200 : 207).json({
+        message: `Exécution limitée à la tâche autorisée terminée. ${completed} terminée(s), ${following} en suivi, ${blocked} bloquée(s).${executionProof(result)}`,
+        confirmation: null,
+        execution_result: result,
+        conversation_id: conversationIdFrom(req),
+        assistant_mode: req.user?.role === 'superadmin' ? 'owner' : 'staff',
+      });
+    }
     if (directInspectionSignal(message)) {
       const result = await runAutopilot({ inspectOnly: true, requestedBy: req.user?.email || req.user?.id || 'companion', user: req.user });
       return res.json({ message: autopilotMessage(result), confirmation: null, result, conversation_id: conversationIdFrom(req), assistant_mode: req.user?.role === 'superadmin' ? 'owner' : 'staff' });
@@ -429,3 +481,6 @@ module.exports.directInspectionSignal = directInspectionSignal;
 module.exports.targetedInspectionSignal = targetedInspectionSignal;
 module.exports.idAfterLabel = idAfterLabel;
 module.exports.scopedTaskExecutionAuthorization = scopedTaskExecutionAuthorization;
+module.exports.scopedTaskId = scopedTaskId;
+module.exports.scopedProjectId = scopedProjectId;
+module.exports.scopedTaskBatchPayload = scopedTaskBatchPayload;

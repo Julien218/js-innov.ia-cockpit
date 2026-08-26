@@ -9,7 +9,7 @@ const taskBatchSource = fs.readFileSync(path.join(root, 'server-task-batch.cjs')
 const serverSource = fs.readFileSync(path.join(root, 'server.cjs'), 'utf8');
 const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
 
-const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage, executionProof, directAutopilotSignal, autopilotMessage, directEntityMutationSignal, executionProhibited, directInspectionSignal, targetedInspectionSignal, idAfterLabel, scopedTaskExecutionAuthorization } = require(path.join(root, 'server-assistant-batch.cjs'));
+const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage, executionProof, directAutopilotSignal, autopilotMessage, directEntityMutationSignal, executionProhibited, directInspectionSignal, targetedInspectionSignal, idAfterLabel, scopedTaskExecutionAuthorization, scopedTaskId, scopedProjectId, scopedTaskBatchPayload } = require(path.join(root, 'server-assistant-batch.cjs'));
 const { canonicalTaskTitle, latestActiveRun, sanitizeTaskBatchPayload } = require(path.join(root, 'server-task-batch.cjs'));
 
 test('les demandes multi-tâches et d’exécution sont reconnues sans intercepter un chat banal', () => {
@@ -64,12 +64,18 @@ test('une inspection ciblée de projet ne déclenche jamais l’inventaire globa
 });
 
 test('une autorisation limitée à un task_id reste exécutable malgré les interdictions hors périmètre', () => {
-  const request = 'J’autorise explicitement NOVA à reprendre et exécuter uniquement la tâche existante bdcb55aa-e09a-45e3-9132-848400bf1c5d. Ne crée aucune nouvelle tâche et ne modifie aucun autre projet.';
+  const request = 'J’autorise explicitement NOVA à reprendre et exécuter uniquement la tâche existante bdcb55aa-e09a-45e3-9132-848400bf1c5d. Ne crée aucune nouvelle tâche et ne modifie aucun autre projet.\nProjet cible: 4e2424fc-5e4c-4b60-b5cc-54166d59d85a\nObjectif de lancement: 1er octobre 2026';
   assert.equal(scopedTaskExecutionAuthorization(request), true);
   assert.equal(explicitExecutionAuthorization(request), true);
   assert.equal(targetedInspectionSignal(request), false);
   assert.equal(directInspectionSignal(request), false);
   assert.equal(batchSignals(request), true);
+  assert.equal(scopedTaskId(request), 'bdcb55aa-e09a-45e3-9132-848400bf1c5d');
+  assert.equal(scopedProjectId(request), '4e2424fc-5e4c-4b60-b5cc-54166d59d85a');
+  const payload = scopedTaskBatchPayload(request, { id: scopedTaskId(request), titre: 'Compléter les détails du projet VilleConnectOs', statut: 'bloquee' });
+  assert.equal(payload.tasks[0].existing_task_id, 'bdcb55aa-e09a-45e3-9132-848400bf1c5d');
+  assert.equal(payload.tasks[0].record.projet_id, '4e2424fc-5e4c-4b60-b5cc-54166d59d85a');
+  assert.match(batchSource, /Exécution limitée à la tâche autorisée terminée/);
 });
 
 test('un batch exige des tâches avec un titre non vide', () => {

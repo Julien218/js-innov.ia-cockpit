@@ -33,12 +33,20 @@ function memoryAgent() {
       return jsonResponse(run, 201);
     }
     const taskMatch = path.match(/^\/data\/Tache\/([^/]+)$/);
+    if (taskMatch && method === 'GET') {
+      const task = state.tasks.find((item) => item.id === taskMatch[1]);
+      return task ? jsonResponse(task) : jsonResponse({ error: 'not found' }, 404);
+    }
     if (taskMatch && method === 'PATCH') {
       const task = state.tasks.find((item) => item.id === taskMatch[1]);
       Object.assign(task, body);
       return jsonResponse(task);
     }
     const projectMatch = path.match(/^\/data\/Projet\/([^/]+)$/);
+    if (projectMatch && method === 'GET') {
+      const project = state.projects.find((item) => item.id === projectMatch[1]);
+      return project ? jsonResponse(project) : jsonResponse({ error: 'not found' }, 404);
+    }
     if (projectMatch && method === 'PATCH') {
       const project = state.projects.find((item) => item.id === projectMatch[1]);
       Object.assign(project, body);
@@ -161,8 +169,29 @@ test('l’exécuteur Projet met à jour une cible unique et journalise les champ
   }, agentRequest);
   assert.equal(result.completed, true);
   assert.deepEqual(result.result.updated_fields, ['statut', 'date_fin_prevue', 'notes']);
+  assert.deepEqual(result.result.verified_fields, ['statut', 'date_fin_prevue', 'notes']);
   assert.equal(state.projects[0].date_fin_prevue, '2026-10-01');
   assert.match(state.projects[0].notes, /Priorité: haute/);
+});
+
+test('une autorisation ciblée réutilise exactement le task_id, crée un run et clôture après relecture', async () => {
+  const { state, fetcher } = memoryAgent();
+  state.tasks.push({ id: 'task-ville', titre: 'Compléter les détails du projet VilleConnectOs', statut: 'bloquee', projet_id: 'project-ville' });
+  state.projects.push({ id: 'project-ville', nom: 'VilleConnectOs', statut: 'en_cours', notes: '' });
+  const payload = sanitizeTaskBatchPayload({ tasks: [{
+    task_id: 'task-ville',
+    titre: 'Compléter les détails du projet VilleConnectOs',
+    projet_id: 'project-ville',
+    description: 'Statut: en cours\nObjectif de lancement: 1er octobre 2026\nDescription: Projet territorial vérifié.\nNotes: Projet interne.',
+  }] });
+  const result = await executeTaskBatch({ payload, token: 'scoped', user: { id: 'owner' }, tenant: 'jsinnovia', agentFetch: fetcher });
+  assert.equal(state.tasks.length, 1);
+  assert.equal(result.results[0].task_id, 'task-ville');
+  assert.equal(result.results[0].status, 'completed');
+  assert.equal(result.results[0].run_id, 'run-1');
+  assert.equal(state.tasks[0].statut, 'terminee');
+  assert.equal(state.projects[0].date_fin_prevue, '2026-10-01');
+  assert.deepEqual(state.runs[0].result.verified_fields, ['statut', 'date_fin_prevue', 'description', 'notes']);
 });
 
 test('l’exécuteur Projet refuse une mise à jour sans valeurs explicites', async () => {
