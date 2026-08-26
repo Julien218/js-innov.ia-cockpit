@@ -26,7 +26,7 @@ export default function ProtectedRoute({ requiredRole }) {
 
   // Vérification d'accès à la route
   const role = user?.role || "client";
-  if (!hasRouteAccess(role, location.pathname)) {
+  if (!hasRouteAccess(role, location.pathname, user?.permissions || [])) {
     // Rediriger vers la première route accessible
     const homeRoute = role === "client" ? "/" : "/";
     return <Navigate to={homeRoute} replace />;

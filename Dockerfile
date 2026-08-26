@@ -35,6 +35,8 @@ COPY --from=builder /app/server-billing.cjs ./server-billing.cjs
 COPY --from=builder /app/server-billing-template.cjs ./server-billing-template.cjs
 COPY --from=builder /app/server-security.cjs ./server-security.cjs
 COPY --from=builder /app/server-role-policy.cjs ./server-role-policy.cjs
+COPY --from=builder /app/server-permission-policy.cjs ./server-permission-policy.cjs
+COPY --from=builder /app/permission-catalog.json ./permission-catalog.json
 COPY --from=builder /app/server-client-onboarding.cjs ./server-client-onboarding.cjs
 COPY --from=builder /app/server-user-access.cjs ./server-user-access.cjs
 COPY --from=builder /app/server-tenant.cjs ./server-tenant.cjs
@@ -80,6 +82,8 @@ COPY public ./public
 RUN npm ci --omit=dev --legacy-peer-deps
 RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-role-policy.cjs \
+ && test -f /app/server-permission-policy.cjs \
+ && test -f /app/permission-catalog.json \
  && test -f /app/server-client-onboarding.cjs \
  && test -f /app/server-user-access.cjs \
  && test -f /app/server-nova-routing.cjs \
@@ -105,6 +109,8 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-bce.cjs \
  && node --check /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-role-policy.cjs \
+ && node --check /app/server-permission-policy.cjs \
+ && node -e "JSON.parse(require('node:fs').readFileSync('/app/permission-catalog.json','utf8'))" \
  && node --check /app/server-client-onboarding.cjs \
  && node --check /app/server-user-access.cjs \
  && node --check /app/server-nova-routing.cjs \

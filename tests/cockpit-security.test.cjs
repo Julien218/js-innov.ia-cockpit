@@ -19,12 +19,12 @@ test('sensitive server routes require an authenticated session', () => {
   const source = read('server.cjs');
   assert.match(source, /const emailSessionGuard = requireSession\('admin'\)/);
   assert.match(source, /req\.path === '\/official'/);
-  assert.match(source, /return emailSessionGuard\(req, res, next\)/);
-  assert.match(source, /\/api\/billing', requireSession\('admin'\)/);
+  assert.match(source, /emailPermissionGuard\(req, res, next\)/);
+  assert.match(source, /\/api\/billing', requireSession\('admin'\), requirePermission\('invoices', 'admin'\)/);
   assert.match(source, /\/api\/data', requireSession\('client'\)/);
   // Le Companion est accessible au client, puis cloisonné par le rôle authentifié
   // dans server-assistant.cjs / server-companion-audience.cjs.
-  assert.match(source, /\/api\/assistant', requireSession\('client'\)/);
+  assert.match(source, /\/api\/assistant', requireSession\('client'\), requirePermission\('nova', 'client'\)/);
 });
 
 test('official email uses its dedicated server key without opening other mailbox routes', () => {

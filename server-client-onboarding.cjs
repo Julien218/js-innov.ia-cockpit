@@ -40,7 +40,7 @@ async function ensureClientInvitation({ email, fullName, organisation, role = 'c
 
   let users = await authDb(`cockpit_users?select=id,email,is_active,role&email=eq.${encodeURIComponent(normalized)}&limit=1`);
   let user = users?.[0];
-  if (user?.is_active) return { status: 'active', invited: false };
+  if (user?.is_active) return { status: 'active', invited: false, userId: user.id };
   if (!user) {
     users = await authDb('cockpit_users', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ email: normalized, full_name: String(fullName || normalized).slice(0, 160), role: normalizedRole, organisation: String(organisation || '').slice(0, 160) || null, is_active: false, password_hash: null }) });
     user = users?.[0];
@@ -51,7 +51,7 @@ async function ensureClientInvitation({ email, fullName, organisation, role = 'c
   if (!user?.id) throw new Error('Compte non créé');
 
   const pending = await authDb(`cockpit_invites?select=id,expires_at,used_at&user_id=eq.${encodeURIComponent(user.id)}&used_at=is.null&limit=1`);
-  if (pending?.[0] && new Date(pending[0].expires_at).getTime() > Date.now()) return { status: 'pending', invited: false };
+  if (pending?.[0] && new Date(pending[0].expires_at).getTime() > Date.now()) return { status: 'pending', invited: false, userId: user.id };
 
   const rawToken = crypto.randomBytes(48).toString('base64url');
   const expiresAt = new Date(Date.now() + 7 * 86400000).toISOString();
@@ -72,7 +72,7 @@ async function ensureClientInvitation({ email, fullName, organisation, role = 'c
     await authDb(`cockpit_invites?id=eq.${encodeURIComponent(invite.id)}`, { method: 'DELETE' }).catch(() => {});
     throw error;
   }
-  return { status: 'invited', invited: true };
+  return { status: 'invited', invited: true, userId: user.id };
 }
 
 module.exports = { ensureClientInvitation };

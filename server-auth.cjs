@@ -19,6 +19,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { applyRolePolicy } = require('./server-role-policy.cjs');
+const { effectivePermissions } = require('./server-permission-policy.cjs');
 const cookie = require('cookie');
 
 const router = express.Router();
@@ -206,6 +207,21 @@ function getSessionToken(req) {
   return parsed.session || null;
 }
 
+async function publicUser(user) {
+  const permissionRows = await supabaseSelect(
+    `cockpit_user_permissions?select=permission_code,enabled&user_id=eq.${encodeURIComponent(user.id)}`
+  );
+  return {
+    id: user.id,
+    email: user.email,
+    full_name: user.full_name,
+    role: user.role,
+    avatar_url: user.avatar_url,
+    organisation: user.organisation,
+    permissions: effectivePermissions(user, permissionRows),
+  };
+}
+
 // ─── Validation origine ──────────────────────────────────────────────────────
 function validateOrigin(req) {
   const origin = req.headers.origin || req.headers.referer || '';
@@ -313,14 +329,7 @@ router.post('/login', async (req, res) => {
 
     return res.json({
       success: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        full_name: user.full_name,
-        role: user.role,
-        avatar_url: user.avatar_url,
-        organisation: user.organisation,
-      },
+      user: await publicUser(user),
     });
   } catch (err) {
     console.error('[auth] login error:', err.message);
@@ -415,14 +424,7 @@ router.get('/session', async (req, res) => {
 
     return res.json({
       valid: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        full_name: user.full_name,
-        role: user.role,
-        avatar_url: user.avatar_url,
-        organisation: user.organisation,
-      },
+      user: await publicUser(user),
     });
   } catch (err) {
     console.error('[auth] session error:', err.message);

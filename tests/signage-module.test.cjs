@@ -33,7 +33,7 @@ test('the client cockpit opens securely outside the main cockpit frame', () => {
 });
 
 test('the signage health route is protected by an admin session', () => {
-  assert.match(serverSource, /app\.use\('\/api\/signage', requireSession\('admin'\), signageRouter\.router\)/);
+  assert.match(serverSource, /app\.use\('\/api\/signage', requireSession\('admin'\), requirePermission\('signage', 'admin'\), signageRouter\.router\)/);
   assert.match(dockerSource, /COPY --from=builder \/app\/server-signage\.cjs \.\/server-signage\.cjs/);
   assert.match(dockerSource, /node --check \/app\/server-signage\.cjs/);
 });

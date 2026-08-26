@@ -4,7 +4,7 @@ const express = require('express');
 const path = require('path');
 const app = express();
 const PORT = process.env.API_PORT || 3001;
-const { requireSession, requireSameOrigin, ROLE_LEVEL } = require('./server-security.cjs');
+const { requireSession, requirePermission, requireSameOrigin, ROLE_LEVEL } = require('./server-security.cjs');
 let taskAutopilotState = null;
 
 // Trust proxy — nécessaire pour détecter HTTPS (X-Forwarded-Proto) et l'IP réelle
@@ -35,9 +35,10 @@ try {
 try {
   const emailRouter = require('./server-email.cjs');
   const emailSessionGuard = requireSession('admin');
+  const emailPermissionGuard = requirePermission('emails', 'admin');
   app.use('/api/emails', (req, res, next) => {
     if (req.path === '/official') return next();
-    return emailSessionGuard(req, res, next);
+    return emailSessionGuard(req, res, () => emailPermissionGuard(req, res, next));
   }, emailRouter);
   console.log('✅ Route /api/emails activée (IMAP IONOS — multi-mailbox)');
   console.log('   Mailboxes: jsinnovia, assurances');
@@ -48,7 +49,7 @@ try {
 // ── Coffre documentaire Dropbox + index Supabase ───────────
 try {
   const documentsRouter = require('./server-documents.cjs');
-  app.use('/api/documents', requireSession('collaborateur'), documentsRouter);
+  app.use('/api/documents', requireSession('collaborateur'), requirePermission('documents', 'collaborateur'), documentsRouter);
   console.log('✅ Route /api/documents activée (Dropbox + index Supabase)');
 } catch (e) {
   console.warn('⚠️ Route documents indisponible:', e.message);
@@ -57,7 +58,7 @@ try {
 // ── Composition email avec pièces jointes / Dropbox ─────────
 try {
   const emailComposeRouter = require('./server-email-compose.cjs');
-  app.use('/api/email-compose', requireSession('admin'), emailComposeRouter);
+  app.use('/api/email-compose', requireSession('admin'), requirePermission('emails', 'admin'), emailComposeRouter);
   console.log('✅ Route /api/email-compose activée (pièces jointes + Dropbox)');
 } catch (e) {
   console.warn('⚠️ Route email-compose indisponible:', e.message);
@@ -66,7 +67,7 @@ try {
 // ── API Billing (PDF + envoi devis/factures) ─────────────────
 try {
   const billingRouter = require('./server-billing.cjs');
-  app.use('/api/billing', requireSession('admin'), billingRouter);
+  app.use('/api/billing', requireSession('admin'), requirePermission('invoices', 'admin'), billingRouter);
   console.log('✅ Route /api/billing activée (PDF + email devis/factures)');
 } catch (e) {
   console.warn('⚠️ Route billing indisponible:', e.message);
@@ -75,7 +76,7 @@ try {
 // ── Assurances-Dour : suivi partagé Julien / Olivier ─────────
 try {
   const insuranceRouter = require('./server-insurance.cjs');
-  app.use('/api/insurance', requireSession('client'), insuranceRouter);
+  app.use('/api/insurance', requireSession('client'), requirePermission('insurance', 'admin'), insuranceRouter);
   insuranceRouter.startInsuranceEmailSyncScheduler?.();
   console.log('✅ Route /api/insurance activée (Julien + Olivier uniquement)');
 } catch (e) {
@@ -94,7 +95,7 @@ try {
 // ── Vérification légale clients via la BCE officielle ──────
 try {
   const bceRouter = require('./server-bce.cjs');
-  app.use('/api/bce', requireSession('admin'), bceRouter.router);
+  app.use('/api/bce', requireSession('admin'), requirePermission('clients', 'admin'), bceRouter.router);
   console.log('✅ Route /api/bce activée (recherche officielle + validation humaine)');
 } catch (e) {
   console.warn('⚠️ Route BCE indisponible:', e.message);
@@ -103,7 +104,7 @@ try {
 // ── Centre HainoFlow by JS-Innov.IA ────────────────────────
 try {
   const hainoFlowRouter = require('./server-hainoflow.cjs');
-  app.use('/api/hainoflow', requireSession('client'), hainoFlowRouter);
+  app.use('/api/hainoflow', requireSession('client'), requirePermission('hainoflow', 'client'), hainoFlowRouter);
   console.log('✅ Route /api/hainoflow activée (résumé et état des modules)');
 } catch (e) {
   console.warn('⚠️ Route HainoFlow indisponible:', e.message);
@@ -112,7 +113,7 @@ try {
 // ── AI Cost Control ─────────────────────────────────────────
 try {
   const { router: aiCostRouter } = require('./server-ai-cost.cjs');
-  app.use('/api/ai-cost', aiCostRouter);
+  app.use('/api/ai-cost', requireSession('admin'), requirePermission('ai_cost_control', 'admin'), aiCostRouter);
   // Doit être installé avant le require de server-assistant.cjs : ce dernier
   // récupère alors la fonction recordUsage enrichie avec le Client.id canonique.
   require('./server-ai-cost-attribution.cjs').installAICostAttribution();
@@ -127,10 +128,10 @@ try {
   // Route prioritaire : les micro-coûts LLM sont agrégés au mois par modèle
   // avant l'arrondi au centime. Le détail requête reste dans ai_cost_usage.
   const { router: aiCostLedgerAggregateRouter } = require('./server-ai-cost-ledger-aggregate.cjs');
-  app.use('/api/client-costs', adminGuard, aiCostLedgerAggregateRouter);
+  app.use('/api/client-costs', adminGuard, requirePermission('ai_cost_control', 'admin'), aiCostLedgerAggregateRouter);
 
   const { router: clientCostsRouter } = require('./server-client-costs.cjs');
-  app.use('/api/client-costs', adminGuard, clientCostsRouter);
+  app.use('/api/client-costs', adminGuard, requirePermission('ai_cost_control', 'admin'), clientCostsRouter);
   console.log('✅ Route /api/client-costs activée (client_id canonique, agrégation IA précise, coûts réels, marge, refacturation)');
 } catch (e) {
   console.warn('⚠️ Route client-costs indisponible:', e.message);
@@ -139,7 +140,7 @@ try {
 // ── Diagnostic live des domaines + audit SEO ───────────────
 try {
   const domainOpsRouter = require('./server-domain-ops.cjs');
-  app.use('/api/domain-ops', requireSession('admin'), domainOpsRouter);
+  app.use('/api/domain-ops', requireSession('admin'), requirePermission('domains', 'admin'), domainOpsRouter);
   console.log('✅ Route /api/domain-ops activée (DNS, HTTP, TLS, SEO lecture seule)');
 } catch (e) {
   console.warn('⚠️ Route domain-ops indisponible:', e.message);
@@ -148,7 +149,7 @@ try {
 // ── Pilotage Écran géant Olivier Signage ──────────────────
 try {
   const signageRouter = require('./server-signage.cjs');
-  app.use('/api/signage', requireSession('admin'), signageRouter.router);
+  app.use('/api/signage', requireSession('admin'), requirePermission('signage', 'admin'), signageRouter.router);
   console.log('✅ Route /api/signage activée (état Olivier Signage)');
 } catch (e) {
   console.warn('⚠️ Route Écran géant indisponible:', e.message);
@@ -157,7 +158,7 @@ try {
 // ── Finalisation vidéo : MP4 + métadonnées + JSON + Dropbox ─
 try {
   const videoProvenanceRouter = require('./server-video-provenance.cjs');
-  app.use('/api/video-provenance', requireSession('admin'), videoProvenanceRouter);
+  app.use('/api/video-provenance', requireSession('admin'), requirePermission('production', 'admin'), videoProvenanceRouter);
   console.log('✅ Finaliseur vidéo activé (FFmpeg/FFprobe + SHA-256 + Dropbox)');
 } catch (e) {
   console.warn('⚠️ Finaliseur vidéo indisponible:', e.message);
@@ -166,7 +167,7 @@ try {
 // ── Génération vidéo API : Grok / Sora + coûts + archivage ─
 try {
   const videoGeneration = require('./server-video-generation.cjs');
-  app.use('/api/video-generation', requireSession('admin'), videoGeneration.router);
+  app.use('/api/video-generation', requireSession('admin'), requirePermission('production', 'admin'), videoGeneration.router);
   const worker = videoGeneration.startVideoGenerationScheduler();
   console.log(`✅ Fabrique vidéo API activée (Grok/Sora, coûts client, worker ${worker.started ? 'actif' : worker.reason})`);
 } catch (e) {
@@ -177,7 +178,7 @@ try {
 try {
   const taskAutopilot = require('./server-task-autopilot.cjs');
   taskAutopilotState = taskAutopilot.state;
-  app.use('/api/task-autopilot', requireSession('admin'), taskAutopilot.router);
+  app.use('/api/task-autopilot', requireSession('admin'), requirePermission('tasks', 'admin'), taskAutopilot.router);
   const autopilot = taskAutopilot.startTaskAutopilotScheduler();
   console.log(`✅ Autopilote tâches ${autopilot.started ? 'activé' : 'inactif'} (${autopilot.reason || `${autopilot.interval_ms} ms`})`);
 } catch (e) {
@@ -189,7 +190,7 @@ try {
   const assistantBatchRouter = require('./server-assistant-batch.cjs');
   // Monté AVANT le Companion historique. Il intercepte uniquement les demandes
   // multi-tâches et laisse toutes les autres routes continuer vers le routeur legacy.
-  app.use('/api/assistant', requireSession('client'), assistantBatchRouter);
+  app.use('/api/assistant', requireSession('client'), requirePermission('nova', 'client'), assistantBatchRouter);
   console.log('✅ Companion batch activé (confirmation unique + tâches + agent_runs)');
 } catch (e) {
   console.warn('⚠️ Companion batch indisponible:', e.message);
@@ -200,7 +201,7 @@ try {
   const assistantRouter = require('./server-assistant.cjs');
   // La route accepte les clients, mais server-assistant.cjs impose ensuite
   // la politique et les outils correspondant au rôle de la session.
-  app.use('/api/assistant', requireSession('client'), assistantRouter);
+  app.use('/api/assistant', requireSession('client'), requirePermission('nova', 'client'), assistantRouter);
   console.log('✅ Companion adaptatif activé (owner/staff/client cloisonnés)');
 } catch (e) {
   console.warn('⚠️ Route assistant indisponible:', e.message);
@@ -209,7 +210,7 @@ try {
 // ── Email Core Framework (queue + send + API) ──────────────
 try {
   const emailCoreRouter = require('./server-email-core.cjs');
-  app.use('/api/emails', emailCoreRouter);
+  app.use('/api/emails', requireSession('admin'), requirePermission('emails', 'admin'), emailCoreRouter);
   console.log('✅ Route /api/emails (core framework) activée');
 } catch (e) {
   console.warn('⚠️ Route email-core indisponible:', e.message);
@@ -218,7 +219,7 @@ try {
 // ── Data Governance & RGPD ─────────────────────────────────
 try {
   const governanceRouter = require('./server-governance.cjs');
-  app.use('/api/governance', governanceRouter);
+  app.use('/api/governance', requireSession('admin'), requirePermission('governance', 'admin'), governanceRouter);
   console.log('✅ Route /api/governance activée (audit, RGPD, consentements, politiques)');
 } catch (e) {
   console.warn('⚠️ Route governance indisponible:', e.message);
@@ -227,7 +228,7 @@ try {
 // ── Base44 Agents Proxy (sécurisé, sans clé frontend) ─────
 try {
   const base44AgentsRouter = require('./server-base44-agents.cjs');
-  app.use('/api/base44-agents', requireSession('collaborateur'), base44AgentsRouter.router);
+  app.use('/api/base44-agents', requireSession('collaborateur'), requirePermission('ai_agents', 'collaborateur'), base44AgentsRouter.router);
   console.log('✅ Route /api/base44-agents activée (proxy sécurisé vers Base44 Agents API)');
 } catch (e) {
   console.warn('⚠️ Route base44-agents indisponible:', e.message);
