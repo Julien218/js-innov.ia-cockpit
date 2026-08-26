@@ -57,8 +57,16 @@ function executionProhibited(message) {
     || /\baucune\s+(?:ecriture|modification|generation|depense|delegation|execution)\b/.test(source);
 }
 
+function scopedTaskExecutionAuthorization(message) {
+  const source = String(message || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const scopedIntent = /\b(?:j['’]\s*autorise(?:\s+explicitement)?|je\s+confirme(?:\s+explicitement)?|effectue|execute|lance|reprends?)\b[\s\S]{0,180}\b(?:reprendre\s+et\s+)?executer\s+uniquement\s+(?:la\s+)?tache\b/.test(source)
+    || /\b(?:effectue|execute|lance|reprends?)\s+uniquement\s+(?:la\s+)?tache\b/.test(source);
+  return scopedIntent && /\b[a-f0-9]{8}-[a-f0-9-]{20,}\b/.test(source);
+}
+
 function explicitExecutionAuthorization(message) {
   const source = String(message || '').trim().toLowerCase();
+  if (scopedTaskExecutionAuthorization(message)) return true;
   if (executionProhibited(message)) return false;
   return /\b(?:je\s+)?confirme(?:\s+explicitement)?\s+(?:l['’]\s*)?(?:ex[eé]cution|lancement|d[eé]l[eé]gation)\b/.test(source)
     || /\b(?:j['’]\s*)?autorise(?:\s+explicitement)?\b.*\b(?:ex[eé]cuter|lancer|d[eé]l[eé]guer|effectuer)\b/.test(source)
@@ -85,7 +93,8 @@ function targetedInspectionSignal(message) {
   const source = String(message || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const hasProjectId = /\bprojet\s+[a-f0-9-]{20,}\b/.test(source) || /\bupdate_project\b/.test(source);
   const hasTaskId = /\b(?:task_id|tache)\s*[:=]?\s*[a-f0-9-]{20,}\b/.test(source);
-  return executionProhibited(message)
+  return !scopedTaskExecutionAuthorization(message)
+    && executionProhibited(message)
     && /\b(?:controle|inspecte|verifie|affiche|preuve|lecture seule)\b/.test(source)
     && (hasProjectId || hasTaskId);
 }
@@ -419,3 +428,4 @@ module.exports.executionProhibited = executionProhibited;
 module.exports.directInspectionSignal = directInspectionSignal;
 module.exports.targetedInspectionSignal = targetedInspectionSignal;
 module.exports.idAfterLabel = idAfterLabel;
+module.exports.scopedTaskExecutionAuthorization = scopedTaskExecutionAuthorization;
