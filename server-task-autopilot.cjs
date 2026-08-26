@@ -40,7 +40,9 @@ function taskText(task) {
 function recordedExecutionFailure(task) {
   const notes = String(task?.notes || '');
   const matches = [...notes.matchAll(/Blocage d[’']exécution réel\s*:\s*([^\n]+)/gi)];
-  return matches.length ? matches[matches.length - 1][1].trim().slice(0, 500) : null;
+  const latest = matches.length ? matches[matches.length - 1][1].trim().slice(0, 500) : null;
+  if (/could not find.*['’]priorite['’].*['’]projet['’].*schema cache/i.test(String(latest || ''))) return null;
+  return latest;
 }
 
 function managedDomainForTask(task) {

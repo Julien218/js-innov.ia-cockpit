@@ -77,7 +77,89 @@ function directInspectionSignal(message) {
   const source = String(message || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   return executionProhibited(message)
     && /\b(?:analyse|inspecte|controle|verifie|liste|rapport|etat)\b/.test(source)
-    && /\b(?:taches?|executions?|runs?|blocages?|preuves?)\b/.test(source);
+    && /\b(?:taches?|executions?|runs?|blocages?|preuves?)\b/.test(source)
+    && /\b(?:toutes?\s+les\s+taches?|taches?\s+non\s+terminees?|chaque\s+tache|liste\s+des\s+taches?|ensemble\s+des\s+taches?)\b/.test(source);
+}
+
+function targetedInspectionSignal(message) {
+  const source = String(message || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const hasProjectId = /\bprojet\s+[a-f0-9-]{20,}\b/.test(source) || /\bupdate_project\b/.test(source);
+  const hasTaskId = /\b(?:task_id|tache)\s*[:=]?\s*[a-f0-9-]{20,}\b/.test(source);
+  return executionProhibited(message)
+    && /\b(?:controle|inspecte|verifie|affiche|preuve|lecture seule)\b/.test(source)
+    && (hasProjectId || hasTaskId);
+}
+
+function idAfterLabel(message, labels) {
+  const label = labels.map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const match = String(message || '').match(new RegExp(`(?:${label})\\s*(?:id)?\\s*[:=]?\\s*([a-f0-9-]{20,})`, 'i'));
+  return match?.[1] || null;
+}
+
+function rowsFrom(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  return [];
+}
+
+function recordFrom(payload) {
+  if (payload && typeof payload === 'object' && !Array.isArray(payload) && payload.data && !Array.isArray(payload.data)) return payload.data;
+  if (payload && typeof payload === 'object' && !Array.isArray(payload) && !payload.data && !payload.items) return payload;
+  return rowsFrom(payload)[0] || null;
+}
+
+async function readAgentJson(path) {
+  const response = await agentFetch(path);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || data.message || `Agent ${response.status}`);
+  return data;
+}
+
+async function inspectTargetedProject(message) {
+  const identifiers = String(message).match(/\b[a-f0-9]{8}-[a-f0-9-]{20,}\b/gi) || [];
+  const projectId = idAfterLabel(message, ['projet', 'cible']) || identifiers[0] || null;
+  const taskId = idAfterLabel(message, ['task_id', 'tâche', 'tache']);
+  const [projectPayload, taskPayload, runPayload, logPayload] = await Promise.all([
+    projectId ? readAgentJson(`/data/Projet/${encodeURIComponent(projectId)}`) : Promise.resolve(null),
+    taskId ? readAgentJson(`/data/Tache/${encodeURIComponent(taskId)}`).catch(() => null) : Promise.resolve(null),
+    taskId ? readAgentJson(`/agent-runs?task_id=${encodeURIComponent(taskId)}&limit=20`).catch(() => []) : Promise.resolve([]),
+    readAgentJson('/data/LogAction?limit=250').catch(() => []),
+  ]);
+  const project = recordFrom(projectPayload);
+  const task = recordFrom(taskPayload);
+  const runs = rowsFrom(runPayload).filter((run) => !taskId || String(run.task_id) === String(taskId));
+  const logs = rowsFrom(logPayload)
+    .filter((log) => /update_project/i.test(String(log.action || '')))
+    .filter((log) => !projectId || String(log.details || '').includes(projectId))
+    .sort((a, b) => Date.parse(b.created_at || b.date_creation || 0) - Date.parse(a.created_at || a.date_creation || 0));
+  const latestRun = runs.sort((a, b) => Date.parse(b.updated_at || b.created_at || 0) - Date.parse(a.updated_at || a.created_at || 0))[0] || null;
+  const latestLog = logs[0] || null;
+  const projectFields = project ? {
+    id: project.id,
+    nom: project.nom,
+    statut: project.statut,
+    client_id: project.client_id || null,
+    client_nom: project.client_nom || null,
+    organisation_id: project.organisation_id || null,
+    description: project.description || null,
+    date_debut: project.date_debut || null,
+    date_fin_prevue: project.date_fin_prevue || null,
+    budget: project.budget ?? null,
+    notes: project.notes || null,
+    updated_at: project.updated_at || project.date_modification || null,
+  } : null;
+  const lines = [
+    'Inspection ciblée sans effet terminée.',
+    `Projet: ${projectId || 'non fourni'}`,
+    `Champs actuels: ${projectFields ? JSON.stringify(projectFields) : 'projet introuvable'}`,
+    'Valeurs avant modification: indisponibles (aucun instantané avant/après n’est conservé par cette action).',
+    `Journal update_project: ${latestLog?.id || 'absent'} · heure=${latestLog?.created_at || latestLog?.date_creation || 'absente'} · exécuteur=${latestLog?.effectue_par || 'absent'} · statut=${latestLog?.statut || 'absent'}`,
+    `Tâche liée: ${taskId || 'non fournie'} · titre=${task?.titre || 'absent'} · statut=${task?.statut || 'absent'}`,
+    `Dernier run lié: ${latestRun?.id || 'aucun'} · statut=${latestRun?.status || 'absent'} · exécuteur=${latestRun?.agent_id || latestRun?.provider_name || 'absent'} · preuve=${latestRun?.result ? JSON.stringify(latestRun.result).slice(0, 1200) : 'aucune'}`,
+    'Aucune écriture, tâche, exécution ou dépense n’a été créée par cette inspection.',
+  ];
+  return { message: lines.join('\n'), result: { inspection_only: true, project: projectFields, task, latest_run: latestRun, action_log: latestLog } };
 }
 
 function directEntityMutationSignal(message) {
@@ -156,6 +238,14 @@ async function shouldHandleBatch(req, message) {
 router.post('/chat', async (req, res, next) => {
   const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 4000) : '';
   if (!message) return next();
+  if (canBatch(req.user) && targetedInspectionSignal(message)) {
+    try {
+      const inspection = await inspectTargetedProject(message);
+      return res.json({ ...inspection, confirmation: null, conversation_id: conversationIdFrom(req), assistant_mode: req.user?.role === 'superadmin' ? 'owner' : 'staff' });
+    } catch (error) {
+      return res.status(502).json({ error: 'Inspection ciblée impossible', details: String(error.message || error).slice(0, 300) });
+    }
+  }
   if (!(await shouldHandleBatch(req, message))) return next();
 
   const sessionId = sessionIdFor(req);
@@ -327,3 +417,5 @@ module.exports.autopilotMessage = autopilotMessage;
 module.exports.directEntityMutationSignal = directEntityMutationSignal;
 module.exports.executionProhibited = executionProhibited;
 module.exports.directInspectionSignal = directInspectionSignal;
+module.exports.targetedInspectionSignal = targetedInspectionSignal;
+module.exports.idAfterLabel = idAfterLabel;
