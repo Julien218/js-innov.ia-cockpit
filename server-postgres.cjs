@@ -52,7 +52,8 @@ async function migrate() {
       '006_signage_scheduling.sql',
       '007_signage_display_manager.sql',
       '008_signage_player_runtime_health.sql',
-      '009_signage_client_portal.sql'
+      '009_signage_client_portal.sql',
+      '010_signage_three_proposal_approval.sql'
     ]) {
       const exists = await client.query('select 1 from pilot_schema_migrations where name=$1', [file]);
       if (exists.rowCount) continue;

@@ -9,6 +9,7 @@ const pageSource = fs.readFileSync(path.join(root, 'src/pages/ClientSignageReque
 const migration = fs.readFileSync(path.join(root, 'migrations/009_signage_client_portal.sql'), 'utf8');
 const proposalMigration = fs.readFileSync(path.join(root, 'migrations/010_signage_three_proposal_approval.sql'), 'utf8');
 const staffPageSource = fs.readFileSync(path.join(root, 'src/components/signage/StaffClientRequests.jsx'), 'utf8');
+const postgresSource = fs.readFileSync(path.join(root, 'server-postgres.cjs'), 'utf8');
 const onboarding = fs.readFileSync(path.join(root, 'server-client-onboarding.cjs'), 'utf8');
 const { owner } = require('../server-client-signage-portal.cjs');
 
@@ -57,6 +58,7 @@ test('client portal tables are private and protected by RLS', () => {
   assert.doesNotMatch(migration, /create policy/i);
   assert.match(proposalMigration, /alter table public\.client_content_review_proposals enable row level security/);
   assert.doesNotMatch(proposalMigration, /create policy/i);
+  assert.match(postgresSource, /010_signage_three_proposal_approval\.sql/);
 });
 
 test('the client chooses one of exactly three labelled proposals', () => {
