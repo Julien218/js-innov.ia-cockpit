@@ -9,7 +9,7 @@ const taskBatchSource = fs.readFileSync(path.join(root, 'server-task-batch.cjs')
 const serverSource = fs.readFileSync(path.join(root, 'server.cjs'), 'utf8');
 const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
 
-const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage, executionProof, directAutopilotSignal, autopilotMessage, directEntityMutationSignal, executionProhibited, directInspectionSignal, targetedInspectionSignal, idAfterLabel } = require(path.join(root, 'server-assistant-batch.cjs'));
+const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage, executionProof, directAutopilotSignal, autopilotMessage, directEntityMutationSignal, executionProhibited, directInspectionSignal, targetedInspectionSignal, idAfterLabel, scopedTaskExecutionAuthorization } = require(path.join(root, 'server-assistant-batch.cjs'));
 const { canonicalTaskTitle, latestActiveRun, sanitizeTaskBatchPayload } = require(path.join(root, 'server-task-batch.cjs'));
 
 test('les demandes multi-tâches et d’exécution sont reconnues sans intercepter un chat banal', () => {
@@ -61,6 +61,15 @@ test('une inspection ciblée de projet ne déclenche jamais l’inventaire globa
   assert.match(batchSource, /inspectTargetedProject\(message\)/);
   assert.match(batchSource, /Inspection ciblée sans effet terminée/);
   assert.match(batchSource, /\/data\/LogAction\?limit=250/);
+});
+
+test('une autorisation limitée à un task_id reste exécutable malgré les interdictions hors périmètre', () => {
+  const request = 'J’autorise explicitement NOVA à reprendre et exécuter uniquement la tâche existante bdcb55aa-e09a-45e3-9132-848400bf1c5d. Ne crée aucune nouvelle tâche et ne modifie aucun autre projet.';
+  assert.equal(scopedTaskExecutionAuthorization(request), true);
+  assert.equal(explicitExecutionAuthorization(request), true);
+  assert.equal(targetedInspectionSignal(request), false);
+  assert.equal(directInspectionSignal(request), false);
+  assert.equal(batchSignals(request), true);
 });
 
 test('un batch exige des tâches avec un titre non vide', () => {
