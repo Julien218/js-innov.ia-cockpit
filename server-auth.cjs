@@ -18,6 +18,7 @@
 
 const express = require('express');
 const crypto = require('crypto');
+const { applyRolePolicy } = require('./server-role-policy.cjs');
 const cookie = require('cookie');
 
 const router = express.Router();
@@ -163,6 +164,10 @@ function sha256Legacy(password) {
     .digest('hex');
 }
 
+function inviteTokenHash(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
 function safeCompare(a, b) {
   const bufA = Buffer.from(a);
   const bufB = Buffer.from(b);
@@ -267,7 +272,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Identifiants incorrects.' });
     }
 
-    const user = rows[0];
+    const user = applyRolePolicy(rows[0]);
 
     // Vérification du mot de passe (SHA-256 legacy)
     const pwHash = sha256Legacy(password);
@@ -324,6 +329,42 @@ router.post('/login', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
+// GET /api/auth/invite — vérifier un lien d'activation
+// ══════════════════════════════════════════════════════════════════════════════
+router.get('/invite', async (req, res) => {
+  const token = String(req.query?.token || '');
+  if (!/^[A-Za-z0-9_-]{40,160}$/.test(token)) return res.status(400).json({ valid: false });
+  try {
+    const rows = await supabaseSelect(`cockpit_invites?select=user_id,expires_at,used_at&token_hash=eq.${inviteTokenHash(token)}&limit=1`);
+    const invite = rows?.[0];
+    return res.json({ valid: Boolean(invite && !invite.used_at && new Date(invite.expires_at) > new Date()) });
+  } catch (err) {
+    console.error('[auth] invite validation error:', err.message);
+    return res.status(503).json({ valid: false });
+  }
+});
+
+// POST /api/auth/activate — définir le mot de passe d'un compte invité
+router.post('/activate', async (req, res) => {
+  if (!validateOrigin(req)) return res.status(403).json({ error: 'Origine non autorisée.' });
+  const token = String(req.body?.token || '');
+  const password = String(req.body?.password || '');
+  if (!/^[A-Za-z0-9_-]{40,160}$/.test(token)) return res.status(400).json({ error: 'Invitation invalide ou expirée.' });
+  if (password.length < 12 || password.length > 128) return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 12 caractères.' });
+  try {
+    const rows = await supabaseSelect(`cockpit_invites?select=id,user_id,expires_at,used_at&token_hash=eq.${inviteTokenHash(token)}&limit=1`);
+    const invite = rows?.[0];
+    if (!invite || invite.used_at || new Date(invite.expires_at) <= new Date()) return res.status(400).json({ error: 'Invitation invalide ou expirée.' });
+    const now = new Date().toISOString();
+    await supabaseUpdate(`cockpit_users?id=eq.${invite.user_id}`, { password_hash: sha256Legacy(password), is_active: true, updated_at: now });
+    await supabaseUpdate(`cockpit_invites?user_id=eq.${invite.user_id}&used_at=is.null`, { used_at: now });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[auth] activation error:', err.message);
+    return res.status(500).json({ error: 'Activation impossible. Réessayez.' });
+  }
+});
+
 // GET /api/auth/session — valider la session via cookie
 // ══════════════════════════════════════════════════════════════════════════════
 router.get('/session', async (req, res) => {
@@ -370,7 +411,7 @@ router.get('/session', async (req, res) => {
       return res.json({ valid: false });
     }
 
-    const user = userRows[0];
+    const user = applyRolePolicy(userRows[0]);
 
     return res.json({
       valid: true,
