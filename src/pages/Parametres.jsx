@@ -5,6 +5,7 @@ import {
   AlertTriangle, X, Pencil, PowerOff, Copy, ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PLATFORM_SERVICES } from "@/config/platformServices";
 
 const TABS = [
   { id: "agents",   label: "Agents IA",      icon: Bot },
@@ -121,7 +122,7 @@ function AgentsIA() {
 // ── Builder Web ───────────────────────────────────────────────────────────────
 function BuilderWeb() {
   const sites = [
-    { nom: "jsinnovia.com",        url: "https://jsinnovia.com",              admin: "https://github.com/Julien218/js-innov.ia", statut: "en_ligne" },
+    { nom: "www.jsinnovia.com",    url: PLATFORM_SERVICES.publicSite.url,      admin: PLATFORM_SERVICES.publicSite.repositoryUrl, statut: "en_ligne" },
     { nom: "oliviertrevis.be",     url: "https://www.oliviertrevis.be",       admin: "https://github.com/Julien218/oliviertrevis-site", statut: "en_ligne" },
     { nom: "fashionistartdour.be", url: "https://www.fashionistartdour.be",   admin: "https://github.com/Julien218/fashionist-art", statut: "en_ligne" },
     { nom: "synergiedour.be",      url: "https://www.synergiedour.be",        admin: "https://github.com/Julien218/synergie-dour", statut: "ssl_error" },
