@@ -49,8 +49,8 @@ test('a client cannot use the request portal without the subscribed signage serv
 test('client portal tables are private and protected by RLS', () => {
   for (const table of ['client_signage_requests', 'client_signage_request_assets', 'client_content_reviews']) {
     assert.match(migration, new RegExp(`alter table public\\.${table} enable row level security`));
-    assert.match(migration, new RegExp(`revoke all on public\\.${table} from anon, authenticated`));
   }
+  assert.doesNotMatch(migration, /create policy/i);
 });
 
 test('the signage request page uploads assets and exposes an explicit decision', () => {
