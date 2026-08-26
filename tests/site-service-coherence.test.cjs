@@ -14,14 +14,14 @@ test('le site officiel pointe vers le bon domaine, dépôt et service Railway', 
   assert.match(config, /branch:\s*"main"/);
 });
 
-test('le service Olivier Signage reste un module séparé et non le site officiel', () => {
+test('le service Olivier Signage reste un module produit séparé du site général', () => {
   const config = read('src/config/platformServices.js');
   assert.match(config, /signageManager/);
   assert.match(config, /service:\s*"olivier-signage-cockpit"/);
-  assert.match(config, /signageLegacySite/);
+  assert.match(config, /signageProductSite/);
   assert.match(config, /service:\s*"olivier-signage-site"/);
-  assert.match(config, /status:\s*"legacy"/);
-  assert.match(config, /Ne pas utiliser comme site JS-Innov\.IA/);
+  assert.match(config, /Vitrine produit Signage/);
+  assert.match(config, /Ce n’est pas le site général JS-Innov\.IA/);
 });
 
 test('les écrans Cockpit n’annoncent plus Base44 ou le dépôt Signage comme vitrine officielle', () => {

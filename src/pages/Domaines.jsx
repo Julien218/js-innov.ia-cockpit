@@ -223,7 +223,7 @@ export default function Domaines() {
               rel="noreferrer"
               className={cn(
                 "rounded-xl border p-3 transition-colors hover:bg-muted/30",
-                service.status === "legacy" ? "border-amber-500/30 bg-amber-500/5" : "border-border"
+                service.service === "olivier-signage-site" ? "border-cyan-500/30 bg-cyan-500/5" : "border-border"
               )}
             >
               <div className="flex items-start justify-between gap-2">

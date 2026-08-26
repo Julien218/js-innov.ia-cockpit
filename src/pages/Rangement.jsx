@@ -81,7 +81,7 @@ const APPS_B44 = [
 const GITHUB_REPOS = [
   { name: "js-innov.ia-cockpit", status: "actif", role: "Cockpit Railway", last: "25/07" },
   { name: PLATFORM_SERVICES.publicSite.repository.split('/')[1], status: "actif", role: "Site officiel www.jsinnovia.com · Railway/main", last: "24/08" },
-  { name: PLATFORM_SERVICES.signageLegacySite.repository.split('/')[1], status: "actif", role: "Produit Signage sur branche dédiée — pas le site officiel", last: "19/08" },
+  { name: PLATFORM_SERVICES.signageProductSite.repository.split('/')[1], status: "actif", role: "Produit Signage sur branche dédiée — pas le site général", last: "19/08" },
   { name: "letourdedour-site", status: "actif", role: "Site Tour de Dour", last: "23/07" },
   { name: "oliviertrevis-site", status: "actif", role: "Site Olivier Trevis", last: "21/07" },
   { name: "synergie-dour", status: "actif", role: "App Synergie Dour", last: "11/07" },
@@ -100,7 +100,7 @@ const RAILWAY = [
   { name: "cockpit-v3", status: "actif", role: "Cockpit central", supabase: "rzvv" },
   { name: "js-innovia-site", status: "actif", role: "Site officiel www.jsinnovia.com", supabase: "—" },
   { name: "olivier-signage-cockpit", status: "actif", role: "Gestion écran géant séparée", supabase: "—" },
-  { name: "olivier-signage-site", status: "a_verifier", role: "Ancienne vitrine technique sans domaine officiel", supabase: "—" },
+  { name: "olivier-signage-site", status: "actif", role: "Vitrine produit Signage · adresse Railway technique", supabase: "—" },
   { name: "jsinnovia-agent", status: "actif", role: "Proxy data Supabase", supabase: "gfj" },
   { name: "cockpit-prod", status: "archiver", role: "Ancien cockpit (Supabase mort)", supabase: "fng (MORT)" },
   { name: "js-innov-command-center", status: "archiver", role: "Ancien projet (Supabase mort)", supabase: "fng (MORT)" },
