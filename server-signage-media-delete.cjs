@@ -12,6 +12,9 @@ let dropboxTokenCache = { value: DROPBOX_ACCESS_TOKEN, expiresAt: DROPBOX_ACCESS
 const cleanEmail = value => String(value || '').trim().toLowerCase();
 const encode = value => encodeURIComponent(String(value || ''));
 const isUuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+const rejectCommercial = (req, res, next) => req.user?.role === 'collaborateur'
+  ? res.status(403).json({ error: 'La suppression de médias nécessite un administrateur' })
+  : next();
 
 async function db(resource, options = {}) {
   return postgresRest(resource, options);
@@ -64,7 +67,7 @@ function manifestContainsMedia(publication, mediaId) {
   return Array.isArray(items) && items.some(item => String(item?.media?.id || item?.mediaId || '') === mediaId);
 }
 
-router.delete('/manage/media/:id', requireSession('client'), async (req, res) => {
+router.delete('/manage/media/:id', requireSession('client'), rejectCommercial, async (req, res) => {
   try {
     const mediaId = String(req.params.id || '');
     if (!isUuid(mediaId)) return res.status(400).json({ error: 'Média invalide' });

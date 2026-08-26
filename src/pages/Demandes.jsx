@@ -49,6 +49,8 @@ export default function Demandes() {
 }
 
 function StaffDemandes() {
+  const { user } = useAuth();
+  const isAdmin = ["admin", "superadmin"].includes(user?.role);
   const [modalOpen, setModalOpen] = useState(false);
   const [formData, setFormData] = useState({});
   const [editingId, setEditingId] = useState(null);
@@ -111,7 +113,7 @@ function StaffDemandes() {
     { key: "actions", label: "", render: (r) => (
       <div className="flex gap-1">
         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleEdit(r); }}><Pencil className="w-3 h-3" /></Button>
-        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(r.id); }}><Trash2 className="w-3 h-3" /></Button>
+        {isAdmin && <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(r.id); }}><Trash2 className="w-3 h-3" /></Button>}
       </div>
     )},
   ];
@@ -130,7 +132,7 @@ function StaffDemandes() {
 
   return (
     <div>
-      <StaffClientRequests />
+      {isAdmin && <StaffClientRequests />}
       <PageHeader
         title="Demandes"
         subtitle={`${ouvertes} ouvertes · ${enTraitement} en traitement`}

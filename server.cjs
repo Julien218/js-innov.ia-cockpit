@@ -115,6 +115,14 @@ try {
   console.warn('Portail client Signage indisponible:', e.message);
 }
 
+try {
+  const userAccessRouter = require('./server-user-access.cjs');
+  app.use('/api/user-access', requireSession('superadmin'), userAccessRouter);
+  console.log('Gestion des rôles Cockpit activée');
+} catch (e) {
+  console.warn('Gestion des rôles indisponible:', e.message);
+}
+
 const AGENT_PROXY_URL = process.env.JSINNOVIA_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_PROXY_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
 

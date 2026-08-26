@@ -17,7 +17,7 @@ export const ROLE_LEVEL = {
 export const ROLE_LABELS = {
   superadmin: "Super Admin",
   admin: "Admin",
-  collaborateur: "Collaborateur",
+  collaborateur: "Commercial",
   client: "Client",
 };
 
@@ -50,8 +50,7 @@ export const ROLE_ROUTES = {
     "/gouvernance", "/confidentialite", "/ecran-geant", "/videosurveillance"
   ],
   collaborateur: [
-    "/", "/documents", "/projets", "/taches", "/demandes", "/agent", "/agents-ia",
-    "/ecran-geant", "/videosurveillance"
+    "/", "/clients", "/leads", "/documents", "/projets", "/taches", "/demandes", "/devis", "/agent"
   ],
   client: [
     "/", "/mes-projets", "/mes-devis", "/mes-factures", "/demandes", "/agents-ia",
