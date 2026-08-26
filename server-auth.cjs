@@ -18,6 +18,7 @@
 
 const express = require('express');
 const crypto = require('crypto');
+const { applyRolePolicy } = require('./server-role-policy.cjs');
 const cookie = require('cookie');
 
 const router = express.Router();
@@ -271,7 +272,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Identifiants incorrects.' });
     }
 
-    const user = rows[0];
+    const user = applyRolePolicy(rows[0]);
 
     // Vérification du mot de passe (SHA-256 legacy)
     const pwHash = sha256Legacy(password);
@@ -407,7 +408,7 @@ router.get('/session', async (req, res) => {
       return res.json({ valid: false });
     }
 
-    const user = userRows[0];
+    const user = applyRolePolicy(userRows[0]);
 
     return res.json({
       valid: true,

@@ -230,7 +230,8 @@ async function cleanupExpiredRecordings(ownerEmail) {
 
 async function requireEntitlement(req, res, next) {
   try {
-    if (req.user.role !== 'client') return next();
+    if (['admin', 'superadmin'].includes(req.user.role)) return next();
+    if (req.user.role !== 'client') return res.status(403).json({ error: 'Les commandes Écran géant nécessitent un administrateur' });
     const rows = await db(`client_module_entitlements?select=id&email=eq.${encodeURIComponent(owner(req))}&module_code=eq.digital_signage&enabled=eq.true&limit=1`);
     if (!rows?.length) return res.status(403).json({ error: 'Module Digital Signage non actif' });
     next();
@@ -239,7 +240,8 @@ async function requireEntitlement(req, res, next) {
 
 async function requireCameraEntitlement(req, res, next) {
   try {
-    if (req.user.role !== 'client') return next();
+    if (['admin', 'superadmin'].includes(req.user.role)) return next();
+    if (req.user.role !== 'client') return res.status(403).json({ error: 'Les commandes Vidéosurveillance nécessitent un administrateur' });
     const rows = await db(`client_module_entitlements?select=id&email=eq.${encodeURIComponent(owner(req))}&module_code=eq.videosurveillance&enabled=eq.true&limit=1`);
     if (!rows?.length) return res.status(403).json({ error: 'Module Vidéosurveillance non actif' });
     next();

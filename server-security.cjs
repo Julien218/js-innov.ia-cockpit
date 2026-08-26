@@ -1,8 +1,8 @@
 const cookie = require('cookie');
+const { ROLE_LEVEL, applyRolePolicy } = require('./server-role-policy.cjs');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://rzvvwcwyaddzsaattwqt.supabase.co';
 const SUPABASE_SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const ROLE_LEVEL = { client: 1, collaborateur: 2, admin: 3, superadmin: 4 };
 
 async function select(path) {
   if (!SUPABASE_SECRET) throw new Error('Supabase server secret not configured');
@@ -20,7 +20,7 @@ async function resolveSession(req) {
   const session = sessions[0];
   if (!session || new Date(session.expires_at) <= new Date()) return null;
   const users = await select(`cockpit_users?select=id,email,full_name,role,organisation,is_active&id=eq.${encodeURIComponent(session.user_id)}&is_active=eq.true&limit=1`);
-  return users[0] || null;
+  return applyRolePolicy(users[0] || null);
 }
 
 function requireSession(minRole = 'client') {

@@ -37,15 +37,20 @@ function mailTransport() {
   });
 }
 
-async function ensureClientInvitation({ email, fullName, organisation }) {
+async function ensureClientInvitation({ email, fullName, organisation, role = 'client' }) {
   const normalized = String(email || '').trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) throw new Error('Email client invalide');
-  let users = await authDb(`cockpit_users?select=id,email,is_active&email=eq.${encodeURIComponent(normalized)}&limit=1`);
+  const normalizedRole = role === 'commercial' ? 'collaborateur' : String(role || 'client').trim().toLowerCase();
+  if (!['client', 'collaborateur', 'admin'].includes(normalizedRole)) throw new Error('Rôle d’invitation invalide');
+  let users = await authDb(`cockpit_users?select=id,email,is_active,role&email=eq.${encodeURIComponent(normalized)}&limit=1`);
   let user = users?.[0];
   if (user?.is_active) return { status: 'active', invited: false };
   if (!user) {
-    users = await authDb('cockpit_users', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ email: normalized, full_name: String(fullName || normalized).slice(0, 160), role: 'client', organisation: String(organisation || '').slice(0, 160) || null, is_active: false, password_hash: null }) });
+    users = await authDb('cockpit_users', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ email: normalized, full_name: String(fullName || normalized).slice(0, 160), role: normalizedRole, organisation: String(organisation || '').slice(0, 160) || null, is_active: false, password_hash: null }) });
     user = users?.[0];
+  } else if (user.role !== normalizedRole) {
+    const updated = await authDb(`cockpit_users?id=eq.${encodeURIComponent(user.id)}`, { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ role: normalizedRole, updated_at: new Date().toISOString() }) });
+    user = updated?.[0] || { ...user, role: normalizedRole };
   }
   if (!user?.id) throw new Error('Compte client non créé');
   const pending = await authDb(`cockpit_invites?select=id,expires_at,used_at&user_id=eq.${encodeURIComponent(user.id)}&used_at=is.null&limit=1`);
@@ -64,8 +69,8 @@ async function ensureClientInvitation({ email, fullName, organisation }) {
       from: `JS-Innov.IA <${from}>`,
       to: normalized,
       subject: 'Activez votre cockpit JS-Innov.IA',
-      text: `Bonjour ${greetingName},\n\nVotre cockpit client est prêt. Activez votre accès dans les 7 jours :\n${activationUrl}\n\nSi vous n’êtes pas à l’origine de cette demande, ignorez ce message.`,
-      html: `<p>Bonjour ${escapeHtml(greetingName)},</p><p>Votre cockpit client est prêt.</p><p><a href="${activationUrl}">Activer mon accès</a></p><p>Ce lien est personnel et expire dans 7 jours.</p>`
+      text: `Bonjour ${greetingName},\n\nVotre accès Cockpit JS-Innov.IA est prêt. Activez-le dans les 7 jours :\n${activationUrl}\n\nSi vous n’êtes pas à l’origine de cette demande, ignorez ce message.`,
+      html: `<p>Bonjour ${escapeHtml(greetingName)},</p><p>Votre accès Cockpit JS-Innov.IA est prêt.</p><p><a href="${activationUrl}">Activer mon accès</a></p><p>Ce lien est personnel et expire dans 7 jours.</p>`
     });
   } catch (error) {
     await authDb(`cockpit_invites?id=eq.${encodeURIComponent(invite.id)}`, { method: 'DELETE' }).catch(() => {});

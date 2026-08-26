@@ -10,6 +10,9 @@ const cleanEmail = value => String(value || '').trim().toLowerCase();
 const isUuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
 const isDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
 const isTime = value => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(value || ''));
+const rejectCommercial = (req, res, next) => req.user?.role === 'collaborateur'
+  ? res.status(403).json({ error: 'La programmation de l’écran nécessite un administrateur' })
+  : next();
 
 async function db(resource, options = {}) {
   return postgresRest(resource, options);
@@ -50,8 +53,8 @@ function normalizeRanges(input, { requireDay = false } = {}) {
   });
 }
 
-router.use('/manage/players/:id/schedule', requireSession('client'));
-router.use('/manage/players/:id/exceptions', requireSession('client'));
+router.use('/manage/players/:id/schedule', requireSession('client'), rejectCommercial);
+router.use('/manage/players/:id/exceptions', requireSession('client'), rejectCommercial);
 
 router.get('/manage/players/:id/schedule', async (req, res) => {
   try {
@@ -113,7 +116,7 @@ router.post('/manage/players/:id/exceptions', async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-router.delete('/manage/players/:id/exceptions/:exceptionId', requireSession('client'), async (req, res) => {
+router.delete('/manage/players/:id/exceptions/:exceptionId', requireSession('client'), rejectCommercial, async (req, res) => {
   try {
     const scope = await verifyPlayerOwner(req, res); if (!scope) return;
     if (!isUuid(req.params.exceptionId)) return res.status(400).json({ error: 'Exception invalide' });
