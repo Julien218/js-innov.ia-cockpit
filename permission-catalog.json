@@ -8,6 +8,7 @@
   { "code": "requests", "label": "Demandes", "group": "CRM", "roles": ["collaborateur", "admin"], "routes": ["/demandes"] },
   { "code": "projects", "label": "Projets", "group": "Projets", "roles": ["client", "collaborateur", "admin"], "routes": ["/projets", "/mes-projets"] },
   { "code": "tasks", "label": "Tâches", "group": "Projets", "roles": ["collaborateur", "admin"], "routes": ["/taches"] },
+  { "code": "villeconnect", "label": "VilleConnectOS", "group": "Projets", "roles": ["admin"], "routes": ["/villeconnect"] },
   { "code": "quotes", "label": "Devis", "group": "Finance", "roles": ["client", "collaborateur", "admin"], "routes": ["/devis", "/mes-devis"] },
   { "code": "invoices", "label": "Factures", "group": "Finance", "roles": ["client", "admin"], "routes": ["/factures", "/mes-factures"] },
   { "code": "commissions", "label": "Commissions", "group": "Finance", "roles": ["admin"], "routes": ["/commissions"] },

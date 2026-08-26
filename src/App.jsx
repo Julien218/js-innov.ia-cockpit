@@ -63,6 +63,7 @@ import MobileHub from "@/pages/MobileHub";
 import DigitalSignage from "@/pages/DigitalSignage";
 import LocalVideoFactory from "@/pages/LocalVideoFactory";
 import ApiVideoFactory from "@/pages/ApiVideoFactory";
+import VilleConnect from "@/pages/VilleConnect";
 
 const PageBoundary = ({ children }) => <AppErrorBoundary>{children}</AppErrorBoundary>;
 
@@ -94,6 +95,7 @@ const AppRoutes = () => {
           <Route path="/leads" element={<PageBoundary><Leads /></PageBoundary>} />
 
           <Route path="/projets" element={<PageBoundary><Projets /></PageBoundary>} />
+          <Route path="/villeconnect" element={isAdmin ? <PageBoundary><VilleConnect /></PageBoundary> : <Navigate to="/" replace />} />
           <Route path="/mes-projets" element={<PageBoundary><ClientRecords kind="projects" /></PageBoundary>} />
           <Route path="/taches" element={<PageBoundary><Taches /></PageBoundary>} />
           <Route path="/demandes" element={<PageBoundary><Demandes /></PageBoundary>} />

@@ -155,6 +155,15 @@ try {
   console.warn('⚠️ Route Écran géant indisponible:', e.message);
 }
 
+// ── Supervision VilleConnectOS : site + application + API ─
+try {
+  const villeConnectRouter = require('./server-villeconnect.cjs');
+  app.use('/api/villeconnect', requireSession('admin'), requirePermission('villeconnect', 'admin'), villeConnectRouter.router);
+  console.log('✅ Route /api/villeconnect activée (site, application et API Railway)');
+} catch (e) {
+  console.warn('⚠️ Route VilleConnectOS indisponible:', e.message);
+}
+
 // ── Finalisation vidéo : MP4 + métadonnées + JSON + Dropbox ─
 try {
   const videoProvenanceRouter = require('./server-video-provenance.cjs');
