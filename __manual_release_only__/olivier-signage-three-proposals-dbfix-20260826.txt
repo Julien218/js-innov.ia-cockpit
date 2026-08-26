@@ -1,0 +1,1 @@
+Release the startup registration for migration 010.
