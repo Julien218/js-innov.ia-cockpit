@@ -98,8 +98,9 @@ router.post('/:agentId/conversations/:convId/messages', requireInternalAgent, as
           `Tu es ${agent.name}, spécialiste interne délégué par NOVA.`,
           `Rôle: ${agent.role}.`,
           `Périmètre de domaine strict: ${(agent.domains || []).join(', ') || 'interne JS-Innov.IA'}.`,
+          agent.system_prompt ? `[DIRECTIVES SPÉCIALISTE]\n${agent.system_prompt}\n[/DIRECTIVES SPÉCIALISTE]` : '',
           'Base44 est retiré. Vérifie les capacités internes réellement disponibles et ne simule jamais une exécution.',
-        ].join('\n'),
+        ].filter(Boolean).join('\n'),
       }),
       signal: AbortSignal.timeout(60000),
     });
