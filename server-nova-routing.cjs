@@ -13,6 +13,29 @@ function safeKey(value) {
   return /^[a-zA-Z0-9:_-]{1,120}$/.test(key) ? key : null;
 }
 
+function inferMissionDomains(message) {
+  const text = normalize(message);
+  const domains = [];
+  const rules = [
+    ['web', /(site|page web|landing|frontend|html|css|react|next|vite|ux|ui|responsive)/],
+    ['seo', /(seo|referencement|référencement|meta|canonical|sitemap|robots|schema\.org|core web vitals)/],
+    ['dns', /(dns|domaine|domain|cname|txt|mx|aaaa|tls|ssl|https)/],
+    ['github', /(github|repo|repository|branche|branch|commit|pull request|\bpr\b)/],
+    ['railway', /(railway|deploi|déploi|deploy|logs production|staging)/],
+    ['mobile', /(mobile|android|ios|iphone|react native|expo|apk|aab)/],
+    ['desktop', /(electron|application desktop|windows app|desktop app)/],
+    ['video', /(video|vidéo|minimax|h3|comfyui|ffmpeg|montage|ecran geant|écran géant)/],
+    ['creative', /(branding|design|creative|créatif|créative|storyboard|identite visuelle|identité visuelle)/],
+    ['crm', /(crm|client|prospect|lead|bce|tva|societe|société|asbl)/],
+    ['billing', /(facture|facturation|devis|stripe|paiement|marge|cout|coût|finops)/],
+    ['email', /(email|mail|newsletter|relance|communication client)/],
+    ['automation', /(automation|automatisation|workflow|n8n|make|tache automatique|tâche automatique)/],
+    ['local', /(windows|outil local|agent local|ia locale|ollama|comfyui|ffmpeg|fichier local|dossier local)/],
+  ];
+  for (const [domain, pattern] of rules) if (pattern.test(text)) domains.push(domain);
+  return [...new Set(domains)];
+}
+
 function evaluateNovaRequest(message) {
   const text = normalize(message);
   const complexSignals = [
@@ -27,8 +50,10 @@ function evaluateNovaRequest(message) {
   ];
   const confidentialSignals = /client|facture|devis|tva|bce|donnee|contrat|email|telephone|adresse|cle api|secret|token/;
   const localSignals = /(?:mode|agent|ia|outil) local|hors connexion|sans internet|comfyui|ffmpeg|ffprobe|workflow local|dossier local|fichier local|windows/;
+  const missionDomains = inferMissionDomains(message);
+  const liveOperatorDomains = new Set(['web', 'seo', 'mobile', 'desktop']);
 
-  const complex = text.length > 900 || complexSignals.some((pattern) => pattern.test(text));
+  const complex = text.length > 900 || complexSignals.some((pattern) => pattern.test(text)) || missionDomains.length >= 3;
   const balanced = !complex && (text.length > 240 || balancedSignals.some((pattern) => pattern.test(text)));
 
   return {
@@ -36,6 +61,12 @@ function evaluateNovaRequest(message) {
     confidentiality: confidentialSignals.test(text) ? 'high' : 'standard',
     preferred_execution: localSignals.test(text) ? 'local_tools_then_cloud' : 'cloud_orchestrator',
     estimated_cost_usd: complex ? 0.75 : balanced ? 0.25 : 0.02,
+    mission_domains: missionDomains,
+    execution_policy: 'execute_or_delegate_until_done',
+    supervision_required: true,
+    evidence_required: true,
+    requires_live_operator: missionDomains.some((domain) => liveOperatorDomains.has(domain)),
+    confirmation_policy: 'single_grouped_confirmation_for_sensitive_actions_only',
   };
 }
 
@@ -72,9 +103,16 @@ function buildRoutingContext(decision, attribution, budget = {}) {
   return [
     '[DÉCISION DE ROUTAGE NOVA — calculée par le Cockpit]',
     `Complexité: ${decision.complexity}. Confidentialité: ${decision.confidentiality}. Exécution préférée: ${decision.preferred_execution}.`,
+    `Domaines mission: ${(decision.mission_domains || []).join(', ') || 'général'}. Politique: ${decision.execution_policy || 'execute_or_delegate_until_done'}.`,
+    `Supervision NOVA: ${decision.supervision_required ? 'obligatoire' : 'standard'}. Preuves: ${decision.evidence_required ? 'obligatoires' : 'standard'}. Live Operator: ${decision.requires_live_operator ? 'requis' : 'non requis'}.`,
+    `Confirmations: ${decision.confirmation_policy || 'single_grouped_confirmation_for_sensitive_actions_only'}.`,
     `Coût plafond estimatif avant exécution: ${decision.estimated_cost_usd.toFixed(2)} USD. Contrôle budget: ${budgetState}.`,
     `Attribution obligatoire: client=${attribution.client_key || 'non résolu'}; projet=${attribution.project_key || 'non résolu'}; source=${attribution.attribution_source}.`,
     budget.recommended_model && `Modèle recommandé par la politique active: ${budget.recommended_model}.`,
+    'Consigne centrale: NOVA reste responsable du résultat final. Elle exécute elle-même ce qui relève de ses outils réels et délègue le reste au spécialiste le plus adapté.',
+    'Une délégation n’est jamais une fin de mission: NOVA récupère le résultat, vérifie les preuves, corrige ou redélègue si nécessaire, puis clôture seulement quand le résultat est réellement vérifié.',
+    'Ne demande pas une succession de confirmations. Regroupe en une seule validation les actions sensibles ou irréversibles; analyses, code, tests, prévisualisations et corrections réversibles restent autonomes dans la mission autorisée.',
+    'Pour les travaux web/mobile/desktop, ouvre ou demande le Live Operator afin que le rendu réellement exécuté puisse être contrôlé visuellement avant clôture.',
     'Consigne: applique cette décision avec les outils réellement disponibles. Ne transforme pas ce flux en questionnaire générique.',
     'Utilise les valeurs internes par défaut fournies pour un travail JS-Innov.IA. Ne demande au propriétaire que la donnée précise qui empêcherait réellement une action ciblée.',
     'Distingue toujours estimation avant appel et coût réel mesuré après appel.',
@@ -85,6 +123,7 @@ function buildRoutingContext(decision, attribution, budget = {}) {
 module.exports = {
   INTERNAL_CLIENT_KEY,
   INTERNAL_PROJECT_KEY,
+  inferMissionDomains,
   evaluateNovaRequest,
   resolveCostAttribution,
   buildRoutingContext,
