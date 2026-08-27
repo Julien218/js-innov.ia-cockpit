@@ -29,6 +29,57 @@ function safeDropboxSegment(value, fallback) {
   return segment || fallback;
 }
 
+function removeOptionPair(args, option, value = null) {
+  for (let index = args.length - 2; index >= 0; index -= 1) {
+    if (args[index] !== option) continue;
+    if (value !== null && args[index + 1] !== value) continue;
+    args.splice(index, 2);
+  }
+}
+
+function buildManagedFfmpegArgs(inputPath, outputPath, metadata) {
+  const args = buildFfmpegArgs(inputPath, outputPath, metadata);
+  const audioEnabled = metadata?.exportParameters?.audio === true;
+  if (!audioEnabled) {
+    removeOptionPair(args, '-map', '0:a?');
+    removeOptionPair(args, '-c:a');
+    removeOptionPair(args, '-b:a');
+  }
+  const outputIndex = args.length - 1;
+  const managed = [
+    '-fps_mode', 'cfr',
+    '-color_primaries', 'bt709',
+    '-color_trc', 'bt709',
+    '-colorspace', 'bt709',
+    ...(audioEnabled ? [] : ['-an']),
+  ];
+  args.splice(outputIndex, 0, ...managed);
+  return args;
+}
+
+function verifyManagedOutput(probe, metadata, verification) {
+  const mismatches = [...new Set(verification?.mismatches || [])];
+  const video = (probe?.streams || []).find((stream) => stream.codec_type === 'video');
+  const audio = (probe?.streams || []).find((stream) => stream.codec_type === 'audio');
+  const audioEnabled = metadata?.exportParameters?.audio === true;
+  if (!audioEnabled && audio) mismatches.push('audio_stream');
+  if (video?.color_space !== 'bt709') mismatches.push('color_space');
+  if (video?.color_primaries !== 'bt709') mismatches.push('color_primaries');
+  if (video?.color_transfer !== 'bt709') mismatches.push('color_transfer');
+  return {
+    ...verification,
+    mismatches: [...new Set(mismatches)],
+    ok: Boolean(verification?.ok) && mismatches.length === 0,
+    audioExpected: audioEnabled,
+    audioPresent: Boolean(audio),
+    colorProfile: video ? {
+      color_space: video.color_space || null,
+      color_primaries: video.color_primaries || null,
+      color_transfer: video.color_transfer || null,
+    } : null,
+  };
+}
+
 async function finalizeVideoBuffer(packageBuffer, { now = new Date() } = {}) {
   const decoded = decodeVideoPackage(packageBuffer);
   const metadata = buildVideoMetadata(decoded.metadata, now);
@@ -37,12 +88,12 @@ async function finalizeVideoBuffer(packageBuffer, { now = new Date() } = {}) {
   const outputPath = path.join(workdir, metadata.filename);
   try {
     await fs.writeFile(inputPath, decoded.video);
-    await run('ffmpeg', buildFfmpegArgs(inputPath, outputPath, metadata));
+    await run('ffmpeg', buildManagedFfmpegArgs(inputPath, outputPath, metadata));
     const { stdout } = await run('ffprobe', ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', outputPath], 60_000);
     const probe = JSON.parse(stdout);
-    const verification = verifyProbe(probe, metadata);
+    const verification = verifyManagedOutput(probe, metadata, verifyProbe(probe, metadata));
     if (!verification.ok) {
-      throw new Error(`Vérification des métadonnées échouée (manquantes: ${verification.missing.join(', ') || 'aucune'}; divergentes: ${verification.mismatches.join(', ') || 'aucune'}).`);
+      throw new Error(`Vérification du master vidéo échouée (manquantes: ${verification.missing.join(', ') || 'aucune'}; divergentes: ${verification.mismatches.join(', ') || 'aucune'}).`);
     }
     const finalBuffer = await fs.readFile(outputPath);
     const sha256 = crypto.createHash('sha256').update(finalBuffer).digest('hex');
@@ -116,3 +167,5 @@ router.post('/finalize', rawVideoPackage, async (req, res) => {
 module.exports = router;
 module.exports.finalizeVideoBuffer = finalizeVideoBuffer;
 module.exports.archiveFinalizedVideo = archiveFinalizedVideo;
+module.exports.buildManagedFfmpegArgs = buildManagedFfmpegArgs;
+module.exports.verifyManagedOutput = verifyManagedOutput;
