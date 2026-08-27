@@ -52,6 +52,7 @@ COPY --from=builder /app/server-task-autopilot.cjs ./server-task-autopilot.cjs
 COPY --from=builder /app/server-companion-audience.cjs ./server-companion-audience.cjs
 COPY --from=builder /app/server-companion-memory.cjs ./server-companion-memory.cjs
 COPY --from=builder /app/server-agent-registry.cjs ./server-agent-registry.cjs
+COPY --from=builder /app/server-led-ad-director.cjs ./server-led-ad-director.cjs
 COPY --from=builder /app/server-agent-orchestrator.cjs ./server-agent-orchestrator.cjs
 COPY --from=builder /app/server-agent-orchestrator-resilient.cjs ./server-agent-orchestrator-resilient.cjs
 COPY --from=builder /app/server-agent-run-log.cjs ./server-agent-run-log.cjs
@@ -95,6 +96,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-cost-accounting-core.cjs \
  && test -f /app/server-provider-cost-imports.cjs \
  && test -f /app/server-agent-registry.cjs \
+ && test -f /app/server-led-ad-director.cjs \
  && test -f /app/server-agent-orchestrator.cjs \
  && test -f /app/server-agent-orchestrator-resilient.cjs \
  && test -f /app/server-agent-run-log.cjs \
@@ -123,6 +125,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-cost-accounting-core.cjs \
  && node --check /app/server-provider-cost-imports.cjs \
  && node --check /app/server-agent-registry.cjs \
+ && node --check /app/server-led-ad-director.cjs \
  && node --check /app/server-agent-orchestrator.cjs \
  && node --check /app/server-agent-orchestrator-resilient.cjs \
  && node --check /app/server-agent-run-log.cjs \
@@ -138,6 +141,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-nova-executors.cjs \
  && node --check /app/server-task-autopilot.cjs \
  && node --check /app/server-bce.cjs \
+ && node -e "require('/app/server-led-ad-director.cjs'); require('/app/server-agent-registry.cjs'); require('/app/server-nova-routing.cjs')" \
  && echo "Required runtime modules check OK"
 
 RUN mkdir -p /etc/nginx/http.d && cat > /etc/nginx/http.d/default.conf << 'NGINXEOF'
