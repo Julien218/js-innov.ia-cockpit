@@ -1,3 +1,5 @@
+const { LED_AD_DIRECTOR_PROMPT, isLedAdvertisingRequest } = require('./server-led-ad-director.cjs');
+
 const INTERNAL_CLIENT_KEY = 'internal:jsinnovia';
 const INTERNAL_PROJECT_KEY = 'internal:cockpit-nova';
 
@@ -52,6 +54,7 @@ function evaluateNovaRequest(message) {
   const localSignals = /(?:mode|agent|ia|outil) local|hors connexion|sans internet|comfyui|ffmpeg|ffprobe|workflow local|dossier local|fichier local|windows/;
   const missionDomains = inferMissionDomains(message);
   const liveOperatorDomains = new Set(['web', 'seo', 'mobile', 'desktop']);
+  const ledAdvertising = isLedAdvertisingRequest(message);
 
   const complex = text.length > 900 || complexSignals.some((pattern) => pattern.test(text)) || missionDomains.length >= 3;
   const balanced = !complex && (text.length > 240 || balancedSignals.some((pattern) => pattern.test(text)));
@@ -67,6 +70,8 @@ function evaluateNovaRequest(message) {
     evidence_required: true,
     requires_live_operator: missionDomains.some((domain) => liveOperatorDomains.has(domain)),
     confirmation_policy: 'single_grouped_confirmation_for_sensitive_actions_only',
+    specialist_agent: ledAdvertising ? 'led-ad-director' : null,
+    specialist_directives: ledAdvertising ? LED_AD_DIRECTOR_PROMPT : null,
   };
 }
 
@@ -100,12 +105,24 @@ function buildRoutingContext(decision, attribution, budget = {}) {
   const budgetState = budget.allowed === false
     ? `bloqué (${budget.reason || 'limite budgétaire'})`
     : budget.allowed === true ? 'autorisé' : 'contrôle indisponible, journalisation obligatoire';
+  const specialistContext = decision.specialist_agent === 'led-ad-director'
+    ? [
+      '[DÉLÉGATION SPÉCIALISTE — led-ad-director]',
+      'Cette mission relève du sous-agent NOVA Directeur Artistique LED. Applique ses directives à la lettre sous supervision NOVA.',
+      'Avant toute génération: analyse les données et médias disponibles, ne demande que les informations essentielles réellement manquantes, puis présente un scénario 0–2 s / 2–5 s / 5–8 s avec les textes et coordonnées exacts.',
+      'Une seule validation groupée doit couvrir le scénario, les textes et les coordonnées. Après cette validation seulement, propose create_video_generation. La confirmation Cockpit de cette action vaut validation créative groupée; ne demande pas une série de confirmations supplémentaires.',
+      'Une tâche automatique ou un batch ne peut jamais servir à contourner cette validation.',
+      decision.specialist_directives,
+      '[/DÉLÉGATION SPÉCIALISTE — led-ad-director]',
+    ].join('\n')
+    : null;
   return [
     '[DÉCISION DE ROUTAGE NOVA — calculée par le Cockpit]',
     `Complexité: ${decision.complexity}. Confidentialité: ${decision.confidentiality}. Exécution préférée: ${decision.preferred_execution}.`,
     `Domaines mission: ${(decision.mission_domains || []).join(', ') || 'général'}. Politique: ${decision.execution_policy || 'execute_or_delegate_until_done'}.`,
     `Supervision NOVA: ${decision.supervision_required ? 'obligatoire' : 'standard'}. Preuves: ${decision.evidence_required ? 'obligatoires' : 'standard'}. Live Operator: ${decision.requires_live_operator ? 'requis' : 'non requis'}.`,
     `Confirmations: ${decision.confirmation_policy || 'single_grouped_confirmation_for_sensitive_actions_only'}.`,
+    decision.specialist_agent && `Spécialiste imposé: ${decision.specialist_agent}.`,
     `Coût plafond estimatif avant exécution: ${decision.estimated_cost_usd.toFixed(2)} USD. Contrôle budget: ${budgetState}.`,
     `Attribution obligatoire: client=${attribution.client_key || 'non résolu'}; projet=${attribution.project_key || 'non résolu'}; source=${attribution.attribution_source}.`,
     budget.recommended_model && `Modèle recommandé par la politique active: ${budget.recommended_model}.`,
@@ -116,6 +133,7 @@ function buildRoutingContext(decision, attribution, budget = {}) {
     'Consigne: applique cette décision avec les outils réellement disponibles. Ne transforme pas ce flux en questionnaire générique.',
     'Utilise les valeurs internes par défaut fournies pour un travail JS-Innov.IA. Ne demande au propriétaire que la donnée précise qui empêcherait réellement une action ciblée.',
     'Distingue toujours estimation avant appel et coût réel mesuré après appel.',
+    specialistContext,
     '[/DÉCISION DE ROUTAGE NOVA]',
   ].filter(Boolean).join('\n');
 }
