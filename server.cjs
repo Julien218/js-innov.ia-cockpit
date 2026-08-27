@@ -5,6 +5,7 @@ const path = require('path');
 const app = express();
 const PORT = process.env.API_PORT || 3001;
 const { requireSession, requirePermission, requireSameOrigin, ROLE_LEVEL } = require('./server-security.cjs');
+const { authorizeImmediateExecutionMessage } = require('./server-immediate-execution-policy.cjs');
 let taskAutopilotState = null;
 
 // Trust proxy — nécessaire pour détecter HTTPS (X-Forwarded-Proto) et l'IP réelle
@@ -114,8 +115,6 @@ try {
 try {
   const { router: aiCostRouter } = require('./server-ai-cost.cjs');
   app.use('/api/ai-cost', requireSession('admin'), requirePermission('ai_cost_control', 'admin'), aiCostRouter);
-  // Doit être installé avant le require de server-assistant.cjs : ce dernier
-  // récupère alors la fonction recordUsage enrichie avec le Client.id canonique.
   require('./server-ai-cost-attribution.cjs').installAICostAttribution();
   console.log('✅ Route /api/ai-cost activée (usage, budgets, routage, attribution client)');
 } catch (e) {
@@ -125,8 +124,6 @@ try {
 // ── Ledger coûts client / refacturation ─────────────────────
 try {
   const adminGuard = requireSession('admin');
-  // Route prioritaire : les micro-coûts LLM sont agrégés au mois par modèle
-  // avant l'arrondi au centime. Le détail requête reste dans ai_cost_usage.
   const { router: aiCostLedgerAggregateRouter } = require('./server-ai-cost-ledger-aggregate.cjs');
   app.use('/api/client-costs', adminGuard, requirePermission('ai_cost_control', 'admin'), aiCostLedgerAggregateRouter);
 
@@ -194,13 +191,18 @@ try {
   console.warn('⚠️ Autopilote tâches indisponible:', e.message);
 }
 
+function immediateExecutionMiddleware(req, _res, next) {
+  if (req.method === 'POST' && req.path === '/chat' && typeof req.body?.message === 'string') {
+    req.body.message = authorizeImmediateExecutionMessage(req.body.message);
+  }
+  next();
+}
+
 // ── Companion batch : création multi-tâches + délégation ───
 try {
   const assistantBatchRouter = require('./server-assistant-batch.cjs');
-  // Monté AVANT le Companion historique. Il intercepte uniquement les demandes
-  // multi-tâches et laisse toutes les autres routes continuer vers le routeur legacy.
-  app.use('/api/assistant', requireSession('client'), requirePermission('nova', 'client'), assistantBatchRouter);
-  console.log('✅ Companion batch activé (confirmation unique + tâches + agent_runs)');
+  app.use('/api/assistant', requireSession('client'), requirePermission('nova', 'client'), immediateExecutionMiddleware, assistantBatchRouter);
+  console.log('✅ Companion batch activé (exécution directe non sensible + confirmation unique sensible)');
 } catch (e) {
   console.warn('⚠️ Companion batch indisponible:', e.message);
 }
@@ -208,8 +210,6 @@ try {
 // ── Companion adaptatif : owner / équipe / client ──────────
 try {
   const assistantRouter = require('./server-assistant.cjs');
-  // La route accepte les clients, mais server-assistant.cjs impose ensuite
-  // la politique et les outils correspondant au rôle de la session.
   app.use('/api/assistant', requireSession('client'), requirePermission('nova', 'client'), assistantRouter);
   console.log('✅ Companion adaptatif activé (owner/staff/client cloisonnés)');
 } catch (e) {
@@ -242,7 +242,6 @@ try {
 } catch (e) {
   console.warn('⚠️ Registre des spécialistes NOVA indisponible:', e.message);
 }
-
 
 // ── Push Notifications & Géolocalisation ───────────────────
 try {
