@@ -5,7 +5,35 @@ const path = require('path');
 const app = express();
 const PORT = process.env.API_PORT || 3001;
 const { requireSession, requirePermission, requireSameOrigin, ROLE_LEVEL } = require('./server-security.cjs');
-const { authorizeImmediateExecutionMessage } = require('./server-immediate-execution-policy.cjs');
+let authorizeImmediateExecutionMessage;
+try {
+  ({ authorizeImmediateExecutionMessage } = require('./server-immediate-execution-policy.cjs'));
+} catch (_) {
+  // Le runtime Docker historique copie les modules serveur explicitement. Ce fallback
+  // conserve la politique d'exécution immédiate même si le helper n'est pas encore
+  // présent dans une ancienne image, sans désactiver les garde-fous sensibles.
+  const normalizeImmediate = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const isSensitiveImmediate = (message) => /\b(?:supprime|supprimer|efface|effacer|delete|drop|truncate|dns|nameserver|cname|mx|txt|secret|token|cle api|api key|publie en production|publication production|deploy production|deploie en production|envoie email|envoyer email|paiement|virement)\b/.test(normalizeImmediate(message));
+  authorizeImmediateExecutionMessage = (message) => {
+    const original = String(message || '').trim();
+    const text = normalizeImmediate(original);
+    if (!text || isSensitiveImmediate(text)) return original;
+    const actionVerb = /\b(?:cree|creer|genere|generer|produis|produire|realise|realiser|lance|lancer|execute|executer|effectue|effectuer|fais|faire|corrige|corriger|modifie|modifier)\b/;
+    const supportedTarget = /\b(?:video|videos|image|images|visuel|visuels|page|site|seo|application|app|mobile|workflow|comfyui|ecran geant|tache|taches|action|actions|code|landing|frontend|backend)\b/;
+    const immediate = /\b(?:immediatement|de suite|tout de suite|sans redemander|pas besoin de confirmer|pas besoins de confirmer)\b/;
+    if (!((actionVerb.test(text) && supportedTarget.test(text)) || (immediate.test(text) && supportedTarget.test(text)))) return original;
+    return [
+      original,
+      '',
+      '[AUTORISATION COCKPIT — ACTION NON SENSIBLE]',
+      "Je confirme explicitement l'exécution immédiate de cette action non sensible.",
+      'Exécute-la maintenant, en un seul lot si plusieurs éléments sont demandés.',
+      'Ne redemande pas de confirmation et ne recrée pas des tâches en doublon.',
+      "Si la demande concerne la Fabrique vidéo écran géant / ComfyUI local, conserve ce mode d'exécution local et lance le flux réel plutôt qu'une simple proposition.",
+      '[/AUTORISATION COCKPIT]',
+    ].join('\n');
+  };
+}
 let taskAutopilotState = null;
 
 // Trust proxy — nécessaire pour détecter HTTPS (X-Forwarded-Proto) et l'IP réelle
