@@ -16,9 +16,16 @@ function statusLabel(status) {
   return ({ queued: 'En file', submitted: 'Envoyée', in_progress: 'Génération', completed: 'Terminée', failed: 'Échec' })[status] || status;
 }
 
+function rejectedMessage(result, fallback) {
+  return result.status === 'rejected'
+    ? result.reason?.message || String(result.reason || fallback)
+    : null;
+}
+
 export default function ApiVideoFactory() {
   const [config, setConfig] = useState(null);
   const [clients, setClients] = useState([]);
+  const [clientsLoaded, setClientsLoaded] = useState(false);
   const [jobs, setJobs] = useState([]);
   const [clientId, setClientId] = useState('');
   const [costCenterId, setCostCenterId] = useState('');
@@ -27,20 +34,47 @@ export default function ApiVideoFactory() {
   const [prompt, setPrompt] = useState(TEST_PROMPT);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [loadWarning, setLoadWarning] = useState('');
   const [notice, setNotice] = useState(null);
   const selectedClient = useMemo(() => clients.find((client) => String(client.id) === String(clientId)), [clients, clientId]);
 
   const refresh = async () => {
-    try {
-      const [configuration, clientData, jobData] = await Promise.all([
-        fetchJson('/api/video-generation/config'),
-        fetchJson('/api/client-costs/accounting/clients'),
-        fetchJson('/api/video-generation/jobs'),
-      ]);
-      setConfig(configuration);
-      setClients(clientData.clients || []);
-      setJobs(jobData.jobs || []);
-    } catch (error) { setNotice({ type: 'error', text: error.message }); }
+    const [configurationResult, clientResult, jobResult] = await Promise.allSettled([
+      fetchJson('/api/video-generation/config'),
+      fetchJson('/api/client-costs/accounting/clients'),
+      fetchJson('/api/video-generation/jobs'),
+    ]);
+
+    if (configurationResult.status === 'fulfilled') {
+      setConfig(configurationResult.value);
+    }
+
+    if (clientResult.status === 'fulfilled') {
+      setClients(Array.isArray(clientResult.value.clients) ? clientResult.value.clients : []);
+      setClientsLoaded(true);
+    } else {
+      setClientsLoaded(true);
+    }
+
+    if (jobResult.status === 'fulfilled') {
+      setJobs(Array.isArray(jobResult.value.jobs) ? jobResult.value.jobs : []);
+    }
+
+    const warnings = [
+      rejectedMessage(configurationResult, 'configuration vidéo indisponible')
+        ? `Configuration : ${rejectedMessage(configurationResult, 'configuration vidéo indisponible')}`
+        : null,
+      rejectedMessage(clientResult, 'clients indisponibles')
+        ? `Clients : ${rejectedMessage(clientResult, 'clients indisponibles')}`
+        : null,
+      rejectedMessage(jobResult, 'historique indisponible')
+        ? `Historique : ${rejectedMessage(jobResult, 'historique indisponible')}`
+        : null,
+    ].filter(Boolean);
+
+    setLoadWarning(warnings.length
+      ? `Chargement partiel — ${warnings.join(' · ')}. Les fonctions disponibles restent utilisables.`
+      : '');
   };
 
   useEffect(() => { refresh(); }, []);
@@ -87,8 +121,13 @@ export default function ApiVideoFactory() {
       <section className="workspace-card space-y-4 p-5">
         <div className="grid gap-4 md:grid-cols-2">
           <label className="text-sm font-medium">Client / projet comptable
-            <select className="mt-1 w-full rounded-lg border bg-background p-2.5" value={clientId} onChange={(event) => { setClientId(event.target.value); setCostCenterId(''); }}>
-              <option value="">Sélectionner…</option>
+            <select
+              className="mt-1 w-full rounded-lg border bg-background p-2.5"
+              value={clientId}
+              disabled={!clientsLoaded || clients.length === 0}
+              onChange={(event) => { setClientId(event.target.value); setCostCenterId(''); }}
+            >
+              <option value="">{!clientsLoaded ? 'Chargement…' : clients.length ? 'Sélectionner…' : 'Aucun client disponible'}</option>
               {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
             </select>
           </label>
@@ -113,8 +152,9 @@ export default function ApiVideoFactory() {
           <textarea className="mt-1 min-h-36 w-full rounded-lg border bg-background p-3" value={prompt} onChange={(event) => setPrompt(event.target.value)} />
         </label>
         <label className="flex items-start gap-2 text-sm"><input className="mt-1" type="checkbox" checked={rightsConfirmed} onChange={(event) => setRightsConfirmed(event.target.checked)} /> Les droits contractuels permettant la création et l’utilisation sont vérifiés.</label>
+        {loadWarning && <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700">{loadWarning}</div>}
         {notice && <div className={`rounded-lg border p-3 text-sm ${notice.type === 'error' ? 'border-red-500/30 bg-red-500/10 text-red-700' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'}`}>{notice.text}</div>}
-        <Button onClick={createVideo} disabled={busy || !config} className="w-full sm:w-auto">
+        <Button onClick={createVideo} disabled={busy || !config || !selectedClient} className="w-full sm:w-auto">
           {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />} Générer la vidéo test de 8 secondes
         </Button>
       </section>
