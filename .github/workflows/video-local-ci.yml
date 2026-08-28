@@ -8,8 +8,13 @@ on:
       - "src/components/studio/**"
       - "src/lib/videoOrchestrator.js"
       - "src/lib/videoProvenance.js"
+      - "server-video-generation-core.cjs"
+      - "server-video-generation.cjs"
+      - "server-nova-executors.cjs"
       - "server-video-provenance-core.cjs"
       - "server-video-provenance.cjs"
+      - "tests/nova-video-autostart.test.cjs"
+      - "tests/video-api-generation.test.cjs"
       - "tests/video-provenance.test.cjs"
       - "electron/**"
       - ".github/workflows/video-local-ci.yml"
@@ -22,8 +27,13 @@ on:
       - "src/components/studio/**"
       - "src/lib/videoOrchestrator.js"
       - "src/lib/videoProvenance.js"
+      - "server-video-generation-core.cjs"
+      - "server-video-generation.cjs"
+      - "server-nova-executors.cjs"
       - "server-video-provenance-core.cjs"
       - "server-video-provenance.cjs"
+      - "tests/nova-video-autostart.test.cjs"
+      - "tests/video-api-generation.test.cjs"
       - "tests/video-provenance.test.cjs"
       - "electron/**"
       - ".github/workflows/video-local-ci.yml"
@@ -49,12 +59,21 @@ jobs:
       - name: Build Cockpit
         run: npm run build
 
-      - name: Syntax-check local orchestrator
+      - name: Syntax-check video and NOVA orchestrators
         run: |
           node --check src/lib/videoOrchestrator.js
           node --check src/lib/videoProvenance.js
+          node --check server-video-generation-core.cjs
+          node --check server-video-generation.cjs
+          node --check server-nova-executors.cjs
           node --check server-video-provenance-core.cjs
           node --check server-video-provenance.cjs
+
+      - name: Verify NOVA video autostart
+        run: node --require ./tests/node-test-globals.cjs --test tests/nova-video-autostart.test.cjs
+
+      - name: Verify video API generation
+        run: node --require ./tests/node-test-globals.cjs --test tests/video-api-generation.test.cjs
 
       - name: Verify video provenance policy
         run: node --require ./tests/node-test-globals.cjs --test tests/video-provenance.test.cjs
