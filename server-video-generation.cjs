@@ -163,15 +163,32 @@ async function providerJson(url, provider, options = {}) {
   return data;
 }
 
+async function loadImageDocument(documentId) {
+  const { record, buffer } = await getDocumentBufferForUser({ role: 'superadmin' }, documentId);
+  if (!String(record.mime_type || '').toLowerCase().startsWith('image/')) throw new Error(`Le média ${documentId} n’est pas une image exploitable.`);
+  return { record, dataUri: `data:${record.mime_type};base64,${buffer.toString('base64')}` };
+}
+
 async function submit(job) {
-  let imageDataUri = null;
-  if (job.metadata?.source_document_id) {
-    if (job.provider !== 'xai') throw new Error('La génération depuis une image Dropbox nécessite Grok Imagine.');
-    const { record, buffer } = await getDocumentBufferForUser({ role: 'superadmin' }, job.metadata.source_document_id);
-    if (!String(record.mime_type || '').toLowerCase().startsWith('image/')) throw new Error('Le média source n’est pas une image exploitable.');
-    imageDataUri = `data:${record.mime_type};base64,${buffer.toString('base64')}`;
+  if (job.provider !== 'xai' && (job.metadata?.source_document_id || (job.metadata?.reference_document_ids || []).length)) {
+    throw new Error('La génération depuis des images Cockpit nécessite Grok Imagine.');
   }
-  const request = buildProviderRequest(job.provider, job.prompt, { imageDataUri });
+
+  let imageDataUri = null;
+  let referenceImageDataUris = [];
+  const referenceIds = Array.isArray(job.metadata?.reference_document_ids)
+    ? job.metadata.reference_document_ids.filter(Boolean)
+    : [];
+
+  if (referenceIds.length > 1) {
+    const loaded = await Promise.all(referenceIds.map(loadImageDocument));
+    referenceImageDataUris = loaded.map((item) => item.dataUri);
+  } else if (job.metadata?.source_document_id) {
+    const loaded = await loadImageDocument(job.metadata.source_document_id);
+    imageDataUri = loaded.dataUri;
+  }
+
+  const request = buildProviderRequest(job.provider, job.prompt, { imageDataUri, referenceImageDataUris });
   const data = await providerJson(request.url, job.provider, { method: 'POST', body: JSON.stringify(request.body) });
   const providerJobId = data.request_id || data.id;
   if (!providerJobId) throw new Error('Le fournisseur n’a retourné aucun identifiant d’exécution.');
@@ -179,9 +196,13 @@ async function submit(job) {
     status: 'submitted',
     provider_job_id: providerJobId,
     provider_payload: {
-      request: imageDataUri
-        ? { ...request.body, image: { source_document_id: job.metadata.source_document_id, data_uri_redacted: true } }
-        : request.body,
+      request: {
+        ...request.body,
+        ...(request.body.image ? { image: { source_document_id: job.metadata.source_document_id, data_uri_redacted: true } } : {}),
+        ...(request.body.reference_images ? {
+          reference_images: referenceIds.map((documentId, index) => ({ document_id: documentId, position: index, data_uri_redacted: true })),
+        } : {}),
+      },
       response: data,
     },
     progress: Number(data.progress || 0),
@@ -306,17 +327,25 @@ async function createVideoGenerationJob(body, user = {}) {
   const resolvedBody = await resolveClientInput(body);
   const input = validateJobInput(resolvedBody);
   const provider = chooseProvider(resolvedBody.provider);
-  let sourceDocument = null;
-  if (input.sourceDocumentId) {
-    if (provider !== 'xai') throw new Error('Une image source Dropbox nécessite Grok Imagine; Sora texte seul ne peut pas être utilisé pour cette demande.');
-    sourceDocument = await getDocumentBufferForUser(user, input.sourceDocumentId);
-    if (!String(sourceDocument.record.mime_type || '').toLowerCase().startsWith('image/')) throw new Error('Le document source sélectionné n’est pas une image.');
+  const referenceIds = input.referenceDocumentIds || [];
+  const sourceIds = referenceIds.length ? referenceIds : (input.sourceDocumentId ? [input.sourceDocumentId] : []);
+  const sourceDocuments = [];
+
+  if (sourceIds.length) {
+    if (provider !== 'xai') throw new Error('Les images source Cockpit nécessitent Grok Imagine.');
+    for (const documentId of sourceIds) {
+      const sourceDocument = await getDocumentBufferForUser(user, documentId);
+      if (!String(sourceDocument.record.mime_type || '').toLowerCase().startsWith('image/')) throw new Error(`Le document ${documentId} n’est pas une image.`);
+      sourceDocuments.push({ documentId, ...sourceDocument });
+    }
   }
-  const request = buildProviderRequest(provider, input.prompt);
+
+  const referenceMode = referenceIds.length > 1;
+  const request = buildProviderRequest(provider, input.prompt, { referenceImageDataUris: referenceMode ? sourceDocuments.map(() => 'data:image/placeholder;base64,') : [] });
   const job = await insertJob({
     client_id: input.clientId, client_name: input.clientName, project_id: input.projectId, cost_center_id: input.costCenterId,
     provider, model: request.model, status: 'queued', prompt: input.prompt, campaign_name: input.campaign,
-    duration_seconds: 8, resolution: provider === 'xai' ? '1080p' : '1280x720', aspect_ratio: '16:9', version: input.version,
+    duration_seconds: 8, resolution: provider === 'xai' ? (referenceMode ? '720p' : '1080p') : '1280x720', aspect_ratio: '16:9', version: input.version,
     metadata: {
       sector: input.sector,
       usage_rights: input.usageRights,
@@ -326,7 +355,10 @@ async function createVideoGenerationJob(body, user = {}) {
       agent_run_id: String(resolvedBody.agent_run_id || '').trim() || null,
       organisation: String(user?.organisation || 'jsinnovia'),
       source_document_id: input.sourceDocumentId,
-      source_media: sourceDocument ? [{ document_id: input.sourceDocumentId, filename: sourceDocument.record.filename, dropbox_path: sourceDocument.record.dropbox_path }] : [],
+      end_source_document_id: input.endSourceDocumentId,
+      reference_document_ids: referenceIds,
+      reference_mode: referenceMode,
+      source_media: sourceDocuments.map((source) => ({ document_id: source.documentId, filename: source.record.filename, dropbox_path: source.record.dropbox_path })),
     },
     created_by: user?.id || user?.email || null,
   });
