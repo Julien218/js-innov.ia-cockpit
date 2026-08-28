@@ -48,6 +48,7 @@ COPY --from=builder /app/server-assistant.cjs ./server-assistant.cjs
 COPY --from=builder /app/server-assistant-batch.cjs ./server-assistant-batch.cjs
 COPY --from=builder /app/server-task-batch.cjs ./server-task-batch.cjs
 COPY --from=builder /app/server-nova-executors.cjs ./server-nova-executors.cjs
+COPY --from=builder /app/server-nova-video-direct.cjs ./server-nova-video-direct.cjs
 COPY --from=builder /app/server-task-autopilot.cjs ./server-task-autopilot.cjs
 COPY --from=builder /app/server-companion-audience.cjs ./server-companion-audience.cjs
 COPY --from=builder /app/server-companion-memory.cjs ./server-companion-memory.cjs
@@ -110,6 +111,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-assistant-batch.cjs \
  && test -f /app/server-task-batch.cjs \
  && test -f /app/server-nova-executors.cjs \
+ && test -f /app/server-nova-video-direct.cjs \
  && test -f /app/server-task-autopilot.cjs \
  && test -f /app/server-bce.cjs \
  && node --check /app/server-ai-cost-attribution.cjs \
@@ -139,6 +141,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-assistant-batch.cjs \
  && node --check /app/server-task-batch.cjs \
  && node --check /app/server-nova-executors.cjs \
+ && node --check /app/server-nova-video-direct.cjs \
  && node --check /app/server-task-autopilot.cjs \
  && node --check /app/server-bce.cjs \
  && node -e "require('/app/server-led-ad-director.cjs'); require('/app/server-agent-registry.cjs'); require('/app/server-nova-routing.cjs')" \

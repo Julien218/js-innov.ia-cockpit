@@ -226,6 +226,15 @@ function immediateExecutionMiddleware(req, _res, next) {
   next();
 }
 
+// ── NOVA vidéo directe : ordre explicite → vrai video_job_id ─
+try {
+  const novaVideoDirectRouter = require('./server-nova-video-direct.cjs');
+  app.use('/api/assistant', requireSession('admin'), requirePermission('nova', 'admin'), novaVideoDirectRouter);
+  console.log('✅ NOVA vidéo directe activée (ordre explicite → Fabrique vidéo réelle, sans seconde confirmation)');
+} catch (e) {
+  console.warn('⚠️ NOVA vidéo directe indisponible:', e.message);
+}
+
 // ── Companion batch : création multi-tâches + délégation ───
 try {
   const assistantBatchRouter = require('./server-assistant-batch.cjs');
