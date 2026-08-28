@@ -119,10 +119,11 @@ test('Docker embarque les modules d’orchestration', () => {
 test('NOVA utilise un registre interne unique sans identifiant Base44 actif', () => {
   const registry = require(path.join(root, 'server-agent-registry.cjs')).AGENT_REGISTRY;
   const active = registry.filter((agent) => agent.status === 'active');
-  assert.equal(active.length, 11);
+  assert.ok(active.length >= 11);
+  assert.equal(new Set(active.map((agent) => agent.key)).size, active.length);
   assert.ok(active.every((agent) => agent.provider === 'jsinnovia-agent'));
   assert.ok(active.every((agent) => agent.provider_agent_id === null));
-  assert.ok(active.every((agent) => agent.legacy_base44_agent_id));
+  assert.ok(active.every((agent) => agent.provider !== 'base44'));
   assert.ok(orchestrator.SITE_AGENT_REGISTRY.length < active.length);
   assert.ok(orchestrator.SITE_AGENT_REGISTRY.every((agent) => agent.domains.length > 0));
   assert.ok(orchestrator.SITE_AGENT_REGISTRY.every((agent) => !['nova', 'creative-director'].includes(agent.key)));

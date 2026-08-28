@@ -105,7 +105,10 @@ function siteExecutorForTask(task = {}) {
 
 function resolveNovaExecutor(task = {}) {
   const text = normalized(taskText(task));
-  if (/(creer|creation|generer|generation|produire|production).*(video|ecran geant)/.test(text)) {
+  const explicitVideo = /(creer|creation|generer|generation|produire|production).*(video|ecran geant)/.test(text);
+  const imageTransition = /(image|media).*(vers|jusqu|finir|transition|morph).*(image|media)|(?:transition|morph).*(image|media)|start.?image|end.?image/.test(text);
+  const hasVideoMediaContract = sourceDocumentIdsFromTask(task).length >= 2 && /(video|transition|animation|morph|grok|imagine)/.test(text);
+  if (explicitVideo || imageTransition || hasVideoMediaContract) {
     return { kind: 'video', ...INTERNAL_EXECUTORS.video_production };
   }
   const site = siteExecutorForTask(task);
@@ -259,12 +262,22 @@ async function executeProjectTask(task, agentRequest) {
   return { completed: true, provider: 'cockpit-server', result, report: JSON.stringify(result) };
 }
 
-function sourceDocumentIdFromTask(task = {}) {
-  const direct = clean(task.source_document_id, 180);
-  if (direct) return direct;
+function sourceDocumentIdsFromTask(task = {}) {
+  const direct = [
+    ...(Array.isArray(task.reference_document_ids) ? task.reference_document_ids : []),
+    task.source_document_id,
+    task.end_source_document_id,
+    task.start_source_document_id,
+  ].map((value) => clean(value, 180)).filter(Boolean);
   const source = `${task.description || ''}\n${task.notes || ''}`;
-  const match = source.match(/(?:source_document_id|index cockpit|document source|m[eé]dia source)\s*[:=]\s*([A-Za-z0-9_-]{8,180})/i);
-  return clean(match?.[1], 180) || null;
+  const labelled = [...source.matchAll(/(?:source_document_id|end_source_document_id|start_source_document_id|index cockpit|document source|m[eé]dia source|image\s*[12])\s*[:=]\s*([A-Za-z0-9_-]{8,180})/gi)]
+    .map((match) => clean(match[1], 180))
+    .filter(Boolean);
+  return [...new Set([...direct, ...labelled])].slice(0, 7);
+}
+
+function sourceDocumentIdFromTask(task = {}) {
+  return sourceDocumentIdsFromTask(task)[0] || null;
 }
 
 function videoClientForTask(task, clients = []) {
@@ -274,38 +287,58 @@ function videoClientForTask(task, clients = []) {
     const name = normalized(clientName(client));
     return name.length >= 3 && text.includes(name);
   });
-  return matches.length === 1 ? matches[0] : null;
+  if (matches.length === 1) return matches[0];
+  return clients.find((client) => normalized(client.type_client) === 'interne_jsinnovia')
+    || clients.find((client) => /js.?innov.?ia/.test(normalized(clientName(client))) && /interne/.test(normalized(`${client.nom || ''} ${client.notes || ''}`)))
+    || null;
+}
+
+function videoPromptForTask(task = {}, sourceIds = []) {
+  const base = clean(task.description, 20_000);
+  if (sourceIds.length < 2) return base;
+  return [
+    'VIDEO GENERATION CONTRACT — ordered visual references:',
+    '<IMAGE_0> is the starting visual reference. Begin the video visually as close as possible to <IMAGE_0>.',
+    '<IMAGE_1> is the target/final visual reference. Build one continuous cinematic transformation and finish visually as close as possible to <IMAGE_1>.',
+    'Preserve character identity, proportions, colors, logos, environment continuity and camera coherence. Do not invent unrelated scenes.',
+    'The provider reference-to-video mode does not guarantee an exact last frame; maximize convergence toward <IMAGE_1> during the final seconds.',
+    '',
+    base,
+  ].join('\n').slice(0, 20_000);
 }
 
 async function executeVideoTask(task, agentRequest, createJob = null, context = {}) {
   const clients = rowsFrom(await agentRequest('/data/Client?limit=500'));
   const client = videoClientForTask(task, clients);
-  const prompt = clean(task.description, 20_000);
-  const sourceDocumentId = sourceDocumentIdFromTask(task);
-  const sourceRequired = /(?:image|m[eé]dia|fichier|dropbox).*(?:fourni|source|joint)|(?:partir|depuis)\s+de\s+(?:l['’])?image/i.test(`${task.description || ''}\n${task.notes || ''}`);
+  const sourceDocumentIds = sourceDocumentIdsFromTask(task);
+  const prompt = videoPromptForTask(task, sourceDocumentIds);
+  const sourceRequired = /(?:image|m[eé]dia|fichier|dropbox).*(?:fourni|source|joint)|(?:partir|depuis)\s+de\s+(?:l['’])?image|image\s*1.*image\s*2|finir.*image/i.test(`${task.description || ''}\n${task.notes || ''}`);
   const missingFields = [];
-  if (!client?.id) missingFields.push('client_id');
+  if (!client?.id) missingFields.push('client_id_or_internal_jsinnovia_client');
   if (prompt.length < 20) missingFields.push('prompt');
-  if (sourceRequired && !sourceDocumentId) missingFields.push('source_document_id');
+  if (sourceRequired && !sourceDocumentIds.length) missingFields.push('source_document_id');
   if (missingFields.length) {
     return {
       completed: false,
-      awaiting_review: true,
+      awaiting_review: false,
       provider: 'cockpit-server',
       result: { checked_at: new Date().toISOString(), missing_fields: missingFields, source_required: sourceRequired },
-      report: `Génération non lancée: champs vérifiables manquants (${missingFields.join(', ')}).`,
+      report: `Génération non lancée: champs techniques manquants (${missingFields.join(', ')}).`,
       reason: `generation_video_incomplete:${missingFields.join(',')}`,
     };
   }
   const create = createJob || require('./server-video-generation.cjs').createVideoGenerationJob;
   const response = await create({
-    provider: 'auto',
+    provider: sourceDocumentIds.length > 1 ? 'xai' : 'auto',
     client_id: client.id,
     client_name: clientName(client),
     project_id: task.projet_id || null,
-    campaign_name: clean(task.titre || task.title, 180),
+    cost_center_id: task.cost_center_id || null,
+    campaign_name: clean(task.titre || task.title, 180) || 'Production vidéo NOVA',
     prompt,
-    source_document_id: sourceDocumentId,
+    source_document_id: sourceDocumentIds[0] || null,
+    end_source_document_id: sourceDocumentIds[1] || null,
+    reference_document_ids: sourceDocumentIds,
     task_id: context.taskId || task.id || null,
     agent_run_id: context.runId || null,
     rights_confirmed: false,
@@ -314,10 +347,19 @@ async function executeVideoTask(task, agentRequest, createJob = null, context = 
   }, context.user || { id: 'nova-video-production', role: 'admin', organisation: context.organisation || 'jsinnovia' });
   return {
     completed: false,
-    awaiting_review: true,
+    awaiting_review: false,
+    in_progress: true,
     provider: 'cockpit-server',
-    result: { video_job_id: response.job?.id || null, journal_id: response.journal_id, status: response.job?.status || 'queued' },
-    report: `Génération vidéo lancée et suivie: ${response.journal_id}.`,
+    result: {
+      video_job_id: response.job?.id || null,
+      journal_id: response.journal_id,
+      status: response.job?.status || 'queued',
+      client_id: client.id,
+      internal_client_fallback: normalized(client.type_client) === 'interne_jsinnovia',
+      source_document_ids: sourceDocumentIds,
+      reference_mode: sourceDocumentIds.length > 1,
+    },
+    report: `Génération vidéo réellement lancée et suivie: ${response.journal_id}. Aucune confirmation supplémentaire n’est requise.`,
     reason: 'generation_video_en_cours',
   };
 }
@@ -489,7 +531,9 @@ module.exports = {
   projectForTask,
   projectPatchFromTask,
   sourceDocumentIdFromTask,
+  sourceDocumentIdsFromTask,
   videoClientForTask,
+  videoPromptForTask,
   resolveNovaExecutor,
   siteExecutorForTask,
 };
