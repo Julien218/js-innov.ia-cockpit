@@ -6,6 +6,11 @@ function clean(value, max = 20_000) {
   return String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
+function cleanIdList(value, maxItems = 7) {
+  const raw = Array.isArray(value) ? value : [];
+  return [...new Set(raw.map((item) => clean(item, 180)).filter(Boolean))].slice(0, maxItems);
+}
+
 function providerAvailability(env = process.env, now = new Date()) {
   const soraExpired = now.toISOString().slice(0, 10) >= SORA_SHUTDOWN_DATE;
   return {
@@ -50,6 +55,16 @@ function validateJobInput(input = {}) {
   if (!clientName) throw new Error('Le nom du client est manquant.');
   if (!campaign) throw new Error('Le nom de campagne est obligatoire.');
   if (prompt.length < 20) throw new Error('Le prompt vidéo doit contenir au moins 20 caractères.');
+
+  const sourceDocumentId = clean(input.source_document_id, 180) || null;
+  const endSourceDocumentId = clean(input.end_source_document_id, 180) || null;
+  const referenceDocumentIds = cleanIdList(input.reference_document_ids);
+  const orderedReferenceDocumentIds = [...new Set([
+    ...referenceDocumentIds,
+    ...(sourceDocumentId ? [sourceDocumentId] : []),
+    ...(endSourceDocumentId ? [endSourceDocumentId] : []),
+  ])].slice(0, 7);
+
   return {
     clientId,
     clientName,
@@ -61,23 +76,30 @@ function validateJobInput(input = {}) {
     usageRights: clean(input.usage_rights, 1000) || 'Utilisation limitée à la campagne et aux supports validés par le client.',
     rightsConfirmed: input.rights_confirmed === true,
     version: clean(input.version, 20) || 'v01',
-    sourceDocumentId: clean(input.source_document_id, 180) || null,
+    sourceDocumentId,
+    endSourceDocumentId,
+    referenceDocumentIds: orderedReferenceDocumentIds,
   };
 }
 
-function buildProviderRequest(provider, prompt, { imageDataUri = null } = {}) {
-  if (provider === 'xai') return {
-    url: 'https://api.x.ai/v1/videos/generations',
-    model: XAI_MODEL,
-    body: {
+function buildProviderRequest(provider, prompt, { imageDataUri = null, referenceImageDataUris = [] } = {}) {
+  if (provider === 'xai') {
+    const refs = Array.isArray(referenceImageDataUris) ? referenceImageDataUris.filter(Boolean).slice(0, 7) : [];
+    const referenceMode = refs.length > 1;
+    return {
+      url: 'https://api.x.ai/v1/videos/generations',
       model: XAI_MODEL,
-      prompt,
-      duration: 8,
-      aspect_ratio: '16:9',
-      resolution: '1080p',
-      ...(imageDataUri ? { image: { url: imageDataUri } } : {}),
-    },
-  };
+      body: {
+        model: XAI_MODEL,
+        prompt,
+        duration: 8,
+        aspect_ratio: '16:9',
+        resolution: referenceMode ? '720p' : '1080p',
+        ...(referenceMode ? { reference_images: refs.map((url) => ({ url })) } : {}),
+        ...(!referenceMode && imageDataUri ? { image: { url: imageDataUri } } : {}),
+      },
+    };
+  }
   return {
     url: 'https://api.openai.com/v1/videos',
     model: OPENAI_MODEL,
@@ -99,6 +121,12 @@ function publicConfig(env = process.env, now = new Date()) {
   return {
     providers: providerAvailability(env, now),
     defaults: { duration_seconds: 8, aspect_ratio: '16:9', final_resolution: '1920x1080', fps: 25 },
+    capabilities: {
+      xai_image_to_video: true,
+      xai_reference_to_video: true,
+      xai_reference_to_video_max_resolution: '720p',
+      exact_end_frame_guarantee: false,
+    },
     secret_values_exposed: false,
   };
 }
