@@ -27,7 +27,7 @@ function inferMissionDomains(message) {
     ['mobile', /(mobile|android|ios|iphone|react native|expo|apk|aab)/],
     ['desktop', /(electron|application desktop|windows app|desktop app)/],
     ['video', /(video|vidéo|minimax|h3|comfyui|ffmpeg|montage|ecran geant|écran géant)/],
-    ['creative', /(branding|design|creative|créatif|créative|storyboard|identite visuelle|identité visuelle)/],
+    ['creative', /(branding|design|creative|créatif|créative|storyboard|identite visuelle|identité visuelle|mascotte|mascottes|avatar|personnage|personnages|character|illustration)/],
     ['crm', /(crm|client|prospect|lead|bce|tva|societe|société|asbl)/],
     ['billing', /(facture|facturation|devis|stripe|paiement|marge|cout|coût|finops)/],
     ['email', /(email|mail|newsletter|relance|communication client)/],
@@ -116,6 +116,23 @@ function buildRoutingContext(decision, attribution, budget = {}) {
       '[/DÉLÉGATION SPÉCIALISTE — led-ad-director]',
     ].join('\n')
     : null;
+  const seoContext = decision.mission_domains?.includes('seo')
+    ? [
+      '[SEO — EXÉCUTION AUTONOME]',
+      'Pour un audit SEO d’un domaine déjà fourni, commence immédiatement par le diagnostic technique réellement disponible: HTML, title, meta description, canonical, H1, robots, sitemap, données structurées, HTTPS et performances.',
+      'Les URLs concurrentes sont facultatives. Ne les demande que si l’utilisateur sollicite explicitement une comparaison concurrentielle, un benchmark ou une analyse de concurrents.',
+      'Ne bloque jamais un audit SEO standard pour obtenir des concurrents. Réutilise le domaine clairement fourni dans la conversation ou le domaine géré résolu par le Cockpit.',
+      '[/SEO — EXÉCUTION AUTONOME]',
+    ].join('\n')
+    : null;
+  const creativeClientContext = decision.mission_domains?.includes('creative') && decision.mission_domains?.includes('crm')
+    ? [
+      '[CONTEXTE CRÉATIF + CLIENT]',
+      'Quand un nom de société ou d’ASBL est suivi d’un objet créatif tel que Mascottes, avatar, personnage, illustration ou identité visuelle, traite la société comme contexte client/marque et l’objet créatif comme mission principale.',
+      'Ne remplace pas cette mission créative par un simple résumé de la fiche légale de l’entreprise, sauf si l’utilisateur demande explicitement des données légales ou administratives.',
+      '[/CONTEXTE CRÉATIF + CLIENT]',
+    ].join('\n')
+    : null;
   return [
     '[DÉCISION DE ROUTAGE NOVA — calculée par le Cockpit]',
     `Complexité: ${decision.complexity}. Confidentialité: ${decision.confidentiality}. Exécution préférée: ${decision.preferred_execution}.`,
@@ -133,6 +150,8 @@ function buildRoutingContext(decision, attribution, budget = {}) {
     'Consigne: applique cette décision avec les outils réellement disponibles. Ne transforme pas ce flux en questionnaire générique.',
     'Utilise les valeurs internes par défaut fournies pour un travail JS-Innov.IA. Ne demande au propriétaire que la donnée précise qui empêcherait réellement une action ciblée.',
     'Distingue toujours estimation avant appel et coût réel mesuré après appel.',
+    seoContext,
+    creativeClientContext,
     specialistContext,
     '[/DÉCISION DE ROUTAGE NOVA]',
   ].filter(Boolean).join('\n');
