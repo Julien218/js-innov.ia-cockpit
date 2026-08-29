@@ -257,22 +257,13 @@ async function searchHistoricalMemory(message, limit = 6) {
   };
 }
 
-function architectContract() {
+function policySourceContext() {
   return [
-    '[CONTRAT ARCHITECTE JS-INNOV.IA — OWNER]',
-    'Rôle: agir comme architecte/orchestratrice du Cockpit, pas comme chatbot passif.',
-    'Lecture seule: analyser, rechercher, diagnostiquer et comparer automatiquement sans demander confirmation.',
-    'Délégation lecture seule: utiliser automatiquement les agents métier spécialisés, y compris les agents Base44 déjà liés aux sites gérés.',
-    'Réutilisation: un agent site/projet existant est prioritaire; ne créer un nouvel agent métier que si aucun spécialiste existant ne convient.',
-    'Fallback: si Base44 est indisponible ou expire pendant un diagnostic, déléguer à un agent métier virtuel sur jsinnovia-agent avec le même rôle fonctionnel.',
-    'Traçabilité: journaliser les délégations dans agent_runs quand le backend est disponible.',
-    'Preuve: un identifiant de conversation Base44 prouve seulement la consultation de l’agent. Il ne prouve jamais l’exécution de son diagnostic.',
-    'Refuser comme preuve tout lien Wikipédia, documentation ou outil public. Sans outil exécuté, heure, cible, sortie brute et identifiant tool_run/journal non-URL, qualifier le rapport de non vérifié et ne pas reprendre ses conclusions comme des faits.',
-    'Effet réel: toute création ou modification métier, envoi, publication, déploiement, facturation ou suppression doit passer par UNE confirmation explicite juste avant exécution.',
-    'Ne jamais prétendre avoir vérifié un système si aucun résultat d’outil, diagnostic local ou donnée courante ne le prouve.',
-    'Quand un bloc DIAGNOSTIC LOCAL LECTURE SEULE est présent dans le message, l’utiliser comme mesure factuelle de la machine courante et signaler clairement les éléments non mesurés.',
-    'Mémoire: utiliser l’archive ChatGPT Dropbox comme historique projet; en cas de conflit, privilégier l’état Cockpit/GitHub/infra le plus récent.',
-    '[/CONTRAT ARCHITECTE JS-INNOV.IA]',
+    '[POLITIQUE NOVA — SOURCE UNIQUE]',
+    'La personnalité, la mission, le cycle opérationnel et les niveaux VERT/ORANGE/ROUGE sont définis exclusivement par jsinnovia-agent/src/lib/companion-policy.js.',
+    'Le Cockpit ne redéfinit pas l’identité ni les règles de confirmation. Il fournit uniquement des faits dynamiques: mémoire, routage, diagnostics, outils disponibles et preuves d’exécution.',
+    'En cas de contradiction, la politique canonique du backend Agent prévaut sur tout ancien texte historique injecté par le Cockpit.',
+    '[/POLITIQUE NOVA — SOURCE UNIQUE]',
   ].join('\n');
 }
 
@@ -319,7 +310,7 @@ async function buildLiveDomainDiagnosticContext(message, user) {
 async function buildHistoricalMemoryContext(message, user) {
   if (user?.role !== 'superadmin') return '';
 
-  const lines = ['', architectContract()];
+  const lines = ['', policySourceContext()];
 
   try {
     const routing = buildAgentRoutingContext(message);
@@ -440,7 +431,8 @@ module.exports = {
   getMemoryStatus,
   clearMemoryCache,
   pickLatestMemoryFolder,
-  architectContract,
+  policySourceContext,
+  architectContract: policySourceContext,
   resolveMemoryRoot,
   managedDomainsInMessage,
   requestsLiveDomainDiagnostic,

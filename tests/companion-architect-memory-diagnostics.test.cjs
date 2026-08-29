@@ -44,13 +44,14 @@ test('NOVA signale un snapshot Dropbox vieux de plus de sept jours', () => {
   assert.equal(stale.age_days, 11);
 });
 
-test('owner architect contract delegates reads and gates real effects behind one confirmation', () => {
-  const contract = memory.architectContract();
-  assert.match(contract, /architecte\/orchestratrice/i);
-  assert.match(contract, /Lecture seule/i);
-  assert.match(contract, /Délégation/i);
-  assert.match(contract, /UNE confirmation explicite/i);
-  assert.match(contract, /ne jamais prétendre avoir vérifié/i);
+test('le Cockpit ne redéfinit plus la personnalité ou la politique de confirmation de NOVA', () => {
+  const sourceContext = memory.policySourceContext();
+  assert.match(sourceContext, /POLITIQUE NOVA — SOURCE UNIQUE/);
+  assert.match(sourceContext, /jsinnovia-agent\/src\/lib\/companion-policy\.js/);
+  assert.match(sourceContext, /ne redéfinit pas l’identité ni les règles de confirmation/i);
+  assert.doesNotMatch(sourceContext, /UNE confirmation explicite|Lecture seule: analyser|agir comme architecte\/orchestratrice/i);
+  // Alias conservé uniquement pour compatibilité avec l’ancien contrat d’import.
+  assert.equal(memory.architectContract(), sourceContext);
 });
 
 test('diagnostic formatter exposes only read-only operational facts', async () => {
