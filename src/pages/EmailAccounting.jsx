@@ -4,10 +4,12 @@ import { AlertTriangle, Archive, CheckCircle2, Clock3, Eye, Loader2, MailCheck, 
 const euro = (minor) => Number.isFinite(Number(minor)) ? `${(Number(minor) / 100).toFixed(2).replace('.', ',')} €` : 'À vérifier';
 
 const htmlToText = (html) => String(html || '')
+  .replace(/<!--[\s\S]*?-->/g, ' ')
   .replace(/<style[\s\S]*?<\/style>/gi, ' ')
   .replace(/<script[\s\S]*?<\/script>/gi, ' ')
   .replace(/<br\s*\/?>/gi, '\n')
-  .replace(/<\/p>/gi, '\n')
+  .replace(/<\/(?:p|div|section|article|header|footer|h[1-6]|li|tr|blockquote|pre|details|summary)>/gi, '\n')
+  .replace(/<\/(?:td|th)>/gi, ' · ')
   .replace(/<[^>]+>/g, ' ')
   .replace(/&nbsp;/g, ' ')
   .replace(/&amp;/g, '&')
@@ -17,11 +19,40 @@ const htmlToText = (html) => String(html || '')
   .replace(/\n{3,}/g, '\n\n')
   .trim();
 
+const cleanPlainEmail = (text) => String(text || '')
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/<relative-time[^>]*>([\s\S]*?)<\/relative-time>/gi, '$1')
+  .replace(/<\/?(?:details|summary|br)\b[^>]*>/gi, '\n')
+  .replace(/^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/gm, '')
+  .replace(/^\s*\|\s*/gm, '')
+  .replace(/\s*\|\s*$/gm, '')
+  .replace(/\s*\|\s*/g, ' · ')
+  .replace(/\[([^\]]+)]\((https?:\/\/[^)]+)\)/g, '$1 — $2')
+  .replace(/\\([*_`#[\]<>])/g, '$1')
+  .replace(/\n{3,}/g, '\n\n')
+  .trim();
+
+const emailHtmlDocument = (html) => `<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: cid:; style-src 'unsafe-inline'; font-src data:">
+<meta name="referrer" content="no-referrer">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; padding: 0; background: #11111b; color: #e2e8f0; }
+  body { padding: 20px; font: 14px/1.6 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; overflow-wrap: anywhere; }
+  a { color: #67e8f9; }
+  table { max-width: 100% !important; border-collapse: collapse; }
+  td, th { padding: 6px; vertical-align: top; }
+  img { max-width: 100% !important; height: auto !important; }
+  pre, code { white-space: pre-wrap; overflow-wrap: anywhere; }
+</style></head><body>${String(html || '')}</body></html>`;
+
 const formatBytes = (bytes = 0) => bytes < 1024 ? `${bytes} o` : bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} Ko` : `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 
 function MessageModal({ item, message, loading, error, onClose }) {
   if (!item) return null;
-  const body = String(message?.text || '').trim() || htmlToText(message?.html) || String(message?.preview || '').trim();
+  const hasHtml = Boolean(String(message?.html || '').trim());
+  const body = cleanPlainEmail(message?.text) || htmlToText(message?.html) || cleanPlainEmail(message?.preview);
   return <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/75 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label="Contenu de l’e-mail">
     <div className="flex max-h-[92vh] w-full max-w-3xl flex-col rounded-t-2xl border border-white/10 bg-[#11111b] shadow-2xl sm:rounded-2xl">
       <div className="flex items-start gap-3 border-b border-white/10 px-4 py-4 sm:px-5">
@@ -31,7 +62,11 @@ function MessageModal({ item, message, loading, error, onClose }) {
       <div className="min-h-[240px] flex-1 overflow-y-auto p-4 sm:p-6">
         {loading && <div className="flex h-48 items-center justify-center text-sm text-slate-400"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Ouverture du message…</div>}
         {error && <div className="rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</div>}
-        {!loading && !error && <><pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-slate-200">{body || 'Corps du message vide ou indisponible.'}</pre>{message?.attachments?.length > 0 && <div className="mt-6 border-t border-white/10 pt-4"><p className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-400"><Paperclip className="h-4 w-4" />Pièces jointes ({message.attachments.length})</p><div className="space-y-2">{message.attachments.map((attachment, index) => <div key={`${attachment.filename}-${index}`} className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-xs"><Paperclip className="h-4 w-4 text-[#D4AF37]" /><span className="min-w-0 flex-1 truncate text-slate-200">{attachment.filename}</span><span className="text-slate-500">{formatBytes(attachment.size)}</span>{attachment.archived && <span className="rounded bg-cyan-400/10 px-2 py-0.5 text-cyan-200">Dropbox</span>}</div>)}</div></div>}</>}
+        {!loading && !error && <>{hasHtml
+          ? <iframe title="Aperçu sécurisé de l’e-mail" sandbox="" referrerPolicy="no-referrer" srcDoc={emailHtmlDocument(message.html)} className="h-[52vh] min-h-[320px] w-full rounded-xl border border-white/10 bg-[#11111b]" />
+          : <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-slate-200">{body || 'Corps du message vide ou indisponible.'}</pre>}
+          {hasHtml && <p className="mt-2 text-[11px] text-slate-500">Aperçu sécurisé : scripts, formulaires et images externes bloqués.</p>}
+          {message?.attachments?.length > 0 && <div className="mt-6 border-t border-white/10 pt-4"><p className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-400"><Paperclip className="h-4 w-4" />Pièces jointes ({message.attachments.length})</p><div className="space-y-2">{message.attachments.map((attachment, index) => <div key={`${attachment.filename}-${index}`} className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-xs"><Paperclip className="h-4 w-4 text-[#D4AF37]" /><span className="min-w-0 flex-1 truncate text-slate-200">{attachment.filename}</span><span className="text-slate-500">{formatBytes(attachment.size)}</span>{attachment.archived && <span className="rounded bg-cyan-400/10 px-2 py-0.5 text-cyan-200">Dropbox</span>}</div>)}</div></div>}</>}
       </div>
     </div>
   </div>;
