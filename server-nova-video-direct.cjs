@@ -38,11 +38,20 @@ function providerFromMessage(message) {
   return 'auto';
 }
 
+function recentMediaRequested(message) {
+  const text = normalizeIntent(message);
+  return /\b(?:image|images|photo|photos|visuel|visuels|media|medias|fichier|fichiers|piece jointe|pieces jointes|reference visuelle|references visuelles)\b/.test(text)
+    || /\b(?:cette|cet|ces|le|la|les)\s+(?:image|images|photo|photos|visuel|visuels|media|medias|fichier|fichiers)\b/.test(text)
+    || /\bci[- ]dessus\b/.test(text);
+}
+
 function extractReferenceIds(message, recentMedia) {
   const fromMessage = String(message || '').match(UUID_RE) || [];
-  const fromBody = Array.isArray(recentMedia)
-    ? recentMedia.map((item) => item?.documentId || item?.document_id)
-    : [recentMedia?.documentId || recentMedia?.document_id];
+  const fromBody = recentMediaRequested(message)
+    ? (Array.isArray(recentMedia)
+      ? recentMedia.map((item) => item?.documentId || item?.document_id)
+      : [recentMedia?.documentId || recentMedia?.document_id])
+    : [];
   return unique([...fromMessage, ...fromBody]).slice(0, 7);
 }
 
@@ -69,13 +78,6 @@ router.post('/chat', async (req, res, next) => {
 
   const message = String(req.body?.message || '').trim();
   const referenceIds = extractReferenceIds(message, req.body?.recent_media);
-  if (!referenceIds.length) {
-    return res.status(422).json({
-      error: 'Production vidéo non lancée : aucune référence média Cockpit exploitable n’a été fournie.',
-      cause: 'missing_video_reference',
-      simulated: false,
-    });
-  }
 
   const payload = {
     provider: providerFromMessage(message),
@@ -89,7 +91,7 @@ router.post('/chat', async (req, res, next) => {
     rights_confirmed: req.body?.rights_confirmed === true,
     usage_rights: String(req.body?.usage_rights || '').trim() || 'Production interne JS-Innov.IA ou usage limité au projet validé.',
     version: String(req.body?.version || '').trim() || 'v01',
-    source_document_id: referenceIds[0],
+    source_document_id: referenceIds[0] || undefined,
     end_source_document_id: referenceIds[1] || undefined,
     reference_document_ids: referenceIds,
   };
@@ -132,3 +134,4 @@ module.exports.directVideoIntent = directVideoIntent;
 module.exports.extractReferenceIds = extractReferenceIds;
 module.exports.providerFromMessage = providerFromMessage;
 module.exports.cleanPrompt = cleanPrompt;
+module.exports.recentMediaRequested = recentMediaRequested;
