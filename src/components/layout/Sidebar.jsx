@@ -78,8 +78,14 @@ const allNavGroups = [
     label: "Pilotage",
     items: [
       { label: "Accueil", icon: LayoutDashboard, path: "/" },
-      { label: "HainoFlow", icon: Workflow, path: "/hainoflow" },
       { label: "Assurances-Dour", icon: Shield, path: "/assurances", insuranceOnly: true },
+    ]
+  },
+  {
+    label: "Applications produits",
+    items: [
+      { label: "HainoFlow", icon: Workflow, path: "/hainoflow" },
+      { label: "Olivier Signage", icon: MonitorPlay, path: "/ecran-geant" },
     ]
   },
   {
@@ -123,7 +129,6 @@ const allNavGroups = [
     minRole: "admin",
     items: [
       { label: "Production", icon: Clapperboard, path: "/production", minRole: "admin" },
-      { label: "Écran géant", icon: MonitorPlay, path: "/ecran-geant", minRole: "admin" },
       { label: "Avatar Factory", icon: Factory, path: "/avatar-factory", minRole: "admin" },
       { label: "Portfolio", icon: GalleryHorizontalEnd, path: "/portfolio", minRole: "admin" },
     ]

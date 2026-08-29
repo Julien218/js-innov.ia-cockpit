@@ -15,14 +15,15 @@ async function loadRoles() {
   return import(pathToFileURL(path.join(root, 'src', 'lib', 'roles.js')).href);
 }
 
-test('the signage module is visible only to admin roles', async () => {
+test('Olivier Signage is an assignable product application', async () => {
   const { hasRouteAccess } = await loadRoles();
   assert.equal(hasRouteAccess('superadmin', '/ecran-geant'), true);
   assert.equal(hasRouteAccess('admin', '/ecran-geant'), true);
-  assert.equal(hasRouteAccess('collaborateur', '/ecran-geant'), false);
-  assert.equal(hasRouteAccess('client', '/ecran-geant'), false);
+  assert.equal(hasRouteAccess('collaborateur', '/ecran-geant'), true);
+  assert.equal(hasRouteAccess('client', '/ecran-geant'), true);
   assert.match(appSource, /path="\/ecran-geant"/);
-  assert.match(sidebarSource, /label: "Écran géant"/);
+  assert.match(sidebarSource, /label: "Applications produits"/);
+  assert.match(sidebarSource, /label: "Olivier Signage"/);
 });
 
 test('the client cockpit opens securely outside the main cockpit frame', () => {
@@ -32,8 +33,8 @@ test('the client cockpit opens securely outside the main cockpit frame', () => {
   assert.doesNotMatch(pageSource, /<iframe/i);
 });
 
-test('the signage health route is protected by an admin session', () => {
-  assert.match(serverSource, /app\.use\('\/api\/signage', requireSession\('admin'\), requirePermission\('signage', 'admin'\), signageRouter\.router\)/);
+test('the signage health route is protected by a product permission', () => {
+  assert.match(serverSource, /app\.use\('\/api\/signage', requireSession\('client'\), requirePermission\('signage', 'client'\), signageRouter\.router\)/);
   assert.match(dockerSource, /COPY --from=builder \/app\/server-signage\.cjs \.\/server-signage\.cjs/);
   assert.match(dockerSource, /node --check \/app\/server-signage\.cjs/);
 });

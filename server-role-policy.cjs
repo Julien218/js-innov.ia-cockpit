@@ -2,7 +2,9 @@ const ROLE_LEVEL = { client: 1, collaborateur: 2, admin: 3, superadmin: 4 };
 
 const splitEmails = value => new Set(String(value || '').split(',').map(item => item.trim().toLowerCase()).filter(Boolean));
 const superAdmins = splitEmails(process.env.COCKPIT_SUPERADMIN_EMAILS || 'julien.pagin.pv@gmail.com');
-const administrators = splitEmails(process.env.COCKPIT_ADMIN_EMAILS || 'olivier.trevis@outlook.be');
+// Les administrateurs du Cockpit sont explicites. Un client ne doit jamais être
+// élevé globalement parce qu'il administre l'une de ses applications produits.
+const administrators = splitEmails(process.env.COCKPIT_ADMIN_EMAILS || '');
 const commercials = splitEmails(process.env.COCKPIT_COMMERCIAL_EMAILS || '');
 
 function normalizeStoredRole(role) {

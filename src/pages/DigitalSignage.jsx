@@ -39,8 +39,8 @@ export default function DigitalSignage() {
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
       <PageHeader
-        title="Écran géant"
-        subtitle="Pilotage du Player HDMI, des médias, playlists et diffusions de l’écran LED Olivier Signage"
+        title="Olivier Signage"
+        subtitle="Application produit JS-Innov.IA pour gérer les clients, écrans, médias, playlists et diffusions"
       />
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -84,7 +84,7 @@ export default function DigitalSignage() {
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-bold">Gestionnaire Olivier Signage</h2>
+              <h2 className="text-lg font-bold">Administration de l’application</h2>
             </div>
             <p className="max-w-2xl text-sm text-muted-foreground">
               Gérez la médiathèque, l’ordre des playlists, les programmations et le Player Android depuis le service client déjà en production.

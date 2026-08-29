@@ -1,6 +1,6 @@
 [
   { "code": "dashboard", "label": "Accueil", "group": "Pilotage", "roles": ["client", "collaborateur", "admin"], "routes": ["/"] },
-  { "code": "hainoflow", "label": "HainoFlow", "group": "Pilotage", "roles": ["client", "collaborateur", "admin"], "routes": ["/hainoflow"] },
+  { "code": "hainoflow", "label": "HainoFlow", "group": "Applications produits", "roles": ["client", "collaborateur", "admin"], "routes": ["/hainoflow"] },
   { "code": "insurance", "label": "Assurances-Dour", "group": "Pilotage", "roles": ["admin"], "routes": ["/assurances"] },
   { "code": "clients", "label": "Clients", "group": "CRM", "roles": ["collaborateur", "admin"], "routes": ["/clients"] },
   { "code": "leads", "label": "Leads", "group": "CRM", "roles": ["collaborateur", "admin"], "routes": ["/leads"] },
@@ -17,7 +17,7 @@
   { "code": "email_accounting", "label": "NOVA — Assistant comptable e-mail", "group": "Communication", "roles": ["admin"], "routes": ["/email-accounting"] },
   { "code": "twilio", "label": "Téléphonie Twilio", "group": "Communication", "roles": ["admin"], "routes": ["/twilio"] },
   { "code": "production", "label": "Production vidéo", "group": "Studio", "roles": ["admin"], "routes": ["/production", "/video-studio", "/video-studio/*", "/ai-video", "/thumbnail", "/dour-campaign", "/exports", "/exported-videos", "/templates", "/calendar", "/video-factory-local", "/video-factory-api"] },
-  { "code": "signage", "label": "Écran géant", "group": "Studio", "roles": ["admin"], "routes": ["/ecran-geant"] },
+  { "code": "signage", "label": "Olivier Signage", "group": "Applications produits", "roles": ["client", "collaborateur", "admin"], "routes": ["/ecran-geant"] },
   { "code": "avatar_factory", "label": "Avatar Factory", "group": "Studio", "roles": ["admin"], "routes": ["/avatar-factory"] },
   { "code": "portfolio", "label": "Portfolio", "group": "Studio", "roles": ["admin"], "routes": ["/portfolio"] },
   { "code": "apps_agents", "label": "Apps et agents", "group": "Écosystème", "roles": ["admin"], "routes": ["/apps-agents"] },

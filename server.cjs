@@ -222,8 +222,8 @@ try {
 // ── Pilotage Écran géant Olivier Signage ──────────────────
 try {
   const signageRouter = require('./server-signage.cjs');
-  app.use('/api/signage', requireSession('admin'), requirePermission('signage', 'admin'), signageRouter.router);
-  console.log('✅ Route /api/signage activée (état Olivier Signage)');
+  app.use('/api/signage', requireSession('client'), requirePermission('signage', 'client'), signageRouter.router);
+  console.log('✅ Application produit Olivier Signage activée');
 } catch (e) {
   console.warn('⚠️ Route Écran géant indisponible:', e.message);
 }

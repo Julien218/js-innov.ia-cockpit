@@ -7,9 +7,9 @@ const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const { ROLE_LEVEL, applyRolePolicy, normalizeStoredRole } = require('../server-role-policy.cjs');
 
-test('the requested owner and administrator roles are enforced by the server', () => {
+test('the owner is enforced while product administrators remain Cockpit clients', () => {
   assert.equal(applyRolePolicy({ email: 'julien.pagin.pv@gmail.com', role: 'client' }).role, 'superadmin');
-  assert.equal(applyRolePolicy({ email: 'olivier.trevis@outlook.be', role: 'client' }).role, 'admin');
+  assert.equal(applyRolePolicy({ email: 'olivier.trevis@outlook.be', role: 'client' }).role, 'client');
   assert.equal(applyRolePolicy({ email: 'other@example.be', role: 'client' }).role, 'client');
   assert.equal(normalizeStoredRole('commercial'), 'collaborateur');
   assert.equal(ROLE_LEVEL.collaborateur, 2);
@@ -23,13 +23,14 @@ test('only the super administrator manages team roles', () => {
   assert.match(access, /role === 'superadmin'.*Rôle d’invitation invalide/);
 });
 
-test('commercial access includes work views but excludes sensitive controls', () => {
+test('commercial access includes assigned product apps but excludes sensitive controls', () => {
   const roles = read('src/lib/roles.js');
   const commercialRoutes = roles.match(/collaborateur:\s*\[([\s\S]*?)\]/)?.[1] || '';
   assert.match(roles, /collaborateur: "Commercial"/);
   assert.match(commercialRoutes, /clients/);
   assert.match(commercialRoutes, /devis/);
-  assert.doesNotMatch(commercialRoutes, /factures|emails|ecran-geant|parametres|ai-cost-control/);
+  assert.match(commercialRoutes, /ecran-geant/);
+  assert.doesNotMatch(commercialRoutes, /factures|emails|parametres|ai-cost-control/);
 });
 
 test('invitations have a complete activation flow', () => {
