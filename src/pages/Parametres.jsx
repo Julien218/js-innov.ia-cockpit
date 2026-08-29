@@ -1,601 +1,69 @@
-import React, { useEffect, useState } from "react";
-import {
-  Settings, Bot, Globe, Key, Bell, Shield, Database,
-  ExternalLink, Plus, Trash2, Eye, EyeOff, Check,
-  AlertTriangle, X, Pencil, PowerOff, Copy, ChevronDown,
-  Mail, RefreshCw, RotateCcw, Loader2,
-} from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Settings, Bot, Globe, Key, Bell, Shield, Database, CheckCircle2, XCircle, AlertTriangle, RefreshCw, GitBranch, Rocket, LockKeyhole, Server, Smartphone, Mail, Activity, Wrench, Plus, RotateCcw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PLATFORM_SERVICES } from "@/config/platformServices";
 
 const TABS = [
-  { id: "agents",   label: "Agents IA",      icon: Bot },
-  { id: "builder",  label: "Builder Web",     icon: Globe },
-  { id: "api",      label: "APIs & Clés",     icon: Key },
-  { id: "emails",   label: "Boîtes e-mail",   icon: Mail },
-  { id: "moteur",   label: "Moteur données",  icon: Database },
-  { id: "notifs",   label: "Notifications",   icon: Bell },
-  { id: "securite", label: "Sécurité",        icon: Shield },
+  ["agents", "Agents IA", Bot], ["builder", "Sites & déploiements", Globe],
+  ["api", "APIs & clés", Key], ["emails", "Boîtes e-mail", Mail], ["moteur", "Moteurs de données", Database],
+  ["notifs", "Notifications", Bell], ["securite", "Sécurité", Shield],
 ];
 
-// ── Agents IA ─────────────────────────────────────────────────────────────────
-function AgentsIA() {
-  const [agents, setAgents] = useState([
-    { id: 1, nom: "NOVA — Agent Principal",     type: "base44",    actif: true,  url: "https://app.base44.com/superagent/69ff4dc771a2cdab275f8a00" },
-    { id: 2, nom: "Agent jsinnovia.com",         type: "base44",    actif: true,  url: "https://app.base44.com" },
-  ]);
-  const [showForm, setShowForm] = useState(false);
-  const [newAgent, setNewAgent] = useState({ nom: "", type: "openai", apiKey: "", model: "gpt-4o", endpoint: "" });
+function StatusBadge({ ok, okLabel = "Actif", pendingLabel = "À configurer" }) {
+  return <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${ok ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-amber-500/30 bg-amber-500/10 text-amber-300"}`}>{ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}{ok ? okLabel : pendingLabel}</span>;
+}
 
-  const typeOptions = ["openai","anthropic","mistral","base44","custom"];
+function SectionHeader({ title, description, action }) {
+  return <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h2 className="text-lg font-semibold text-white">{title}</h2><p className="mt-1 text-sm text-slate-400">{description}</p></div>{action}</div>;
+}
 
-  const addAgent = () => {
-    if (!newAgent.nom) return;
-    setAgents(prev => [...prev, { id: Date.now(), ...newAgent, url: newAgent.endpoint || "", actif: true }]);
-    setNewAgent({ nom: "", type: "openai", apiKey: "", model: "gpt-4o", endpoint: "" });
-    setShowForm(false);
-  };
+function AgentsSettings({ status }) {
+  const agents = status?.agents || [];
+  const active = agents.filter((agent) => agent.status === "active").length;
+  return <div className="space-y-6">
+    <SectionHeader title="Agents réellement enregistrés" description={`${active} agent(s) actif(s) dans le registre interne NOVA. Les clés fournisseurs restent dans Railway.`} action={<Button variant="outline" onClick={() => window.location.assign("/agents-ia")}><Bot className="mr-2 h-4 w-4" />Ouvrir le registre</Button>} />
+    <div className="grid gap-3 lg:grid-cols-2">{agents.map((agent) => <div key={agent.key} className="rounded-xl border border-slate-700 bg-slate-800/50 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-medium text-white">{agent.name}</p><p className="mt-1 text-xs text-slate-400">{agent.role || "Agent NOVA interne"}</p></div><StatusBadge ok={agent.status === "active"} pendingLabel="Inactif" /></div>{agent.domains?.length > 0 && <p className="mt-3 text-xs text-cyan-300">{agent.domains.join(" · ")}</p>}</div>)}</div>
+    <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 text-sm text-slate-300"><LockKeyhole className="mr-2 inline h-4 w-4 text-cyan-300" />L’ajout d’un fournisseur IA nécessite sa variable secrète côté serveur. Aucun champ de clé n’est proposé dans l’application `.exe`.</div>
+  </div>;
+}
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-white">Agents IA connectés</h3>
-          <p className="text-sm text-slate-400">Gérez vos agents IA via API (OpenAI, Anthropic, Base44…)</p>
-        </div>
-        <Button onClick={() => setShowForm(true)} className="bg-yellow-500 hover:bg-yellow-400 text-black">
-          <Plus className="w-4 h-4 mr-2" /> Ajouter un agent
-        </Button>
-      </div>
-
-      <div className="space-y-3">
-        {agents.map(agent => (
-          <div key={agent.id} className="flex items-center justify-between p-4 rounded-xl border border-slate-700 bg-slate-800/50">
-            <div className="flex items-center gap-3">
-              <div className={`w-2.5 h-2.5 rounded-full ${agent.actif ? "bg-green-400" : "bg-slate-500"}`} />
-              <div>
-                <p className="text-white font-medium">{agent.nom}</p>
-                <p className="text-xs text-slate-400 capitalize">{agent.type} {agent.model ? `· ${agent.model}` : ""}</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              {agent.url && (
-                <Button size="sm" variant="ghost" onClick={() => window.open(agent.url, "_blank")}>
-                  <ExternalLink className="w-4 h-4" />
-                </Button>
-              )}
-              <Button size="sm" variant="ghost" className="text-red-400"
-                onClick={() => setAgents(prev => prev.filter(a => a.id !== agent.id))}>
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {showForm && (
-        <div className="p-5 rounded-xl border border-yellow-500/30 bg-slate-800 space-y-4">
-          <h4 className="text-white font-semibold">Nouvel agent IA</h4>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs text-slate-400 mb-1 block">Nom de l'agent</label>
-              <input className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm"
-                placeholder="Ex: GPT-4o Assistant" value={newAgent.nom}
-                onChange={e => setNewAgent(p => ({ ...p, nom: e.target.value }))} />
-            </div>
-            <div>
-              <label className="text-xs text-slate-400 mb-1 block">Type / Provider</label>
-              <select className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm"
-                value={newAgent.type} onChange={e => setNewAgent(p => ({ ...p, type: e.target.value }))}>
-                {typeOptions.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-slate-400 mb-1 block">Clé API</label>
-              <input className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm"
-                type="password" placeholder="sk-..." value={newAgent.apiKey}
-                onChange={e => setNewAgent(p => ({ ...p, apiKey: e.target.value }))} />
-            </div>
-            <div>
-              <label className="text-xs text-slate-400 mb-1 block">Modèle</label>
-              <input className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm"
-                placeholder="gpt-4o / claude-3-5-sonnet..." value={newAgent.model}
-                onChange={e => setNewAgent(p => ({ ...p, model: e.target.value }))} />
-            </div>
-            <div className="col-span-2">
-              <label className="text-xs text-slate-400 mb-1 block">Endpoint custom (optionnel)</label>
-              <input className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm"
-                placeholder="https://api.example.com/v1" value={newAgent.endpoint}
-                onChange={e => setNewAgent(p => ({ ...p, endpoint: e.target.value }))} />
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <Button onClick={addAgent} className="bg-yellow-500 hover:bg-yellow-400 text-black">
-              <Check className="w-4 h-4 mr-2" /> Ajouter
-            </Button>
-            <Button variant="ghost" onClick={() => setShowForm(false)}>Annuler</Button>
-          </div>
-        </div>
-      )}
+function BuilderSettings({ status }) {
+  const builder = status?.builder || {};
+  const officialRepositoryUrl = PLATFORM_SERVICES.publicSite.repositoryUrl;
+  return <div className="space-y-6">
+    <SectionHeader title="Sites, GitHub et Railway" description="Le Cockpit supervise les domaines et route les demandes vers NOVA Site Ops. L’éditeur visuel directement dans la page n’est pas installé." action={<Button onClick={() => window.location.assign("/domaines")} className="bg-cyan-500 text-slate-950 hover:bg-cyan-400"><Activity className="mr-2 h-4 w-4" />Superviser les domaines</Button>} />
+    <div className="grid gap-3 sm:grid-cols-3">
+      {[[Wrench, "NOVA Site Ops", builder.nova_site_ops], [GitBranch, "Écriture GitHub depuis le Cockpit", builder.github_write], [Rocket, "Déploiement Railway depuis le Cockpit", builder.railway_write]].map(([Icon, label, ok]) => <div key={label} className="rounded-xl border border-slate-700 bg-slate-800/50 p-4"><Icon className="mb-3 h-5 w-5 text-cyan-300" /><p className="text-sm font-medium text-white">{label}</p><div className="mt-2"><StatusBadge ok={ok} /></div></div>)}
     </div>
-  );
+    <div className="overflow-hidden rounded-xl border border-slate-700"><div className="divide-y divide-slate-700 bg-slate-900/40">{(builder.sites || []).map((site) => <div key={site.domain} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-white">{site.domain}</p><p className="mt-1 text-xs text-slate-500">{site.hosting || "Hébergement à vérifier"}{site.repository ? ` · ${site.repository}` : " · dépôt manquant"}</p></div><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => window.open(site.url, "_blank", "noopener,noreferrer")}><Globe className="mr-1.5 h-3.5 w-3.5" />Voir</Button>{site.repository_url && <Button size="sm" variant="outline" onClick={() => window.open(site.domain === PLATFORM_SERVICES.publicSite.domain ? officialRepositoryUrl : site.repository_url, "_blank", "noopener,noreferrer")}><GitBranch className="mr-1.5 h-3.5 w-3.5" />GitHub</Button>}</div></div>)}</div></div>
+    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4"><p className="text-sm font-medium text-amber-300">Éditeur intégré : non installé</p><p className="mt-1 text-sm text-slate-400">Pour modifier réellement un site aujourd’hui, utilise NOVA avec confirmation ou ouvre son dépôt GitHub. Cette page ne prétend plus être un Builder live.</p></div>
+  </div>;
 }
 
-// ── Builder Web ───────────────────────────────────────────────────────────────
-function BuilderWeb() {
-  const sites = [
-    { nom: "www.jsinnovia.com",    url: PLATFORM_SERVICES.publicSite.url,      admin: PLATFORM_SERVICES.publicSite.repositoryUrl, statut: "en_ligne" },
-    { nom: "oliviertrevis.be",     url: "https://www.oliviertrevis.be",       admin: "https://github.com/Julien218/oliviertrevis-site", statut: "en_ligne" },
-    { nom: "fashionistartdour.be", url: "https://www.fashionistartdour.be",   admin: "https://github.com/Julien218/fashionist-art", statut: "en_ligne" },
-    { nom: "synergiedour.be",      url: "https://www.synergiedour.be",        admin: "https://github.com/Julien218/synergie-dour", statut: "ssl_error" },
-    { nom: "cockpit.jsinnovia.com",url: "https://cockpit.jsinnovia.com",      admin: "https://github.com/Julien218/js-innov.ia-cockpit", statut: "en_ligne" },
-  ];
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-white">Gestion des sites web</h3>
-        <p className="text-sm text-slate-400">Accès rapide à vos sites et leur code source GitHub</p>
-      </div>
-      <div className="space-y-3">
-        {sites.map(site => (
-          <div key={site.nom} className="flex items-center justify-between p-4 rounded-xl border border-slate-700 bg-slate-800/50">
-            <div className="flex items-center gap-3">
-              <div className={`w-2.5 h-2.5 rounded-full ${site.statut === "en_ligne" ? "bg-green-400" : "bg-red-400"}`} />
-              <div>
-                <p className="text-white font-medium">{site.nom}</p>
-                <p className="text-xs text-slate-500">{site.statut === "ssl_error" ? "⚠️ Erreur SSL" : "✅ En ligne"}</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="border-slate-600 text-slate-300"
-                onClick={() => window.open(site.url, "_blank")}>
-                <Globe className="w-3.5 h-3.5 mr-1" /> Voir
-              </Button>
-              <Button size="sm" variant="outline" className="border-slate-600 text-slate-300"
-                onClick={() => window.open(site.admin, "_blank")}>
-                <ExternalLink className="w-3.5 h-3.5 mr-1" /> GitHub
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="p-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5">
-        <p className="text-cyan-400 text-sm font-medium mb-1">💡 Builder en live</p>
-        <p className="text-slate-400 text-sm">Pour éditer un site en live, ouvre le repo GitHub correspondant et utilise l'éditeur web GitHub ou clone-le localement. Bientôt : intégration directe dans le cockpit.</p>
-      </div>
-    </div>
-  );
+function IntegrationsSettings({ status }) {
+  const items = status?.integrations || [];
+  return <div className="space-y-6">
+    <SectionHeader title="Inventaire serveur des intégrations" description={`${items.filter((item) => item.configured).length}/${items.length} intégrations détectées. Seule leur présence est affichée : aucune valeur secrète ne quitte Railway.`} />
+    <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-4 text-sm text-slate-300"><Key className="mr-2 inline h-4 w-4 text-yellow-300" />Pour ajouter ou remplacer une clé secrète, utilise les variables du service Railway `cockpit-v3`. L’application vérifie ensuite automatiquement son état.</div>
+    <div className="overflow-hidden rounded-xl border border-slate-700"><div className="divide-y divide-slate-700 bg-slate-900/40">{items.map((item) => <div key={item.variable} className="grid gap-3 p-4 md:grid-cols-[1.2fr_1fr_2fr_auto] md:items-center"><div><p className="text-sm font-medium text-white">{item.service}</p>{item.required && <p className="mt-1 text-[11px] text-amber-300">Requis</p>}</div><code className="w-fit rounded bg-slate-800 px-2 py-1 text-xs text-cyan-300">{item.variable}</code><p className="text-xs text-slate-400">{item.description}</p><StatusBadge ok={item.configured} /></div>)}</div></div>
+  </div>;
 }
 
-// ── APIs & Clés — constantes ──────────────────────────────────────────────────
-const SERVICES  = ["OpenAI","Supabase","Base44","Railway Agent","GitHub","Make","Canva","ElevenLabs","Grok / xAI","Autre"];
-const TYPES     = ["frontend public","backend secret","webhook secret","token GitHub","autre"];
-const ENVS      = ["local","staging","production"];
-const STATUSES  = ["actif","inactif","à vérifier"];
-
-// Variables sensibles interdites côté frontend
-const DANGEROUS_FRONTEND = ["SUPABASE_SERVICE_KEY","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","AGENT_API_KEY"];
-
-// Données initiales non-secrètes (URLs de référence publiques uniquement)
-const INITIAL_KEYS = [
-  { id: 1, name: "Backend Agent URL",  service: "Railway Agent", variableName: "VITE_AGENT_URL",  type: "frontend public", environment: "production", maskedValue: "https://jsinnovia-agent-production.up.railway.app", status: "actif", notes: "URL publique du service Railway", createdAt: "2026-06-01", updatedAt: "2026-07-22" },
-  { id: 2, name: "Supabase Project URL",service: "Supabase",    variableName: "VITE_SUPABASE_URL",type: "frontend public", environment: "production", maskedValue: "https://rzvvwcwyaddzsaattwqt.supabase.co", status: "actif", notes: "Supabase actif — projet rzvvwcwyaddzsaattwqt", createdAt: "2026-06-01", updatedAt: "2026-07-22" },
-  { id: 3, name: "DNS letourdedour.com", service: "Autre", variableName: "IONOS_API_KEY", type: "backend secret", environment: "production", maskedValue: "Configurée uniquement côté serveur", status: "à vérifier", notes: "Connecteur DNS IONOS. La valeur doit être définie dans Railway sur cockpit-v3.", createdAt: "2026-08-29", updatedAt: "2026-08-29" },
-];
-
-const STATUS_COLORS = { actif: "bg-green-500/20 text-green-400 border-green-500/30", inactif: "bg-slate-600/30 text-slate-400 border-slate-600/30", "à vérifier": "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" };
-const TYPE_COLORS   = { "frontend public": "text-cyan-400", "backend secret": "text-red-400", "webhook secret": "text-orange-400", "token GitHub": "text-purple-400", autre: "text-slate-400" };
-
-const EMPTY_FORM = { name: "", service: "OpenAI", variableName: "", type: "backend secret", environment: "production", value: "", notes: "", status: "actif" };
-
-// ── Modal Ajout/Édition ───────────────────────────────────────────────────────
-function KeyModal({ initial = null, onSave, onClose }) {
-  const [form, setForm] = useState(initial ? {
-    name: initial.name, service: initial.service, variableName: initial.variableName,
-    type: initial.type, environment: initial.environment, value: "",
-    notes: initial.notes, status: initial.status,
-  } : { ...EMPTY_FORM });
-  const [showValue, setShowValue] = useState(false);
-
-  const isEditing = !!initial;
-
-  // Alertes de sécurité dynamiques
-  const warnVite    = form.variableName.startsWith("VITE_") && form.type === "backend secret";
-  const warnDanger  = DANGEROUS_FRONTEND.includes(form.variableName) && form.type === "frontend public";
-  const isServerSecret = form.type !== "frontend public";
-
-  const handleSave = () => {
-    if (!form.name.trim() || !form.variableName.trim()) return;
-    if (warnVite || warnDanger) return; // blocage si alerte critique
-    const now = new Date().toISOString().slice(0, 10);
-    onSave({
-      id: initial?.id ?? Date.now(),
-      name: form.name.trim(),
-      service: form.service,
-      variableName: form.variableName.trim().toUpperCase(),
-      type: form.type,
-      environment: form.environment,
-      maskedValue: isServerSecret ? "Configurée uniquement côté serveur" : (form.value || initial?.maskedValue || "Valeur publique non renseignée"),
-      status: isServerSecret ? "à vérifier" : form.status,
-      notes: form.notes,
-      createdAt: initial?.createdAt ?? now,
-      updatedAt: now,
-    });
-  };
-
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
-
-  return (
-    /* Overlay */
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backdropFilter: "blur(8px)", background: "rgba(0,0,0,0.75)" }}>
-      {/* Modal glassmorphism */}
-      <div className="relative w-full max-w-2xl rounded-2xl border border-slate-600/60 shadow-2xl"
-        style={{ background: "linear-gradient(135deg, rgba(15,23,42,0.97) 0%, rgba(30,41,59,0.97) 100%)", boxShadow: "0 0 60px rgba(212,175,55,0.08), 0 25px 50px rgba(0,0,0,0.7)" }}>
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-700/60">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center">
-              <Key className="w-4 h-4 text-yellow-400" />
-            </div>
-            <div>
-              <h2 className="text-white font-semibold text-base">{isEditing ? "Modifier la clé API" : "Ajouter une nouvelle clé API"}</h2>
-              <p className="text-slate-400 text-xs">Les valeurs sont masquées après sauvegarde</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-slate-700 flex items-center justify-center transition-colors">
-            <X className="w-4 h-4 text-slate-400" />
-          </button>
-        </div>
-
-        {/* Corps */}
-        <div className="space-y-5 max-h-[70vh] overflow-y-auto">
-
-          {/* Alertes sécurité */}
-          {warnVite && (
-            <div className="flex items-start gap-3 p-4 rounded-xl border border-red-500/40 bg-red-500/10">
-              <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-red-400 font-medium text-sm">Conflit de sécurité détecté</p>
-                <p className="text-red-300/80 text-xs mt-0.5">Une variable <code className="bg-red-900/40 px-1 rounded">VITE_</code> est exposée dans le bundle frontend. Ne jamais y stocker un secret backend.</p>
-              </div>
-            </div>
-          )}
-          {warnDanger && (
-            <div className="flex items-start gap-3 p-4 rounded-xl border border-orange-500/40 bg-orange-500/10">
-              <AlertTriangle className="w-4 h-4 text-orange-400 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-orange-400 font-medium text-sm">Variable sensible interdite côté frontend</p>
-                <p className="text-orange-300/80 text-xs mt-0.5"><code className="bg-orange-900/40 px-1 rounded">{form.variableName}</code> est une clé critique — elle ne doit jamais être exposée côté client.</p>
-              </div>
-            </div>
-          )}
-
-          {/* Grille champs */}
-          <div className="grid grid-cols-2 gap-4">
-
-            {/* Nom */}
-            <div className="col-span-2">
-              <label className="text-xs text-slate-400 mb-1.5 block font-medium">Nom de la clé <span className="text-red-400">*</span></label>
-              <input
-                className="w-full bg-slate-800/80 border border-slate-600/60 rounded-xl px-4 py-2.5 text-white text-sm focus:border-yellow-500/60 focus:ring-1 focus:ring-yellow-500/20 outline-none transition-all"
-                placeholder="Ex: Clé API principale OpenAI"
-                value={form.name} onChange={e => set("name", e.target.value)} />
-            </div>
-
-            {/* Service */}
-            <div>
-              <label className="text-xs text-slate-400 mb-1.5 block font-medium">Service</label>
-              <div className="relative">
-                <select
-                  className="w-full appearance-none bg-slate-800/80 border border-slate-600/60 rounded-xl px-4 py-2.5 text-white text-sm focus:border-yellow-500/60 outline-none transition-all pr-8"
-                  value={form.service} onChange={e => set("service", e.target.value)}>
-                  {SERVICES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-                <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-slate-400 pointer-events-none" />
-              </div>
-            </div>
-
-            {/* Nom de variable */}
-            <div>
-              <label className="text-xs text-slate-400 mb-1.5 block font-medium">Nom de variable <span className="text-red-400">*</span></label>
-              <input
-                className="w-full bg-slate-800/80 border border-slate-600/60 rounded-xl px-4 py-2.5 text-white text-sm font-mono focus:border-yellow-500/60 focus:ring-1 focus:ring-yellow-500/20 outline-none transition-all uppercase"
-                placeholder="Ex: OPENAI_API_KEY"
-                value={form.variableName} onChange={e => set("variableName", e.target.value)} />
-            </div>
-
-            {/* Type */}
-            <div>
-              <label className="text-xs text-slate-400 mb-1.5 block font-medium">Type</label>
-              <div className="relative">
-                <select
-                  className="w-full appearance-none bg-slate-800/80 border border-slate-600/60 rounded-xl px-4 py-2.5 text-white text-sm focus:border-yellow-500/60 outline-none transition-all pr-8"
-                  value={form.type} onChange={e => set("type", e.target.value)}>
-                  {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-                <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-slate-400 pointer-events-none" />
-              </div>
-            </div>
-
-            {/* Environnement */}
-            <div>
-              <label className="text-xs text-slate-400 mb-1.5 block font-medium">Environnement</label>
-              <div className="flex gap-2">
-                {ENVS.map(env => (
-                  <button key={env}
-                    type="button"
-                    onClick={() => set("environment", env)}
-                    className={`flex-1 py-2 rounded-xl text-xs font-medium border transition-all capitalize ${form.environment === env ? "bg-yellow-500/20 border-yellow-500/50 text-yellow-400" : "bg-slate-800/60 border-slate-600/40 text-slate-400 hover:border-slate-500"}`}>
-                    {env}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Valeur */}
-            <div className="col-span-2">
-              <label className="text-xs text-slate-400 mb-1.5 block font-medium">
-                Valeur de la clé{isEditing && <span className="text-slate-500 ml-2">(laisser vide pour ne pas modifier)</span>}
-              </label>
-              <div className="relative">
-                <input
-                  className="w-full bg-slate-800/80 border border-slate-600/60 rounded-xl px-4 py-2.5 pr-12 text-white text-sm font-mono focus:border-yellow-500/60 focus:ring-1 focus:ring-yellow-500/20 outline-none transition-all"
-                  type={showValue ? "text" : "password"}
-                  disabled={isServerSecret}
-                  placeholder={isServerSecret ? "À configurer dans Railway — jamais dans le navigateur" : (isEditing ? "Laisser vide pour conserver la référence" : "Valeur publique")}
-                  value={form.value} onChange={e => set("value", e.target.value)} />
-                <button type="button" onClick={() => setShowValue(p => !p)} disabled={isServerSecret}
-                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200 transition-colors">
-                  {showValue ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              <p className="text-xs text-slate-500 mt-1.5">{isServerSecret ? "Ce Cockpit n'enregistre pas les secrets saisis dans le navigateur. Ajoute la variable au service Railway cockpit-v3 ; l'état sera ensuite vérifié par le serveur." : "Cette valeur est publique et sert uniquement de référence dans l'interface."}</p>
-            </div>
-
-            {/* Statut */}
-            <div>
-              <label className="text-xs text-slate-400 mb-1.5 block font-medium">Statut</label>
-              <div className="flex gap-2">
-                {STATUSES.map(s => (
-                  <button key={s} type="button" onClick={() => set("status", s)}
-                    className={`flex-1 py-2 rounded-xl text-xs font-medium border transition-all capitalize ${form.status === s ? STATUS_COLORS[s] : "bg-slate-800/60 border-slate-600/40 text-slate-400 hover:border-slate-500"}`}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Notes */}
-            <div className="col-span-2">
-              <label className="text-xs text-slate-400 mb-1.5 block font-medium">Notes</label>
-              <textarea
-                className="w-full bg-slate-800/80 border border-slate-600/60 rounded-xl px-4 py-2.5 text-white text-sm focus:border-yellow-500/60 outline-none transition-all resize-none"
-                rows={2}
-                placeholder="Utilisation, expiration, notes..."
-                value={form.notes} onChange={e => set("notes", e.target.value)} />
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-700/60">
-          <p className="text-xs text-slate-500 flex items-center gap-1.5">
-            <Shield className="w-3.5 h-3.5" /> Inventaire uniquement — secrets gérés par Railway
-          </p>
-          <div className="flex gap-3">
-            <Button variant="ghost" onClick={onClose} className="text-slate-400 hover:text-white">
-              Annuler
-            </Button>
-            <Button
-              onClick={handleSave}
-              disabled={!form.name.trim() || !form.variableName.trim() || warnVite || warnDanger}
-              className="bg-yellow-500 hover:bg-yellow-400 text-black font-semibold disabled:opacity-40 disabled:cursor-not-allowed">
-              <Check className="w-4 h-4 mr-2" /> {isEditing ? "Mettre à jour" : "Enregistrer"}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+function DataSettings({ status }) {
+  return <div className="space-y-6"><SectionHeader title="Moteurs de données" description="État réel des sources utilisées par le Cockpit, Nova et les fonctions métier." /><div className="grid gap-4 lg:grid-cols-2">{(status?.data_engines || []).map((engine) => <div key={engine.name} className="rounded-xl border border-slate-700 bg-slate-800/50 p-5"><div className="flex items-start justify-between gap-3"><Server className="h-5 w-5 text-violet-300" /><StatusBadge ok={engine.configured} /></div><h3 className="mt-4 font-medium text-white">{engine.name}</h3><p className="mt-1 text-sm text-slate-400">{engine.purpose}</p></div>)}</div><Button variant="outline" onClick={() => window.location.assign("/rangement")}><Database className="mr-2 h-4 w-4" />Voir l’architecture des données</Button></div>;
 }
 
-// ── Composant ligne de clé ────────────────────────────────────────────────────
-function KeyRow({ apiKey, onEdit, onToggle, onDelete }) {
-  const [copied, setCopied] = useState(false);
-
-  const copyVar = () => {
-    navigator.clipboard.writeText(apiKey.variableName).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  };
-
-  return (
-    <tr className="border-b border-slate-700/50 hover:bg-slate-800/40 transition-colors group">
-      <td className="px-4 py-3.5">
-        <p className="text-white text-sm font-medium">{apiKey.name}</p>
-        <p className="text-slate-500 text-xs">{apiKey.service}</p>
-      </td>
-      <td className="px-4 py-3.5">
-        <div className="flex items-center gap-1.5">
-          <code className="text-xs font-mono text-cyan-300 bg-slate-800 px-2 py-0.5 rounded">{apiKey.variableName}</code>
-          <button onClick={copyVar} className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-slate-200">
-            {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
-          </button>
-        </div>
-      </td>
-      <td className="px-4 py-3.5">
-        <span className={`text-xs font-medium capitalize ${TYPE_COLORS[apiKey.type] ?? "text-slate-400"}`}>{apiKey.type}</span>
-      </td>
-      <td className="px-4 py-3.5">
-        <span className="text-xs text-slate-400 capitalize">{apiKey.environment}</span>
-      </td>
-      <td className="px-4 py-3.5">
-        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border capitalize ${STATUS_COLORS[apiKey.status]}`}>
-          {apiKey.status}
-        </span>
-      </td>
-      <td className="px-4 py-3.5 text-xs text-slate-500">{apiKey.updatedAt}</td>
-      <td className="px-4 py-3.5">
-        <div className="flex items-center gap-1.5">
-          <button title="Modifier" onClick={() => onEdit(apiKey)}
-            className="w-7 h-7 rounded-lg hover:bg-slate-700 flex items-center justify-center transition-colors text-slate-400 hover:text-yellow-400">
-            <Pencil className="w-3.5 h-3.5" />
-          </button>
-          <button title={apiKey.status === "actif" ? "Désactiver" : "Activer"} onClick={() => onToggle(apiKey.id)}
-            className="w-7 h-7 rounded-lg hover:bg-slate-700 flex items-center justify-center transition-colors text-slate-400 hover:text-orange-400">
-            <PowerOff className="w-3.5 h-3.5" />
-          </button>
-          <button title="Supprimer" onClick={() => onDelete(apiKey.id)}
-            className="w-7 h-7 rounded-lg hover:bg-red-900/40 flex items-center justify-center transition-colors text-slate-400 hover:text-red-400">
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </td>
-    </tr>
-  );
+function NotificationsSettings({ status }) {
+  const supported = typeof window !== "undefined" && "Notification" in window && "serviceWorker" in navigator;
+  const permission = supported ? Notification.permission : "unsupported";
+  const notifications = status?.notifications || {};
+  return <div className="space-y-6"><SectionHeader title="Notifications" description="État du serveur push, de l’appareil courant et de la messagerie de notification." action={<Button onClick={() => window.location.assign("/mobile-hub")}><Smartphone className="mr-2 h-4 w-4" />Gérer cet appareil</Button>} /><div className="grid gap-4 md:grid-cols-3">{[[Bell, "Serveur Push", notifications.push_server, "Actif", "À configurer"], [Smartphone, "Appareil courant", supported && permission === "granted", "Autorisé", supported ? `Permission : ${permission}` : "Non supporté"], [Mail, "Notifications email", notifications.email, "Actif", "À configurer"]].map(([Icon, label, ok, yes, no]) => <div key={label} className="rounded-xl border border-slate-700 bg-slate-800/50 p-5"><Icon className="mb-3 h-5 w-5 text-yellow-300" /><p className="font-medium text-white">{label}</p><div className="mt-3"><StatusBadge ok={ok} okLabel={yes} pendingLabel={no} /></div></div>)}</div><p className="text-xs text-slate-500">Les permissions Push se demandent depuis « Gérer cet appareil », au moment où tu choisis de les activer.</p></div>;
 }
 
-// ── APIs & Clés — section principale ─────────────────────────────────────────
-function ApisKeys() {
-  const [apiKeys, setApiKeys]     = useState(INITIAL_KEYS);
-  const [modal, setModal]         = useState(null); // null | "add" | { id: ... }
-  const [filterEnv, setFilterEnv] = useState("tous");
-
-  useEffect(() => {
-    let active = true;
-    fetch("/api/domain-ops/ionos/status", { credentials: "same-origin" })
-      .then(async response => {
-        if (!response.ok) throw new Error("Statut IONOS indisponible");
-        return response.json();
-      })
-      .then(status => {
-        if (!active) return;
-        setApiKeys(prev => prev.map(key => key.variableName === "IONOS_API_KEY"
-          ? { ...key, status: status.configured ? "actif" : "à vérifier", notes: status.configured ? "Connecteur DNS IONOS disponible côté serveur." : "Variable absente du service Railway cockpit-v3." }
-          : key));
-      })
-      .catch(() => {});
-    return () => { active = false; };
-  }, []);
-
-  const openAdd  = ()  => setModal("add");
-  const openEdit = (k) => setModal(k);
-  const closeModal     = ()  => setModal(null);
-
-  const saveKey = (entry) => {
-    setApiKeys(prev => {
-      const exists = prev.find(k => k.id === entry.id);
-      return exists ? prev.map(k => k.id === entry.id ? entry : k) : [...prev, entry];
-    });
-    closeModal();
-  };
-
-  const toggleStatus = (id) => {
-    setApiKeys(prev => prev.map(k => k.id === id
-      ? { ...k, status: k.status === "actif" ? "inactif" : "actif", updatedAt: new Date().toISOString().slice(0,10) }
-      : k));
-  };
-
-  const deleteKey = (id) => {
-    if (window.confirm("Supprimer cette clé ?")) {
-      setApiKeys(prev => prev.filter(k => k.id !== id));
-    }
-  };
-
-  const filtered = filterEnv === "tous" ? apiKeys : apiKeys.filter(k => k.environment === filterEnv);
-
-  return (
-    <>
-      {/* Modal */}
-      {modal !== null && (
-        <KeyModal
-          initial={modal === "add" ? null : modal}
-          onSave={saveKey}
-          onClose={closeModal} />
-      )}
-
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-white">APIs & Clés</h3>
-            <p className="text-sm text-slate-400">Gestion centralisée de vos clés d'API et tokens. Les valeurs sont masquées.</p>
-          </div>
-          <Button onClick={openAdd}
-            className="bg-yellow-500 hover:bg-yellow-400 text-black font-semibold shadow shadow-yellow-500/20">
-            <Plus className="w-4 h-4 mr-2" /> Ajouter une nouvelle clé API
-          </Button>
-        </div>
-
-        {/* Bandeau sécurité */}
-        <div className="flex items-start gap-3 p-4 rounded-xl border border-yellow-500/20 bg-yellow-500/5">
-          <Shield className="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="text-yellow-400 text-sm font-medium">Inventaire des variables — les secrets restent sur le serveur</p>
-            <p className="text-slate-400 text-xs mt-0.5">Cette page ne conserve aucune clé secrète. Configurez les secrets dans les variables d'environnement Railway ; le Cockpit affiche uniquement leur disponibilité, jamais leur valeur.</p>
-          </div>
-        </div>
-
-        {/* Filtres */}
-        <div className="flex gap-2">
-          {["tous", ...ENVS].map(env => (
-            <button key={env} onClick={() => setFilterEnv(env)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-all border ${filterEnv === env ? "bg-yellow-500/20 border-yellow-500/40 text-yellow-400" : "bg-slate-800/60 border-slate-700 text-slate-400 hover:border-slate-500"}`}>
-              {env}
-            </button>
-          ))}
-          <span className="ml-auto text-xs text-slate-500 self-center">{filtered.length} clé{filtered.length > 1 ? "s" : ""}</span>
-        </div>
-
-        {/* Tableau */}
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-slate-500">
-            <Key className="w-10 h-10 mb-3 opacity-30" />
-            <p className="text-sm">Aucune clé configurée</p>
-            <button onClick={openAdd} className="mt-3 text-yellow-400 hover:text-yellow-300 text-sm underline underline-offset-2">
-              Ajouter la première clé
-            </button>
-          </div>
-        ) : (
-          <div className="rounded-xl border border-slate-700/60 overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-700/60 bg-slate-800/60">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Nom / Service</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Variable</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Type</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Env</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Statut</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Modifié</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-slate-900/40">
-                {filtered.map(k => (
-                  <KeyRow key={k.id} apiKey={k}
-                    onEdit={openEdit} onToggle={toggleStatus} onDelete={deleteKey} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
-// ── Moteur données ────────────────────────────────────────────────────────────
-function MoteurDonnees() {
-  return (
-    <div className="text-center py-12 text-slate-400">
-      <Database className="w-10 h-10 mx-auto mb-3 opacity-30" />
-      <p>Configuration du moteur de données — bientôt disponible</p>
-    </div>
-  );
+function SecuritySettings({ status }) {
+  const security = status?.security || {};
+  const controls = [["Session authentifiée", security.authenticated], ["Permissions contrôlées côté serveur", security.permissions_server_side], ["Secrets conservés côté serveur", security.secrets_server_side], ["Confirmation avant modification DNS", security.dns_confirmation_required], ["Cloisonnement des organisations", security.tenant_isolation]];
+  return <div className="space-y-6"><SectionHeader title="Sécurité" description={`Contrôles actifs pour la session courante${security.role ? ` · rôle ${security.role}` : ""}.`} /><div className="rounded-xl border border-slate-700 bg-slate-900/40">{controls.map(([label, ok]) => <div key={label} className="flex items-center justify-between gap-4 border-b border-slate-700 px-4 py-3 last:border-b-0"><span className="text-sm text-slate-300">{label}</span>{ok ? <CheckCircle2 className="h-5 w-5 text-emerald-400" /> : <XCircle className="h-5 w-5 text-red-400" />}</div>)}</div><div className="flex flex-wrap gap-3"><Button variant="outline" onClick={() => window.location.assign("/gouvernance")}><Shield className="mr-2 h-4 w-4" />Gouvernance et audit</Button><Button variant="outline" onClick={() => window.location.assign("/invitations")}><LockKeyhole className="mr-2 h-4 w-4" />Accès et invitations</Button></div></div>;
 }
 
 // ── Boîtes Google / Gmail ────────────────────────────────────────────────────
@@ -729,63 +197,14 @@ function GoogleMailSettings() {
   );
 }
 
-// ─── PAGE PRINCIPALE ──────────────────────────────────────────────────────────
 export default function Parametres() {
-  const requestedTab = new URLSearchParams(window.location.search).get('tab');
-  const [activeTab, setActiveTab] = useState(TABS.some((tab) => tab.id === requestedTab) ? requestedTab : "agents");
-
-  const renderContent = () => {
-    switch (activeTab) {
-      case "agents":   return <AgentsIA />;
-      case "builder":  return <BuilderWeb />;
-      case "api":      return <ApisKeys />;
-      case "emails":   return <GoogleMailSettings />;
-      case "moteur":   return <MoteurDonnees />;
-      case "notifs":   return (
-        <div className="text-center py-12 text-slate-400">
-          <Bell className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p>Configuration des notifications — bientôt disponible</p>
-        </div>
-      );
-      case "securite": return (
-        <div className="text-center py-12 text-slate-400">
-          <Shield className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p>Paramètres de sécurité — bientôt disponible</p>
-        </div>
-      );
-      default: return null;
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Settings className="w-6 h-6 text-yellow-400" /> Paramètres
-        </h1>
-        <p className="text-slate-400 text-sm mt-1">Configuration globale de votre plateforme JS-Innov.IA</p>
-      </div>
-
-      <div className="flex gap-2 border-b border-slate-700 pb-0 flex-wrap">
-        {TABS.map(tab => {
-          const Icon = tab.icon;
-          return (
-            <button key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors border-b-2 ${
-                activeTab === tab.id
-                  ? "border-yellow-400 text-yellow-400 bg-slate-800"
-                  : "border-transparent text-slate-400 hover:text-white"
-              }`}>
-              <Icon className="w-4 h-4" /> {tab.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="bg-slate-900 rounded-xl border border-slate-700 p-6">
-        {renderContent()}
-      </div>
-    </div>
-  );
+  const requestedTab = new URLSearchParams(window.location.search).get("tab");
+  const [activeTab, setActiveTab] = useState(TABS.some(([id]) => id === requestedTab) ? requestedTab : "agents");
+  const [status, setStatus] = useState(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const loadStatus = useCallback(async () => { setLoading(true); setError(""); try { const response = await fetch("/api/settings/status", { credentials: "same-origin" }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || `Configuration HTTP ${response.status}`); setStatus(data); } catch (loadError) { setError(loadError.message || "Configuration indisponible"); } finally { setLoading(false); } }, []);
+  useEffect(() => { loadStatus(); }, [loadStatus]);
+  const content = useMemo(() => { if (loading) return <div className="flex min-h-56 items-center justify-center text-sm text-slate-400"><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Lecture de la configuration serveur…</div>; if (error) return <div className="flex min-h-56 flex-col items-center justify-center text-center"><AlertTriangle className="mb-3 h-8 w-8 text-amber-300" /><p className="text-sm text-slate-300">{error}</p><Button className="mt-4" variant="outline" onClick={loadStatus}>Réessayer</Button></div>; if (activeTab === "agents") return <AgentsSettings status={status} />; if (activeTab === "builder") return <BuilderSettings status={status} />; if (activeTab === "api") return <IntegrationsSettings status={status} />; if (activeTab === "emails") return <GoogleMailSettings />; if (activeTab === "moteur") return <DataSettings status={status} />; if (activeTab === "notifs") return <NotificationsSettings status={status} />; return <SecuritySettings status={status} />; }, [activeTab, error, loadStatus, loading, status]);
+  return <div className="space-y-6"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h1 className="flex items-center gap-2 text-2xl font-bold text-white"><Settings className="h-6 w-6 text-yellow-400" />Paramètres</h1><p className="mt-1 text-sm text-slate-400">Configuration réelle de la plateforme JS-Innov.IA, contrôlée côté serveur.</p></div><Button variant="outline" onClick={loadStatus} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />Actualiser</Button></div><div className="flex gap-2 overflow-x-auto border-b border-slate-700">{TABS.map(([id, label, Icon]) => <button key={id} onClick={() => setActiveTab(id)} className={`flex shrink-0 items-center gap-2 rounded-t-lg border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === id ? "border-yellow-400 bg-slate-800 text-yellow-300" : "border-transparent text-slate-400 hover:text-white"}`}><Icon className="h-4 w-4" />{label}</button>)}</div><div className="rounded-xl border border-slate-700 bg-slate-900 p-4 sm:p-6">{content}</div>{status?.checked_at && <p className="text-right text-[11px] text-slate-600">État serveur vérifié le {new Date(status.checked_at).toLocaleString("fr-BE")}</p>}</div>;
 }

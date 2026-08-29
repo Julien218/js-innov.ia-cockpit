@@ -64,6 +64,7 @@ COPY --from=builder /app/server-agent-orchestrator-resilient.cjs ./server-agent-
 COPY --from=builder /app/server-agent-run-log.cjs ./server-agent-run-log.cjs
 COPY --from=builder /app/server-domain-ops.cjs ./server-domain-ops.cjs
 COPY --from=builder /app/server-ionos-dns.cjs ./server-ionos-dns.cjs
+COPY --from=builder /app/server-settings.cjs ./server-settings.cjs
 COPY --from=builder /app/server-signage.cjs ./server-signage.cjs
 COPY --from=builder /app/server-villeconnect.cjs ./server-villeconnect.cjs
 COPY --from=builder /app/server-video-provenance-core.cjs ./server-video-provenance-core.cjs
@@ -113,6 +114,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-agent-run-log.cjs \
  && test -f /app/server-domain-ops.cjs \
  && test -f /app/server-ionos-dns.cjs \
+ && test -f /app/server-settings.cjs \
  && test -f /app/server-signage.cjs \
  && test -f /app/server-villeconnect.cjs \
  && test -f /app/server-video-provenance-core.cjs \
@@ -149,6 +151,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-agent-run-log.cjs \
  && node --check /app/server-domain-ops.cjs \
  && node --check /app/server-ionos-dns.cjs \
+ && node --check /app/server-settings.cjs \
  && node --check /app/server-signage.cjs \
  && node --check /app/server-villeconnect.cjs \
  && node --check /app/server-video-provenance-core.cjs \

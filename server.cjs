@@ -191,6 +191,15 @@ try {
   console.warn('⚠️ Route domain-ops indisponible:', e.message);
 }
 
+// ── État réel de la configuration, sans exposer les secrets ─
+try {
+  const settingsRouter = require('./server-settings.cjs');
+  app.use('/api/settings', requireSession('admin'), requirePermission('settings', 'admin'), settingsRouter);
+  console.log('✅ Route /api/settings activée (configuration réelle sans valeurs secrètes)');
+} catch (e) {
+  console.warn('⚠️ Route settings indisponible:', e.message);
+}
+
 // ── Pilotage Écran géant Olivier Signage ──────────────────
 try {
   const signageRouter = require('./server-signage.cjs');
