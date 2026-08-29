@@ -7,7 +7,7 @@ const { dropboxApiArg } = require('./server-dropbox-helper.cjs');
 const router = express.Router();
 
 const DROPBOX_ROOT_PATH = process.env.DROPBOX_ROOT_PATH || '/JS-Innov.IA/Cockpit';
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
 const MAX_LIST_LIMIT = 200;
 
 const SUPABASE_URL = process.env.SUPABASE_CRM_URL || process.env.SUPABASE_URL || '';
@@ -63,7 +63,7 @@ function sanitizeFilename(filename) {
 
 function validateBuffer(filename, buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) throw new Error('Fichier vide ou invalide');
-  if (buffer.length > MAX_FILE_BYTES) throw new Error('Fichier trop volumineux (maximum 10 Mo)');
+  if (buffer.length > MAX_FILE_BYTES) throw new Error('Fichier trop volumineux (maximum 20 Mo)');
   sanitizeFilename(filename);
 }
 

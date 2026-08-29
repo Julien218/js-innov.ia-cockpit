@@ -11,6 +11,7 @@ const {
 const PRIORITIES = new Set(['basse', 'moyenne', 'haute', 'urgente']);
 const ACTIVE_STATUSES = new Set(['pending', 'queued', 'dispatching', 'dispatched', 'running']);
 const STALE_RUNNING_MS = 30 * 60 * 1000;
+const MAX_BATCH_TASKS = 250;
 
 function cleanText(value, max = 1000) {
   return String(value || '').trim().slice(0, max);
@@ -91,19 +92,19 @@ function sanitizeTaskItem(item = {}) {
 }
 
 function sanitizeTaskBatchPayload(payload = {}) {
-  const source = Array.isArray(payload.tasks) ? payload.tasks : [];
-  if (!source.length || source.length > 20) return null;
-  const sanitized = source.map(sanitizeTaskItem);
-  if (sanitized.some((item) => !item)) return null;
+  const raw = Array.isArray(payload?.tasks) ? payload.tasks : [];
+  if (!raw.length) return null;
+  const source = raw.slice(0, MAX_BATCH_TASKS);
+  const sanitized = source.map(sanitizeTaskItem).filter(Boolean);
+  if (!sanitized.length) return null;
   const titles = new Set();
-  return {
-    tasks: sanitized.filter((item) => {
-      const key = canonicalTaskTitle(item.record.titre);
-      if (titles.has(key)) return false;
-      titles.add(key);
-      return true;
-    }),
-  };
+  const tasks = sanitized.filter((item) => {
+    const key = canonicalTaskTitle(item.record.titre);
+    if (!key || titles.has(key)) return false;
+    titles.add(key);
+    return true;
+  });
+  return tasks.length ? { tasks } : null;
 }
 
 async function patchTask(agentFetch, taskId, payload, organisation) {
@@ -161,6 +162,16 @@ async function createRun(agentFetch, task, item, executor, token, index, organis
 }
 
 async function executeTaskBatch({ payload, token, user, tenant, agentFetch, executionHandlers = {} }) {
+  if (!payload?.tasks?.length) {
+    return {
+      success: false,
+      requested: 0,
+      succeeded: 0,
+      failed: 0,
+      results: [],
+      verification: 'Batch vide ou invalide refusé proprement; aucune tâche ni exécution n’a été créée.',
+    };
+  }
   const organisation = tenant || 'jsinnovia';
   const requestedBy = cleanText(user?.email || user?.id || 'companion', 180);
   const handlers = {
