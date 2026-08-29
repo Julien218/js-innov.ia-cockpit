@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Settings, Bot, Globe, Key, Bell, Shield, Database,
   ExternalLink, Plus, Trash2, Eye, EyeOff, Check,
   AlertTriangle, X, Pencil, PowerOff, Copy, ChevronDown,
+  Mail, RefreshCw, RotateCcw, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PLATFORM_SERVICES } from "@/config/platformServices";
@@ -11,6 +12,7 @@ const TABS = [
   { id: "agents",   label: "Agents IA",      icon: Bot },
   { id: "builder",  label: "Builder Web",     icon: Globe },
   { id: "api",      label: "APIs & Clés",     icon: Key },
+  { id: "emails",   label: "Boîtes e-mail",   icon: Mail },
   { id: "moteur",   label: "Moteur données",  icon: Database },
   { id: "notifs",   label: "Notifications",   icon: Bell },
   { id: "securite", label: "Sécurité",        icon: Shield },
@@ -576,15 +578,148 @@ function MoteurDonnees() {
   );
 }
 
+// ── Boîtes Google / Gmail ────────────────────────────────────────────────────
+function GoogleMailSettings() {
+  const [accounts, setAccounts] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [configured, setConfigured] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(null);
+  const [message, setMessage] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [accountResponse, logResponse] = await Promise.all([
+        fetch('/api/google-mail/accounts', { credentials: 'same-origin' }),
+        fetch('/api/google-mail/cleanup-log', { credentials: 'same-origin' }),
+      ]);
+      const accountData = await accountResponse.json();
+      const logData = await logResponse.json();
+      if (!accountData.success) throw new Error(accountData.error || 'Chargement impossible');
+      setAccounts(accountData.accounts || []);
+      setConfigured(Boolean(accountData.configured));
+      setLogs(logData.success ? (logData.logs || []) : []);
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const update = async (account, patch) => {
+    setBusy(account.id);
+    try {
+      const response = await fetch(`/api/google-mail/accounts/${account.id}`, {
+        method: 'PATCH', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
+      });
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Modification impossible');
+      setAccounts((current) => current.map((item) => item.id === account.id ? data.account : item));
+      setMessage({ type: 'success', text: 'Paramètres enregistrés.' });
+    } catch (error) { setMessage({ type: 'error', text: error.message }); }
+    finally { setBusy(null); }
+  };
+
+  const scan = async (account) => {
+    setBusy(account.id);
+    try {
+      const response = await fetch(`/api/google-mail/accounts/${account.id}/scan`, { method: 'POST', credentials: 'same-origin' });
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Tri impossible');
+      setMessage({ type: 'success', text: `${data.result.trashed || 0} publicité(s) déplacée(s) vers la corbeille, ${data.result.protected || 0} message(s) protégé(s).` });
+      await load();
+    } catch (error) { setMessage({ type: 'error', text: error.message }); setBusy(null); }
+  };
+
+  const restore = async (log) => {
+    setBusy(log.id);
+    try {
+      const response = await fetch(`/api/google-mail/cleanup-log/${log.id}/restore`, { method: 'POST', credentials: 'same-origin' });
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Restauration impossible');
+      setMessage({ type: 'success', text: 'E-mail restauré dans Gmail.' });
+      await load();
+    } catch (error) { setMessage({ type: 'error', text: error.message }); setBusy(null); }
+  };
+
+  const disconnect = async (account) => {
+    if (!window.confirm(`Déconnecter ${account.email} du Cockpit ? Le tri automatique sera arrêté.`)) return;
+    setBusy(account.id);
+    try {
+      const response = await fetch(`/api/google-mail/accounts/${account.id}`, { method: 'DELETE', credentials: 'same-origin' });
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Déconnexion impossible');
+      await load();
+    } catch (error) { setMessage({ type: 'error', text: error.message }); setBusy(null); }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-white">Boîtes Google connectées</h3>
+          <p className="text-sm text-slate-400">Ajoutez plusieurs comptes Gmail ou Google Workspace au Cockpit.</p>
+        </div>
+        <Button disabled={!configured} onClick={() => { window.location.href = '/api/google-mail/connect?brand=js-innov-ia'; }} className="bg-yellow-500 hover:bg-yellow-400 text-black">
+          <Plus className="w-4 h-4 mr-2" /> Connecter Google
+        </Button>
+      </div>
+
+      {!configured && <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 text-sm text-amber-200"><AlertTriangle className="w-4 h-4 inline mr-2" />L’administrateur doit encore configurer GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET et la clé de chiffrement sur Railway avant la première connexion.</div>}
+      {message && <div className={`p-3 rounded-xl border text-sm ${message.type === 'success' ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-red-500/30 bg-red-500/5 text-red-300'}`}>{message.text}</div>}
+      {loading && <div className="py-8 text-center text-slate-400"><Loader2 className="w-5 h-5 animate-spin inline mr-2" />Chargement…</div>}
+
+      {!loading && accounts.length === 0 && <div className="p-6 text-center rounded-xl border border-dashed border-slate-700 text-slate-400"><Mail className="w-9 h-9 mx-auto mb-2 opacity-40" />Aucune boîte Google connectée.</div>}
+
+      <div className="space-y-4">
+        {accounts.map((account) => (
+          <div key={account.id} className="p-4 rounded-xl border border-slate-700 bg-slate-800/50 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div><p className="font-medium text-white">{account.label || account.email}</p><p className="text-xs text-slate-400">{account.email} · Google · {account.active ? 'connectée' : 'déconnectée'}</p></div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" disabled={busy === account.id || !account.active || !account.auto_trash_promotions} onClick={() => scan(account)} className="border-slate-600"><RefreshCw className={`w-3.5 h-3.5 mr-1 ${busy === account.id ? 'animate-spin' : ''}`} />Trier maintenant</Button>
+                <Button size="sm" variant="ghost" disabled={busy === account.id || !account.active} onClick={() => disconnect(account)} className="text-red-400">Déconnecter</Button>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <label className="text-xs text-slate-400">Signature / marque
+                <select value={account.brand} onChange={(event) => update(account, { brand: event.target.value })} disabled={!account.active} className="mt-1 w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white"><option value="js-innov-ia">JS-Innov.IA</option><option value="assurances-dour">Assurances Dour</option></select>
+              </label>
+              <label className="text-xs text-slate-400">Conserver les promotions pendant
+                <select value={account.promotion_retention_days} onChange={(event) => update(account, { promotion_retention_days: Number(event.target.value) })} disabled={!account.active} className="mt-1 w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white"><option value="1">1 jour</option><option value="2">2 jours</option><option value="7">7 jours</option><option value="14">14 jours</option><option value="30">30 jours</option></select>
+              </label>
+            </div>
+
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" checked={account.auto_trash_promotions} disabled={!account.active || busy === account.id} onChange={(event) => update(account, { auto_trash_promotions: event.target.checked })} className="mt-1" />
+              <span><strong className="text-sm text-white">Déplacer automatiquement les publicités vers la corbeille</strong><span className="block text-xs text-slate-400 mt-0.5">Action récupérable. NOVA protège les factures, devis, paiements, commandes, messages importants ou étoilés.</span></span>
+            </label>
+            <label className="block text-xs text-slate-400">Expéditeurs protégés (un e-mail ou domaine par ligne)
+              <textarea defaultValue={(account.protected_senders || []).join('\n')} onBlur={(event) => update(account, { protected_senders: event.target.value.split(/\r?\n|,/).map((value) => value.trim()).filter(Boolean) })} disabled={!account.active} rows={2} className="mt-1 w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white" placeholder="comptable@client.be&#10;@fournisseur.be" />
+            </label>
+            {account.last_error && <p className="text-xs text-red-300">Dernière erreur : {account.last_error}</p>}
+          </div>
+        ))}
+      </div>
+
+      {logs.length > 0 && <div className="space-y-2"><h4 className="font-medium text-white">Publicités récemment déplacées</h4>{logs.slice(0, 20).map((log) => <div key={log.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700"><div className="min-w-0"><p className="text-sm text-white truncate">{log.subject || '(sans objet)'}</p><p className="text-xs text-slate-500 truncate">{log.sender} · {new Date(log.acted_at).toLocaleString('fr-BE')}</p></div>{log.action === 'trashed' && !log.restored_at && <Button size="sm" variant="ghost" disabled={busy === log.id} onClick={() => restore(log)}><RotateCcw className="w-3.5 h-3.5 mr-1" />Restaurer</Button>}</div>)}</div>}
+    </div>
+  );
+}
+
 // ─── PAGE PRINCIPALE ──────────────────────────────────────────────────────────
 export default function Parametres() {
-  const [activeTab, setActiveTab] = useState("agents");
+  const requestedTab = new URLSearchParams(window.location.search).get('tab');
+  const [activeTab, setActiveTab] = useState(TABS.some((tab) => tab.id === requestedTab) ? requestedTab : "agents");
 
   const renderContent = () => {
     switch (activeTab) {
       case "agents":   return <AgentsIA />;
       case "builder":  return <BuilderWeb />;
       case "api":      return <ApisKeys />;
+      case "emails":   return <GoogleMailSettings />;
       case "moteur":   return <MoteurDonnees />;
       case "notifs":   return (
         <div className="text-center py-12 text-slate-400">

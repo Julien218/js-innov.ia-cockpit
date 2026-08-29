@@ -4,6 +4,7 @@ const { fetchEmails, fetchEmailById, getMailboxConfig, isAliasMailbox, sendEmail
 const { storeBuffer, isDropboxConfigured } = require('./server-documents.cjs');
 const { createCostEvent } = require('./server-client-costs.cjs');
 const { classifyEmail, extractAccountingMetadata, shouldArchiveAttachment, sourceTypeForProvider, buildDailyDigest } = require('./server-email-accounting-core.cjs');
+const { fetchGoogleAccounts, fetchGoogleEmails, fetchGoogleEmailById, isGoogleMailConfigured } = require('./server-google-mail.cjs');
 
 const router = express.Router();
 // Journaux privés dans le Supabase du Cockpit. Les écritures AI Cost restent
@@ -102,6 +103,49 @@ async function processMessage(mailbox, summary) {
   });
 }
 
+async function processGoogleMessage(account, summary) {
+  const mailbox = `google:${account.id}`;
+  if (await existingItem(mailbox, summary.uid)) return { skipped: true };
+  const email = await fetchGoogleEmailById(account.id, summary.uid, true);
+  const classification = classifyEmail(email);
+  const accounting = extractAccountingMetadata(email);
+  const documents = [];
+  let error = null;
+
+  if (['invoice', 'subscription_invoice'].includes(classification.category)) {
+    for (const attachment of email.attachments || []) {
+      if (!attachment.content_base64 || !shouldArchiveAttachment(attachment)) continue;
+      try {
+        const document = await storeBuffer({
+          user: { role: 'superadmin', email: 'nova@jsinnovia.local', organisation: ORGANISATION },
+          organisation: ORGANISATION,
+          brand: account.brand || 'js-innov-ia',
+          clientId: null,
+          category: 'factures-fournisseurs',
+          filename: attachment.filename || `piece-${summary.uid}.pdf`,
+          mimeType: attachment.contentType || attachment.mimeType || 'application/octet-stream',
+          buffer: Buffer.from(attachment.content_base64, 'base64'),
+          source: 'google-email-accounting',
+          emailMessageId: `${mailbox}:${email.messageId || summary.uid}`,
+        });
+        documents.push(document);
+      } catch (archiveError) { error = archiveError.message; }
+    }
+  }
+
+  const first = documents[0] || null;
+  return insertItem({
+    organisation: ORGANISATION, mailbox, message_uid: String(summary.uid), message_id: email.messageId || null,
+    sender: String(email.from || '').slice(0, 500), subject: String(email.subject || '(sans objet)').slice(0, 500),
+    received_at: email.date || summary.date || new Date().toISOString(), category: classification.category,
+    confidence: classification.confidence, status: error ? 'failed' : (classification.needsReview ? 'awaiting_review' : 'reported'),
+    provider: accounting.provider, invoice_number: accounting.invoice_number, amount_minor: accounting.amount_minor,
+    currency: accounting.currency || 'EUR', document_id: first?.id || null, document_filename: first?.filename || null,
+    dropbox_path: first?.dropbox_path || null, error,
+    metadata: { google_account_id: account.id, attachment_names: (email.attachments || []).map((item) => item.filename), document_ids: documents.map((item) => item.id).filter(Boolean), journal_id: `email-accounting-${crypto.randomUUID()}` },
+  });
+}
+
 async function scanMailboxes() {
   const startedAt = new Date();
   const stats = { scanned: 0, created: 0, skipped: 0, failed: 0, mailboxes: {} };
@@ -129,6 +173,26 @@ async function scanMailboxes() {
     } catch (error) {
       stats.failed += 1;
       stats.mailboxes[mailbox] = { configured: true, error: error.message };
+    }
+  }
+
+  if (isGoogleMailConfigured()) {
+    for (const account of await fetchGoogleAccounts()) {
+      const mailbox = `google:${account.id}`;
+      try {
+        const recent = await fetchGoogleEmails(account.id, `in:inbox -in:trash newer_than:${Number(process.env.NOVA_EMAIL_SCAN_LOOKBACK_DAYS || 2)}d`, 100);
+        for (const summary of recent) {
+          stats.scanned += 1;
+          try {
+            const outcome = await processGoogleMessage(account, summary);
+            if (outcome?.skipped) stats.skipped += 1; else stats.created += 1;
+          } catch (_) { stats.failed += 1; }
+        }
+        stats.mailboxes[mailbox] = { configured: true, scanned: recent.length, provider: 'google' };
+      } catch (error) {
+        stats.failed += 1;
+        stats.mailboxes[mailbox] = { configured: true, provider: 'google', error: error.message };
+      }
     }
   }
   stats.duration_ms = Date.now() - startedAt.getTime();

@@ -85,6 +85,16 @@ try {
   console.warn('⚠️ NOVA Assistant comptable e-mail indisponible:', e.message);
 }
 
+// ── Google / Gmail : multi-boîtes + tri publicitaire réversible ─
+try {
+  const googleMail = require('./server-google-mail.cjs');
+  app.use('/api/google-mail', requireSession('admin'), requirePermission('emails', 'admin'), googleMail.router);
+  const worker = googleMail.startGoogleMailScheduler();
+  console.log(`✅ Boîtes Google activées (${worker.started ? `tri toutes les ${worker.interval_minutes} min` : worker.reason})`);
+} catch (e) {
+  console.warn('⚠️ Boîtes Google indisponibles:', e.message);
+}
+
 // ── Coffre documentaire Dropbox + index Supabase ───────────
 try {
   const documentsRouter = require('./server-documents.cjs');
