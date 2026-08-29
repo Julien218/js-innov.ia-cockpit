@@ -24,6 +24,8 @@ test('Signelya is an assignable product application', async () => {
   assert.match(appSource, /path="\/ecran-geant"/);
   assert.match(sidebarSource, /label: "Applications produits"/);
   assert.match(sidebarSource, /label: "Signelya"/);
+  assert.match(appSource, /path="\/ecran-geant" element={<PageBoundary><DigitalSignage \/><\/PageBoundary>}/);
+  assert.doesNotMatch(appSource, /path="\/ecran-geant" element={isAdmin/);
 });
 
 test('the client cockpit opens securely outside the main cockpit frame', () => {

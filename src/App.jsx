@@ -145,7 +145,7 @@ const AppRoutes = () => {
           <Route path="/parametres" element={<PageBoundary><Parametres /></PageBoundary>} />
           <Route path="/apps-agents" element={<PageBoundary><AppsAgents /></PageBoundary>} />
           <Route path="/production" element={<PageBoundary><Production /></PageBoundary>} />
-          <Route path="/ecran-geant" element={isAdmin ? <PageBoundary><DigitalSignage /></PageBoundary> : <Navigate to="/" replace />} />
+          <Route path="/ecran-geant" element={<PageBoundary><DigitalSignage /></PageBoundary>} />
           <Route path="/video-factory-local" element={isAdmin ? <PageBoundary><LocalVideoFactory /></PageBoundary> : <Navigate to="/" replace />} />
           <Route path="/video-factory-api" element={isAdmin ? <PageBoundary><ApiVideoFactory /></PageBoundary> : <Navigate to="/" replace />} />
           <Route path="/domaines" element={<PageBoundary><Domaines /></PageBoundary>} />

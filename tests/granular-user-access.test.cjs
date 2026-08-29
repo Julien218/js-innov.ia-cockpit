@@ -50,6 +50,8 @@ test('frontend and API routes both use the same granular permission policy', () 
   assert.match(frontend, /user\?\.permissions/);
   assert.match(access, /Enregistrer les accès/);
   assert.match(access, /Le rôle fixe un plafond/);
+  assert.match(access, /Cochez uniquement les services auxquels ce client a souscrit/);
+  assert.match(access, /item\.description/);
 });
 
 test('permission storage is server-only with RLS and explicit service-role grants', () => {
