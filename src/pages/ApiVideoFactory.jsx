@@ -41,7 +41,7 @@ export default function ApiVideoFactory() {
   const refresh = async () => {
     const [configurationResult, clientResult, jobResult] = await Promise.allSettled([
       fetchJson('/api/video-generation/config'),
-      fetchJson('/api/client-costs/accounting/clients'),
+      fetchJson('/api/video-generation/clients'),
       fetchJson('/api/video-generation/jobs'),
     ]);
 

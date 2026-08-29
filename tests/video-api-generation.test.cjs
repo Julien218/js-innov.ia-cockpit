@@ -75,6 +75,25 @@ test('le parcours UI relie fournisseur, coût, Dropbox et preuve SHA-256', () =>
   for (const expected of ['Grok Imagine 1.5', 'Sora 2', 'Centre de coût', 'Dropbox', 'SHA-256']) assert.match(ui, new RegExp(expected));
 });
 
+test('la Fabrique vidéo charge ses clients avec le même droit Production que le générateur', () => {
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'src', 'pages', 'ApiVideoFactory.jsx'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, '..', 'server-video-generation.cjs'), 'utf8');
+  assert.match(ui, /fetchJson\('\/api\/video-generation\/clients'\)/);
+  assert.doesNotMatch(ui, /fetchJson\('\/api\/client-costs\/accounting\/clients'\)/);
+  assert.match(ui, /Aucun client disponible/);
+  assert.match(server, /router\.get\('\/clients'/);
+  assert.match(server, /x-organisation-id/);
+});
+
+test('la liste vidéo accepte les formats clients brut et enveloppés sans masquer un format invalide', () => {
+  const { normalizeClientRows } = require('../server-video-generation.cjs');
+  const clients = [{ id: 'client-1' }];
+  assert.deepEqual(normalizeClientRows(clients), clients);
+  assert.deepEqual(normalizeClientRows({ data: clients }), clients);
+  assert.deepEqual(normalizeClientRows({ items: clients }), clients);
+  assert.throws(() => normalizeClientRows({ clients }), /format inattendu/);
+});
+
 test('le backend peut utiliser les clés serveur protégées sans les exposer au frontend', () => {
   const server = fs.readFileSync(path.join(__dirname, '..', 'server-video-generation.cjs'), 'utf8');
   assert.match(server, /SUPABASE_CRM_KEY/);

@@ -128,6 +128,32 @@ function canonicalClientName(client = {}) {
   return String(client.denomination_legale || client.entreprise || [client.prenom, client.nom].filter(Boolean).join(' ') || client.nom || '').trim();
 }
 
+function normalizeClientRows(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.data)) return payload.data;
+  if (payload && Array.isArray(payload.items)) return payload.items;
+  throw new Error('La source clients du Cockpit a retourné un format inattendu.');
+}
+
+async function listVideoClients(organisation = 'jsinnovia') {
+  if (!AGENT_KEY) throw new Error('Clé Agent manquante pour charger les clients du Cockpit.');
+  const response = await fetch(`${AGENT_URL}/data/Client?limit=2000`, {
+    headers: { 'x-agent-key': AGENT_KEY, 'x-organisation-id': String(organisation || 'jsinnovia') },
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(payload?.error || `Chargement des clients impossible (${response.status}).`);
+  const clients = normalizeClientRows(payload);
+  const centers = await crm('client_cost_centers?select=id,client_id,product_code&is_active=eq.true&limit=2000').catch(() => []);
+  return clients
+    .filter((client) => client?.id)
+    .map((client) => ({
+      id: client.id,
+      name: canonicalClientName(client) || `Client ${client.id}`,
+      cost_centers: (Array.isArray(centers) ? centers : []).filter((center) => String(center.client_id) === String(client.id)),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+}
+
 async function resolveClientInput(input = {}) {
   if (String(input.client_id || '').trim()) return input;
   const requestedName = String(input.client_name || '').trim();
@@ -308,6 +334,13 @@ function startVideoGenerationScheduler() {
 }
 
 router.get('/config', (_req, res) => res.json(publicConfig()));
+router.get('/clients', async (req, res) => {
+  try {
+    return res.json({ clients: await listVideoClients(req.user?.organisation || 'jsinnovia') });
+  } catch (error) {
+    return res.status(503).json({ error: error.message });
+  }
+});
 router.get('/jobs', async (req, res) => {
   try {
     const client = req.query.client_id ? `client_id=eq.${encodeURIComponent(req.query.client_id)}&` : '';
@@ -372,4 +405,4 @@ router.post('/jobs', async (req, res) => {
   } catch (error) { return res.status(400).json({ error: error.message }); }
 });
 
-module.exports = { router, startVideoGenerationScheduler, sweep, processJob, crmKeys, resolveClientInput, canonicalClientName, createVideoGenerationJob, completeLinkedExecution, failLinkedExecution };
+module.exports = { router, startVideoGenerationScheduler, sweep, processJob, crmKeys, resolveClientInput, canonicalClientName, normalizeClientRows, listVideoClients, createVideoGenerationJob, completeLinkedExecution, failLinkedExecution };
