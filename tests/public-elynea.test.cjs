@@ -37,6 +37,21 @@ test('the public route is isolated from sessions and packaged for production', (
   assert.match(elynea.PUBLIC_POLICY, /Ne dis jamais qu'une demande, un devis, un e-mail ou un rendez-vous a été envoyé/i);
 });
 
+test('Elynea blocks every premature promise of transmission, quote, email or appointment', () => {
+  const qualification = { can_submit: true };
+  for (const unsafe of [
+    "Je vais transmettre ces informations à Julien pour préparer un devis par e-mail.",
+    "Nous allons envoyer votre demande à l'équipe.",
+    "Votre demande sera transmise et le devis sera préparé.",
+    "Je transmets maintenant votre demande.",
+  ]) {
+    const answer = elynea.safePublicAnswer(unsafe, qualification);
+    assert.doesNotMatch(answer, /je vais transmettre|nous allons envoyer|sera transmise|je transmets/i);
+    assert.match(answer, /formulaire sécurisé/i);
+    assert.match(answer, /enregistrement réel dans le Cockpit/i);
+  }
+});
+
 test('Elynea recognizes the complete ecommerce qualification scenario', () => {
   const messages = [
     { role: 'user', content: 'Je veux analyser puis améliorer jsinnovia.com avec une nouvelle fonctionnalité e-commerce.' },
