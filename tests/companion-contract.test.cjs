@@ -17,6 +17,7 @@ const memoryServer = fs.readFileSync(path.join(root, 'server-companion-memory.cj
 const dataProxy = fs.readFileSync(path.join(root, 'server-data-proxy.cjs'), 'utf8');
 const mainServer = fs.readFileSync(path.join(root, 'server.cjs'), 'utf8');
 const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
+const dropboxHelper = fs.readFileSync(path.join(root, 'server-dropbox-helper.cjs'), 'utf8');
 
 const { assistantModeFor } = require(path.join(root, 'server-companion-audience.cjs'));
 
@@ -136,4 +137,14 @@ test('la mémoire historique Dropbox utilise un snapshot indexé en lecture seul
 test('les nouveaux modules serveur sont présents dans l’image Docker', () => {
   assert.match(dockerfile, /server-companion-audience\.cjs/);
   assert.match(dockerfile, /server-companion-memory\.cjs/);
+});
+
+test('NOVA publie un média au portfolio uniquement après confirmation et déduplique par empreinte', () => {
+  assert.match(assistantServer, /publish_portfolio_media/);
+  assert.match(assistantServer, /serverAction: 'portfolio_media'/);
+  assert.match(assistantServer, /public_rights_confirmed/);
+  assert.match(assistantServer, /\/data\/Showcase\?integrity_hash=/);
+  assert.match(assistantServer, /createPublicReadOnlyLink/);
+  assert.match(dropboxHelper, /sharing\/create_shared_link_with_settings/);
+  assert.match(dropboxHelper, /sharing\/list_shared_links/);
 });

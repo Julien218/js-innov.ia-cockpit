@@ -15,6 +15,7 @@ const {
   extractTextFromBuffer,
   isSupportedMedia,
   safeUploadFilename,
+  createPublicReadOnlyLink,
 } = require('./server-dropbox-helper.cjs');
 const { indexDocument } = require('./server-documents.cjs');
 const ionosDns = require('./server-ionos-dns.cjs');
@@ -46,6 +47,11 @@ const ALLOWED_ACTIONS = {
     clientAction: '/api/video-generation/jobs',
     roles: ADMIN_ROLES,
     fields: ['provider', 'client_id', 'client_name', 'project_id', 'cost_center_id', 'campaign_name', 'prompt', 'sector', 'rights_confirmed', 'usage_rights', 'version', 'source_document_id'],
+  },
+  publish_portfolio_media: {
+    serverAction: 'portfolio_media',
+    roles: ['superadmin'],
+    fields: ['title', 'client_name', 'description', 'media_type', 'dropbox_path', 'integrity_hash', 'category', 'technologies', 'featured', 'public_rights_confirmed'],
   },
   assign_media_client: {
     clientAction: '/api/documents/portfolio-assets/:id/client',
@@ -253,6 +259,7 @@ function recentMediaFrom(req) {
     projectName: clean(raw.projectName),
     dropboxPath: clean(raw.dropboxPath, 600),
     documentId: clean(raw.documentId, 120),
+    contentHash: clean(raw.contentHash || raw.reference?.contentHash, 128),
     storedAt: new Date(storedAt).toISOString(),
   };
   return media.fileName && media.dropboxPath ? media : null;
@@ -271,6 +278,7 @@ function recentMediaContext(media) {
     `Projet: ${media.projectName || 'non identifié'}`,
     `Chemin Dropbox: ${media.dropboxPath}`,
     media.documentId ? `Document Cockpit: ${media.documentId}` : '',
+    media.contentHash ? `Empreinte SHA-256: ${media.contentHash}` : '',
     'Sauf mention contraire, les formulations « ce fichier », « cette image », « cette vidéo » et la demande immédiatement suivante concernent ce média.',
     'Ne réponds jamais qu’aucun média n’est référencé lorsque ce bloc est présent. Distingue le fichier source (image ou vidéo) du livrable demandé.',
     '[/MÉDIA RÉCENT ACTIF]',
@@ -345,6 +353,8 @@ function sanitizeAction(raw, user) {
         content: String(change?.content || '').slice(0, 1024),
         ttl: Number(change?.ttl || 3600),
       }));
+    } else if (field === 'technologies' && Array.isArray(value)) {
+      payload.technologies = value.map((item) => String(item || '').trim().slice(0, 40)).filter(Boolean).slice(0, 10);
     } else if (field === 'lignes') {
       const lines = sanitizeLines(value);
       if (lines) payload.lignes = lines;
@@ -370,6 +380,17 @@ function sanitizeAction(raw, user) {
     if (!payload.client_id && !String(payload.client_name || '').trim()) return null;
     if (!String(payload.campaign_name || '').trim() || String(payload.prompt || '').trim().length < 20) return null;
     if (payload.source_document_id && !/^[a-zA-Z0-9_-]{1,180}$/.test(String(payload.source_document_id))) return null;
+  }
+  if (raw.type === 'publish_portfolio_media') {
+    const title = String(payload.title || '').trim();
+    if (!title || /\b(non[ -]?videos?|brouillon|draft|test|essai|temp(?:oraire)?)\b/i.test(title)) return null;
+    if (!['video', 'image'].includes(String(payload.media_type || '').toLowerCase())) return null;
+    payload.media_type = String(payload.media_type).toLowerCase();
+    if (!String(payload.dropbox_path || '').startsWith('/')) return null;
+    if (!/^[a-f0-9]{10,128}$/i.test(String(payload.integrity_hash || ''))) return null;
+    if (payload.public_rights_confirmed !== true) return null;
+    payload.portfolio_status = 'approved';
+    payload.portfolio_approved = true;
   }
   if (raw.type === 'assign_media_client') {
     if (!/^[A-Za-z0-9:_-]{1,160}$/.test(String(payload.clientId || ''))) return null;
@@ -437,6 +458,13 @@ function recoverProposedAction(raw, assistantData = {}, recentMedia = null) {
   }
   if (recovered.type === 'create_video_generation' && recentMedia?.documentId && !recovered.payload.source_document_id) {
     recovered.payload.source_document_id = recentMedia.documentId;
+  }
+  if (recovered.type === 'publish_portfolio_media' && recentMedia) {
+    recovered.payload.title ||= recentMedia.title || recentMedia.fileName;
+    recovered.payload.client_name ||= recentMedia.clientName || 'Réalisation JS-Innov.IA';
+    recovered.payload.media_type ||= String(recentMedia.mediaType || '').toLowerCase().includes('image') ? 'image' : 'video';
+    recovered.payload.dropbox_path ||= recentMedia.dropboxPath;
+    recovered.payload.integrity_hash ||= recentMedia.contentHash;
   }
   if (recovered.type === 'assign_media_client' && recentMedia?.documentId && !recovered.id) {
     recovered.id = recentMedia.documentId;
@@ -639,6 +667,7 @@ router.post('/chat', async (req, res) => {
             create_task: 'payload.titre est obligatoire et doit reprendre exactement le titre annoncé à l’utilisateur.',
             create_video_generation: 'Pour créer une vidéo depuis le média récent, utiliser payload { provider:"auto", client_name ou client_id, campaign_name, prompt, source_document_id }. Durée 8 s et 16:9 sont imposés par le serveur.',
             assign_media_client: 'Pour rattacher le média actif, utiliser son document id avec payload { clientId, clientName }. Le client doit provenir du contexte intégrité Cockpit.',
+            publish_portfolio_media: 'Uniquement sur demande explicite de publication. Utiliser le média récent et payload { title, client_name, description, media_type, dropbox_path, integrity_hash, category, technologies, featured, public_rights_confirmed:true }. La confirmation doit mentionner la diffusion publique et les droits.',
             manage_dns_records: 'Réservé au superadmin. Utiliser payload { domain, changes:[{ name, type:"CNAME" ou "TXT", content, ttl }] }. Décrire exactement chaque valeur dans action_summary. Le serveur relit IONOS avant écriture et vérifie après confirmation.',
           },
         },
@@ -725,6 +754,48 @@ router.post('/confirm', async (req, res) => {
   }
 
   const { action, summary } = item;
+  if (action.definition.serverAction === 'portfolio_media') {
+    try {
+      const existingResponse = await agentFetch(`/data/Showcase?integrity_hash=${encodeURIComponent(action.payload.integrity_hash)}&limit=1`);
+      const existingRows = await existingResponse.json().catch(() => []);
+      if (!existingResponse.ok) throw new Error(existingRows.error || `Agent ${existingResponse.status}`);
+      if (Array.isArray(existingRows) && existingRows.length) {
+        await logAction(req.user, 'action assistant: publish_portfolio_media', 'succes', `Doublon évité: ${action.payload.integrity_hash}`);
+        return res.json({ success: true, action_type: action.type, action_summary: summary, duplicate: true, result: existingRows[0] });
+      }
+
+      const shared = await createPublicReadOnlyLink(action.payload.dropbox_path);
+      if (shared.error || !shared.url) throw new Error(shared.error || 'Lien public Dropbox absent');
+      const publicItem = {
+        ...action.payload,
+        media_url: shared.url,
+        source: 'nova-assistant',
+        approved_at: new Date().toISOString(),
+      };
+      delete publicItem.dropbox_path;
+      delete publicItem.public_rights_confirmed;
+
+      const publishResponse = await agentFetch('/data/Showcase', {
+        method: 'POST',
+        body: JSON.stringify(publicItem),
+        headers: { 'idempotency-key': token },
+      });
+      const published = await publishResponse.json().catch(() => ({}));
+      if (!publishResponse.ok) throw new Error(published.error || `Agent ${publishResponse.status}`);
+      await logAction(req.user, 'action assistant: publish_portfolio_media', 'succes', `${publicItem.title}: ${publicItem.integrity_hash}`);
+      return res.json({
+        success: true,
+        action_type: action.type,
+        action_summary: summary,
+        execution: { target: 'Showcase', provider: 'NOVA + Dropbox' },
+        result: published,
+      });
+    } catch (error) {
+      await logAction(req.user, 'action assistant: publish_portfolio_media', 'erreur', error.message);
+      const reason = String(error.message || 'erreur inconnue').replace(/[\r\n<>]/g, ' ').slice(0, 300);
+      return res.status(502).json({ error: `Action publish_portfolio_media non exécutée: ${reason}`, action_type: action.type });
+    }
+  }
   if (action.definition.serverAction === 'ionos_dns') {
     try {
       const prepared = await ionosDns.prepareChangeSet(action.payload.domain, action.payload.changes, MANAGED_DOMAINS);

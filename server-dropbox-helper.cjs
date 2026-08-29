@@ -156,6 +156,44 @@ async function downloadFile(dropboxPath) {
   }
 }
 
+// === Create or reuse a revocable, read-only public link ===
+async function createPublicReadOnlyLink(dropboxPath) {
+  const token = await getAccessToken();
+  if (!token) return { error: 'Dropbox non configuré' };
+  const path = String(dropboxPath || '').trim();
+  if (!path || (!path.startsWith('/') && !path.startsWith('id:'))) return { error: 'Chemin Dropbox invalide' };
+
+  try {
+    const createResponse = await fetch('https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path,
+        settings: { requested_visibility: 'public', allow_download: true },
+      }),
+    });
+    const created = await createResponse.json();
+    if (createResponse.ok && created.url) {
+      return { success: true, created: true, url: created.url.replace(/([?&])dl=0(?:&|$)/, '$1raw=1&').replace(/&$/, '') };
+    }
+    if (!String(created.error_summary || '').startsWith('shared_link_already_exists')) {
+      return { error: created.error_summary || 'Création du lien public impossible' };
+    }
+
+    const listResponse = await fetch('https://api.dropboxapi.com/2/sharing/list_shared_links', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, direct_only: true }),
+    });
+    const listed = await listResponse.json();
+    const existing = listed.links?.find((link) => link.url);
+    if (!listResponse.ok || !existing) return { error: listed.error_summary || 'Lien Dropbox existant introuvable' };
+    return { success: true, created: false, url: existing.url.replace(/([?&])dl=0(?:&|$)/, '$1raw=1&').replace(/&$/, '') };
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
 // === Get all invoice PDFs from Dropbox ===
 async function getInvoiceFiles() {
   const token = await getAccessToken();
@@ -510,6 +548,7 @@ module.exports = {
   ensureFolder,
   ensureFolderTree,
   downloadFile,
+  createPublicReadOnlyLink,
   getInvoiceFiles,
   getInvoiceSyncStatus,
   isDropboxRelated,
