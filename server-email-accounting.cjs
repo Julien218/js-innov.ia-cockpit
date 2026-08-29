@@ -6,18 +6,20 @@ const { createCostEvent } = require('./server-client-costs.cjs');
 const { classifyEmail, extractAccountingMetadata, shouldArchiveAttachment, sourceTypeForProvider, buildDailyDigest } = require('./server-email-accounting-core.cjs');
 
 const router = express.Router();
-const CRM_URL = process.env.SUPABASE_CRM_URL || 'https://gfjpryakxzdzwnazlsfz.supabase.co';
-const CRM_KEY = process.env.SUPABASE_CRM_KEY || '';
+// Journaux privés dans le Supabase du Cockpit. Les écritures AI Cost restent
+// déléguées à server-client-costs, qui utilise son relais CRM authentifié.
+const DATABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://rzvvwcwyaddzsaattwqt.supabase.co';
+const DATABASE_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const ORGANISATION = 'jsinnovia';
 const SCAN_MAILBOXES = ['store', 'assurances'];
 let running = null;
 let scheduler = null;
 
 async function rest(path, options = {}) {
-  if (!CRM_KEY) throw new Error('SUPABASE_CRM_KEY non configurée');
-  const response = await fetch(`${CRM_URL}/rest/v1/${path}`, {
+  if (!DATABASE_KEY) throw new Error('SUPABASE_SERVICE_ROLE_KEY non configurée');
+  const response = await fetch(`${DATABASE_URL}/rest/v1/${path}`, {
     ...options,
-    headers: { apikey: CRM_KEY, Authorization: `Bearer ${CRM_KEY}`, 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers: { apikey: DATABASE_KEY, Authorization: `Bearer ${DATABASE_KEY}`, 'Content-Type': 'application/json', ...(options.headers || {}) },
   });
   const raw = await response.text();
   const body = raw ? JSON.parse(raw) : null;
@@ -178,7 +180,7 @@ function schedulerTick() {
 
 function startEmailAccountingScheduler() {
   if (process.env.NOVA_EMAIL_ACCOUNTING_ENABLED === 'false') return { started: false, reason: 'disabled' };
-  if (!CRM_KEY) return { started: false, reason: 'SUPABASE_CRM_KEY missing' };
+  if (!DATABASE_KEY) return { started: false, reason: 'SUPABASE_SERVICE_ROLE_KEY missing' };
   if (scheduler) return { started: true, reason: 'already_started' };
   setTimeout(schedulerTick, 15000).unref?.();
   scheduler = setInterval(schedulerTick, Math.max(300000, Number(process.env.NOVA_EMAIL_SCAN_INTERVAL_MS || 900000)));

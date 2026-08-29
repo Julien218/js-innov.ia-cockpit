@@ -33,8 +33,11 @@ test('le rapport quotidien indique validation, Dropbox et non-suppression', () =
 
 test('le serveur lit les messages sans les marquer comme lus et protège le module', () => {
   const emailSource = fs.readFileSync(path.join(__dirname, '..', 'server-email.cjs'), 'utf8');
+  const accountingSource = fs.readFileSync(path.join(__dirname, '..', 'server-email-accounting.cjs'), 'utf8');
   const serverSource = fs.readFileSync(path.join(__dirname, '..', 'server.cjs'), 'utf8');
   assert.match(emailSource, /markSeen = true/);
   assert.match(emailSource, /if \(markSeen\) imap\.addFlags/);
   assert.match(serverSource, /requirePermission\('email_accounting', 'admin'\)/);
+  assert.match(accountingSource, /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.doesNotMatch(accountingSource, /headers: \{ apikey: CRM_KEY/);
 });
