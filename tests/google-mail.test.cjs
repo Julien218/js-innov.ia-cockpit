@@ -64,7 +64,9 @@ test('Google mailbox routes are permission guarded and packaged in Docker', () =
 test('Settings and Emails pages expose multi-Google mailbox integration', () => {
   const settings = fs.readFileSync(path.join(__dirname, '..', 'src', 'pages', 'Parametres.jsx'), 'utf8');
   const emails = fs.readFileSync(path.join(__dirname, '..', 'src', 'pages', 'Emails.jsx'), 'utf8');
-  assert.match(settings, /Connecter Google/);
+  assert.match(settings, /Ajouter une boîte e-mail/);
+  assert.match(settings, /api\/google-mail\/status/);
+  assert.match(settings, /URI de redirection autorisée/);
   assert.match(settings, /auto_trash_promotions/);
   assert.match(settings, /Restaurer/);
   assert.match(emails, /googleAccounts/);

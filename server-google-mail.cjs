@@ -164,10 +164,11 @@ async function fetchGoogleEmailById(accountId, messageId, includeAttachments = f
   return normalizedMessage(await accountById(accountId), messageId, includeAttachments);
 }
 
-router.get('/status', (_req, res) => res.json({
+router.get('/status', (req, res) => res.json({
   success: true,
   configured: configured(),
   requirements: { google_client_id: Boolean(CLIENT_ID()), google_client_secret: Boolean(CLIENT_SECRET()), encryption_key: Boolean(ENCRYPTION_KEY()), database: Boolean(DATABASE_KEY) },
+  redirect_uri: redirectUri(req),
 }));
 
 router.get('/connect', (req, res) => {

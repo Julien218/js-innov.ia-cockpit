@@ -71,6 +71,8 @@ function GoogleMailSettings() {
   const [accounts, setAccounts] = useState([]);
   const [logs, setLogs] = useState([]);
   const [configured, setConfigured] = useState(false);
+  const [requirements, setRequirements] = useState({});
+  const [redirectUri, setRedirectUri] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null);
   const [message, setMessage] = useState(null);
@@ -78,15 +80,19 @@ function GoogleMailSettings() {
   const load = async () => {
     setLoading(true);
     try {
-      const [accountResponse, logResponse] = await Promise.all([
+      const [accountResponse, logResponse, statusResponse] = await Promise.all([
         fetch('/api/google-mail/accounts', { credentials: 'same-origin' }),
         fetch('/api/google-mail/cleanup-log', { credentials: 'same-origin' }),
+        fetch('/api/google-mail/status', { credentials: 'same-origin' }),
       ]);
       const accountData = await accountResponse.json();
       const logData = await logResponse.json();
+      const statusData = await statusResponse.json();
       if (!accountData.success) throw new Error(accountData.error || 'Chargement impossible');
       setAccounts(accountData.accounts || []);
-      setConfigured(Boolean(accountData.configured));
+      setConfigured(Boolean(statusData.configured));
+      setRequirements(statusData.requirements || {});
+      setRedirectUri(statusData.redirect_uri || '');
       setLogs(logData.success ? (logData.logs || []) : []);
     } catch (error) {
       setMessage({ type: 'error', text: error.message });
@@ -94,6 +100,37 @@ function GoogleMailSettings() {
   };
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('google') === 'connected') setMessage({ type: 'success', text: 'Boîte Google connectée avec succès. Elle est maintenant disponible dans la messagerie du Cockpit.' });
+    if (params.get('google_error')) setMessage({ type: 'error', text: `Google a refusé la connexion : ${params.get('google_error')}` });
+    if (params.has('google') || params.has('google_error')) {
+      params.delete('google'); params.delete('google_error');
+      window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+    }
+  }, []);
+
+  const connectGoogle = async () => {
+    setBusy('connect-google');
+    setMessage(null);
+    try {
+      const response = await fetch('/api/google-mail/status', { credentials: 'same-origin' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Vérification Google impossible');
+      if (!data.configured) {
+        const labels = { google_client_id: 'GOOGLE_CLIENT_ID', google_client_secret: 'GOOGLE_CLIENT_SECRET', encryption_key: 'GOOGLE_MAIL_ENCRYPTION_KEY', database: 'SUPABASE_SERVICE_ROLE_KEY' };
+        const missing = Object.entries(data.requirements || {}).filter(([, ready]) => !ready).map(([key]) => labels[key] || key);
+        setRequirements(data.requirements || {});
+        setRedirectUri(data.redirect_uri || '');
+        throw new Error(`Connexion Google incomplète côté serveur : ${missing.join(', ')}.`);
+      }
+      window.location.assign('/api/google-mail/connect?brand=js-innov-ia');
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+      setBusy(null);
+    }
+  };
 
   const update = async (account, patch) => {
     setBusy(account.id);
@@ -149,12 +186,12 @@ function GoogleMailSettings() {
           <h3 className="text-lg font-semibold text-white">Boîtes Google connectées</h3>
           <p className="text-sm text-slate-400">Ajoutez plusieurs comptes Gmail ou Google Workspace au Cockpit.</p>
         </div>
-        <Button disabled={!configured} onClick={() => { window.location.href = '/api/google-mail/connect?brand=js-innov-ia'; }} className="bg-yellow-500 hover:bg-yellow-400 text-black">
-          <Plus className="w-4 h-4 mr-2" /> Connecter Google
+        <Button disabled={busy === 'connect-google'} onClick={connectGoogle} className="bg-yellow-500 hover:bg-yellow-400 text-black">
+          {busy === 'connect-google' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />} Ajouter une boîte e-mail
         </Button>
       </div>
 
-      {!configured && <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 text-sm text-amber-200"><AlertTriangle className="w-4 h-4 inline mr-2" />L’administrateur doit encore configurer GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET et la clé de chiffrement sur Railway avant la première connexion.</div>}
+      {!configured && <div className="space-y-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 text-sm text-amber-100"><p><AlertTriangle className="w-4 h-4 inline mr-2" />La connexion démarrera dès que les éléments manquants ci-dessous seront actifs côté serveur.</p><div className="flex flex-wrap gap-2">{[['google_client_id', 'Client ID'], ['google_client_secret', 'Client secret'], ['encryption_key', 'Chiffrement'], ['database', 'Base sécurisée']].map(([key, label]) => <span key={key} className={`rounded-full border px-2.5 py-1 text-xs ${requirements[key] ? 'border-emerald-500/30 text-emerald-300' : 'border-amber-500/30 text-amber-200'}`}>{requirements[key] ? '✓' : '○'} {label}</span>)}</div>{redirectUri && <div><p className="text-xs text-slate-400">URI de redirection autorisée à enregistrer dans Google Cloud :</p><code className="mt-1 block break-all rounded bg-slate-950/60 px-3 py-2 text-xs text-cyan-300">{redirectUri}</code></div>}</div>}
       {message && <div className={`p-3 rounded-xl border text-sm ${message.type === 'success' ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-red-500/30 bg-red-500/5 text-red-300'}`}>{message.text}</div>}
       {loading && <div className="py-8 text-center text-slate-400"><Loader2 className="w-5 h-5 animate-spin inline mr-2" />Chargement…</div>}
 
