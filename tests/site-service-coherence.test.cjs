@@ -14,7 +14,7 @@ test('le site officiel pointe vers le bon domaine, dépôt et service Railway', 
   assert.match(config, /branch:\s*"main"/);
 });
 
-test('le service Olivier Signage reste un module produit séparé du site général', () => {
+test('le service Signelya reste un module produit séparé du site général', () => {
   const config = read('src/config/platformServices.js');
   assert.match(config, /signageManager/);
   assert.match(config, /service:\s*"olivier-signage-cockpit"/);

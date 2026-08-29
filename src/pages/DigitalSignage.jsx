@@ -39,9 +39,13 @@ export default function DigitalSignage() {
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
       <PageHeader
-        title="Olivier Signage"
+        title="Signelya"
         subtitle="Application produit JS-Innov.IA pour gérer les clients, écrans, médias, playlists et diffusions"
       />
+
+      <div className="overflow-hidden rounded-2xl border border-border bg-black shadow-sm">
+        <img src="/signelya-brand.png" alt="Signelya — Vos écrans prennent vie" className="mx-auto aspect-[3/2] w-full max-w-5xl object-contain" />
+      </div>
 
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
@@ -111,7 +115,7 @@ export default function DigitalSignage() {
       </section>
 
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        Si le gestionnaire demande une connexion, utilisez le compte Olivier Signage. Une fois la session ouverte sur cet appareil, le module restera directement accessible.
+        Si le gestionnaire demande une connexion, utilisez le compte Signelya. Une fois la session ouverte sur cet appareil, le module restera directement accessible.
       </div>
     </div>
   );

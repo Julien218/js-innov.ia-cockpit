@@ -17,7 +17,7 @@
   { "code": "email_accounting", "label": "NOVA — Assistant comptable e-mail", "group": "Communication", "roles": ["admin"], "routes": ["/email-accounting"] },
   { "code": "twilio", "label": "Téléphonie Twilio", "group": "Communication", "roles": ["admin"], "routes": ["/twilio"] },
   { "code": "production", "label": "Production vidéo", "group": "Studio", "roles": ["admin"], "routes": ["/production", "/video-studio", "/video-studio/*", "/ai-video", "/thumbnail", "/dour-campaign", "/exports", "/exported-videos", "/templates", "/calendar", "/video-factory-local", "/video-factory-api"] },
-  { "code": "signage", "label": "Olivier Signage", "group": "Applications produits", "roles": ["client", "collaborateur", "admin"], "routes": ["/ecran-geant"] },
+  { "code": "signage", "label": "Signelya", "group": "Applications produits", "roles": ["client", "collaborateur", "admin"], "routes": ["/ecran-geant"] },
   { "code": "avatar_factory", "label": "Avatar Factory", "group": "Studio", "roles": ["admin"], "routes": ["/avatar-factory"] },
   { "code": "portfolio", "label": "Portfolio", "group": "Studio", "roles": ["admin"], "routes": ["/portfolio"] },
   { "code": "apps_agents", "label": "Apps et agents", "group": "Écosystème", "roles": ["admin"], "routes": ["/apps-agents"] },

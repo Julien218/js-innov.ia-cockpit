@@ -24,7 +24,7 @@ export const PLATFORM_SERVICES = Object.freeze({
     note: "Administration privée de JS-Innov.IA.",
   }),
   signageManager: Object.freeze({
-    title: "Gestion écran géant",
+    title: "Signelya — gestion d’affichage dynamique",
     url: "https://olivier-signage-cockpit-production.up.railway.app/ecran-geant",
     domain: "olivier-signage-cockpit-production.up.railway.app",
     hosting: "Railway",

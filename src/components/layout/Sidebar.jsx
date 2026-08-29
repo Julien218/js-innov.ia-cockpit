@@ -85,7 +85,7 @@ const allNavGroups = [
     label: "Applications produits",
     items: [
       { label: "HainoFlow", icon: Workflow, path: "/hainoflow" },
-      { label: "Olivier Signage", icon: MonitorPlay, path: "/ecran-geant" },
+      { label: "Signelya", icon: MonitorPlay, path: "/ecran-geant" },
     ]
   },
   {

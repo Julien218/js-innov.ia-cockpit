@@ -219,11 +219,11 @@ try {
   console.warn('⚠️ Route settings indisponible:', e.message);
 }
 
-// ── Pilotage Écran géant Olivier Signage ──────────────────
+// ── Pilotage Signelya ─────────────────────────────────────
 try {
   const signageRouter = require('./server-signage.cjs');
   app.use('/api/signage', requireSession('client'), requirePermission('signage', 'client'), signageRouter.router);
-  console.log('✅ Application produit Olivier Signage activée');
+  console.log('✅ Application produit Signelya activée');
 } catch (e) {
   console.warn('⚠️ Route Écran géant indisponible:', e.message);
 }

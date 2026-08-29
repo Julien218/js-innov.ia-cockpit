@@ -15,7 +15,7 @@ async function loadRoles() {
   return import(pathToFileURL(path.join(root, 'src', 'lib', 'roles.js')).href);
 }
 
-test('Olivier Signage is an assignable product application', async () => {
+test('Signelya is an assignable product application', async () => {
   const { hasRouteAccess } = await loadRoles();
   assert.equal(hasRouteAccess('superadmin', '/ecran-geant'), true);
   assert.equal(hasRouteAccess('admin', '/ecran-geant'), true);
@@ -23,7 +23,7 @@ test('Olivier Signage is an assignable product application', async () => {
   assert.equal(hasRouteAccess('client', '/ecran-geant'), true);
   assert.match(appSource, /path="\/ecran-geant"/);
   assert.match(sidebarSource, /label: "Applications produits"/);
-  assert.match(sidebarSource, /label: "Olivier Signage"/);
+  assert.match(sidebarSource, /label: "Signelya"/);
 });
 
 test('the client cockpit opens securely outside the main cockpit frame', () => {
