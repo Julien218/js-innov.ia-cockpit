@@ -34,4 +34,50 @@ test('the public route is isolated from sessions and packaged for production', (
   assert.match(docker, /server-public-elynea\.cjs/);
   assert.match(elynea.PUBLIC_POLICY, /mode(?:s)? de production internes/i);
   assert.match(elynea.PUBLIC_POLICY, /aucune action administrative/i);
+  assert.match(elynea.PUBLIC_POLICY, /Ne dis jamais qu'une demande, un devis, un e-mail ou un rendez-vous a été envoyé/i);
+});
+
+test('Elynea recognizes the complete ecommerce qualification scenario', () => {
+  const messages = [
+    { role: 'user', content: 'Je veux analyser puis améliorer jsinnovia.com avec une nouvelle fonctionnalité e-commerce.' },
+    { role: 'assistant', content: 'Avez-vous déjà un catalogue ?' },
+    { role: 'user', content: 'Oui, un catalogue de 10 références avec stock automatisé.' },
+    { role: 'assistant', content: 'Quel suivi souhaitez-vous ?' },
+    { role: 'user', content: 'Des alertes et des rapports, avec des agents IA. Je veux un devis par e-mail et aucun rendez-vous.' },
+  ];
+  const result = elynea.analyzeQualification(messages);
+  assert.equal(result.can_submit, true);
+  assert.equal(result.handoff_suggested, true);
+  assert.equal(result.appointment_declined, true);
+  assert.equal(result.product_count, 10);
+  assert.deepEqual(result.categories.sort(), ['assistant_ia', 'automatisation', 'site_web']);
+});
+
+test('a Cockpit request is structured, bounded and never claims an email or quote was sent', () => {
+  const messages = [
+    { role: 'user', content: 'Je souhaite un site e-commerce.' },
+    { role: 'assistant', content: 'Quel volume ?' },
+    { role: 'user', content: '10 références, stock automatisé, alertes et rapports. Je souhaite un devis par e-mail, sans rendez-vous.' },
+  ];
+  const qualification = elynea.analyzeQualification(messages);
+  const payload = elynea.buildRequestPayload({
+    requestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    messages,
+    contact: { name: 'Client Test', email: 'client@example.test', company: 'Entreprise Test', phone: '' },
+    qualification,
+  });
+  assert.equal(payload.id, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+  assert.equal(payload.source, 'formulaire');
+  assert.equal(payload.statut, 'ouverte');
+  assert.match(payload.contenu, /10 référence\(s\)/);
+  assert.match(payload.contenu, /Rendez-vous refusé : oui/);
+  assert.doesNotMatch(payload.contenu, /devis (?:envoyé|créé)|e-mail envoyé/i);
+});
+
+test('the write endpoint requires a long server-only shared key', () => {
+  const key = 'x'.repeat(48);
+  assert.equal(elynea.authorizedSiteKey(key, key), true);
+  assert.equal(elynea.authorizedSiteKey('wrong', key), false);
+  assert.equal(elynea.authorizedSiteKey('', ''), false);
+  assert.throws(() => elynea.cleanContact({ name: 'X', email: 'not-an-email' }), /Nom requis|invalide/);
 });
