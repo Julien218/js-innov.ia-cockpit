@@ -167,7 +167,7 @@ async function inspectTargetedProject(message) {
   const task = recordFrom(taskPayload);
   const runs = rowsFrom(runPayload).filter((run) => !taskId || String(run.task_id) === String(taskId));
   const logs = rowsFrom(logPayload)
-    .filter((log) => /update_project/i.test(String(log.action || '')))
+    .filter((log) => /update_project/i.test(String(log.action || ''))
     .filter((log) => !projectId || String(log.details || '').includes(projectId))
     .sort((a, b) => Date.parse(b.created_at || b.date_creation || 0) - Date.parse(a.created_at || a.date_creation || 0));
   const latestRun = runs.sort((a, b) => Date.parse(b.updated_at || b.created_at || 0) - Date.parse(a.updated_at || a.created_at || 0))[0] || null;
@@ -334,16 +334,14 @@ router.post('/chat', async (req, res, next) => {
           organisation: req.user?.organisation,
         },
         server_context: [
-          'MODE BATCH TÂCHES COCKPIT ACTIF.',
-          'Tu es l’orchestrateur du Cockpit: comprends, planifie, délègue, suis, vérifie et clôture.',
-          'Quand plusieurs tâches métier doivent être créées, utilise uniquement propose_action avec type=create_task_batch.',
+          '[MODE BATCH TÂCHES COCKPIT — CONTRAT TECHNIQUE]',
+          'La doctrine comportementale, l’identité et la politique VERT/ORANGE/ROUGE de NOVA sont définies exclusivement par le system prompt canonique de jsinnovia-agent.',
+          'Ce bloc décrit uniquement le format d’échange technique du batch; il ne redéfinit pas la personnalité ni les permissions de NOVA.',
+          'Pour plusieurs tâches métier, utiliser propose_action avec type=create_task_batch.',
           'Payload obligatoire: { tasks: [{ titre, description, priorite, projet_id?, client_id?, agent_name, agent_role, provider, provider_agent_id?, read_only }] }.',
           'Chaque tâche doit avoir un titre non vide. read_only=true uniquement pour diagnostic/analyse sans effet métier.',
-          'Une tâche déléguée n’est jamais considérée terminée tant qu’un résultat réel et vérifié n’existe pas.',
-          'Ne demande pas de confirmation supplémentaire lorsque le message utilisateur autorise explicitement l’exécution du lot et que les sous-actions sont normales, réversibles et nécessaires à cette demande.',
-          'Ne déclare jamais une capacité indisponible sans vérifier les agents/outils disponibles; un état ancien ne vaut pas état actuel.',
-          'Si une branche de travail est bloquée, continue les branches indépendantes et ne bloque pas toute la mission.',
-          'Ne dis jamais que les tâches sont créées tant que le Cockpit n’a pas renvoyé un résultat d’exécution réel.',
+          'Le Cockpit n’annonce une création ou une terminaison que si executeTaskBatch renvoie un résultat réel avec task_id/run_id/statut.',
+          '[/MODE BATCH TÂCHES COCKPIT — CONTRAT TECHNIQUE]',
         ].join('\n'),
         security: {
           assistant: req.user?.role === 'superadmin' ? 'owner' : 'staff',
