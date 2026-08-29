@@ -1,6 +1,27 @@
 const express = require('express');
 const { createVideoGenerationJob } = require('./server-video-generation.cjs');
-const { hasImmediateExecutionIntent, isVideoExecutionRequest } = require('./server-immediate-execution-policy.cjs');
+
+function normalizeIntent(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+let hasImmediateExecutionIntent;
+let isVideoExecutionRequest;
+try {
+  ({ hasImmediateExecutionIntent, isVideoExecutionRequest } = require('./server-immediate-execution-policy.cjs'));
+} catch (error) {
+  console.warn('[nova-video-direct] politique externe absente, fallback interne activé');
+  hasImmediateExecutionIntent = (message) => {
+    const text = normalizeIntent(message);
+    if (/\b(?:supprime|efface|delete|drop|truncate|dns|secret|token|cle api|api key|paiement|virement)\b/.test(text)) return false;
+    return /\b(?:cree|creer|genere|generer|produis|produire|lance|lancer|execute|executer|effectue|effectuer|immediatement|maintenant|tout de suite|sans confirmation|sans redemander)\b/.test(text);
+  };
+  isVideoExecutionRequest = (message) => {
+    const text = normalizeIntent(message);
+    return /\b(?:video|videos|grok|imagine|xai|sora|nova-video-production|fabrique video|comfyui)\b/.test(text)
+      && /\b(?:cree|creer|genere|generer|produis|produire|lance|lancer|execute|executer|effectue|effectuer|rendu|render|production)\b/.test(text);
+  };
+}
 
 const router = express.Router();
 const ADMIN_ROLES = new Set(['admin', 'superadmin']);
