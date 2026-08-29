@@ -275,6 +275,7 @@ function fetchEmailById(mailboxKey, uid, includeAttachments = false, { markSeen 
               })),
               messageId: p.messageId || '',
               inReplyTo: p.inReplyTo || '',
+              listUnsubscribe: p.headers?.get?.('list-unsubscribe') || null,
             }))
             .catch(reject);
         });

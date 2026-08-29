@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
-const { fetchEmails, fetchEmailById, getMailboxConfig, isAliasMailbox, sendEmail } = require('./server-email.cjs');
+const { fetchEmails, fetchEmailById, getMailboxConfig, isAliasMailbox, sendEmail, moveEmailToTrash } = require('./server-email.cjs');
+const { shouldTrashImapPromotion } = require('./server-email-trash-core.cjs');
 const { storeBuffer, isDropboxConfigured } = require('./server-documents.cjs');
 const { createCostEvent } = require('./server-client-costs.cjs');
 const { recordUsage, authorizeUsage } = require('./server-ai-cost.cjs');
@@ -20,6 +21,17 @@ const TRANSLATION_PROJECT_KEY = 'nova-email-accounting';
 let running = null;
 let scheduler = null;
 let githubCleanupStarted = false;
+
+function imapCleanupEnabled() {
+  return process.env.NOVA_IMAP_AUTO_TRASH_PROMOTIONS === 'true';
+}
+
+function imapProtectedSenders() {
+  return String(process.env.NOVA_EMAIL_PROTECTED_SENDERS || '')
+    .split(/[\r\n,;]+/)
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
 
 async function rest(path, options = {}) {
   if (!DATABASE_KEY) throw new Error('SUPABASE_SERVICE_ROLE_KEY non configurée');
@@ -258,6 +270,55 @@ async function processGoogleMessage(account, summary) {
   });
 }
 
+async function cleanupImapPromotions(mailbox, summaries) {
+  const stats = { enabled: imapCleanupEnabled(), scanned: 0, moved_to_trash: 0, protected: 0, failed: 0 };
+  if (!stats.enabled) return stats;
+  const retentionDays = Math.min(Math.max(Number(process.env.NOVA_IMAP_PROMOTION_RETENTION_DAYS) || 7, 2), 30);
+  const cutoff = Date.now() - retentionDays * 86400000;
+  const protectedSenders = imapProtectedSenders();
+
+  for (const summary of summaries || []) {
+    if (!summary.date || new Date(summary.date).getTime() > cutoff) continue;
+    stats.scanned += 1;
+    try {
+      const item = await existingItem(mailbox, summary.uid);
+      if (!item || item.category !== 'other' || item.metadata?.cleanup?.action === 'moved_to_trash') {
+        stats.protected += 1;
+        continue;
+      }
+      const email = await fetchEmailById(mailbox, summary.uid, false, { markSeen: false });
+      const decision = shouldTrashImapPromotion({ ...email, hasAttachment: summary.hasAttachment }, protectedSenders);
+      if (!decision.eligible) {
+        stats.protected += 1;
+        continue;
+      }
+      const moved = await moveEmailToTrash(mailbox, summary.uid);
+      const trashedAt = new Date().toISOString();
+      await patchItem(item.id, {
+        status: 'ignored',
+        reviewed_by: 'nova:auto-trash:high-confidence-promotion',
+        reviewed_at: trashedAt,
+        metadata: {
+          ...(item.metadata || {}),
+          cleanup: {
+            action: 'moved_to_trash',
+            reason: decision.reason,
+            confidence: decision.confidence,
+            trashed_at: trashedAt,
+            trash_mailbox: moved.trashMailbox,
+            recoverable: true,
+          },
+        },
+      });
+      stats.moved_to_trash += 1;
+    } catch (error) {
+      stats.failed += 1;
+      console.error('[email-accounting] IMAP cleanup failed', { mailbox, uid: summary.uid, error: error.message });
+    }
+  }
+  return stats;
+}
+
 async function scanMailboxes() {
   const startedAt = new Date();
   const stats = { scanned: 0, created: 0, skipped: 0, failed: 0, mailboxes: {} };
@@ -281,7 +342,8 @@ async function scanMailboxes() {
           console.error('[email-accounting] message failed', { mailbox, uid: summary.uid, error: error.message });
         }
       }
-      stats.mailboxes[mailbox] = { configured: true, total: result.total, recent: recent.length };
+      const cleanup = await cleanupImapPromotions(mailbox, result.emails || []);
+      stats.mailboxes[mailbox] = { configured: true, total: result.total, recent: recent.length, cleanup };
     } catch (error) {
       stats.failed += 1;
       stats.mailboxes[mailbox] = { configured: true, error: error.message };
@@ -314,8 +376,8 @@ async function scanMailboxes() {
 
 async function itemsForDate(date) {
   const since = new Date(Date.now() - 48 * 3600000).toISOString();
-  const rows = await rest(`email_accounting_items?select=*&organisation=eq.${ORGANISATION}&created_at=gte.${encodeURIComponent(since)}&order=created_at.desc&limit=500`);
-  return (rows || []).filter((item) => localDate(new Date(item.created_at)) === date);
+  const rows = await rest(`email_accounting_items?select=*&organisation=eq.${ORGANISATION}&or=(created_at.gte.${encodeURIComponent(since)},updated_at.gte.${encodeURIComponent(since)})&order=created_at.desc&limit=500`);
+  return (rows || []).filter((item) => localDate(new Date(item.created_at)) === date || (item.metadata?.cleanup?.trashed_at && localDate(new Date(item.metadata.cleanup.trashed_at)) === date));
 }
 
 async function sendDailyReport({ force = false } = {}) {
@@ -372,7 +434,7 @@ router.get('/status', async (_req, res) => {
   try {
     const reports = await rest(`email_daily_reports?select=*&organisation=eq.${ORGANISATION}&order=report_date.desc&limit=1`);
     const pending = await rest(`email_accounting_items?select=id&organisation=eq.${ORGANISATION}&status=eq.awaiting_review&limit=1000`);
-    res.json({ success: true, enabled: process.env.NOVA_EMAIL_ACCOUNTING_ENABLED !== 'false', running: Boolean(running), dropbox_configured: isDropboxConfigured(), report_hour: Number(process.env.NOVA_EMAIL_REPORT_HOUR || 18), timezone: process.env.NOVA_EMAIL_REPORT_TIMEZONE || 'Europe/Brussels', pending_reviews: pending?.length || 0, last_report: reports?.[0] || null });
+    res.json({ success: true, enabled: process.env.NOVA_EMAIL_ACCOUNTING_ENABLED !== 'false', running: Boolean(running), dropbox_configured: isDropboxConfigured(), imap_auto_trash_promotions: imapCleanupEnabled(), imap_promotion_retention_days: Math.min(Math.max(Number(process.env.NOVA_IMAP_PROMOTION_RETENTION_DAYS) || 7, 2), 30), report_hour: Number(process.env.NOVA_EMAIL_REPORT_HOUR || 18), timezone: process.env.NOVA_EMAIL_REPORT_TIMEZONE || 'Europe/Brussels', pending_reviews: pending?.length || 0, last_report: reports?.[0] || null });
   } catch (error) { res.status(503).json({ error: error.message }); }
 });
 
@@ -458,4 +520,4 @@ router.post('/items/:id/review', async (req, res) => {
   } catch (error) { res.status(503).json({ error: error.message }); }
 });
 
-module.exports = { router, startEmailAccountingScheduler, runCycle, scanMailboxes, sendDailyReport, ignoreOperationalGitHubFalsePositives };
+module.exports = { router, startEmailAccountingScheduler, runCycle, scanMailboxes, sendDailyReport, ignoreOperationalGitHubFalsePositives, cleanupImapPromotions };
