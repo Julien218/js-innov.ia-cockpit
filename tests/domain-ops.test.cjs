@@ -71,4 +71,14 @@ test('server et Docker embarquent le module domaines', () => {
   assert.match(server, /\/api\/domain-ops/);
   assert.match(server, /requireSession\('admin'\)/);
   assert.match(docker, /server-domain-ops\.cjs/);
+  assert.match(docker, /server-ionos-dns\.cjs/);
+});
+
+test('les écritures IONOS sont limitées, préparées, confirmées et vérifiées', () => {
+  const source = fs.readFileSync(path.join(root, 'server-domain-ops.cjs'), 'utf8');
+  assert.match(source, /\/ionos\/status/);
+  assert.match(source, /\/ionos\/prepare-change/);
+  assert.match(source, /\/ionos\/apply-change/);
+  assert.match(source, /pendingDnsActions\.delete\(token\)/);
+  assert.match(source, /applyPreparedChangeSet/);
 });

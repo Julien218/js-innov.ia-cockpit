@@ -17,6 +17,8 @@ const {
   safeUploadFilename,
 } = require('./server-dropbox-helper.cjs');
 const { indexDocument } = require('./server-documents.cjs');
+const ionosDns = require('./server-ionos-dns.cjs');
+const { MANAGED_DOMAINS } = require('./server-domain-ops.cjs');
 
 const router = express.Router();
 const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
@@ -68,6 +70,7 @@ const ALLOWED_ACTIONS = {
   send_email: { clientAction: '/api/emails/send', roles: ADMIN_ROLES, fields: ['mailbox', 'to', 'subject', 'text', 'replyToUid'] },
   set_auto_publish: { method: 'PATCH', table: 'SystemConfig', roles: ADMIN_ROLES, fields: ['value'], requiresId: true, fixed: { key: 'AUTO_PUBLISH_ENABLED' } },
   request_automation_reactivation: { method: 'POST', table: 'AutomationAudit', roles: ['superadmin'], fields: ['details'], fixed: { dossier: 'JS-INNOVIA', decision: 'REACTIVATION_DEMANDEE', workflow_version: 'cockpit-assistant-v2' } },
+  manage_dns_records: { serverAction: 'ionos_dns', roles: ['superadmin'], fields: ['domain', 'changes'] },
 };
 
 function availableActionsFor(user) {
@@ -335,7 +338,14 @@ function sanitizeAction(raw, user) {
       payload.client_id = null;
       continue;
     }
-    if (field === 'lignes') {
+    if (field === 'changes' && raw.type === 'manage_dns_records') {
+      if (Array.isArray(value)) payload.changes = value.slice(0, 5).map((change) => ({
+        name: String(change?.name || '').slice(0, 253),
+        type: String(change?.type || '').slice(0, 10),
+        content: String(change?.content || '').slice(0, 1024),
+        ttl: Number(change?.ttl || 3600),
+      }));
+    } else if (field === 'lignes') {
       const lines = sanitizeLines(value);
       if (lines) payload.lignes = lines;
     } else if (['string', 'number', 'boolean'].includes(typeof value)) {
@@ -395,6 +405,15 @@ function sanitizeAction(raw, user) {
     payload.mailbox = payload.mailbox || 'julien';
   }
   if (raw.type === 'set_auto_publish') payload.value = payload.value === true || payload.value === 'true' ? 'true' : 'false';
+  if (raw.type === 'manage_dns_records') {
+    try {
+      const validated = ionosDns.validateChanges(payload.domain, payload.changes, MANAGED_DOMAINS);
+      payload.domain = validated.domain;
+      payload.changes = validated.changes.map(({ name, type, content, ttl }) => ({ name, type, content, ttl }));
+    } catch {
+      return null;
+    }
+  }
 
   return {
     type: raw.type,
@@ -620,6 +639,7 @@ router.post('/chat', async (req, res) => {
             create_task: 'payload.titre est obligatoire et doit reprendre exactement le titre annoncé à l’utilisateur.',
             create_video_generation: 'Pour créer une vidéo depuis le média récent, utiliser payload { provider:"auto", client_name ou client_id, campaign_name, prompt, source_document_id }. Durée 8 s et 16:9 sont imposés par le serveur.',
             assign_media_client: 'Pour rattacher le média actif, utiliser son document id avec payload { clientId, clientName }. Le client doit provenir du contexte intégrité Cockpit.',
+            manage_dns_records: 'Réservé au superadmin. Utiliser payload { domain, changes:[{ name, type:"CNAME" ou "TXT", content, ttl }] }. Décrire exactement chaque valeur dans action_summary. Le serveur relit IONOS avant écriture et vérifie après confirmation.',
           },
         },
         available_actions: availableActionsFor(req.user),
@@ -705,6 +725,19 @@ router.post('/confirm', async (req, res) => {
   }
 
   const { action, summary } = item;
+  if (action.definition.serverAction === 'ionos_dns') {
+    try {
+      const prepared = await ionosDns.prepareChangeSet(action.payload.domain, action.payload.changes, MANAGED_DOMAINS);
+      const result = await ionosDns.applyPreparedChangeSet(prepared);
+      if (!result.verified) throw new Error('IONOS n’a pas confirmé les nouvelles valeurs après relecture.');
+      await logAction(req.user, 'action assistant: manage_dns_records', 'succes', `${result.domain}: ${result.changes.length} changement(s) vérifié(s)`);
+      return res.json({ success: true, action_type: action.type, action_summary: summary, execution: { target: result.domain, provider: 'IONOS DNS' }, result });
+    } catch (error) {
+      await logAction(req.user, 'action assistant: manage_dns_records', 'erreur', error.message);
+      const reason = String(error.message || 'erreur inconnue').replace(/[\r\n<>]/g, ' ').slice(0, 300);
+      return res.status(502).json({ error: `Action manage_dns_records non exécutée: ${reason}`, action_type: action.type });
+    }
+  }
   if (action.definition.clientAction) {
     const completionToken = crypto.randomBytes(24).toString('hex');
     pendingCompletions.set(completionToken, {

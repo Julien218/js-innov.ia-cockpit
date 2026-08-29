@@ -3,11 +3,13 @@ const dns = require('node:dns').promises;
 const tls = require('node:tls');
 const crypto = require('node:crypto');
 const { SITE_AGENT_REGISTRY } = require('./server-agent-orchestrator.cjs');
+const ionosDns = require('./server-ionos-dns.cjs');
 
 const router = express.Router();
 const JS_AGENT_URL = String(process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app').replace(/\/$/, '');
 const JS_AGENT_KEY = String(process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '').trim();
 const pendingDomainActions = new Map();
+const pendingDnsActions = new Map();
 
 const MANAGED_DOMAINS = Object.freeze({
   'jsinnovia.com': {
@@ -305,6 +307,78 @@ router.get('/domains', (_req, res) => {
   res.json(Object.entries(MANAGED_DOMAINS).map(([domain, meta]) => ({ domain, ...meta })));
 });
 
+router.get('/ionos/status', (_req, res) => {
+  res.json({
+    provider: 'IONOS DNS',
+    configured: ionosDns.isConfigured(),
+    server_side_only: true,
+    writable_types: [...ionosDns.WRITABLE_TYPES],
+    managed_domains: Object.keys(MANAGED_DOMAINS),
+  });
+});
+
+// Lecture IONOS limitée aux domaines déclarés dans l'inventaire Cockpit.
+router.post('/ionos/records', async (req, res) => {
+  const domain = safeDomain(req.body?.domain);
+  if (!domain) return res.status(400).json({ error: 'Domaine non géré par le Cockpit.' });
+  try {
+    const result = await ionosDns.listRecords(domain);
+    res.json({ domain, records: result.records.map((record) => ({
+      id: record.id,
+      name: record.name,
+      type: record.type,
+      content: record.content,
+      ttl: record.ttl,
+      disabled: Boolean(record.disabled),
+    })) });
+  } catch (error) {
+    res.status(502).json({ error: error.message });
+  }
+});
+
+// Prépare un plan DNS exact, sans effet réel. Le jeton expire et appartient à la session admin.
+router.post('/ionos/prepare-change', async (req, res) => {
+  try {
+    const prepared = await ionosDns.prepareChangeSet(req.body?.domain, req.body?.changes, MANAGED_DOMAINS);
+    const token = crypto.randomBytes(24).toString('hex');
+    pendingDnsActions.set(token, {
+      userId: req.user?.id,
+      prepared,
+      expiresAt: Date.now() + 5 * 60_000,
+    });
+    res.json({
+      confirmation: {
+        token,
+        expires_in: 300,
+        summary: `${prepared.plan.length} changement(s) DNS IONOS pour ${prepared.domain}`,
+      },
+      domain: prepared.domain,
+      plan: prepared.plan.map(({ action, before, after }) => ({ action, before, after })),
+    });
+  } catch (error) {
+    res.status(/non configurée/i.test(error.message) ? 503 : 400).json({ error: error.message });
+  }
+});
+
+// Consomme la confirmation avant l'écriture, puis relit IONOS pour vérifier le résultat.
+router.post('/ionos/apply-change', async (req, res) => {
+  const token = String(req.body?.token || '');
+  const item = pendingDnsActions.get(token);
+  if (!item) return res.status(400).json({ error: 'Confirmation DNS absente ou déjà consommée.' });
+  if (item.expiresAt < Date.now()) {
+    pendingDnsActions.delete(token);
+    return res.status(410).json({ error: 'Confirmation DNS expirée. Relance la préparation.' });
+  }
+  if (item.userId !== req.user?.id) return res.status(403).json({ error: 'Cette confirmation DNS appartient à une autre session.' });
+  pendingDnsActions.delete(token);
+  try {
+    const result = await ionosDns.applyPreparedChangeSet(item.prepared);
+    res.status(result.verified ? 200 : 502).json(result);
+  } catch (error) {
+    res.status(502).json({ success: false, verified: false, domain: item.prepared.domain, error: error.message });
+  }
+});
+
 router.post('/analyze', async (req, res) => {
   const domain = safeDomain(req.body?.domain);
   if (!domain) return res.status(400).json({ error: 'Domaine non géré par le Cockpit.' });
@@ -399,7 +473,7 @@ router.post('/repair', async (req, res) => {
     });
   } catch (error) {
     if (task?.id) await patchTask(task.id, { statut: 'bloquee', notes: `Réparation automatique bloquée: ${String(error.message || error).slice(0, 400)}` });
-    await recordRun({ task, agent, domain, kind, status: 'failed', error: error.message, result: execution?.content, conversationId: execution?.conversationId });
+    await recordRun({ task, agent, domain, kind, status: 'failed', error: error.message });
     res.status(500).json({ success: false, verified: false, domain, task, error: error.message });
   }
 });

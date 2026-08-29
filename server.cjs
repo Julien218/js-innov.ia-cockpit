@@ -176,7 +176,7 @@ try {
 try {
   const domainOpsRouter = require('./server-domain-ops.cjs');
   app.use('/api/domain-ops', requireSession('admin'), requirePermission('domains', 'admin'), domainOpsRouter);
-  console.log('✅ Route /api/domain-ops activée (DNS, HTTP, TLS, SEO lecture seule)');
+  console.log('✅ Route /api/domain-ops activée (diagnostics + connecteur DNS IONOS confirmé)');
 } catch (e) {
   console.warn('⚠️ Route domain-ops indisponible:', e.message);
 }

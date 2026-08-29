@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Settings, Bot, Globe, Key, Bell, Shield, Database,
   ExternalLink, Plus, Trash2, Eye, EyeOff, Check,
@@ -179,6 +179,7 @@ const DANGEROUS_FRONTEND = ["SUPABASE_SERVICE_KEY","SUPABASE_SERVICE_ROLE_KEY","
 const INITIAL_KEYS = [
   { id: 1, name: "Backend Agent URL",  service: "Railway Agent", variableName: "VITE_AGENT_URL",  type: "frontend public", environment: "production", maskedValue: "https://jsinnovia-agent-production.up.railway.app", status: "actif", notes: "URL publique du service Railway", createdAt: "2026-06-01", updatedAt: "2026-07-22" },
   { id: 2, name: "Supabase Project URL",service: "Supabase",    variableName: "VITE_SUPABASE_URL",type: "frontend public", environment: "production", maskedValue: "https://rzvvwcwyaddzsaattwqt.supabase.co", status: "actif", notes: "Supabase actif — projet rzvvwcwyaddzsaattwqt", createdAt: "2026-06-01", updatedAt: "2026-07-22" },
+  { id: 3, name: "DNS letourdedour.com", service: "Autre", variableName: "IONOS_API_KEY", type: "backend secret", environment: "production", maskedValue: "Configurée uniquement côté serveur", status: "à vérifier", notes: "Connecteur DNS IONOS. La valeur doit être définie dans Railway sur cockpit-v3.", createdAt: "2026-08-29", updatedAt: "2026-08-29" },
 ];
 
 const STATUS_COLORS = { actif: "bg-green-500/20 text-green-400 border-green-500/30", inactif: "bg-slate-600/30 text-slate-400 border-slate-600/30", "à vérifier": "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" };
@@ -200,6 +201,7 @@ function KeyModal({ initial = null, onSave, onClose }) {
   // Alertes de sécurité dynamiques
   const warnVite    = form.variableName.startsWith("VITE_") && form.type === "backend secret";
   const warnDanger  = DANGEROUS_FRONTEND.includes(form.variableName) && form.type === "frontend public";
+  const isServerSecret = form.type !== "frontend public";
 
   const handleSave = () => {
     if (!form.name.trim() || !form.variableName.trim()) return;
@@ -212,8 +214,8 @@ function KeyModal({ initial = null, onSave, onClose }) {
       variableName: form.variableName.trim().toUpperCase(),
       type: form.type,
       environment: form.environment,
-      maskedValue: form.value ? "••••••••" + form.value.slice(-4) : (initial?.maskedValue ?? "••••••••"),
-      status: form.status,
+      maskedValue: isServerSecret ? "Configurée uniquement côté serveur" : (form.value || initial?.maskedValue || "Valeur publique non renseignée"),
+      status: isServerSecret ? "à vérifier" : form.status,
       notes: form.notes,
       createdAt: initial?.createdAt ?? now,
       updatedAt: now,
@@ -340,14 +342,15 @@ function KeyModal({ initial = null, onSave, onClose }) {
                 <input
                   className="w-full bg-slate-800/80 border border-slate-600/60 rounded-xl px-4 py-2.5 pr-12 text-white text-sm font-mono focus:border-yellow-500/60 focus:ring-1 focus:ring-yellow-500/20 outline-none transition-all"
                   type={showValue ? "text" : "password"}
-                  placeholder={isEditing ? "••••••••••••" : "Coller la valeur ici..."}
+                  disabled={isServerSecret}
+                  placeholder={isServerSecret ? "À configurer dans Railway — jamais dans le navigateur" : (isEditing ? "Laisser vide pour conserver la référence" : "Valeur publique")}
                   value={form.value} onChange={e => set("value", e.target.value)} />
-                <button type="button" onClick={() => setShowValue(p => !p)}
+                <button type="button" onClick={() => setShowValue(p => !p)} disabled={isServerSecret}
                   className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200 transition-colors">
                   {showValue ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              <p className="text-xs text-slate-500 mt-1.5">La valeur sera masquée (••••••) après enregistrement. Elle n'est jamais stockée en clair.</p>
+              <p className="text-xs text-slate-500 mt-1.5">{isServerSecret ? "Ce Cockpit n'enregistre pas les secrets saisis dans le navigateur. Ajoute la variable au service Railway cockpit-v3 ; l'état sera ensuite vérifié par le serveur." : "Cette valeur est publique et sert uniquement de référence dans l'interface."}</p>
             </div>
 
             {/* Statut */}
@@ -378,7 +381,7 @@ function KeyModal({ initial = null, onSave, onClose }) {
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-slate-700/60">
           <p className="text-xs text-slate-500 flex items-center gap-1.5">
-            <Shield className="w-3.5 h-3.5" /> Stockage UI local — prévu pour connexion backend
+            <Shield className="w-3.5 h-3.5" /> Inventaire uniquement — secrets gérés par Railway
           </p>
           <div className="flex gap-3">
             <Button variant="ghost" onClick={onClose} className="text-slate-400 hover:text-white">
@@ -460,6 +463,23 @@ function ApisKeys() {
   const [modal, setModal]         = useState(null); // null | "add" | { id: ... }
   const [filterEnv, setFilterEnv] = useState("tous");
 
+  useEffect(() => {
+    let active = true;
+    fetch("/api/domain-ops/ionos/status", { credentials: "same-origin" })
+      .then(async response => {
+        if (!response.ok) throw new Error("Statut IONOS indisponible");
+        return response.json();
+      })
+      .then(status => {
+        if (!active) return;
+        setApiKeys(prev => prev.map(key => key.variableName === "IONOS_API_KEY"
+          ? { ...key, status: status.configured ? "actif" : "à vérifier", notes: status.configured ? "Connecteur DNS IONOS disponible côté serveur." : "Variable absente du service Railway cockpit-v3." }
+          : key));
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
   const openAdd  = ()  => setModal("add");
   const openEdit = (k) => setModal(k);
   const closeModal     = ()  => setModal(null);
@@ -513,8 +533,8 @@ function ApisKeys() {
         <div className="flex items-start gap-3 p-4 rounded-xl border border-yellow-500/20 bg-yellow-500/5">
           <Shield className="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0" />
           <div>
-            <p className="text-yellow-400 text-sm font-medium">Stockage sécurisé — phase UI</p>
-            <p className="text-slate-400 text-xs mt-0.5">Les valeurs ne sont jamais affichées en clair après sauvegarde. Pour la production, configurez les secrets dans les variables d'environnement Railway. Aucun secret n'est commité dans le code.</p>
+            <p className="text-yellow-400 text-sm font-medium">Inventaire des variables — les secrets restent sur le serveur</p>
+            <p className="text-slate-400 text-xs mt-0.5">Cette page ne conserve aucune clé secrète. Configurez les secrets dans les variables d'environnement Railway ; le Cockpit affiche uniquement leur disponibilité, jamais leur valeur.</p>
           </div>
         </div>
 
