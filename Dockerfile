@@ -29,6 +29,7 @@ COPY --from=builder /app/package-lock.json ./package-lock.json
 COPY --from=builder /app/server.cjs ./server.cjs
 COPY --from=builder /app/server-auth.cjs ./server-auth.cjs
 COPY --from=builder /app/server-email.cjs ./server-email.cjs
+COPY --from=builder /app/server-email-trash-core.cjs ./server-email-trash-core.cjs
 COPY --from=builder /app/server-email-branding.cjs ./server-email-branding.cjs
 COPY --from=builder /app/server-email-core.cjs ./server-email-core.cjs
 COPY --from=builder /app/server-email-compose.cjs ./server-email-compose.cjs
@@ -93,6 +94,7 @@ COPY public ./public
 
 RUN npm ci --omit=dev --legacy-peer-deps
 RUN test -f /app/server-ai-cost-attribution.cjs \
+ && test -f /app/server-email-trash-core.cjs \
  && test -f /app/server-role-policy.cjs \
  && test -f /app/server-permission-policy.cjs \
  && test -f /app/server-email-accounting-core.cjs \
@@ -131,6 +133,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-bce.cjs \
  && test -f /app/server-public-elynea.cjs \
  && node --check /app/server-ai-cost-attribution.cjs \
+ && node --check /app/server-email-trash-core.cjs \
  && node --check /app/server-role-policy.cjs \
  && node --check /app/server-permission-policy.cjs \
  && node --check /app/server-email-accounting-core.cjs \

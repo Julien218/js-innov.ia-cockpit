@@ -426,7 +426,7 @@ export default function Emails() {
       if (!data.success) throw new Error(data.error);
       setEmails(prev => prev.filter(e => e.uid !== uid));
       if (selectedUid === uid) { setSelectedUid(null); setDetail(null); }
-      flash('success', activeMailboxCfg?.provider === 'google' ? 'Email déplacé vers la corbeille Gmail.' : 'Email supprimé.');
+      flash('success', activeMailboxCfg?.provider === 'google' ? 'Email déplacé vers la corbeille Gmail.' : 'Email déplacé vers la corbeille.');
     } catch (err) { flash('error', `Suppression impossible : ${err.message}`); }
   };
 

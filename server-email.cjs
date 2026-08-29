@@ -14,6 +14,7 @@
  *   POST /api/emails/send         → { mailbox, to, subject, text, html, cc, replyToUid }
  */
 const Imap = require('imap');
+const { findTrashMailbox } = require('./server-email-trash-core.cjs');
 const { simpleParser } = require('mailparser');
 const nodemailer = require('nodemailer');
 const express = require('express');
@@ -821,31 +822,54 @@ async function fetchSentEmails(mailboxKey, limit = 30) {
 }
 
 
-// ── Supprimer un email (déplacer vers Trash) ─────────────────
-router.delete('/:uid', requireApiKey, async (req, res) => {
-  try {
-    const mailbox = req.query.mailbox || 'assurances';
-    const uid = parseInt(req.params.uid);
-    if (isAliasMailbox(mailbox)) return res.status(400).json({ success: false, error: 'Boîte alias, opération non disponible.' });
-    const cfg = getMailboxConfig(mailbox);
-    if (!cfg || !cfg.password) return res.status(400).json({ success: false, error: `Mailbox "${mailbox}" non configurée.` });
+function moveEmailToTrash(mailboxKey, uid) {
+  return new Promise((resolve, reject) => {
+    if (isAliasMailbox(mailboxKey)) return reject(new Error('Boîte alias, opération non disponible.'));
+    const cfg = getMailboxConfig(mailboxKey);
+    if (!cfg || !cfg.password) return reject(new Error(`Mailbox "${mailboxKey}" non configurée.`));
+    const safeUid = Number.parseInt(uid, 10);
+    if (!Number.isInteger(safeUid) || safeUid <= 0) return reject(new Error('Identifiant e-mail invalide.'));
 
-    await new Promise((resolve, reject) => {
-      const imap = new Imap({ user: cfg.email, password: cfg.password, host: cfg.host, port: cfg.port, tls: true, tlsOptions: { servername: cfg.host, rejectUnauthorized: false } });
-      imap.once('ready', () => {
-        imap.openBox('INBOX', false, (err) => {
-          if (err) { imap.end(); return reject(err); }
-          // Marquer comme supprimé + expurger
-          imap.addFlags(uid, ['\Deleted'], (e2) => {
-            if (e2) { imap.end(); return reject(e2); }
-            imap.expunge((e3) => { imap.end(); e3 ? reject(e3) : resolve(); });
+    const imap = new Imap({
+      user: cfg.email,
+      password: cfg.password,
+      host: cfg.host,
+      port: cfg.port,
+      tls: true,
+      tlsOptions: { servername: cfg.host, rejectUnauthorized: false },
+    });
+    let settled = false;
+    const finish = (error, result) => {
+      if (settled) return;
+      settled = true;
+      try { imap.end(); } catch (_) {}
+      if (error) reject(error); else resolve(result);
+    };
+    imap.once('ready', () => {
+      imap.getBoxes((boxesError, boxes) => {
+        if (boxesError) return finish(boxesError);
+        const trashMailbox = findTrashMailbox(boxes);
+        if (!trashMailbox) return finish(new Error('Dossier Corbeille introuvable : aucun e-mail n’a été supprimé.'));
+        imap.openBox('INBOX', false, (openError) => {
+          if (openError) return finish(openError);
+          imap.move(String(safeUid), trashMailbox, (moveError) => {
+            if (moveError) return finish(moveError);
+            finish(null, { mailbox: mailboxKey, uid: safeUid, trashMailbox });
           });
         });
       });
-      imap.once('error', reject);
-      imap.connect();
     });
-    res.json({ success: true, message: 'Email supprimé.' });
+    imap.once('error', (error) => finish(error));
+    imap.connect();
+  });
+}
+
+// ── Déplacer un email vers la corbeille récupérable ──────────
+router.delete('/:uid', requireApiKey, async (req, res) => {
+  try {
+    const mailbox = req.query.mailbox || 'assurances';
+    const result = await moveEmailToTrash(mailbox, req.params.uid);
+    res.json({ success: true, action: 'moved_to_trash', message: 'Email déplacé vers la corbeille.', ...result });
   } catch (err) {
     console.error('[IMAP] Delete:', err.message);
     res.status(500).json({ success: false, error: err.message });
@@ -986,3 +1010,4 @@ module.exports.fetchEmails = fetchEmails;
 module.exports.getMailboxConfig = getMailboxConfig;
 module.exports.isAliasMailbox = isAliasMailbox;
 module.exports.sendEmail = sendEmail;
+module.exports.moveEmailToTrash = moveEmailToTrash;
