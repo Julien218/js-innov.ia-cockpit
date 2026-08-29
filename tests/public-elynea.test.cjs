@@ -44,12 +44,29 @@ test('Elynea blocks every premature promise of transmission, quote, email or app
     "Nous allons envoyer votre demande à l'équipe.",
     "Votre demande sera transmise et le devis sera préparé.",
     "Je transmets maintenant votre demande.",
+    "Votre demande sera prise en charge dès que possible par l’équipe.",
+    "Votre demande a bien été prise en compte.",
+    "L’équipe JS-Innov.IA reviendra vers vous avec un retour personnalisé.",
+    "Vous recevrez un retour personnalisé avec des propositions adaptées.",
+    "Votre demande est bien complète et transmise à l’équipe JS-Innov.IA.",
   ]) {
     const answer = elynea.safePublicAnswer(unsafe, qualification);
-    assert.doesNotMatch(answer, /je vais transmettre|nous allons envoyer|sera transmise|je transmets/i);
+    assert.doesNotMatch(answer, /je vais transmettre|nous allons envoyer|sera transmise|je transmets|prise en charge|prise en compte|reviendra vers vous|vous recevrez|complète et transmise/i);
     assert.match(answer, /formulaire sécurisé/i);
-    assert.match(answer, /enregistrement réel dans le Cockpit/i);
+    assert.match(answer, /référence Cockpit vérifiable/i);
   }
+});
+
+test('Elynea closes politely when the visitor declines instead of returning a security warning', () => {
+  const messages = [{ role: 'user', content: 'NON MERCI' }];
+  const answer = elynea.safePublicAnswer(
+    "L’équipe JS-Innov.IA reviendra vers vous.",
+    { can_submit: true },
+    messages,
+  );
+  assert.match(answer, /Bien compris/i);
+  assert.match(answer, /Aucune demande n’a été transmise/i);
+  assert.doesNotMatch(answer, /environnement interne|reviendra vers vous/i);
 });
 
 test('Elynea recognizes the complete ecommerce qualification scenario', () => {
@@ -66,6 +83,27 @@ test('Elynea recognizes the complete ecommerce qualification scenario', () => {
   assert.equal(result.appointment_declined, true);
   assert.equal(result.product_count, 10);
   assert.deepEqual(result.categories.sort(), ['assistant_ia', 'automatisation', 'site_web']);
+});
+
+test('Elynea preserves an automatic stock reorder instead of reducing it to an alert', () => {
+  const messages = [
+    { role: 'user', content: 'Je veux une boutique en ligne.' },
+    { role: 'assistant', content: 'Combien de produits ?' },
+    { role: 'user', content: 'Environ 10 produits avec une commande automatique quand il ne reste que 2 produits en stock.' },
+  ];
+  const qualification = elynea.analyzeQualification(messages);
+  assert.equal(qualification.product_count, 10);
+  assert.equal(qualification.stock_reorder_requested, true);
+  assert.equal(qualification.stock_reorder_threshold, 2);
+  assert.match(elynea.PUBLIC_POLICY, /Ne transforme jamais une commande ou un réapprovisionnement automatique en simple alerte/i);
+
+  const payload = elynea.buildRequestPayload({
+    requestId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    messages,
+    contact: { name: 'Client Test', email: 'client@example.test', company: '', phone: '' },
+    qualification,
+  });
+  assert.match(payload.message, /Réapprovisionnement automatique demandé au seuil de 2 unité\(s\)/i);
 });
 
 test('a Cockpit request is structured, bounded and never claims an email or quote was sent', () => {
