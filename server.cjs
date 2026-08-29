@@ -42,6 +42,15 @@ app.set('trust proxy', 1);
 app.use(express.json({ limit: '25mb' }));
 app.use(requireSameOrigin);
 
+// ── Elynea : guide commercial public, sans accès au Cockpit ─
+try {
+  const publicElyneaRouter = require('./server-public-elynea.cjs');
+  app.use('/api/public/elynea', publicElyneaRouter);
+  console.log('✅ Elynea publique connectée à NOVA (conseil commercial cloisonné)');
+} catch (e) {
+  console.warn('⚠️ Elynea publique indisponible:', e.message);
+}
+
 // ── API Auth (backend, service_role) ────────────────────────
 try {
   const authRouter = require('./server-auth.cjs');

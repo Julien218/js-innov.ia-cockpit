@@ -49,6 +49,7 @@ COPY --from=builder /app/server-data-proxy.cjs ./server-data-proxy.cjs
 COPY --from=builder /app/server-bce.cjs ./server-bce.cjs
 COPY --from=builder /app/server-hainoflow.cjs ./server-hainoflow.cjs
 COPY --from=builder /app/server-assistant.cjs ./server-assistant.cjs
+COPY --from=builder /app/server-public-elynea.cjs ./server-public-elynea.cjs
 COPY --from=builder /app/server-assistant-batch.cjs ./server-assistant-batch.cjs
 COPY --from=builder /app/server-task-batch.cjs ./server-task-batch.cjs
 COPY --from=builder /app/server-nova-executors.cjs ./server-nova-executors.cjs
@@ -128,6 +129,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-immediate-execution-policy.cjs \
  && test -f /app/server-task-autopilot.cjs \
  && test -f /app/server-bce.cjs \
+ && test -f /app/server-public-elynea.cjs \
  && node --check /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-role-policy.cjs \
  && node --check /app/server-permission-policy.cjs \
@@ -165,6 +167,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-immediate-execution-policy.cjs \
  && node --check /app/server-task-autopilot.cjs \
  && node --check /app/server-bce.cjs \
+ && node --check /app/server-public-elynea.cjs \
  && node -e "require('/app/server-led-ad-director.cjs'); require('/app/server-agent-registry.cjs'); require('/app/server-nova-routing.cjs')" \
  && echo "Required runtime modules check OK"
 
