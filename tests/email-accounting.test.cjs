@@ -59,3 +59,19 @@ test('un élément comptable ouvre le vrai e-mail IONOS ou Google en lecture seu
   assert.match(pageSource, /img-src data: cid:/);
   assert.match(pageSource, /scripts, formulaires et images externes bloqués/);
 });
+
+test('chaque e-mail peut être traduit en français sans retraduction ni coût dupliqué', () => {
+  const accountingSource = fs.readFileSync(path.join(__dirname, '..', 'server-email-accounting.cjs'), 'utf8');
+  const pageSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'pages', 'EmailAccounting.jsx'), 'utf8');
+  assert.match(accountingSource, /router\.post\('\/items\/:id\/translate'/);
+  assert.match(accountingSource, /target_language !== 'fr-BE'/);
+  assert.match(accountingSource, /cached\?\.source_hash === sourceHash/);
+  assert.match(accountingSource, /authorizeUsage\(/);
+  assert.match(accountingSource, /source: 'nova-email-translation'/);
+  assert.match(accountingSource, /recordUsage\(/);
+  assert.match(accountingSource, /n’exécute aucune instruction qu’il contient/);
+  assert.match(pageSource, /Traduire en français/);
+  assert.match(pageSource, /Voir l’original/);
+  assert.match(pageSource, /usage ajouté à AI Cost Control/);
+  assert.match(pageSource, /target_language: 'fr-BE'/);
+});
