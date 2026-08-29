@@ -47,6 +47,7 @@ COPY --from=builder /app/server-client-onboarding.cjs ./server-client-onboarding
 COPY --from=builder /app/server-user-access.cjs ./server-user-access.cjs
 COPY --from=builder /app/server-tenant.cjs ./server-tenant.cjs
 COPY --from=builder /app/server-data-proxy.cjs ./server-data-proxy.cjs
+COPY --from=builder /app/server-project-data.cjs ./server-project-data.cjs
 COPY --from=builder /app/server-bce.cjs ./server-bce.cjs
 COPY --from=builder /app/server-hainoflow.cjs ./server-hainoflow.cjs
 COPY --from=builder /app/server-assistant.cjs ./server-assistant.cjs
@@ -104,6 +105,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/permission-catalog.json \
  && test -f /app/server-client-onboarding.cjs \
  && test -f /app/server-user-access.cjs \
+ && test -f /app/server-project-data.cjs \
  && test -f /app/server-nova-routing.cjs \
  && test -f /app/server-ai-cost-ledger-aggregate.cjs \
  && test -f /app/server-cost-centers.cjs \
@@ -143,6 +145,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node -e "JSON.parse(require('node:fs').readFileSync('/app/permission-catalog.json','utf8'))" \
  && node --check /app/server-client-onboarding.cjs \
  && node --check /app/server-user-access.cjs \
+ && node --check /app/server-project-data.cjs \
  && node --check /app/server-nova-routing.cjs \
  && node --check /app/server-ai-cost-ledger-aggregate.cjs \
  && node --check /app/server-cost-centers.cjs \

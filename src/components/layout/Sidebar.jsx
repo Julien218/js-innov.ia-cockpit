@@ -6,7 +6,7 @@ import {
   CheckSquare, MessageSquare, Shield,
   Network, Smartphone, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
-  PlayCircle, GalleryHorizontalEnd, Send, Gauge, Workflow, Factory, MonitorPlay, Building2,
+  PlayCircle, GalleryHorizontalEnd, Send, Gauge, Workflow, Factory, MonitorPlay, Building2, Database,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -96,6 +96,7 @@ const allNavGroups = [
     label: "Projets",
     items: [
       { label: "Projets", icon: FolderKanban, path: "/projets" },
+      { label: "Données projets", icon: Database, path: "/donnees-projets" },
       { label: "Tâches", icon: CheckSquare, path: "/taches", minRole: "collaborateur" },
       { label: "VilleConnectOS", icon: Building2, path: "/villeconnect", minRole: "admin" },
     ]

@@ -31,7 +31,7 @@ export const ROLE_COLORS = {
 };
 
 const OWNER_ROUTES = [
-  "/", "/hainoflow", "/assurances", "/documents", "/clients", "/leads", "/demandes", "/projets", "/taches",
+  "/", "/hainoflow", "/assurances", "/documents", "/clients", "/leads", "/demandes", "/projets", "/donnees-projets", "/taches",
   "/devis", "/factures", "/emails", "/emails-core", "/cost-centers", "/ai-cost", "/villeconnect",
   "/production", "/ecran-geant", "/avatar-factory", "/portfolio", "/apps-agents", "/automations", "/domaines", "/rangement", "/parametres",
   "/services", "/validations", "/agent", "/agents-ia", "/mobile-hub", "/ai-cost-control", "/invitations", "/gouvernance", "/confidentialite",
@@ -44,12 +44,12 @@ export const ROLE_ROUTES = {
   superadmin: OWNER_ROUTES,
   admin: OWNER_ROUTES.filter(route => route !== "/assurances"),
   collaborateur: [
-    "/", "/hainoflow", "/clients", "/leads", "/documents", "/projets", "/taches", "/demandes", "/devis", "/agent", "/agents-ia"
+    "/", "/hainoflow", "/clients", "/leads", "/documents", "/projets", "/donnees-projets", "/taches", "/demandes", "/devis", "/agent", "/agents-ia"
   ],
   // Le client ne reçoit que les vues tenant-scopées et les modules produit autorisés.
   // Aucun accès aux agents internes, demandes globales, outils de production ou routes owner.
   client: [
-    "/", "/hainoflow", "/mes-projets", "/mes-devis", "/mes-factures", "/confidentialite"
+    "/", "/hainoflow", "/mes-projets", "/donnees-projets", "/mes-devis", "/mes-factures", "/confidentialite"
   ],
 };
 

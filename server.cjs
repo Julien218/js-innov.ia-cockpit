@@ -150,6 +150,16 @@ try {
   console.warn('⚠️ Route data multi-tenant indisponible:', e.message);
 }
 
+// ── Tableaux de données par client et projet ────────────────
+try {
+  const projectData = require('./server-project-data.cjs');
+  app.use('/api/project-data', requireSession('client'), requirePermission('project_data', 'client'), projectData.router);
+  const worker = projectData.startProjectDataBackupScheduler();
+  console.log(`✅ Données projets activées (${worker.started ? 'sauvegarde Dropbox planifiée' : worker.reason})`);
+} catch (e) {
+  console.warn('⚠️ Données projets indisponibles:', e.message);
+}
+
 // ── Vérification légale clients via la BCE officielle ──────
 try {
   const bceRouter = require('./server-bce.cjs');
