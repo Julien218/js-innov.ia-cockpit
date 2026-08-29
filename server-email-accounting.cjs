@@ -4,7 +4,7 @@ const { fetchEmails, fetchEmailById, getMailboxConfig, isAliasMailbox, sendEmail
 const { storeBuffer, isDropboxConfigured } = require('./server-documents.cjs');
 const { createCostEvent } = require('./server-client-costs.cjs');
 const { recordUsage, authorizeUsage } = require('./server-ai-cost.cjs');
-const { classifyEmail, extractAccountingMetadata, shouldArchiveAttachment, sourceTypeForProvider, buildDailyDigest } = require('./server-email-accounting-core.cjs');
+const { classifyEmail, extractAccountingMetadata, shouldArchiveAttachment, sourceTypeForProvider, buildDailyDigest, isOperationalGitHubNotification } = require('./server-email-accounting-core.cjs');
 const { fetchGoogleAccounts, fetchGoogleEmails, fetchGoogleEmailById, isGoogleMailConfigured } = require('./server-google-mail.cjs');
 
 const router = express.Router();
@@ -19,6 +19,7 @@ const AGENT_KEY = process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY |
 const TRANSLATION_PROJECT_KEY = 'nova-email-accounting';
 let running = null;
 let scheduler = null;
+let githubCleanupStarted = false;
 
 async function rest(path, options = {}) {
   if (!DATABASE_KEY) throw new Error('SUPABASE_SERVICE_ROLE_KEY non configurée');
@@ -49,6 +50,22 @@ async function insertItem(row) {
 async function patchItem(id, patch) {
   const rows = await rest(`email_accounting_items?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }) });
   return rows?.[0] || null;
+}
+
+async function ignoreOperationalGitHubFalsePositives() {
+  const rows = await rest(`email_accounting_items?select=id,sender,subject,status&organisation=eq.${ORGANISATION}&status=eq.awaiting_review&sender=ilike.*%40github.com*&limit=1000`);
+  const candidates = (rows || []).filter(isOperationalGitHubNotification);
+  const reviewedAt = new Date().toISOString();
+  for (const item of candidates) {
+    await patchItem(item.id, {
+      category: 'other',
+      status: 'ignored',
+      reviewed_by: 'nova:auto-filter:github-operational',
+      reviewed_at: reviewedAt,
+    });
+  }
+  if (candidates.length) console.info(`[email-accounting] ${candidates.length} notification(s) GitHub technique(s) retirée(s) de la validation comptable`);
+  return candidates.length;
 }
 
 async function loadItem(id) {
@@ -341,6 +358,10 @@ function startEmailAccountingScheduler() {
   if (process.env.NOVA_EMAIL_ACCOUNTING_ENABLED === 'false') return { started: false, reason: 'disabled' };
   if (!DATABASE_KEY) return { started: false, reason: 'SUPABASE_SERVICE_ROLE_KEY missing' };
   if (scheduler) return { started: true, reason: 'already_started' };
+  if (!githubCleanupStarted) {
+    githubCleanupStarted = true;
+    setTimeout(() => ignoreOperationalGitHubFalsePositives().catch((error) => console.warn('[email-accounting] GitHub cleanup:', error.message)), 5000).unref?.();
+  }
   setTimeout(schedulerTick, 15000).unref?.();
   scheduler = setInterval(schedulerTick, Math.max(300000, Number(process.env.NOVA_EMAIL_SCAN_INTERVAL_MS || 900000)));
   scheduler.unref?.();
@@ -437,4 +458,4 @@ router.post('/items/:id/review', async (req, res) => {
   } catch (error) { res.status(503).json({ error: error.message }); }
 });
 
-module.exports = { router, startEmailAccountingScheduler, runCycle, scanMailboxes, sendDailyReport };
+module.exports = { router, startEmailAccountingScheduler, runCycle, scanMailboxes, sendDailyReport, ignoreOperationalGitHubFalsePositives };

@@ -11,6 +11,28 @@ test('NOVA classe une facture avec pièce jointe et exige une validation humaine
   assert.ok(result.confidence >= 0.9);
 });
 
+test('les notifications techniques GitHub ne deviennent jamais des coûts en attente', () => {
+  const result = core.classifyEmail({
+    from: 'chatgpt-codex-connector[bot] <notifications@github.com>',
+    subject: 'Re: [Julien218/js-innov.ia-cockpit] Render accounting emails safely (PR #195)',
+    text: 'request invoice subscription amount due 24,20 EUR',
+  });
+  assert.equal(result.category, 'other');
+  assert.equal(result.needsReview, false);
+  assert.equal(result.reason, 'github_operational_notification');
+});
+
+test('un véritable objet de facturation GitHub reste soumis à validation', () => {
+  const result = core.classifyEmail({
+    from: 'GitHub <noreply@github.com>',
+    subject: 'GitHub invoice INV-2026-008',
+    text: 'Amount due: 24,20 EUR',
+    attachments: [{ filename: 'invoice.pdf', size: 1200 }],
+  });
+  assert.equal(result.category, 'invoice');
+  assert.equal(result.needsReview, true);
+});
+
 test('NOVA extrait montant, numéro et fournisseur sans inventer le client', () => {
   const result = core.extractAccountingMetadata({ from: 'Railway <billing@railway.app>', subject: 'Invoice INV-2026-008', text: 'Amount due: 24,20 EUR' });
   assert.equal(result.amount_minor, 2420);
@@ -39,6 +61,8 @@ test('le serveur lit les messages sans les marquer comme lus et protège le modu
   assert.match(emailSource, /if \(markSeen\) imap\.addFlags/);
   assert.match(serverSource, /requirePermission\('email_accounting', 'admin'\)/);
   assert.match(accountingSource, /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(accountingSource, /ignoreOperationalGitHubFalsePositives/);
+  assert.match(accountingSource, /nova:auto-filter:github-operational/);
   assert.doesNotMatch(accountingSource, /headers: \{ apikey: CRM_KEY/);
 });
 

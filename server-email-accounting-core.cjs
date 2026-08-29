@@ -2,6 +2,8 @@ const path = require('path');
 
 const INVOICE_TERMS = /\b(facture|invoice|rechnung|receipt|reçu|abonnement|subscription|échéance|payment due|montant ttc)\b/i;
 const REQUEST_TERMS = /\b(devis|quote|offre|demande|request|renseignement|information|rendez-vous|proposition)\b/i;
+const GITHUB_NOTIFICATION_SENDER = /(?:notifications|noreply)@github\.com/i;
+const GITHUB_BILLING_SUBJECT = /\b(invoice|facture|receipt|reçu|billing|payment due|paiement)\b/i;
 const SAFE_ACCOUNTING_EXTENSIONS = new Set(['.pdf', '.xml', '.csv', '.xlsx', '.xls', '.png', '.jpg', '.jpeg', '.webp']);
 
 function clean(value, max = 500) {
@@ -35,7 +37,15 @@ function invoiceNumber(text) {
   return clean(match?.[1], 40) || null;
 }
 
+function isOperationalGitHubNotification(email) {
+  return GITHUB_NOTIFICATION_SENDER.test(String(email?.from || email?.sender || ''))
+    && !GITHUB_BILLING_SUBJECT.test(String(email?.subject || ''));
+}
+
 function classifyEmail(email) {
+  if (isOperationalGitHubNotification(email)) {
+    return { category: 'other', confidence: 0.99, needsReview: false, reason: 'github_operational_notification' };
+  }
   const attachments = Array.isArray(email?.attachments) ? email.attachments : [];
   const names = attachments.map((item) => item.filename || '').join(' ');
   const haystack = `${email?.subject || ''} ${email?.text || email?.body || ''} ${names}`;
@@ -99,4 +109,4 @@ function buildDailyDigest(date, items) {
   return { counts, text, subject: `NOVA — Compte rendu e-mails du ${date}` };
 }
 
-module.exports = { classifyEmail, extractAccountingMetadata, shouldArchiveAttachment, sourceTypeForProvider, buildDailyDigest, parseEuroAmount, invoiceNumber };
+module.exports = { classifyEmail, extractAccountingMetadata, shouldArchiveAttachment, sourceTypeForProvider, buildDailyDigest, parseEuroAmount, invoiceNumber, isOperationalGitHubNotification };
