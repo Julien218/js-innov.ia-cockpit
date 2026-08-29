@@ -100,16 +100,15 @@ function buildRequestPayload({ requestId, messages, contact, qualification }) {
   const transcript = sanitizeMessages(messages);
   const needs = transcript.filter(({ role }) => role === 'user').map(({ content }) => content);
   const subject = needs.at(-1) || 'Demande commerciale';
-  const clientLabel = contact.company || contact.name;
   return {
     id: requestId,
-    titre: `Elynea — ${clientLabel} — ${subject}`.slice(0, 240),
-    contenu: [
+    nom: contact.name,
+    email: contact.email,
+    telephone: contact.phone || null,
+    entreprise: contact.company || null,
+    message: [
       'Demande qualifiée par Elynea depuis www.jsinnovia.com.',
-      `Contact : ${contact.name}`,
-      `Entreprise : ${contact.company || 'Non renseignée'}`,
-      `E-mail : ${contact.email}`,
-      `Téléphone : ${contact.phone || 'Non renseigné'}`,
+      `Objet : ${subject}`,
       `Rendez-vous refusé : ${qualification.appointment_declined ? 'oui' : 'non'}`,
       `Catégories : ${qualification.categories.join(', ') || 'à préciser'}`,
       qualification.product_count ? `Volume indiqué : ${qualification.product_count} référence(s)` : null,
@@ -117,14 +116,10 @@ function buildRequestPayload({ requestId, messages, contact, qualification }) {
       'Historique de qualification :',
       ...transcript.map(({ role, content }) => `${role === 'assistant' ? 'Elynea' : 'Visiteur'} : ${content}`),
     ].filter((line) => line !== null).join('\n').slice(0, 12_000),
-    client_nom: clientLabel,
-    client_email: contact.email,
-    source: 'formulaire',
-    priorite: 'moyenne',
-    statut: 'ouverte',
+    type: 'elynea_commerciale',
+    statut: 'nouveau',
     organisation_id: 'jsinnovia',
     created_by: 'elynea@jsinnovia.com',
-    resume_ia: subject.slice(0, 1_000),
   };
 }
 
@@ -230,10 +225,15 @@ router.post('/submit', async (req, res) => {
       id: journalId,
       action: 'demande_commerciale_elynea',
       module: 'demandes',
+      entite: 'Demande',
       entite_id: requestId,
-      entite_nom: request.titre,
       effectue_par: 'elynea@jsinnovia.com',
-      details: `Demande publique vérifiée et enregistrée depuis www.jsinnovia.com pour ${request.client_email}.`,
+      details: {
+        source: 'www.jsinnovia.com',
+        request_id: requestId,
+        contact_email: request.email,
+        verification: 'record_reread_after_write',
+      },
       statut: 'succes',
     };
     let journal = await verifiedRecord('LogAction', journalId);

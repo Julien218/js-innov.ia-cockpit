@@ -18,7 +18,7 @@ const CLIENT_VISIBLE_FIELDS = {
   Projet: new Set(['id', 'nom', 'description', 'statut', 'date_debut', 'date_fin_prevue', 'progression', 'priorite', 'client_nom', 'created_at', 'updated_at']),
   Devis: new Set(['id', 'numero', 'objet', 'client_nom', 'projet_id', 'lignes', 'montant_ht', 'tva', 'montant_ttc', 'statut', 'date_validite', 'created_at', 'updated_at']),
   Facture: new Set(['id', 'numero', 'objet', 'client_nom', 'devis_id', 'lignes', 'montant_ht', 'tva', 'montant_ttc', 'statut', 'date_echeance', 'date_paiement', 'mode_paiement', 'created_at', 'updated_at']),
-  Demande: new Set(['id', 'titre', 'contenu', 'source', 'priorite', 'statut', 'created_at', 'updated_at']),
+  Demande: new Set(['id', 'nom', 'email', 'telephone', 'entreprise', 'message', 'type', 'statut', 'created_at', 'updated_at']),
 };
 
 async function agentRequest(path, { method = 'GET', body, tenant } = {}) {

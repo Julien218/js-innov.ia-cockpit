@@ -82,11 +82,26 @@ test('a Cockpit request is structured, bounded and never claims an email or quot
     qualification,
   });
   assert.equal(payload.id, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
-  assert.equal(payload.source, 'formulaire');
-  assert.equal(payload.statut, 'ouverte');
-  assert.match(payload.contenu, /10 référence\(s\)/);
-  assert.match(payload.contenu, /Rendez-vous refusé : oui/);
-  assert.doesNotMatch(payload.contenu, /devis (?:envoyé|créé)|e-mail envoyé/i);
+  assert.equal(payload.nom, 'Client Test');
+  assert.equal(payload.email, 'client@example.test');
+  assert.equal(payload.entreprise, 'Entreprise Test');
+  assert.equal(payload.type, 'elynea_commerciale');
+  assert.equal(payload.statut, 'nouveau');
+  assert.match(payload.message, /10 référence\(s\)/);
+  assert.match(payload.message, /Rendez-vous refusé : oui/);
+  assert.doesNotMatch(payload.message, /devis (?:envoyé|créé)|e-mail envoyé/i);
+  assert.equal('titre' in payload, false);
+  assert.equal('contenu' in payload, false);
+});
+
+test('the Cockpit request page uses the real Demande schema returned by the agent', () => {
+  const page = fs.readFileSync(path.join(root, 'src/pages/Demandes.jsx'), 'utf8');
+  const proxy = fs.readFileSync(path.join(root, 'server-data-proxy.cjs'), 'utf8');
+  for (const field of ['nom', 'email', 'telephone', 'entreprise', 'message', 'type', 'statut']) {
+    assert.match(page, new RegExp(`key: ["']${field}["']`));
+    assert.match(proxy, new RegExp(`["']${field}["']`));
+  }
+  assert.doesNotMatch(page, /key: ["'](?:titre|contenu|client_nom|client_email)["']/);
 });
 
 test('the write endpoint requires a long server-only shared key', () => {
