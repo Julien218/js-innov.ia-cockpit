@@ -1,0 +1,102 @@
+const path = require('path');
+
+const INVOICE_TERMS = /\b(facture|invoice|rechnung|receipt|reçu|abonnement|subscription|échéance|payment due|montant ttc)\b/i;
+const REQUEST_TERMS = /\b(devis|quote|offre|demande|request|renseignement|information|rendez-vous|proposition)\b/i;
+const SAFE_ACCOUNTING_EXTENSIONS = new Set(['.pdf', '.xml', '.csv', '.xlsx', '.xls', '.png', '.jpg', '.jpeg', '.webp']);
+
+function clean(value, max = 500) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+function senderDomain(from) {
+  return (String(from || '').match(/@([a-z0-9.-]+\.[a-z]{2,})/i)?.[1] || '').toLowerCase();
+}
+
+function providerFromEmail(email) {
+  const from = clean(email?.from, 200);
+  const name = from.replace(/<[^>]+>/g, '').replace(/["']/g, '').trim();
+  return clean(name || senderDomain(from) || 'Fournisseur non identifié', 100);
+}
+
+function parseEuroAmount(text) {
+  const source = String(text || '').replace(/\u00a0/g, ' ');
+  const labelled = source.match(/(?:total(?:\s+ttc)?|montant(?:\s+à\s+payer)?|amount due)[^\d]{0,20}(\d{1,3}(?:[ .]\d{3})*(?:[,.]\d{2})|\d+[,.]\d{2})\s*(?:€|EUR)/i);
+  const generic = source.match(/(\d{1,3}(?:[ .]\d{3})*(?:[,.]\d{2})|\d+[,.]\d{2})\s*(?:€|EUR)/i)
+    || source.match(/(?:€|EUR)\s*(\d{1,3}(?:[ .]\d{3})*(?:[,.]\d{2})|\d+[,.]\d{2})/i);
+  const raw = labelled?.[1] || generic?.[1];
+  if (!raw) return null;
+  const normalized = raw.replace(/[ .](?=\d{3}(?:\D|$))/g, '').replace(',', '.');
+  const value = Number(normalized);
+  return Number.isFinite(value) && value > 0 ? Math.round(value * 100) : null;
+}
+
+function invoiceNumber(text) {
+  const match = String(text || '').match(/(?:facture|invoice|reçu|receipt)(?:\s+(?:n[°o]|number|numéro))?\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{2,30})/i);
+  return clean(match?.[1], 40) || null;
+}
+
+function classifyEmail(email) {
+  const attachments = Array.isArray(email?.attachments) ? email.attachments : [];
+  const names = attachments.map((item) => item.filename || '').join(' ');
+  const haystack = `${email?.subject || ''} ${email?.text || email?.body || ''} ${names}`;
+  const invoiceSignal = INVOICE_TERMS.test(haystack);
+  const accountingAttachment = attachments.some((item) => SAFE_ACCOUNTING_EXTENSIONS.has(path.extname(item.filename || '').toLowerCase()));
+  if (invoiceSignal) {
+    return { category: /abonnement|subscription/i.test(haystack) ? 'subscription_invoice' : 'invoice', confidence: accountingAttachment ? 0.96 : 0.82, needsReview: true };
+  }
+  if (REQUEST_TERMS.test(haystack)) return { category: 'request_or_quote', confidence: 0.78, needsReview: true };
+  return { category: 'other', confidence: 0.55, needsReview: false };
+}
+
+function extractAccountingMetadata(email) {
+  const text = `${email?.subject || ''}\n${email?.text || email?.body || ''}`;
+  return {
+    provider: providerFromEmail(email),
+    invoice_number: invoiceNumber(text),
+    amount_minor: parseEuroAmount(text),
+    currency: /(?:€|\bEUR\b)/i.test(text) ? 'EUR' : null,
+  };
+}
+
+function shouldArchiveAttachment(attachment) {
+  return SAFE_ACCOUNTING_EXTENSIONS.has(path.extname(attachment?.filename || '').toLowerCase()) && Number(attachment?.size || 0) <= 25 * 1024 * 1024;
+}
+
+function sourceTypeForProvider(provider) {
+  const value = String(provider || '').toLowerCase();
+  if (value.includes('railway')) return 'railway';
+  if (value.includes('github')) return 'github';
+  if (value.includes('supabase')) return 'supabase';
+  if (value.includes('dropbox')) return 'dropbox';
+  if (value.includes('twilio')) return 'twilio';
+  if (/openai|xai|grok|anthropic|claude|sora|runway/.test(value)) return 'llm_api';
+  return 'other';
+}
+
+function buildDailyDigest(date, items) {
+  const counts = items.reduce((acc, item) => {
+    acc[item.category] = (acc[item.category] || 0) + 1;
+    if (item.status === 'awaiting_review') acc.awaiting_review += 1;
+    if (item.document_id) acc.archived += 1;
+    if (item.status === 'failed') acc.failed += 1;
+    return acc;
+  }, { awaiting_review: 0, archived: 0, failed: 0 });
+  const important = items.filter((item) => item.category !== 'other').slice(0, 20);
+  const lines = important.map((item) => `- [${item.mailbox}] ${clean(item.subject, 120)} — ${clean(item.sender, 80)} (${item.category}${item.document_id ? ', archivé Dropbox' : ''})`);
+  const text = [
+    `Compte rendu NOVA des e-mails — ${date}`,
+    '',
+    `${items.length} nouveau(x) e-mail(s) analysé(s).`,
+    `${counts.awaiting_review} élément(s) nécessitent votre validation humaine.`,
+    `${counts.archived} pièce(s) comptable(s) archivée(s) dans Dropbox.`,
+    `${counts.failed} erreur(s) technique(s).`,
+    '',
+    important.length ? 'Éléments importants :' : 'Aucun élément important détecté.',
+    ...lines,
+    '',
+    'Aucun e-mail n’a été supprimé. Aucun coût n’a été marqué vérifié sans validation humaine.',
+  ].join('\n');
+  return { counts, text, subject: `NOVA — Compte rendu e-mails du ${date}` };
+}
+
+module.exports = { classifyEmail, extractAccountingMetadata, shouldArchiveAttachment, sourceTypeForProvider, buildDailyDigest, parseEuroAmount, invoiceNumber };

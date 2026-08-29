@@ -32,6 +32,8 @@ COPY --from=builder /app/server-email.cjs ./server-email.cjs
 COPY --from=builder /app/server-email-branding.cjs ./server-email-branding.cjs
 COPY --from=builder /app/server-email-core.cjs ./server-email-core.cjs
 COPY --from=builder /app/server-email-compose.cjs ./server-email-compose.cjs
+COPY --from=builder /app/server-email-accounting-core.cjs ./server-email-accounting-core.cjs
+COPY --from=builder /app/server-email-accounting.cjs ./server-email-accounting.cjs
 COPY --from=builder /app/server-billing.cjs ./server-billing.cjs
 COPY --from=builder /app/server-billing-template.cjs ./server-billing-template.cjs
 COPY --from=builder /app/server-security.cjs ./server-security.cjs
@@ -88,6 +90,8 @@ RUN npm ci --omit=dev --legacy-peer-deps
 RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-role-policy.cjs \
  && test -f /app/server-permission-policy.cjs \
+ && test -f /app/server-email-accounting-core.cjs \
+ && test -f /app/server-email-accounting.cjs \
  && test -f /app/permission-catalog.json \
  && test -f /app/server-client-onboarding.cjs \
  && test -f /app/server-user-access.cjs \
@@ -119,6 +123,8 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-role-policy.cjs \
  && node --check /app/server-permission-policy.cjs \
+ && node --check /app/server-email-accounting-core.cjs \
+ && node --check /app/server-email-accounting.cjs \
  && node -e "JSON.parse(require('node:fs').readFileSync('/app/permission-catalog.json','utf8'))" \
  && node --check /app/server-client-onboarding.cjs \
  && node --check /app/server-user-access.cjs \

@@ -221,7 +221,7 @@ function fetchEmails(mailboxKey, { folder = 'INBOX', limit = 30, offset = 0 } = 
 }
 
 // ── Fetch email par UID ──────────────────────────────────────
-function fetchEmailById(mailboxKey, uid, includeAttachments = false) {
+function fetchEmailById(mailboxKey, uid, includeAttachments = false, { markSeen = true } = {}) {
   return new Promise((resolve, reject) => {
     if (isAliasMailbox(mailboxKey)) {
       return reject(new Error('Cette adresse est un alias de redirection, pas une boîte IMAP.'));
@@ -242,13 +242,13 @@ function fetchEmailById(mailboxKey, uid, includeAttachments = false) {
       imap.openBox('INBOX', false, (err) => {
         if (err) { imap.end(); return reject(err); }
         let rawEmail = '';
-        const f = imap.fetch(String(uid), { bodies: '', struct: true });
+        const f = imap.fetch(String(uid), { bodies: '', struct: true, markSeen });
         f.on('message', (msg) => {
           msg.on('body', stream => {
             stream.on('data', c => rawEmail += c.toString('utf8'));
           });
           msg.once('attributes', a => {
-            imap.addFlags(a.uid, '\\Seen', () => {});
+            if (markSeen) imap.addFlags(a.uid, '\\Seen', () => {});
           });
         });
         f.once('error', e => { imap.end(); reject(e); });
@@ -982,4 +982,7 @@ router.post('/forward', requireApiKey, async (req, res) => {
 
 module.exports = router;
 module.exports.fetchEmailById = fetchEmailById;
+module.exports.fetchEmails = fetchEmails;
+module.exports.getMailboxConfig = getMailboxConfig;
+module.exports.isAliasMailbox = isAliasMailbox;
 module.exports.sendEmail = sendEmail;
