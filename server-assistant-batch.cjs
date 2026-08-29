@@ -167,7 +167,7 @@ async function inspectTargetedProject(message) {
   const task = recordFrom(taskPayload);
   const runs = rowsFrom(runPayload).filter((run) => !taskId || String(run.task_id) === String(taskId));
   const logs = rowsFrom(logPayload)
-    .filter((log) => /update_project/i.test(String(log.action || ''))
+    .filter((log) => /update_project/i.test(String(log.action || '')))
     .filter((log) => !projectId || String(log.details || '').includes(projectId))
     .sort((a, b) => Date.parse(b.created_at || b.date_creation || 0) - Date.parse(a.created_at || a.date_creation || 0));
   const latestRun = runs.sort((a, b) => Date.parse(b.updated_at || b.created_at || 0) - Date.parse(a.updated_at || a.created_at || 0))[0] || null;
