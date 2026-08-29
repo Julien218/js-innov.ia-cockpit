@@ -1,0 +1,53 @@
+/* NOVA mobile viewport hardening — iOS/Android */
+@media (max-width: 640px) {
+  .nova-chat-panel {
+    inset: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .nova-chat-header {
+    padding-top: max(12px, env(safe-area-inset-top)) !important;
+    min-width: 0 !important;
+  }
+
+  .nova-chat-header-actions {
+    flex-shrink: 0 !important;
+  }
+
+  .nova-chat-voice-select {
+    display: none !important;
+  }
+
+  .nova-chat-messages {
+    min-width: 0 !important;
+    padding: 12px !important;
+    overscroll-behavior: contain;
+  }
+
+  .nova-chat-message {
+    max-width: 88% !important;
+    min-width: 0 !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    box-sizing: border-box !important;
+  }
+
+  .nova-chat-composer {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    padding: 8px 8px max(8px, env(safe-area-inset-bottom)) !important;
+  }
+
+  .nova-chat-composer textarea {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+}
