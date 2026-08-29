@@ -13,30 +13,24 @@ import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 
 const formFields = [
-  { key: "titre", label: "Titre", required: true },
-  { key: "contenu", label: "Description", type: "textarea", required: true },
-  { key: "client_nom", label: "Nom du client" },
-  { key: "client_email", label: "Email", type: "email" },
-  { key: "source", label: "Source", type: "select", options: [
-    { value: "email", label: "Email" },
-    { value: "telephone", label: "Téléphone" },
-    { value: "formulaire", label: "Formulaire web" },
-    { value: "direct", label: "Direct" },
+  { key: "nom", label: "Nom du contact", required: true },
+  { key: "email", label: "E-mail", type: "email", required: true },
+  { key: "telephone", label: "Téléphone" },
+  { key: "entreprise", label: "Entreprise" },
+  { key: "message", label: "Demande", type: "textarea", required: true },
+  { key: "type", label: "Origine", type: "select", options: [
+    { value: "contact", label: "Contact" },
+    { value: "elynea_commerciale", label: "Elynea — site web" },
+    { value: "demande_devis", label: "Demande de devis" },
+    { value: "support", label: "Support" },
     { value: "autre", label: "Autre" },
   ]},
-  { key: "priorite", label: "Priorité", type: "select", options: [
-    { value: "basse", label: "Basse" },
-    { value: "moyenne", label: "Moyenne" },
-    { value: "haute", label: "Haute" },
-    { value: "urgente", label: "Urgente" },
-  ]},
   { key: "statut", label: "Statut", type: "select", options: [
-    { value: "ouverte", label: "Ouverte" },
-    { value: "en_traitement", label: "En traitement" },
-    { value: "resolue", label: "Résolue" },
-    { value: "annulee", label: "Annulée" },
+    { value: "nouveau", label: "Nouvelle" },
+    { value: "en_cours", label: "En cours" },
+    { value: "traite", label: "Traitée" },
+    { value: "ferme", label: "Fermée" },
   ]},
-  { key: "notes_internes", label: "Notes internes", type: "textarea" },
 ];
 
 export default function Demandes() {
@@ -75,28 +69,28 @@ export default function Demandes() {
   const filtered = useMemo(() =>
     demandes.filter(d =>
       (filterStatut === "tous" || d.statut === filterStatut) &&
-      (!search || d.titre?.toLowerCase().includes(search.toLowerCase()) || d.client_nom?.toLowerCase().includes(search.toLowerCase()))
+      (!search || [d.nom, d.entreprise, d.email, d.message].some(value => value?.toLowerCase().includes(search.toLowerCase())))
     ), [demandes, search, filterStatut]
   );
 
-  const ouvertes = demandes.filter(d => d.statut === "ouverte").length;
-  const enTraitement = demandes.filter(d => d.statut === "en_traitement").length;
+  const nouvelles = demandes.filter(d => d.statut === "nouveau").length;
+  const enTraitement = demandes.filter(d => d.statut === "en_cours").length;
 
   const columns = [
-    { key: "titre", label: "Demande", render: (r) => (
+    { key: "message", label: "Demande", render: (r) => (
       <div>
-        <p className="font-medium text-sm">{r.titre}</p>
-        <p className="text-xs text-muted-foreground line-clamp-1">{r.contenu}</p>
+        <p className="font-medium text-sm">{r.type === "elynea_commerciale" ? "Demande qualifiée par Elynea" : (r.type || "Contact")}</p>
+        <p className="text-xs text-muted-foreground line-clamp-2">{r.message}</p>
       </div>
     )},
-    { key: "client_nom", label: "Client", render: (r) => (
+    { key: "nom", label: "Contact", render: (r) => (
       <div>
-        <p className="text-sm">{r.client_nom || "-"}</p>
-        {r.client_email && <p className="text-xs text-muted-foreground">{r.client_email}</p>}
+        <p className="text-sm">{r.nom || "-"}</p>
+        {r.entreprise && <p className="text-xs text-muted-foreground">{r.entreprise}</p>}
+        {r.email && <p className="text-xs text-muted-foreground">{r.email}</p>}
       </div>
     )},
-    { key: "source", label: "Source", render: (r) => <span className="text-xs capitalize text-muted-foreground">{r.source?.replace(/_/g, " ") || "-"}</span> },
-    { key: "priorite", label: "Priorité", render: (r) => r.priorite ? <StatusBadge status={r.priorite} /> : "-" },
+    { key: "type", label: "Origine", render: (r) => <span className="text-xs capitalize text-muted-foreground">{r.type?.replace(/_/g, " ") || "-"}</span> },
     { key: "created_at", label: "Date", render: (r) => <span className="text-xs text-muted-foreground">{format(new Date(r.created_date || r.created_at), "dd MMM", { locale: fr })}</span> },
     { key: "statut", label: "Statut", render: (r) => <StatusBadge status={r.statut} /> },
     { key: "actions", label: "", render: (r) => (
@@ -123,17 +117,17 @@ export default function Demandes() {
     <div>
       <PageHeader
         title="Demandes"
-        subtitle={`${ouvertes} ouvertes · ${enTraitement} en traitement`}
+        subtitle={`${nouvelles} nouvelles · ${enTraitement} en cours`}
         onAdd={() => setModalOpen(true)}
         addLabel="Nouvelle demande"
         search={search}
         onSearch={setSearch}
         actions={
           <div className="flex gap-1 bg-muted rounded-lg p-0.5">
-            {["tous", "ouverte", "en_traitement", "resolue"].map(s => (
+            {["tous", "nouveau", "en_cours", "traite"].map(s => (
               <button key={s} onClick={() => setFilterStatut(s)}
                 className={`px-3 py-1.5 text-xs rounded-md font-medium transition-all ${filterStatut === s ? "bg-white shadow text-foreground" : "text-muted-foreground"}`}>
-                {s === "tous" ? "Tous" : s === "ouverte" ? "Ouvertes" : s === "en_traitement" ? "En cours" : "Résolues"}
+                {s === "tous" ? "Tous" : s === "nouveau" ? "Nouvelles" : s === "en_cours" ? "En cours" : "Traitées"}
               </button>
             ))}
           </div>
