@@ -75,6 +75,16 @@ try {
   console.warn('⚠️ Route emails indisponible:', e.message);
 }
 
+// ── NOVA : tri comptable e-mail + rapport quotidien ────────
+try {
+  const emailAccounting = require('./server-email-accounting.cjs');
+  app.use('/api/email-accounting', requireSession('admin'), requirePermission('email_accounting', 'admin'), emailAccounting.router);
+  const worker = emailAccounting.startEmailAccountingScheduler();
+  console.log(`✅ NOVA Assistant comptable e-mail activé (${worker.started ? `rapport ${worker.reportHour}h ${worker.timezone}` : worker.reason})`);
+} catch (e) {
+  console.warn('⚠️ NOVA Assistant comptable e-mail indisponible:', e.message);
+}
+
 // ── Coffre documentaire Dropbox + index Supabase ───────────
 try {
   const documentsRouter = require('./server-documents.cjs');

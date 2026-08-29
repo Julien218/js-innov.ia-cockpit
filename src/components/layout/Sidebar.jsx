@@ -114,6 +114,7 @@ const allNavGroups = [
     items: [
       { label: "Emails", icon: Mail, path: "/emails", badge: "emails", minRole: "admin" },
       { label: "Email Core", icon: Send, path: "/emails-core", minRole: "admin" },
+      { label: "NOVA — Tri comptable", icon: Receipt, path: "/email-accounting", minRole: "admin" },
     ]
   },
   {

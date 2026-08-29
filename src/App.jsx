@@ -57,6 +57,7 @@ import Portfolio from "@/pages/Portfolio";
 import Automations from "@/pages/Automations";
 import Emails from "@/pages/Emails";
 import EmailCore from "@/pages/EmailCore";
+import EmailAccounting from "@/pages/EmailAccounting";
 import Twilio from "@/pages/Twilio";
 import AppErrorBoundary from "@/components/shared/AppErrorBoundary";
 import MobileHub from "@/pages/MobileHub";
@@ -135,6 +136,7 @@ const AppRoutes = () => {
 
           <Route path="/emails" element={<PageBoundary><Emails /></PageBoundary>} />
           <Route path="/emails-core" element={<PageBoundary><EmailCore /></PageBoundary>} />
+          <Route path="/email-accounting" element={isAdmin ? <PageBoundary><EmailAccounting /></PageBoundary> : <Navigate to="/" replace />} />
           <Route path="/twilio" element={<PageBoundary><Twilio /></PageBoundary>} />
           <Route path="/amails" element={<Navigate to="/emails?folder=sent" replace />} />
 
