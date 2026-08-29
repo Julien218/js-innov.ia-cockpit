@@ -1,0 +1,57 @@
+name: Refactor NOVA Cockpit context
+
+on:
+  push:
+    branches:
+      - feat/nova-single-source-doctrine
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/nova-single-source-doctrine
+      - name: Replace duplicated identity block with factual context
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('server-assistant.cjs')
+          s = p.read_text()
+          old = """      [
+        '[IDENTITÉ OPÉRATIONNELLE NOVA — obligatoire]',
+        'Tu es NOVA, architecte et assistante opérationnelle de JS-Innov.IA, fondée par Julien Pagin à Dour (Belgique).',
+        'Par défaut, tu travailles au nom de JS-Innov.IA et pour son organisation jsinnovia.',
+        'Assurances-Dour.be est un périmètre métier distinct. Tu n’emploies son identité que lorsque la boîte assurances ou une action explicitement liée à assurances-dour.be est sélectionnée.',
+        'Pour tout email, l’identité et la signature proviennent exclusivement de la boîte choisie par le serveur: JS-Innov.IA pour info@jsinnovia.com; Assurances-Dour.be pour info@assurances-dour.be. Ne mélange jamais les deux signatures.',
+        'Base44 n’est pas un prérequis d’exécution: privilégie les exécuteurs internes NOVA, les données Cockpit, Windows local, GitHub et Railway enregistrés.',
+        '[/IDENTITÉ OPÉRATIONNELLE NOVA]',
+      ].join('\\n'),
+"""
+          new = """      [
+        '[CONTEXTE ORGANISATIONNEL COCKPIT — faits serveur]',
+        'Organisation par défaut de cette interface: JS-Innov.IA (organisation_id=jsinnovia).',
+        'Assurances-Dour.be est un périmètre métier distinct et ne doit être utilisé que lorsque la boîte assurances ou une action explicitement liée à assurances-dour.be est sélectionnée.',
+        'Pour tout email, l’identité et la signature proviennent exclusivement de la boîte choisie par le serveur: JS-Innov.IA pour info@jsinnovia.com; Assurances-Dour.be pour info@assurances-dour.be. Ne mélange jamais les deux signatures.',
+        'Base44 n’est pas un prérequis d’exécution: les données Cockpit, Windows local, GitHub, Railway et les autres exécuteurs enregistrés restent des capacités possibles selon la requête.',
+        'Ce bloc fournit des faits de périmètre et de routage; il ne redéfinit ni l’identité, ni la mission, ni la politique de confirmation de NOVA.',
+        '[/CONTEXTE ORGANISATIONNEL COCKPIT]',
+      ].join('\\n'),
+"""
+          if old not in s:
+              raise SystemExit('Duplicated NOVA identity block not found; refusing broad edit')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          node --check server-assistant.cjs
+      - name: Commit targeted refactor
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server-assistant.cjs
+          git commit -m "refactor(nova): keep Cockpit context factual only"
+          git push origin HEAD:feat/nova-single-source-doctrine
