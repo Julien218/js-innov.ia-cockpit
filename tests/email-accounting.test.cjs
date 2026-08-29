@@ -46,11 +46,16 @@ test('NOVA refuse les pièces jointes exécutables et accepte les preuves compta
   assert.equal(core.shouldArchiveAttachment({ filename: 'facture.exe', size: 1000 }), false);
 });
 
-test('le rapport quotidien indique validation, Dropbox et non-suppression', () => {
-  const report = core.buildDailyDigest('2026-08-29', [{ mailbox: 'store', subject: 'Facture', sender: 'X', category: 'invoice', status: 'awaiting_review', document_id: 'doc-1' }]);
+test('le rapport quotidien indique validation, Dropbox et corbeille récupérable', () => {
+  const report = core.buildDailyDigest('2026-08-29', [
+    { mailbox: 'store', subject: 'Facture', sender: 'X', category: 'invoice', status: 'awaiting_review', document_id: 'doc-1' },
+    { mailbox: 'store', subject: 'Newsletter', sender: 'Promo', category: 'other', status: 'ignored', metadata: { cleanup: { action: 'moved_to_trash' } } },
+  ]);
   assert.equal(report.counts.awaiting_review, 1);
   assert.equal(report.counts.archived, 1);
-  assert.match(report.text, /Aucun e-mail n.a été supprimé/i);
+  assert.equal(report.counts.moved_to_trash, 1);
+  assert.match(report.text, /corbeille récupérable/i);
+  assert.match(report.text, /Aucun e-mail n.a été supprimé définitivement/i);
 });
 
 test('le serveur lit les messages sans les marquer comme lus et protège le module', () => {

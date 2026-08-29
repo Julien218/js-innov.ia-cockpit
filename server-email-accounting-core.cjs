@@ -89,8 +89,9 @@ function buildDailyDigest(date, items) {
     if (item.status === 'awaiting_review') acc.awaiting_review += 1;
     if (item.document_id) acc.archived += 1;
     if (item.status === 'failed') acc.failed += 1;
+    if (item.metadata?.cleanup?.action === 'moved_to_trash') acc.moved_to_trash += 1;
     return acc;
-  }, { awaiting_review: 0, archived: 0, failed: 0 });
+  }, { awaiting_review: 0, archived: 0, failed: 0, moved_to_trash: 0 });
   const important = items.filter((item) => item.category !== 'other').slice(0, 20);
   const lines = important.map((item) => `- [${item.mailbox}] ${clean(item.subject, 120)} — ${clean(item.sender, 80)} (${item.category}${item.document_id ? ', archivé Dropbox' : ''})`);
   const text = [
@@ -99,12 +100,13 @@ function buildDailyDigest(date, items) {
     `${items.length} nouveau(x) e-mail(s) analysé(s).`,
     `${counts.awaiting_review} élément(s) nécessitent votre validation humaine.`,
     `${counts.archived} pièce(s) comptable(s) archivée(s) dans Dropbox.`,
+    `${counts.moved_to_trash} publicité(s) déplacée(s) vers une corbeille récupérable.`,
     `${counts.failed} erreur(s) technique(s).`,
     '',
     important.length ? 'Éléments importants :' : 'Aucun élément important détecté.',
     ...lines,
     '',
-    'Aucun e-mail n’a été supprimé. Aucun coût n’a été marqué vérifié sans validation humaine.',
+    'Aucun e-mail n’a été supprimé définitivement. Aucun coût n’a été marqué vérifié sans validation humaine.',
   ].join('\n');
   return { counts, text, subject: `NOVA — Compte rendu e-mails du ${date}` };
 }
