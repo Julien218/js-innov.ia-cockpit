@@ -53,4 +53,9 @@ test('un élément comptable ouvre le vrai e-mail IONOS ou Google en lecture seu
   assert.match(pageSource, /Voir l’e-mail/);
   assert.match(pageSource, /aria-label="Contenu de l’e-mail"/);
   assert.match(pageSource, /api\(`\/items\/\$\{item\.id\}\/message`\)/);
+  assert.match(pageSource, /title="Aperçu sécurisé de l’e-mail"/);
+  assert.match(pageSource, /sandbox=""/);
+  assert.match(pageSource, /Content-Security-Policy/);
+  assert.match(pageSource, /img-src data: cid:/);
+  assert.match(pageSource, /scripts, formulaires et images externes bloqués/);
 });
