@@ -268,6 +268,46 @@ router.get('/items', async (req, res) => {
   } catch (error) { res.status(503).json({ error: error.message }); }
 });
 
+router.get('/items/:id/message', async (req, res) => {
+  try {
+    const rows = await rest(`email_accounting_items?select=*&id=eq.${encodeURIComponent(req.params.id)}&organisation=eq.${ORGANISATION}&limit=1`);
+    const item = rows?.[0];
+    if (!item) return res.status(404).json({ error: 'Élément comptable introuvable' });
+
+    let email;
+    if (String(item.mailbox || '').startsWith('google:')) {
+      const accountId = String(item.mailbox).slice('google:'.length);
+      email = await fetchGoogleEmailById(accountId, item.message_uid, false);
+    } else {
+      email = await fetchEmailById(item.mailbox, item.message_uid, true, { markSeen: false });
+    }
+
+    const safeAttachments = (email.attachments || []).map((attachment) => ({
+      filename: attachment.filename || 'pièce jointe',
+      contentType: attachment.contentType || attachment.mimeType || 'application/octet-stream',
+      size: Number(attachment.size || 0),
+      archived: (item.metadata?.attachment_names || []).includes(attachment.filename),
+    }));
+    res.json({
+      success: true,
+      email: {
+        uid: email.uid || item.message_uid,
+        messageId: email.messageId || item.message_id || null,
+        from: email.from || item.sender || '',
+        to: email.to || '',
+        cc: email.cc || '',
+        subject: email.subject || item.subject || '(sans objet)',
+        date: email.date || item.received_at || null,
+        text: email.text || '',
+        html: email.html || '',
+        preview: email.preview || email.body || '',
+        attachments: safeAttachments,
+        mailbox: item.mailbox,
+      },
+    });
+  } catch (error) { res.status(503).json({ error: error.message }); }
+});
+
 router.get('/reports', async (_req, res) => {
   try { res.json({ success: true, reports: await rest(`email_daily_reports?select=*&organisation=eq.${ORGANISATION}&order=report_date.desc&limit=31`) || [] }); }
   catch (error) { res.status(503).json({ error: error.message }); }
