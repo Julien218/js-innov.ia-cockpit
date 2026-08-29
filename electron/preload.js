@@ -4,6 +4,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   notify: (title, body) => ipcRenderer.send("notify", { title, body }),
   checkForUpdates: () => ipcRenderer.send("check-for-updates"),
   downloadUpdate: () => ipcRenderer.send("download-update"),
+  webAssistant: {
+    execute: (task) => ipcRenderer.invoke("nova-web-assistant-execute", task),
+  },
   onUpdateAvailable: (callback) => {
     ipcRenderer.on("update-available", (event, data) => callback(data));
   },

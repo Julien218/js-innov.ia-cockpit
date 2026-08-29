@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { shouldUseLocalFirst } from "@/lib/nova-routing";
+import { executeNovaClientAction } from '@/lib/novaClientAction';
 
 const LOCAL_AGENT_URL = "http://127.0.0.1:8787";
 const STORAGE_KEY = "jsinnovia_ai_provider";
@@ -233,10 +234,9 @@ export default function AgentPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Action refusée');
       if (data.client_action) {
-        const actionRes = await fetch(data.client_action.url, { method: data.client_action.method, headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(data.client_action.body || {}) });
-        const actionData = await actionRes.json().catch(() => ({}));
-        await fetch('/api/assistant/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ token: data.completion_token, success: actionRes.ok, details: actionRes.ok ? 'Action exécutée' : (actionData.error || `HTTP ${actionRes.status}`) }) });
-        if (!actionRes.ok) throw new Error(actionData.error || 'Action métier non exécutée');
+        const actionResult = await executeNovaClientAction(data.client_action);
+        await fetch('/api/assistant/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ token: data.completion_token, success: actionResult.ok, details: actionResult.details }) });
+        if (!actionResult.ok) throw new Error(actionResult.data?.error || 'Action métier non exécutée');
       }
       const successMessage = '✅ Action réellement exécutée et ajoutée au journal.';
       setMessages((prev) => [...prev, { role: 'assistant', content: successMessage, ts: new Date() }]);

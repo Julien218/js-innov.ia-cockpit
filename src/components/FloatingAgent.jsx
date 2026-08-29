@@ -18,6 +18,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import novaAvatar from '@/assets/nova-avatar-128.png';
 import { chooseNovaVoice } from '@/lib/nova-voice';
 import { inspectMediaFile } from '@/lib/mediaReference';
+import { executeNovaClientAction } from '@/lib/novaClientAction';
 
 const LOCAL_NOVA_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
 const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
@@ -242,13 +243,7 @@ const FloatingAgent = () => {
       if (!response.ok) throw new Error(data.error || 'Action non exécutée par le Cockpit');
 
       if (data.client_action) {
-        const actionResponse = await fetch(data.client_action.url, {
-          method: data.client_action.method || 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(data.client_action.body || {}),
-        });
-        const actionData = await actionResponse.json().catch(() => ({}));
+        const actionResult = await executeNovaClientAction(data.client_action);
         if (data.completion_token) {
           await fetch('/api/assistant/complete', {
             method: 'POST',
@@ -256,12 +251,12 @@ const FloatingAgent = () => {
             credentials: 'include',
             body: JSON.stringify({
               token: data.completion_token,
-              success: actionResponse.ok,
-              details: actionResponse.ok ? 'Action exécutée depuis NOVA flottante' : (actionData.error || `HTTP ${actionResponse.status}`),
+              success: actionResult.ok,
+              details: actionResult.details,
             }),
           }).catch(() => null);
         }
-        if (!actionResponse.ok) throw new Error(actionData.error || 'Action métier non exécutée');
+        if (!actionResult.ok) throw new Error(actionResult.data?.error || 'Action métier non exécutée');
       }
 
       const target = data.execution?.target ? ` · cible=${data.execution.target}` : '';

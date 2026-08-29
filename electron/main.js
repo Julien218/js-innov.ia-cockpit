@@ -6,6 +6,7 @@ const http = require("http");
 const https = require("https");
 const { execFile } = require("child_process");
 const crypto = require("crypto");
+const { createWebAssistant } = require("./web-assistant.cjs");
 
 let mainWindow = null;
 let tray = null;
@@ -15,6 +16,7 @@ let offlineFallbackActive = false;
 const OFFLINE_COCKPIT_URL = "http://127.0.0.1:8790";
 const OFFLINE_STORAGE_KEYS = ["cockpit_session_user", "nova_local_task_snapshot_v1", "agent_chat_messages", "agent_conversation_id", "agent_tts_enabled"];
 let offlineStorageHydrated = false;
+const webAssistant = createWebAssistant({ app, getParentWindow: () => mainWindow });
 
 function offlineSessionPath() {
   return path.join(app.getPath("userData"), "offline-session.json");
@@ -891,6 +893,15 @@ ipcMain.on("notify", (event, { title, body }) => {
   if (Notification.isSupported()) {
     new Notification({ title: title || "JS-Innov.IA", body: body || "" }).show();
   }
+});
+
+// ── IPC — tâches web authentifiées, limitées aux recettes NOVA autorisées ──
+ipcMain.handle("nova-web-assistant-execute", async (event, task = {}) => {
+  const caller = String(event.senderFrame?.url || event.sender?.getURL?.() || "");
+  if (!caller.startsWith("https://cockpit.jsinnovia.com/") && !caller.startsWith(`${OFFLINE_COCKPIT_URL}/`)) {
+    throw new Error("Appel refusé hors du Cockpit JS-Innov.IA.");
+  }
+  return webAssistant.execute(task);
 });
 
 // ── IPC — Check for updates (from renderer) ─────────────────────────────────

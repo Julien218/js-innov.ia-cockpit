@@ -77,6 +77,11 @@ const ALLOWED_ACTIONS = {
   set_auto_publish: { method: 'PATCH', table: 'SystemConfig', roles: ADMIN_ROLES, fields: ['value'], requiresId: true, fixed: { key: 'AUTO_PUBLISH_ENABLED' } },
   request_automation_reactivation: { method: 'POST', table: 'AutomationAudit', roles: ['superadmin'], fields: ['details'], fixed: { dossier: 'JS-INNOVIA', decision: 'REACTIVATION_DEMANDEE', workflow_version: 'cockpit-assistant-v2' } },
   manage_dns_records: { serverAction: 'ionos_dns', roles: ['superadmin'], fields: ['domain', 'changes'] },
+  execute_authenticated_web_task: {
+    clientActionKind: 'electron_web_task',
+    roles: ['superadmin'],
+    fields: ['provider', 'task_type', 'domain', 'destination', 'preserve_path'],
+  },
 };
 
 function availableActionsFor(user) {
@@ -435,6 +440,22 @@ function sanitizeAction(raw, user) {
       return null;
     }
   }
+  if (raw.type === 'execute_authenticated_web_task') {
+    const provider = String(payload.provider || '').trim().toLowerCase();
+    const taskType = String(payload.task_type || '').trim().toLowerCase();
+    const domain = String(payload.domain || '').trim().toLowerCase().replace(/\.$/, '');
+    let destination;
+    try { destination = new URL(String(payload.destination || '')); } catch { return null; }
+    if (provider !== 'ionos' || taskType !== 'domain_redirect') return null;
+    if (!Object.prototype.hasOwnProperty.call(MANAGED_DOMAINS, domain)) return null;
+    if (destination.protocol !== 'https:' || destination.hostname !== `www.${domain}`) return null;
+    if (destination.username || destination.password || destination.search || destination.hash) return null;
+    payload.provider = provider;
+    payload.task_type = taskType;
+    payload.domain = domain;
+    payload.destination = destination.toString().replace(/\/$/, '');
+    payload.preserve_path = payload.preserve_path !== false;
+  }
 
   return {
     type: raw.type,
@@ -598,6 +619,8 @@ router.post('/chat', async (req, res) => {
       [
         '[CONTRAT DE CAPACITÉS NOVA — état courant du serveur]',
         `Actions Cockpit autorisées pour cette session: ${availableActionsFor(req.user).join(', ') || 'aucune action d’écriture'}.`,
+        'Pour chaque demande de travail: comprendre l’objectif, choisir l’action autorisée la plus adaptée, préparer les paramètres, demander une seule confirmation si l’effet est sensible, exécuter, vérifier le résultat puis rendre une preuve concise.',
+        'Une action disponible doit être proposée comme proposed_action au lieu de renvoyer une procédure manuelle. Une capacité absente doit être nommée précisément et ne doit jamais devenir un faux succès.',
         'L’Agent Local 8787 est une capacité optionnelle et son absence ne signifie jamais que NOVA ou le Cockpit ne peuvent rien exécuter.',
         'Avant d’affirmer qu’une action, un outil ou un agent est indisponible, vérifie les actions et contextes réellement fournis dans cette requête.',
         'Interdit: se présenter comme une simple IA textuelle, reprendre un ancien statut de capacité, ou dire « je ne peux pas exécuter directement » sans preuve issue de la requête courante.',
@@ -669,6 +692,7 @@ router.post('/chat', async (req, res) => {
             assign_media_client: 'Pour rattacher le média actif, utiliser son document id avec payload { clientId, clientName }. Le client doit provenir du contexte intégrité Cockpit.',
             publish_portfolio_media: 'Uniquement sur demande explicite de publication. Utiliser le média récent et payload { title, client_name, description, media_type, dropbox_path, integrity_hash, category, technologies, featured, public_rights_confirmed:true }. La confirmation doit mentionner la diffusion publique et les droits.',
             manage_dns_records: 'Réservé au superadmin. Utiliser payload { domain, changes:[{ name, type:"CNAME" ou "TXT", content, ttl }] }. Décrire exactement chaque valeur dans action_summary. Le serveur relit IONOS avant écriture et vérifie après confirmation.',
+            execute_authenticated_web_task: 'Réservé au superadmin et à l’application Windows. Pour une opération IONOS indisponible dans l’API DNS, utiliser payload { provider:"ionos", task_type:"domain_redirect", domain, destination:"https://www.<domain>", preserve_path:true }. Ne jamais annoncer la réussite avant la preuve retournée par le relais local authentifié.',
           },
         },
         available_actions: availableActionsFor(req.user),
@@ -809,7 +833,7 @@ router.post('/confirm', async (req, res) => {
       return res.status(502).json({ error: `Action manage_dns_records non exécutée: ${reason}`, action_type: action.type });
     }
   }
-  if (action.definition.clientAction) {
+  if (action.definition.clientAction || action.definition.clientActionKind) {
     const completionToken = crypto.randomBytes(24).toString('hex');
     pendingCompletions.set(completionToken, {
       userId: req.user.id,
@@ -823,8 +847,9 @@ router.post('/confirm', async (req, res) => {
       action_type: action.type,
       action_summary: summary,
       client_action: {
+        kind: action.definition.clientActionKind || 'http',
         method: action.definition.clientMethod || 'POST',
-        url: action.definition.clientAction.replace(':id', action.id || ''),
+        ...(action.definition.clientAction ? { url: action.definition.clientAction.replace(':id', action.id || '') } : {}),
         body: action.payload,
       },
       completion_token: completionToken,

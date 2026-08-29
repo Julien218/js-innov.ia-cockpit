@@ -33,6 +33,7 @@
     "files": [
       "bootstrap.js",
       "main.js",
+      "web-assistant.cjs",
       "preload.js",
       "splash.html",
       "icon.png",
