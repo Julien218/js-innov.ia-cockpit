@@ -11,7 +11,7 @@ const MAX_LOCAL_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS = 8;
 const ACCEPTED_FILES = '.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx,.xls,.xlsx,.csv,.txt';
 
-const MAILBOXES = [
+const IONOS_MAILBOXES = [
   { id: 'jsinnovia',  label: 'JS-Innov.IA',     email: 'info@jsinnovia.com',       icon: Mail,   color: '#D4AF37', isAlias: true,  canSend: true,  brand: 'js-innov-ia' },
   { id: 'assurances', label: 'Assurances Dour', email: 'info@assurances-dour.be', icon: Shield, color: '#22D3EE', isAlias: false, canSend: true,  brand: 'assurances-dour' },
   { id: 'store',      label: 'JS Store',         email: 'info@jsinnovia.store',    icon: Store,  color: '#A78BFA', isAlias: false, canSend: true,  brand: 'js-innov-ia' },
@@ -337,6 +337,7 @@ function ComposeModal({ open, onClose, mailbox, replyTo, onSend }) {
 
 export default function Emails() {
   const [activeMailbox, setActiveMailbox] = useState('assurances');
+  const [googleAccounts, setGoogleAccounts] = useState([]);
   const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -351,7 +352,21 @@ export default function Emails() {
   const folder = searchParams.get('folder') || 'inbox';
   const isSentFolder = folder === 'sent';
 
-  const activeMailboxCfg = MAILBOXES.find(m => m.id === activeMailbox) || MAILBOXES[1];
+  const mailboxes = useMemo(() => [
+    ...IONOS_MAILBOXES,
+    ...googleAccounts.filter((account) => account.active).map((account) => ({
+      id: `google:${account.id}`, accountId: account.id, provider: 'google', label: account.label || account.email,
+      email: account.email, icon: Mail, color: '#4285F4', isAlias: false, canSend: false, brand: account.brand || 'js-innov-ia',
+    })),
+  ], [googleAccounts]);
+  const activeMailboxCfg = mailboxes.find(m => m.id === activeMailbox) || mailboxes[1];
+
+  useEffect(() => {
+    fetch('/api/google-mail/accounts', { credentials: 'same-origin' })
+      .then((response) => response.json())
+      .then((data) => { if (data.success) setGoogleAccounts(data.accounts || []); })
+      .catch(() => {});
+  }, []);
 
   const flash = (type, text) => {
     setActionMsg({ type, text });
@@ -362,9 +377,11 @@ export default function Emails() {
     if (activeMailboxCfg?.isAlias) { setEmails([]); setLoading(false); setError(null); return; }
     setLoading(true); setError(null);
     try {
-      const endpoint = isSentFolder
-        ? `${API_BASE}/api/emails/sent?mailbox=${activeMailbox}&limit=50`
-        : `${API_BASE}/api/emails?mailbox=${activeMailbox}&limit=50`;
+      const endpoint = activeMailboxCfg?.provider === 'google'
+        ? `${API_BASE}/api/google-mail/messages?account_id=${encodeURIComponent(activeMailboxCfg.accountId)}&folder=${isSentFolder ? 'sent' : 'inbox'}&limit=50`
+        : (isSentFolder
+          ? `${API_BASE}/api/emails/sent?mailbox=${activeMailbox}&limit=50`
+          : `${API_BASE}/api/emails?mailbox=${activeMailbox}&limit=50`);
       const res = await fetch(endpoint, { credentials: 'same-origin' });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Erreur de chargement');
@@ -374,17 +391,20 @@ export default function Emails() {
     } finally {
       setLoading(false);
     }
-  }, [activeMailbox, activeMailboxCfg?.isAlias, isSentFolder]);
+  }, [activeMailbox, activeMailboxCfg?.isAlias, activeMailboxCfg?.provider, activeMailboxCfg?.accountId, isSentFolder]);
 
   const fetchDetail = useCallback(async (email) => {
     setSelectedUid(email.uid);
-    if (isSentFolder) {
+    if (isSentFolder && activeMailboxCfg?.provider !== 'google') {
       setDetail({ ...email, text: email.preview || email.body || '' });
       return;
     }
     setLoadingDetail(true);
     try {
-      const res = await fetch(`${API_BASE}/api/emails/${email.uid}?mailbox=${activeMailbox}`, { credentials: 'same-origin' });
+      const endpoint = activeMailboxCfg?.provider === 'google'
+        ? `${API_BASE}/api/google-mail/messages/${encodeURIComponent(email.uid)}?account_id=${encodeURIComponent(activeMailboxCfg.accountId)}`
+        : `${API_BASE}/api/emails/${email.uid}?mailbox=${activeMailbox}`;
+      const res = await fetch(endpoint, { credentials: 'same-origin' });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Erreur');
       setDetail(data.email);
@@ -394,25 +414,31 @@ export default function Emails() {
     } finally {
       setLoadingDetail(false);
     }
-  }, [activeMailbox, isSentFolder]);
+  }, [activeMailbox, activeMailboxCfg?.provider, activeMailboxCfg?.accountId, isSentFolder]);
 
   const handleDelete = async (uid) => {
     try {
-      const res = await fetch(`${API_BASE}/api/emails/${uid}?mailbox=${activeMailbox}`, { method: 'DELETE', credentials: 'same-origin' });
+      const endpoint = activeMailboxCfg?.provider === 'google'
+        ? `${API_BASE}/api/google-mail/messages/${encodeURIComponent(uid)}/trash?account_id=${encodeURIComponent(activeMailboxCfg.accountId)}`
+        : `${API_BASE}/api/emails/${uid}?mailbox=${activeMailbox}`;
+      const res = await fetch(endpoint, { method: activeMailboxCfg?.provider === 'google' ? 'POST' : 'DELETE', credentials: 'same-origin' });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
       setEmails(prev => prev.filter(e => e.uid !== uid));
       if (selectedUid === uid) { setSelectedUid(null); setDetail(null); }
-      flash('success', 'Email supprimé.');
+      flash('success', activeMailboxCfg?.provider === 'google' ? 'Email déplacé vers la corbeille Gmail.' : 'Email supprimé.');
     } catch (err) { flash('error', `Suppression impossible : ${err.message}`); }
   };
 
   const handleArchive = async (uid) => {
     try {
-      const res = await fetch(`${API_BASE}/api/emails/${uid}/archive?mailbox=${activeMailbox}`, { method: 'POST', credentials: 'same-origin' });
+      const endpoint = activeMailboxCfg?.provider === 'google'
+        ? `${API_BASE}/api/google-mail/messages/${encodeURIComponent(uid)}/archive?account_id=${encodeURIComponent(activeMailboxCfg.accountId)}`
+        : `${API_BASE}/api/emails/${uid}/archive?mailbox=${activeMailbox}`;
+      const res = await fetch(endpoint, { method: 'POST', credentials: 'same-origin' });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
-      setEmails(prev => prev.map(e => e.uid === uid ? { ...e, seen: true } : e));
+      setEmails(prev => activeMailboxCfg?.provider === 'google' ? prev.filter(e => e.uid !== uid) : prev.map(e => e.uid === uid ? { ...e, seen: true } : e));
       flash('success', 'Email archivé.');
     } catch (err) { flash('error', `Archivage impossible : ${err.message}`); }
   };
@@ -452,9 +478,9 @@ export default function Emails() {
         </div>
 
         <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-          {MAILBOXES.map(mb => {
+          {mailboxes.map(mb => {
             const Icon = mb.icon; const active = activeMailbox === mb.id;
-            return <button key={mb.id} onClick={() => setActiveMailbox(mb.id)} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap min-h-[44px] border ${active ? 'bg-white/10 text-white border-white/20' : 'text-gray-500 hover:text-white hover:bg-white/5 border-transparent'}`} style={active ? { borderColor: `${mb.color}60` } : {}}><Icon className="w-3.5 h-3.5" style={{ color: active ? mb.color : undefined }} /><span style={active ? { color: mb.color } : {}}>{mb.label}</span>{mb.isAlias && <span className="text-[9px] bg-yellow-500/20 text-yellow-400/80 px-1 py-0.5 rounded border border-yellow-500/20">alias</span>}</button>;
+            return <button key={mb.id} onClick={() => setActiveMailbox(mb.id)} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap min-h-[44px] border ${active ? 'bg-white/10 text-white border-white/20' : 'text-gray-500 hover:text-white hover:bg-white/5 border-transparent'}`} style={active ? { borderColor: `${mb.color}60` } : {}}><Icon className="w-3.5 h-3.5" style={{ color: active ? mb.color : undefined }} /><span style={active ? { color: mb.color } : {}}>{mb.label}</span>{mb.isAlias && <span className="text-[9px] bg-yellow-500/20 text-yellow-400/80 px-1 py-0.5 rounded border border-yellow-500/20">alias</span>}{mb.provider === 'google' && <span className="text-[9px] bg-blue-500/20 text-blue-300 px-1 py-0.5 rounded border border-blue-500/20">Google</span>}</button>;
           })}
         </div>
 
