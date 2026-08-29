@@ -10,7 +10,7 @@ const assistant = fs.readFileSync(path.join(root, 'server-assistant.cjs'), 'utf8
 
 test('le Cockpit déclare jsinnovia-agent comme source unique de doctrine NOVA', () => {
   assert.match(memory, /POLITIQUE NOVA — SOURCE UNIQUE/);
-  assert.match(memory, /jsinnovia-agent\/src\/lib\/companion-policy\.js/);
+  assert.ok(memory.includes('jsinnovia-agent/src/lib/companion-policy.js'));
   assert.doesNotMatch(memory, /\[CONTRAT ARCHITECTE JS-INNOV\.IA — OWNER\]/);
 });
 
