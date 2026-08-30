@@ -8,7 +8,6 @@ const BRAND_ALIASES = Object.freeze({
   'resto-connect': 'js-innov-ia',
   store: 'js-innov-ia',
   'jsinnovia.store': 'js-innov-ia',
-  'jsinnovia.com': 'js-innov-ia',
 });
 
 const BRAND_IDENTITIES = Object.freeze({
@@ -16,16 +15,16 @@ const BRAND_IDENTITIES = Object.freeze({
     slug: 'js-innov-ia',
     name: 'JS-Innov.IA',
     mailbox: 'jsinnovia',
-    address: () => process.env.EMAIL_JSINNOVIA_ADDRESS || 'info@jsinnovia.com',
-    replyTo: () => process.env.EMAIL_JSINNOVIA_REPLY_TO || process.env.EMAIL_JSINNOVIA_ADDRESS || 'info@jsinnovia.com',
+    address: () => process.env.EMAIL_STORE_ADDRESS || 'info@jsinnovia.store',
+    replyTo: () => process.env.EMAIL_JSINNOVIA_REPLY_TO || process.env.EMAIL_STORE_ADDRESS || 'info@jsinnovia.store',
     textSignature: () => [
       'Julien Pagin',
       'JS-Innov.IA',
       'www.jsinnovia.com',
-      process.env.EMAIL_JSINNOVIA_ADDRESS || 'info@jsinnovia.com',
+      process.env.EMAIL_STORE_ADDRESS || 'info@jsinnovia.store',
       'Dour, Belgique',
     ].join('\n'),
-    htmlSignature: () => `<table role="presentation" data-jsinnovia-signature="js-innov-ia" cellpadding="0" cellspacing="0" style="margin-top:20px;border-collapse:collapse;font-family:Arial,sans-serif;color:#0f172a"><tr><td style="padding-left:14px;border-left:3px solid #d4af37"><strong style="font-size:17px;color:#111827">Julien Pagin</strong><br><span style="font-weight:700;color:#8b5cf6">JS-Innov.IA</span><br><a href="https://www.jsinnovia.com" style="color:#0a2a60;text-decoration:none">www.jsinnovia.com</a><br><a href="mailto:${process.env.EMAIL_JSINNOVIA_ADDRESS || 'info@jsinnovia.com'}" style="font-size:12px;color:#52627d;text-decoration:none">${process.env.EMAIL_JSINNOVIA_ADDRESS || 'info@jsinnovia.com'}</a><span style="font-size:12px;color:#52627d"> · Dour, Belgique</span></td></tr></table>`,
+    htmlSignature: () => `<table role="presentation" data-jsinnovia-signature="js-innov-ia" cellpadding="0" cellspacing="0" style="margin-top:20px;border-collapse:collapse;font-family:Arial,sans-serif;color:#0f172a"><tr><td style="padding-left:14px;border-left:3px solid #d4af37"><strong style="font-size:17px;color:#111827">Julien Pagin</strong><br><span style="font-weight:700;color:#8b5cf6">JS-Innov.IA</span><br><a href="https://www.jsinnovia.com" style="color:#0a2a60;text-decoration:none">www.jsinnovia.com</a><br><a href="mailto:${process.env.EMAIL_STORE_ADDRESS || 'info@jsinnovia.store'}" style="font-size:12px;color:#52627d;text-decoration:none">${process.env.EMAIL_STORE_ADDRESS || 'info@jsinnovia.store'}</a><span style="font-size:12px;color:#52627d"> · Dour, Belgique</span></td></tr></table>`,
   },
   'assurances-dour': {
     slug: 'assurances-dour',
