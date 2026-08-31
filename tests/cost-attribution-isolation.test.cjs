@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { selectUnambiguousClient } = require('../server-ai-cost-attribution.cjs');
 const { resolveCostAttribution } = require('../server-nova-routing.cjs');
-const { aggregateAiUsage, ledgerReference, validateGroupScope } = require('../server-ai-cost-ledger-aggregate.cjs');
+const { aggregateAiUsage, ledgerReference, validateGroupScope, resolveUsageCenters } = require('../server-ai-cost-ledger-aggregate.cjs');
 const { parseGitHubUsage, mappingConflict } = require('../server-cost-accounting-core.cjs');
 const { importRailwayCharges } = require('../server-cost-centers.cjs');
 
@@ -35,6 +35,24 @@ test('un usage sans projet reste non facturable et conserve son coût', () => {
   assert.equal(groups[0].projectId, null);
   assert.equal(groups[0].billable, false);
   assert.equal(groups[0].costUsd, 2);
+});
+test('un centre non facturable désactive aussi la refacturation des usages IA', () => {
+  const projects = [{ id: 'miss', client_id: 'starlight' }];
+  const centers = [{ id: 'center', client_id: 'starlight', metadata: { project_id: 'miss', billable: false } }];
+  const base = { client_key: 'starlight', project_key: 'miss', cost_usd: 1 };
+  const resolved = resolveUsageCenters([base, { ...base, metadata: { cost_center_id: 'center', billable: true } }], 'starlight', projects, centers);
+  const { groups } = aggregateAiUsage(resolved);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].costUsd, 2);
+  assert.equal(groups[0].costCenterId, 'center');
+  assert.equal(groups[0].billable, false);
+});
+test('plusieurs centres pour un projet ne sont jamais départagés arbitrairement', () => {
+  const projects = [{ id: 'miss', client_id: 'starlight' }];
+  const centers = ['one', 'two'].map((id) => ({ id, client_id: 'starlight', metadata: { project_id: 'miss' } }));
+  const [row] = resolveUsageCenters([{ client_key: 'starlight', project_key: 'miss', cost_usd: 1 }], 'starlight', projects, centers);
+  assert.equal(row.metadata.billable, false);
+  assert.equal(row.metadata.cost_center_id, null);
 });
 test('les identifiants de projet et centre doivent appartenir au client', () => {
   const group = { clientId: 'starlight', projectId: 'miss', costCenterId: 'center' };
