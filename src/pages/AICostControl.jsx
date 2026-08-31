@@ -8,6 +8,7 @@ import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { getLocalTelemetryCurrent } from '../lib/localTelemetry';
+import OpenAICostConnectionTest from '../components/OpenAICostConnectionTest';
 
 const MODELS = ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol'];
 const MAPPING_OPTIONS = [
@@ -376,9 +377,12 @@ export default function AICostControl() {
 
   if (summaryQuery.isError) {
     return (
-      <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-5 text-red-600">
-        <div className="flex items-center gap-2 font-semibold"><AlertTriangle className="w-5 h-5" /> AI Cost Control indisponible</div>
-        <p className="text-sm mt-2">{summaryQuery.error?.message}. Vérifie que la migration Supabase AI Cost Control a bien été appliquée.</p>
+      <div className="space-y-4">
+        <OpenAICostConnectionTest />
+        <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-5 text-red-600">
+          <div className="flex items-center gap-2 font-semibold"><AlertTriangle className="w-5 h-5" /> AI Cost Control indisponible</div>
+          <p className="text-sm mt-2">{summaryQuery.error?.message}. Vérifie que la migration Supabase AI Cost Control a bien été appliquée.</p>
+        </div>
       </div>
     );
   }
@@ -425,6 +429,8 @@ export default function AICostControl() {
           {notice.text}
         </div>
       )}
+
+      <OpenAICostConnectionTest />
 
       {alertState && (
         <div className={`rounded-xl px-4 py-3 border flex items-center gap-2 text-sm font-medium ${alertState.level === 'danger' ? 'bg-red-500/10 border-red-500/20 text-red-700' : alertState.level === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-700' : 'bg-blue-500/10 border-blue-500/20 text-blue-700'}`}>

@@ -189,6 +189,9 @@ try {
 }
 
 // ── Ledger coûts client / refacturation ─────────────────────
+// Independent of ledger availability; this router enforces admin + module permission itself.
+app.use('/api/client-costs/accounting/openai', require('./server-openai-cost-diagnostic.cjs').createDiagnosticRouter());
+
 try {
   const adminGuard = requireSession('admin');
   const { router: aiCostLedgerAggregateRouter } = require('./server-ai-cost-ledger-aggregate.cjs');

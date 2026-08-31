@@ -5,6 +5,9 @@ on:
     paths:
       - 'server-ai-cost.cjs'
       - 'server-client-costs.cjs'
+      - 'server-openai-cost-diagnostic.cjs'
+      - 'src/components/OpenAICostConnectionTest.jsx'
+      - 'tests/openai-cost-diagnostic.test.cjs'
       - 'server-assistant.cjs'
       - 'server.cjs'
       - 'src/pages/AICostControl.jsx'
@@ -24,6 +27,9 @@ on:
     paths:
       - 'server-ai-cost.cjs'
       - 'server-client-costs.cjs'
+      - 'server-openai-cost-diagnostic.cjs'
+      - 'src/components/OpenAICostConnectionTest.jsx'
+      - 'tests/openai-cost-diagnostic.test.cjs'
       - 'server-assistant.cjs'
       - 'server.cjs'
       - 'src/pages/AICostControl.jsx'

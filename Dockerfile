@@ -84,6 +84,7 @@ COPY --from=builder /app/server-ai-cost-attribution.cjs ./server-ai-cost-attribu
 COPY --from=builder /app/server-ai-cost-ledger-aggregate.cjs ./server-ai-cost-ledger-aggregate.cjs
 COPY --from=builder /app/server-cost-centers.cjs ./server-cost-centers.cjs
 COPY --from=builder /app/server-client-costs.cjs ./server-client-costs.cjs
+COPY --from=builder /app/server-openai-cost-diagnostic.cjs ./server-openai-cost-diagnostic.cjs
 COPY --from=builder /app/server-cost-accounting-core.cjs ./server-cost-accounting-core.cjs
 COPY --from=builder /app/server-provider-cost-imports.cjs ./server-provider-cost-imports.cjs
 COPY --from=builder /app/server-twilio.cjs ./server-twilio.cjs
@@ -117,6 +118,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-ai-cost-ledger-aggregate.cjs \
  && test -f /app/server-cost-centers.cjs \
  && test -f /app/server-client-costs.cjs \
+ && test -f /app/server-openai-cost-diagnostic.cjs \
  && test -f /app/server-cost-accounting-core.cjs \
  && test -f /app/server-provider-cost-imports.cjs \
  && test -f /app/server-agent-registry.cjs \
@@ -157,6 +159,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-ai-cost-ledger-aggregate.cjs \
  && node --check /app/server-cost-centers.cjs \
  && node --check /app/server-client-costs.cjs \
+ && node --check /app/server-openai-cost-diagnostic.cjs \
  && node --check /app/server-cost-accounting-core.cjs \
  && node --check /app/server-provider-cost-imports.cjs \
  && node --check /app/server-agent-registry.cjs \
