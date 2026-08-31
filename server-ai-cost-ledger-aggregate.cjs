@@ -153,6 +153,21 @@ function validateGroupScope(group, clientId, projects, centers) {
   }
 }
 
+function resolveUsageCenters(rows, clientId, projects, centers) {
+  return rows.map((row) => {
+    const scope = usageScope(row);
+    validateGroupScope(scope, clientId, projects, centers);
+    const matches = centers.filter((center) => String(center.client_id) === String(clientId)
+      && (scope.costCenterId ? String(center.id) === scope.costCenterId : scope.projectId && center.metadata?.project_id === scope.projectId));
+    const center = matches.length === 1 ? matches[0] : null;
+    return { ...row, metadata: {
+      ...(row.metadata || {}),
+      cost_center_id: center?.id || scope.costCenterId,
+      billable: scope.billable && matches.length <= 1 && center?.metadata?.billable !== false,
+    } };
+  });
+}
+
 function applyExactRule(actualEur, rule = null) {
   const actual = nonNegative(actualEur);
   const mode = ['percent', 'at_cost', 'fixed', 'included'].includes(rule?.billing_mode)
@@ -296,7 +311,12 @@ router.post('/clients/:clientId/import-ai-usage', async (req, res) => {
       if (page.length < 1000) break;
     }
 
-    const aggregate = aggregateAiUsage(rows || []);
+    const projects = await agentFetch(`/data/Projet?client_id=${encodeURIComponent(client.id)}&limit=1000`);
+    const centers = await rest(CRM_URL, CRM_KEY, `client_cost_centers?select=*&client_id=eq.${encodeURIComponent(client.id)}&is_active=eq.true&limit=1000`, { method: 'GET' });
+    if (!Array.isArray(projects) || !Array.isArray(centers) || projects.length >= 1000 || centers.length >= 1000) {
+      throw new Error('Registre client/projet incomplet pour valider cet import');
+    }
+    const aggregate = aggregateAiUsage(resolveUsageCenters(rows, client.id, projects, centers));
     if (aggregate.unpriced.length) {
       return res.status(422).json({
         error: 'Consommations IA non tarifées détectées — import bloqué pour éviter une sous-facturation.',
@@ -318,9 +338,6 @@ router.post('/clients/:clientId/import-ai-usage', async (req, res) => {
     if (previous.length >= 1000 || previous.some((event) => !refs.has(event.external_ref))) {
       return res.status(409).json({ code: 'ai_usage_reconciliation_required', error: 'Une attribution mensuelle a changé depuis le dernier import : rapprochement requis.' });
     }
-    const projects = await agentFetch(`/data/Projet?client_id=${encodeURIComponent(client.id)}&limit=1000`);
-    const centers = await rest(CRM_URL, CRM_KEY, `client_cost_centers?select=*&client_id=eq.${encodeURIComponent(client.id)}&is_active=eq.true&limit=1000`, { method: 'GET' });
-    for (const group of aggregate.groups) validateGroupScope(group, client.id, projects || [], centers || []);
     if (aggregate.groups.length > 1 && (rule?.billing_mode === 'fixed' || Number(rule?.minimum_minor) > 0)) {
       return res.status(422).json({ code: 'billing_rule_allocation_required', error: 'Forfait ou minimum mensuel : répartition explicite entre projets nécessaire avant import.' });
     }
@@ -364,4 +381,5 @@ module.exports = {
   ledgerReference,
   validateGroupScope,
   upsertLedgerGroup,
+  resolveUsageCenters,
 };
