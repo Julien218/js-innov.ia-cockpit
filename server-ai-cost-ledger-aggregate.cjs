@@ -1,4 +1,6 @@
 const express = require('express');
+const { stableRef } = require('./server-cost-accounting-core.cjs');
+const { crmRequest } = require('./server-client-costs.cjs');
 
 const router = express.Router();
 
@@ -44,6 +46,7 @@ function authHeaders(key) {
 }
 
 async function rest(base, key, path, options = {}) {
+  if (base === CRM_URL) return crmRequest(path, options);
   if (!key) throw new Error('Configuration Supabase serveur manquante');
   const response = await fetch(`${base}/rest/v1/${path}`, {
     ...options,
@@ -84,6 +87,19 @@ async function loadRule(clientId) {
     || null;
 }
 
+function usageScope(row = {}) {
+  const metadata = row.metadata || {};
+  const distinct = (values) => new Set(values.map((value) => safe(value, 120)).filter(Boolean)).size;
+  if (distinct([row.client_key, metadata.canonical_client_id]) > 1
+    || distinct([row.project_key, metadata.canonical_project_id, metadata.project_id]) > 1) {
+    throw new Error('Identifiants client/projet contradictoires dans une consommation IA');
+  }
+  const clientId = safe(row.client_key || metadata.canonical_client_id, 120) || null;
+  const projectId = safe(row.project_key || metadata.canonical_project_id || metadata.project_id, 120) || null;
+  const costCenterId = safe(metadata.cost_center_id, 120) || null;
+  return { clientId, projectId, costCenterId, billable: metadata.billable !== false && Boolean(clientId && projectId) };
+}
+
 function aggregateAiUsage(rows = []) {
   const groups = new Map();
   const unpriced = [];
@@ -95,8 +111,10 @@ function aggregateAiUsage(rows = []) {
     }
     const provider = safe(row?.provider || 'openai', 60) || 'openai';
     const model = safe(row?.model || 'unknown', 120) || 'unknown';
-    const key = `${provider}\u0000${model}`;
+    const scope = usageScope(row);
+    const key = JSON.stringify([scope.clientId, scope.projectId, scope.costCenterId, scope.billable, provider, model]);
     const current = groups.get(key) || {
+      ...scope,
       provider,
       model,
       requests: 0,
@@ -118,6 +136,21 @@ function aggregateAiUsage(rows = []) {
   }
 
   return { groups: [...groups.values()], unpriced };
+}
+
+function ledgerReference(clientId, month, group) {
+  return `ai-usage-month-v2:${clientId}:${month}:${stableRef([group.projectId, group.costCenterId, group.billable, group.provider, group.model])}`;
+}
+
+function validateGroupScope(group, clientId, projects, centers) {
+  if (group.clientId && group.clientId !== String(clientId)) throw new Error('Client de consommation incompatible');
+  if (group.projectId && !projects.some((p) => String(p.id) === group.projectId && String(p.client_id) === String(clientId))) {
+    throw new Error('Projet IA absent du registre ou rattaché à un autre client');
+  }
+  if (group.costCenterId && !centers.some((c) => String(c.id) === group.costCenterId && String(c.client_id) === String(clientId)
+    && (!group.projectId || c.metadata?.project_id === group.projectId))) {
+    throw new Error('Centre de coût incompatible avec le client/projet');
+  }
 }
 
 function applyExactRule(actualEur, rule = null) {
@@ -153,26 +186,26 @@ function applyExactRule(actualEur, rule = null) {
 async function upsertLedgerGroup(clientId, window, group, rule) {
   const exactUsd = Number(group.costUsd.toFixed(8));
   const exactEur = exactUsd * EUR_PER_USD;
-  const priced = applyExactRule(exactEur, rule);
+  const priced = applyExactRule(exactEur, group.billable ? rule : { billing_mode: 'included' });
   const actualMinor = Math.max(0, Math.round(priced.actualEur * 100));
   const billableMinor = Math.max(0, Math.round(priced.billableEur * 100));
-  const externalRef = `ai-usage-month:${clientId}:${window.month}:${group.provider}:${group.model}`;
+  const externalRef = ledgerReference(clientId, window.month, group);
 
   const existing = await rest(
     CRM_URL,
     CRM_KEY,
-    `client_cost_events?select=id,facture_id&source_type=eq.llm_api&external_ref=eq.${encodeURIComponent(externalRef)}&limit=1`,
+    `client_cost_events?select=id,facture_id,invoice_id&source_type=eq.llm_api&external_ref=eq.${encodeURIComponent(externalRef)}&limit=1`,
     { method: 'GET' },
-  ).catch(() => []);
+  );
 
-  if (existing?.[0]?.facture_id) {
+  if (existing?.[0]?.facture_id || existing?.[0]?.invoice_id) {
     return { status: 'locked_invoiced', externalRef, actualMinor, billableMinor };
   }
 
   const payload = {
     client_id: String(clientId),
-    project_id: null,
-    cost_center_id: null,
+    project_id: group.projectId,
+    cost_center_id: group.costCenterId,
     source_type: 'llm_api',
     provider: group.provider,
     description: `LLM API — ${group.model} — ${window.month}`,
@@ -185,7 +218,7 @@ async function upsertLedgerGroup(clientId, window, group, rule) {
     incurred_at: window.start.toISOString(),
     metadata: {
       evidence_status: group.estimatedRequests > 0 ? 'estimated' : 'actual',
-      verification_ref: group.estimatedRequests > 0 ? null : `ai-cost-usage-month:${clientId}:${window.month}:${group.provider}:${group.model}`,
+      verification_ref: group.estimatedRequests > 0 ? null : externalRef,
       calculation_method: group.estimatedRequests > 0 ? 'provider_token_pricing_monthly_aggregation' : null,
       calculation_inputs: group.estimatedRequests > 0 ? {
         request_count: group.requests,
@@ -194,7 +227,8 @@ async function upsertLedgerGroup(clientId, window, group, rule) {
         output_tokens: group.outputTokens,
         cost_usd_precise: exactUsd,
       } : null,
-      aggregation: 'monthly_by_provider_model',
+      aggregation: 'monthly_by_client_project_center_provider_model_v2',
+      attribution_status: group.projectId ? 'project_verified' : 'project_unassigned',
       month: window.month,
       model: group.model,
       provider: group.provider,
@@ -214,16 +248,24 @@ async function upsertLedgerGroup(clientId, window, group, rule) {
     },
   };
 
-  const rows = await rest(
+  // Insert-only on conflict, then conditional update: never overwrite an invoice
+  // attached concurrently after our initial read.
+  let rows = await rest(
     CRM_URL,
     CRM_KEY,
     'client_cost_events?on_conflict=source_type,external_ref',
     {
       method: 'POST',
-      headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+      headers: { Prefer: 'resolution=ignore-duplicates,return=representation' },
       body: JSON.stringify(payload),
     },
   );
+  if (!rows?.length) {
+    rows = await rest(CRM_URL, CRM_KEY,
+      `client_cost_events?source_type=eq.llm_api&external_ref=eq.${encodeURIComponent(externalRef)}&facture_id=is.null&invoice_id=is.null`,
+      { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify(payload) });
+    if (!rows?.length) return { status: 'locked_invoiced', externalRef, actualMinor, billableMinor };
+  }
 
   return {
     status: existing?.length ? 'updated' : 'created',
@@ -243,12 +285,16 @@ router.post('/clients/:clientId/import-ai-usage', async (req, res) => {
     }
     const client = await getClient(req.params.clientId);
     const window = monthWindow(req.body?.month || req.query?.month);
-    const rows = await rest(
-      AI_URL,
-      AI_KEY,
-      `ai_cost_usage?select=*&client_key=eq.${encodeURIComponent(client.id)}&created_at=gte.${encodeURIComponent(window.start.toISOString())}&created_at=lt.${encodeURIComponent(window.end.toISOString())}&order=created_at.asc&limit=10000`,
-      { method: 'GET' },
-    );
+    const rows = [];
+    for (let offset = 0; ; offset += 1000) {
+      if (offset >= 100000) throw new Error('Volume IA trop important pour cet import : aucun coût écrit');
+      const page = await rest(AI_URL, AI_KEY,
+        `ai_cost_usage?select=*&client_key=eq.${encodeURIComponent(client.id)}&created_at=gte.${encodeURIComponent(window.start.toISOString())}&created_at=lt.${encodeURIComponent(window.end.toISOString())}&order=created_at.asc,id.asc&limit=1000&offset=${offset}`,
+        { method: 'GET' });
+      if (!Array.isArray(page)) throw new Error('Réponse de consommation IA invalide');
+      rows.push(...page);
+      if (page.length < 1000) break;
+    }
 
     const aggregate = aggregateAiUsage(rows || []);
     if (aggregate.unpriced.length) {
@@ -260,6 +306,24 @@ router.post('/clients/:clientId/import-ai-usage', async (req, res) => {
     }
 
     const rule = await loadRule(client.id);
+    // Legacy totals overlap the v2 groups. Reconcile them explicitly, never add
+    // a second monthly total or silently rewrite previously billed history.
+    const legacy = await rest(CRM_URL, CRM_KEY,
+      `client_cost_events?select=id&client_id=eq.${encodeURIComponent(client.id)}&source_type=eq.llm_api&incurred_at=gte.${encodeURIComponent(window.start.toISOString())}&incurred_at=lt.${encodeURIComponent(window.end.toISOString())}&or=(external_ref.is.null,external_ref.not.like.ai-usage-month-v2:*)&limit=1`,
+      { method: 'GET' });
+    if (legacy?.length) return res.status(409).json({ code: 'ai_usage_reconciliation_required', error: 'Des coûts IA existent déjà pour ce mois. Rapprochement requis avant import, aucune ligne modifiée.' });
+    const previous = await rest(CRM_URL, CRM_KEY,
+      `client_cost_events?select=external_ref&client_id=eq.${encodeURIComponent(client.id)}&external_ref=like.ai-usage-month-v2:${encodeURIComponent(client.id)}:${window.month}:*&limit=1000`, { method: 'GET' });
+    const refs = new Set(aggregate.groups.map((group) => ledgerReference(client.id, window.month, group)));
+    if (previous.length >= 1000 || previous.some((event) => !refs.has(event.external_ref))) {
+      return res.status(409).json({ code: 'ai_usage_reconciliation_required', error: 'Une attribution mensuelle a changé depuis le dernier import : rapprochement requis.' });
+    }
+    const projects = await agentFetch(`/data/Projet?client_id=${encodeURIComponent(client.id)}&limit=1000`);
+    const centers = await rest(CRM_URL, CRM_KEY, `client_cost_centers?select=*&client_id=eq.${encodeURIComponent(client.id)}&is_active=eq.true&limit=1000`, { method: 'GET' });
+    for (const group of aggregate.groups) validateGroupScope(group, client.id, projects || [], centers || []);
+    if (aggregate.groups.length > 1 && (rule?.billing_mode === 'fixed' || Number(rule?.minimum_minor) > 0)) {
+      return res.status(422).json({ code: 'billing_rule_allocation_required', error: 'Forfait ou minimum mensuel : répartition explicite entre projets nécessaire avant import.' });
+    }
     const results = [];
     let actualEur = 0;
     let billableEur = 0;
@@ -296,4 +360,8 @@ module.exports = {
   aggregateAiUsage,
   applyExactRule,
   monthWindow,
+  usageScope,
+  ledgerReference,
+  validateGroupScope,
+  upsertLedgerGroup,
 };

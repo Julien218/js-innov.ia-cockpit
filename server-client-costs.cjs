@@ -9,6 +9,7 @@ const {
   buildSourceCoverage,
   accountingCompleteness,
   sourceToEurMinor,
+  mappingConflict,
 } = require('./server-cost-accounting-core.cjs');
 
 const router = express.Router();
@@ -106,6 +107,10 @@ async function rest(base, key, path, options = {}) {
 
 async function crmSelect(path) {
   return rest(CRM_URL, CRM_KEY, path, { method: 'GET' });
+}
+
+async function crmRequest(path, options = {}) {
+  return rest(CRM_URL, CRM_KEY, path, options);
 }
 
 async function crmInsert(table, payload, conflict = null) {
@@ -273,7 +278,7 @@ async function createCostEvent({
     billable: requestedEvidence === 'unverified' ? false : undefined,
   });
   const priced = applyBillingRule(actualCostMinor, rule);
-  if (normalizedEvidence === 'unverified') {
+  if (normalizedEvidence === 'unverified' || metadata.billable === false) {
     priced.billable = 0;
     priced.billableEnabled = false;
   }
@@ -325,9 +330,16 @@ async function importCostCenter(center, window) {
   if (!center?.client_id) throw new Error('Cost center sans client_id canonique');
   await getClient(center.client_id);
   const mappings = await crmSelect(`client_external_mappings?select=*&cost_center_id=eq.${encodeURIComponent(center.id)}&is_active=eq.true&limit=500`);
+  const allMappings = await crmSelect('client_external_mappings?select=*&is_active=eq.true&limit=5000');
+  if (allMappings.length >= 5000) throw new Error('Registre trop volumineux pour vérifier les chevauchements');
+  const projectId = clean(center.metadata?.project_id, 120);
+  if (!projectId) throw new Error('Centre sans projet métier validé : import bloqué');
+  const project = await agentFetch(`/data/Projet/${encodeURIComponent(projectId)}`);
+  if (String(project?.client_id) !== String(center.client_id)) throw new Error('Le projet du centre appartient à un autre client');
   const results = [];
 
   for (const mapping of mappings || []) {
+    if (mappingConflict(mapping, allMappings)) throw new Error('Rattachements fournisseurs qui se chevauchent : import bloqué');
     const result = await collectMapping(mapping, window);
     let created = 0;
     for (const line of result.lines || []) {
@@ -337,10 +349,15 @@ async function importCostCenter(center, window) {
         supabase: 'supabase', dropbox: 'dropbox', media_ai: 'media_ai',
       })[line.line_type] || 'llm_api';
       const ref = line.external_ref || `${sourceType}:${mapping.external_id}:${window.month}:${crypto.randomUUID()}`;
-      const exists = await crmSelect(`client_cost_events?select=id&source_type=eq.${encodeURIComponent(sourceType)}&external_ref=eq.${encodeURIComponent(ref)}&limit=1`).catch(() => []);
-      if (exists?.length) continue;
+      const exists = await crmSelect(`client_cost_events?select=id,client_id,project_id,actual_cost_minor&source_type=eq.${encodeURIComponent(sourceType)}&external_ref=eq.${encodeURIComponent(ref)}&limit=1`);
+      if (exists?.length) {
+        if (String(exists[0].client_id) !== String(center.client_id) || exists[0].project_id !== projectId
+          || Number(exists[0].actual_cost_minor) !== minor(line.total_minor)) throw new Error('Coût fournisseur déjà enregistré avec montant ou attribution différent : rapprochement requis');
+        continue;
+      }
       await createCostEvent({
         clientId: center.client_id,
+        projectId,
         costCenterId: center.id,
         sourceType,
         provider: sourceType === 'llm_api' ? 'openai' : sourceType,
@@ -352,7 +369,7 @@ async function importCostCenter(center, window) {
         verificationRef: line.metadata?.verification_ref || null,
         calculationMethod: line.metadata?.calculation_method || null,
         calculationInputs: line.metadata?.calculation_inputs || null,
-        metadata: { ...(line.metadata || {}), mapping_id: mapping.id, period: window.month },
+        metadata: { ...(line.metadata || {}), billable: center.metadata?.billable !== false, mapping_id: mapping.id, canonical_project_id: projectId, period: window.month },
       });
       created += 1;
     }
@@ -527,11 +544,13 @@ router.get('/accounting/cost-centers', async (_req, res) => {
 router.get('/accounting/clients', async (_req, res) => {
   try {
     const clients = await agentFetch('/data/Client?limit=2000');
+    const projects = await agentFetch('/data/Projet?limit=2000');
     const centers = await crmSelect('client_cost_centers?select=id,client_id,product_code&is_active=eq.true&limit=2000').catch(() => []);
     return res.json({
       clients: (Array.isArray(clients) ? clients : []).map((client) => ({
         id: client.id,
         name: clientName(client),
+        projects: (Array.isArray(projects) ? projects : []).filter((project) => String(project.client_id) === String(client.id)).map((project) => ({ id: project.id, name: project.nom })),
         cost_centers: (centers || []).filter((center) => String(center.client_id) === String(client.id)),
       })).sort((a, b) => a.name.localeCompare(b.name, 'fr')),
     });
@@ -543,11 +562,18 @@ router.get('/accounting/clients', async (_req, res) => {
 router.post('/accounting/cost-centers', async (req, res) => {
   try {
     const client = await getClient(clean(req.body?.client_id, 120));
+    const projectId = clean(req.body?.project_id, 120);
+    if (!projectId) return res.status(400).json({ error: 'Projet métier requis pour créer un centre de coût' });
+    const project = await agentFetch(`/data/Projet/${encodeURIComponent(projectId)}`);
+    if (String(project?.client_id) !== String(client.id)) return res.status(400).json({ error: 'Le projet doit appartenir au client sélectionné' });
     const rawCode = clean(req.body?.product_code, 100) || `CLIENT_${client.id}`;
     const productCode = rawCode.toUpperCase().replace(/[^A-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 100);
     if (!productCode) return res.status(400).json({ error: 'Code projet invalide' });
     const existing = await crmSelect(`client_cost_centers?select=*&client_id=eq.${encodeURIComponent(client.id)}&product_code=eq.${encodeURIComponent(productCode)}&is_active=eq.true&limit=1`).catch(() => []);
-    if (existing?.[0]) return res.json({ success: true, cost_center: existing[0], status: 'already_exists' });
+    if (existing?.[0]) {
+      if (existing[0].metadata?.project_id !== projectId) return res.status(409).json({ error: 'Ce code existe déjà avec un autre projet ou un rattachement à vérifier' });
+      return res.json({ success: true, cost_center: existing[0], status: 'already_exists' });
+    }
     const rows = await crmInsert('client_cost_centers', {
       client_id: String(client.id),
       product_code: productCode,
@@ -558,7 +584,7 @@ router.post('/accounting/cost-centers', async (req, res) => {
       monthly_fee_minor: 0,
       currency: 'EUR',
       is_active: true,
-      metadata: { created_from: 'ai_cost_control', canonical_client_id: String(client.id) },
+      metadata: { created_from: 'ai_cost_control', canonical_client_id: String(client.id), project_id: projectId, billable: false, billing_activation_requires_review: true },
     });
     return res.status(201).json({ success: true, cost_center: rows?.[0] });
   } catch (error) {
@@ -579,6 +605,11 @@ router.post('/accounting/cost-centers/:id/mappings', async (req, res) => {
       return res.status(409).json({ error: 'Cet identifiant fournisseur appartient déjà à un autre client/projet' });
     }
     if (existing?.[0]) return res.json({ success: true, mapping: existing[0], status: 'already_exists' });
+    const allMappings = await crmSelect('client_external_mappings?select=*&is_active=eq.true&limit=5000');
+    if (allMappings.length >= 5000) return res.status(409).json({ error: 'Registre trop volumineux pour vérifier les chevauchements' });
+    const candidate = { service_type: serviceType, external_id: externalId, metadata: req.body?.metadata || {} };
+    if (serviceType === 'railway_service' && !clean(candidate.metadata.project_id)) return res.status(400).json({ error: 'project_id Railway requis pour un service' });
+    if (mappingConflict(candidate, allMappings)) return res.status(409).json({ error: 'Ce rattachement chevauche un compte, projet ou service déjà configuré' });
     const rows = await crmInsert('client_external_mappings', {
       cost_center_id: req.params.id,
       service_type: serviceType,
@@ -912,4 +943,5 @@ module.exports = {
   monthWindow,
   normalizedLocalRates,
   normalizeLocalTelemetry,
+  crmRequest,
 };
