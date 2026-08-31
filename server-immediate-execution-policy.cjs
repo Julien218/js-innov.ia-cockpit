@@ -5,13 +5,19 @@ function normalize(value) {
     .toLowerCase();
 }
 
+function stripInjectedContext(value) {
+  return String(value || '')
+    .replace(/\n?\[(?:DIAGNOSTIC LOCAL LECTURE SEULE|AUTORISATION COCKPIT|VERROU PREUVE VID[ÉE]O)[^\]]*\][\s\S]*?\[\/(?:DIAGNOSTIC LOCAL LECTURE SEULE|AUTORISATION COCKPIT|VERROU PREUVE VID[ÉE]O)\]/gi, '')
+    .trim();
+}
+
 function isSensitiveAction(message) {
-  const text = normalize(message);
+  const text = normalize(stripInjectedContext(message));
   return /\b(?:supprime|supprimer|efface|effacer|delete|drop|truncate|dns|nameserver|cname|mx|txt|secret|token|cle api|api key|publie en production|publication production|deploy production|deploie en production|envoie email|envoyer email|paiement|virement)\b/.test(text);
 }
 
 function hasImmediateExecutionIntent(message) {
-  const text = normalize(message);
+  const text = normalize(stripInjectedContext(message));
   if (!text || isSensitiveAction(text)) return false;
   const actionVerb = /\b(?:cree|creer|genere|generer|produis|produire|realise|realiser|lance|lancer|execute|executer|effectue|effectuer|fais|faire|corrige|corriger|modifie|modifier)\b/;
   const supportedTarget = /\b(?:video|videos|image|images|visuel|visuels|page|site|seo|application|app|mobile|workflow|comfyui|ecran geant|tache|taches|action|actions|code|landing|frontend|backend)\b/;
@@ -20,7 +26,7 @@ function hasImmediateExecutionIntent(message) {
 }
 
 function isVideoExecutionRequest(message) {
-  const text = normalize(message);
+  const text = normalize(stripInjectedContext(message));
   return /\b(?:video|videos|grok|imagine|nova-video-production|fabrique video|comfyui)\b/.test(text)
     && /\b(?:cree|creer|genere|generer|produis|produire|lance|lancer|execute|executer|effectue|effectuer|rendu|render)\b/.test(text);
 }
@@ -53,6 +59,7 @@ function authorizeImmediateExecutionMessage(message) {
 }
 
 module.exports = {
+  stripInjectedContext,
   hasImmediateExecutionIntent,
   isSensitiveAction,
   isVideoExecutionRequest,
