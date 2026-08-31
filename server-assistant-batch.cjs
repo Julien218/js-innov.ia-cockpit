@@ -4,6 +4,7 @@ const { cleanTenant } = require('./server-tenant.cjs');
 const { sanitizeTaskBatchPayload, executeTaskBatch } = require('./server-task-batch.cjs');
 const { runAutopilot } = require('./server-task-autopilot.cjs');
 const { beginRequest, isCurrentTurn } = require('./server-assistant-intent.cjs');
+const { enrichTaskBatchWithRequestContext } = require('./server-task-context.cjs');
 
 const router = express.Router();
 const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
@@ -338,6 +339,7 @@ router.post('/chat', async (req, res, next) => {
           'Quand plusieurs tâches métier doivent être créées, utilise uniquement propose_action avec type=create_task_batch.',
           'Payload obligatoire: { tasks: [{ titre, description, priorite, projet_id?, client_id?, agent_name, agent_role, provider, provider_agent_id?, read_only }] }.',
           'Chaque tâche doit avoir un titre non vide. read_only=true uniquement pour diagnostic/analyse sans effet métier.',
+          'Chaque tâche doit conserver dans sa description la cible exacte de la demande: URL, domaine, dépôt, projet, identifiant Cockpit et média source disponibles.',
           'Une tâche déléguée n’est jamais considérée terminée tant qu’un résultat réel et vérifié n’existe pas.',
           'Ne demande pas de confirmation supplémentaire lorsque le message utilisateur autorise explicitement l’exécution du lot et que les sous-actions sont normales, réversibles et nécessaires à cette demande.',
           'Ne déclare jamais une capacité indisponible sans vérifier les agents/outils disponibles; un état ancien ne vaut pas état actuel.',
@@ -365,7 +367,8 @@ router.post('/chat', async (req, res, next) => {
     let executionResult = null;
 
     if (rawAction?.type === 'create_task_batch') {
-      const payload = sanitizeTaskBatchPayload(rawAction.payload || {});
+      const contextualPayload = enrichTaskBatchWithRequestContext(rawAction.payload || {}, message, req.body?.recent_media);
+      const payload = sanitizeTaskBatchPayload(contextualPayload);
       if (!payload) {
         return res.status(422).json({
           error: 'Batch invalide: chaque tâche doit contenir au minimum un titre et le tableau tasks doit être non vide.',
