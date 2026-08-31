@@ -52,6 +52,12 @@ COCKPIT_URL=https://cockpit.jsinnovia.com
 
 `SUPABASE_SERVICE_ROLE_KEY` reste accepté pendant la migration vers les nouvelles clés secrètes Supabase. Supprimez les anciennes variables `VITE_AGENT_KEY`, `VITE_AGENT_AUTH`, `VITE_AGENT_API_KEY` et `VITE_AGENT_URL` de la configuration de build après déploiement de cette version.
 
+### Gouvernance et consentements du site public
+
+Le schéma Supabase `governance` doit être ajouté aux schémas exposés par la Data API. Le serveur sélectionne explicitement ce schéma avec les en-têtes PostgREST et filtre toujours `tenant_id`, y compris avec la clé serveur qui contourne la RLS.
+
+Configurez la même valeur `ELYNEA_SITE_KEY` (au moins 32 caractères) sur le Cockpit et sur le site public. Ajoutez de préférence un secret distinct `GOVERNANCE_IP_HASH_SECRET` pour pseudonymiser les adresses IP des preuves. La migration `20260901120000_governance_tenant_and_rgpd_hardening.sql` doit être appliquée avant d’activer le nouvel endpoint public.
+
 L'assistant personnel est disponible sur `/agent`. Il utilise la session HttpOnly du cockpit, limite le débit, sépare les conversations par utilisateur et exige une confirmation pour toute action autorisée. Chaque conversation et action est journalisée dans `LogAction`.
 
 ## Vérification officielle des fiches clients (BCE)

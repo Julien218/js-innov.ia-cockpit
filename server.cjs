@@ -333,6 +333,7 @@ try {
 // ── Data Governance & RGPD ─────────────────────────────────
 try {
   const governanceRouter = require('./server-governance.cjs');
+  app.use('/api/governance', governanceRouter.publicRouter);
   app.use('/api/governance', requireSession('admin'), requirePermission('governance', 'admin'), governanceRouter);
   console.log('✅ Route /api/governance activée (audit, RGPD, consentements, politiques)');
 } catch (e) {

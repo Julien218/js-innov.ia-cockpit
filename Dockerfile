@@ -92,6 +92,7 @@ COPY --from=builder /app/server-insurance.cjs ./server-insurance.cjs
 COPY --from=builder /app/server-insurance-mailbox.cjs ./server-insurance-mailbox.cjs
 COPY --from=builder /app/server-documents.cjs ./server-documents.cjs
 COPY --from=builder /app/server-governance.cjs ./server-governance.cjs
+COPY --from=builder /app/lib/governance-export.cjs ./lib/governance-export.cjs
 COPY --from=builder /app/server-base44-agents.cjs ./server-base44-agents.cjs
 COPY --from=builder /app/server-specialist-tasks.cjs ./server-specialist-tasks.cjs
 COPY --from=builder /app/server-assistant-intent.cjs ./server-assistant-intent.cjs
@@ -143,6 +144,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-task-autopilot.cjs \
  && test -f /app/server-bce.cjs \
  && test -f /app/server-public-elynea.cjs \
+ && test -f /app/lib/governance-export.cjs \
  && node --check /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-email-trash-core.cjs \
  && node --check /app/server-role-policy.cjs \
@@ -184,6 +186,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-task-autopilot.cjs \
  && node --check /app/server-bce.cjs \
  && node --check /app/server-public-elynea.cjs \
+ && node --check /app/lib/governance-export.cjs \
  && node -e "require('/app/server-led-ad-director.cjs'); require('/app/server-agent-registry.cjs'); require('/app/server-nova-routing.cjs')" \
  && echo "Required runtime modules check OK"
 
