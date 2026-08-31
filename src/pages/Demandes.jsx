@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useDemandes } from "@/lib/useDemandes";
+import { demandeStatus, isNewDemande, demandeOrigin, demandeTitle, demandeFormData } from "@/lib/demandePresentation";
 const useMutationAny = /** @type {any} */ (useMutation);
 import PageHeader from "@/components/shared/PageHeader";
 import ErrorState from "@/components/shared/ErrorState";
@@ -8,17 +10,18 @@ import DataTable from "@/components/shared/DataTable";
 import StatusBadge from "@/components/shared/StatusBadge";
 import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2 } from "lucide-react";
-import { format } from "date-fns";
+import { Eye, Pencil, Trash2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { format, isValid } from "date-fns";
 import { fr } from "date-fns/locale";
 
 const formFields = [
   { key: "nom", label: "Nom du contact", required: true },
-  { key: "email", label: "E-mail", type: "email", required: true },
+  { key: "email", label: "E-mail", type: "email" },
   { key: "telephone", label: "Téléphone" },
   { key: "entreprise", label: "Entreprise" },
   { key: "message", label: "Demande", type: "textarea", required: true },
-  { key: "type", label: "Origine", type: "select", options: [
+  { key: "type", label: "Type de demande", type: "select", options: [
     { value: "contact", label: "Contact" },
     { value: "elynea_commerciale", label: "Elynea — site web" },
     { value: "demande_devis", label: "Demande de devis" },
@@ -39,12 +42,10 @@ export default function Demandes() {
   const [editingId, setEditingId] = useState(null);
   const [search, setSearch] = useState("");
   const [filterStatut, setFilterStatut] = useState("tous");
+  const [selected, setSelected] = useState(null);
   const queryClient = useQueryClient();
 
-  const { data: demandes = [], isLoading, isError, error, refetch } = useQuery({
-    queryKey: ["demandes"],
-    queryFn: () => base44.entities.Demande.list("-created_at"),
-  });
+  const { data: demandes = [], isLoading, isError, error, refetch } = useDemandes();
 
   const createMutation = useMutationAny({
     mutationFn: (d) => base44.entities.Demande.create(d),
@@ -60,43 +61,49 @@ export default function Demandes() {
   });
 
   const closeModal = () => { setModalOpen(false); setFormData({}); setEditingId(null); };
-  const handleEdit = (d) => { setFormData(d); setEditingId(d.id); setModalOpen(true); };
+  const handleEdit = (d) => { setFormData(demandeFormData(d)); setEditingId(d.id); setModalOpen(true); };
   const handleSubmit = () => {
-    if (editingId) updateMutation.mutate({ id: editingId, data: formData });
-    else createMutation.mutate(formData);
+    if (editingId) updateMutation.mutate({ id: editingId, data: demandeFormData(formData) });
+    else createMutation.mutate(demandeFormData(formData));
   };
 
   const filtered = useMemo(() =>
     demandes.filter(d =>
-      (filterStatut === "tous" || d.statut === filterStatut) &&
-      (!search || [d.nom, d.entreprise, d.email, d.message].some(value => value?.toLowerCase().includes(search.toLowerCase())))
+      (filterStatut === "tous" || demandeStatus(d) === filterStatut) &&
+      (!search || [d.nom, d.entreprise, d.email, d.telephone, d.message, demandeOrigin(d)].some(value => value?.toLowerCase().includes(search.toLowerCase())))
     ), [demandes, search, filterStatut]
   );
 
-  const nouvelles = demandes.filter(d => d.statut === "nouveau").length;
-  const enTraitement = demandes.filter(d => d.statut === "en_cours").length;
+  const nouvelles = demandes.filter(isNewDemande).length;
+  const enTraitement = demandes.filter(d => demandeStatus(d) === "en_cours").length;
+  const displayDate = (d) => {
+    const date = new Date(d.created_at || d.created_date || '');
+    return isValid(date) ? format(date, 'dd MMM yyyy', { locale: fr }) : 'Date non renseignée';
+  };
 
   const columns = [
-    { key: "message", label: "Demande", render: (r) => (
+    { key: "message", label: "Demande", render: (_value, r) => (
       <div>
-        <p className="font-medium text-sm">{r.type === "elynea_commerciale" ? "Demande qualifiée par Elynea" : (r.type || "Contact")}</p>
-        <p className="text-xs text-muted-foreground line-clamp-2">{r.message}</p>
+        <p className="font-medium text-sm">{demandeTitle(r)}</p>
+        <p className="text-xs text-muted-foreground line-clamp-2 whitespace-normal max-w-md">{r.message || 'Message non renseigné'}</p>
       </div>
     )},
-    { key: "nom", label: "Contact", render: (r) => (
+    { key: "nom", label: "Contact", render: (_value, r) => (
       <div>
-        <p className="text-sm">{r.nom || "-"}</p>
+        <p className="text-sm">{r.nom || "Contact non renseigné"}</p>
         {r.entreprise && <p className="text-xs text-muted-foreground">{r.entreprise}</p>}
         {r.email && <p className="text-xs text-muted-foreground">{r.email}</p>}
+        {r.telephone && <p className="text-xs text-muted-foreground">{r.telephone}</p>}
       </div>
     )},
-    { key: "type", label: "Origine", render: (r) => <span className="text-xs capitalize text-muted-foreground">{r.type?.replace(/_/g, " ") || "-"}</span> },
-    { key: "created_at", label: "Date", render: (r) => <span className="text-xs text-muted-foreground">{format(new Date(r.created_date || r.created_at), "dd MMM", { locale: fr })}</span> },
-    { key: "statut", label: "Statut", render: (r) => <StatusBadge status={r.statut} /> },
-    { key: "actions", label: "", render: (r) => (
+    { key: "type", label: "Origine", render: (_value, r) => <span className="text-xs text-muted-foreground">{demandeOrigin(r)}</span> },
+    { key: "created_at", label: "Date", render: (_value, r) => <span className="text-xs text-muted-foreground">{displayDate(r)}</span> },
+    { key: "statut", label: "Statut", render: (_value, r) => <StatusBadge status={demandeStatus(r)} /> },
+    { key: "actions", label: "", render: (_value, r) => (
       <div className="flex gap-1">
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleEdit(r); }}><Pencil className="w-3 h-3" /></Button>
-        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(r.id); }}><Trash2 className="w-3 h-3" /></Button>
+        <Button aria-label="Voir la demande" variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); setSelected(r); }}><Eye className="w-3 h-3" /></Button>
+        <Button aria-label="Modifier la demande" variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleEdit(r); }}><Pencil className="w-3 h-3" /></Button>
+        <Button aria-label="Supprimer la demande" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={(e) => { e.stopPropagation(); if (window.confirm('Supprimer cette demande ?')) deleteMutation.mutate(r.id); }}><Trash2 className="w-3 h-3" /></Button>
       </div>
     )},
   ];
@@ -118,22 +125,41 @@ export default function Demandes() {
       <PageHeader
         title="Demandes"
         subtitle={`${nouvelles} nouvelles · ${enTraitement} en cours`}
-        onAdd={() => setModalOpen(true)}
+        onAdd={() => { setFormData(demandeFormData()); setEditingId(null); setModalOpen(true); }}
         addLabel="Nouvelle demande"
         search={search}
         onSearch={setSearch}
         actions={
           <div className="flex gap-1 bg-muted rounded-lg p-0.5">
-            {["tous", "nouveau", "en_cours", "traite"].map(s => (
+            {["tous", "nouveau", "en_cours", "traite", "ferme"].map(s => (
               <button key={s} onClick={() => setFilterStatut(s)}
                 className={`px-3 py-1.5 text-xs rounded-md font-medium transition-all ${filterStatut === s ? "bg-white shadow text-foreground" : "text-muted-foreground"}`}>
-                {s === "tous" ? "Tous" : s === "nouveau" ? "Nouvelles" : s === "en_cours" ? "En cours" : "Traitées"}
+                {s === "tous" ? "Tous" : s === "nouveau" ? "Nouvelles" : s === "en_cours" ? "En cours" : s === "ferme" ? "Fermées" : "Traitées"}
               </button>
             ))}
           </div>
         }
       />
-      <DataTable columns={columns} data={filtered} isLoading={isLoading} emptyMessage="Aucune demande" />
+      {(createMutation.error || updateMutation.error || deleteMutation.error) && <p role="alert" className="text-destructive text-sm">{(createMutation.error || updateMutation.error || deleteMutation.error).message}</p>}
+      <DataTable columns={columns} data={filtered} isLoading={isLoading} emptyMessage="Aucune demande" onRowClick={setSelected} />
+      <Dialog open={Boolean(selected)} onOpenChange={(open) => { if (!open) setSelected(null); }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{selected ? demandeTitle(selected) : 'Demande'}</DialogTitle>
+            <DialogDescription>Coordonnées et origine enregistrées pour cette demande.</DialogDescription>
+          </DialogHeader>
+          {selected && <div className="space-y-3 text-sm">
+            <p><strong>Contact :</strong> {selected.nom || 'Non renseigné'} {selected.entreprise && `— ${selected.entreprise}`}</p>
+            <p><strong>E-mail :</strong> {selected.email || 'Non renseigné'}</p>
+            <p><strong>Téléphone :</strong> {selected.telephone || 'Non renseigné'}</p>
+            <p><strong>Origine :</strong> {demandeOrigin(selected)}</p>
+            <p><strong>Date :</strong> {displayDate(selected)}</p>
+            {selected.created_by && <p><strong>Enregistrée par :</strong> {selected.created_by}</p>}
+            <StatusBadge status={demandeStatus(selected)} />
+            <p className="whitespace-pre-wrap break-words">{selected.message || 'Message non renseigné'}</p>
+          </div>}
+        </DialogContent>
+      </Dialog>
       <FormModal
         open={modalOpen}
         onClose={closeModal}

@@ -14,6 +14,8 @@ import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { usePermissions } from "@/lib/usePermissions";
 import { ROLE_LABELS, ROLE_COLORS } from "@/lib/roles";
+import { useDemandes } from "@/lib/useDemandes";
+import { isNewDemande } from "@/lib/demandePresentation";
 
 const OLIVIER_EMAIL = 'olivier.trevis@pv.be';
 
@@ -43,12 +45,8 @@ const useEmailBadge = () => {
 };
 
 const useDemandeBadge = () => {
-  const { data = [] } = useQuery({
-    queryKey: ["demandes"],
-    queryFn: () => base44.entities.Demande.list(),
-    staleTime: 30000,
-  });
-  return data.filter(d => d.statut === "ouverte").length;
+  const { data = [] } = useDemandes();
+  return data.filter(isNewDemande).length;
 };
 
 const useAgentLocalStatus = () => {
