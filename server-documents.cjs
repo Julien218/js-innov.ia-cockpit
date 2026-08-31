@@ -552,3 +552,4 @@ module.exports.indexDocument = indexDocument;
 module.exports.isPortfolioMedia = isPortfolioMedia;
 module.exports.normalizeDocumentClientId = normalizeDocumentClientId;
 module.exports.getAssignableClient = getAssignableClient;
+module.exports.getDropboxAccessToken = getDropboxAccessToken;

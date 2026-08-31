@@ -112,10 +112,13 @@ test('le Cockpit synchronise et transmet une copie locale des tâches', () => {
   assert.match(source, /description: task\.description/);
 });
 
-test('les demandes d outils locaux sont routées vers NOVA Windows même avec Internet', () => {
+test('les demandes d outils locaux sont routées vers NOVA Windows même avec Internet', async () => {
   assert.match(floatingAgent, /LOCAL_TOOL_REQUEST/);
-  assert.match(floatingAgent, /requiresLocalTool \|\| \(typeof navigator/);
-  assert.match(floatingAgent, /data = await sendLocal\(\)/);
+  assert.match(floatingAgent, /await sendNovaChat\(\{ message: msg, requiresLocalTool/);
+  const { sendNovaChat } = await import('../src/lib/novaChatTransport.js');
+  assert.deepEqual(await sendNovaChat({ message: 'Vérifie ComfyUI', requiresLocalTool: true, offline: false,
+    sendCloud: () => assert.fail('Un outil local doit rester local'), sendLocal: async () => ({ local: true }),
+  }), { local: true });
 });
 
 test('NOVA locale reçoit le dernier média actif de la conversation', () => {

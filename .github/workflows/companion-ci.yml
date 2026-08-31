@@ -8,7 +8,11 @@ on:
       - 'server-assistant-batch.cjs'
       - 'server-base44-agents.cjs'
       - 'server-specialist-tasks.cjs'
+      - 'server-nova-document-delete.cjs'
+      - 'server-documents.cjs'
+      - 'tests/nova-document-delete.test.cjs'
       - 'src/pages/AgentsIA.jsx'
+      - 'src/pages/Documents.jsx'
       - 'tests/specialist-tasks.test.cjs'
       - 'server-task-batch.cjs'
       - 'server-nova-executors.cjs'
@@ -31,6 +35,7 @@ on:
       - 'src/lib/roles.js'
       - 'src/lib/assistantConfirmationBridge.js'
       - 'src/lib/mediaReference.js'
+      - 'src/lib/novaChatTransport.js'
       - 'src/components/ClientCompanion.jsx'
       - 'src/components/RoleAwareFloatingAgent.jsx'
       - 'src/components/FloatingAgent.jsx'
@@ -82,6 +87,7 @@ jobs:
           node --check server-assistant-batch.cjs
           node --check server-base44-agents.cjs
           node --check server-specialist-tasks.cjs
+          node --check server-nova-document-delete.cjs
           node --check server-task-batch.cjs
           node --check server-nova-executors.cjs
           node --check server-task-autopilot.cjs

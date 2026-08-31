@@ -21,10 +21,14 @@ test('NOVA est le seul Companion visible et l’ancienne route JulienAI est neut
   assert.doesNotMatch(audience, /assistant_name:\s*'Julien AI Companion'/);
 });
 
-test('la même NOVA bascule automatiquement sur l’IA locale quand Internet est coupé', () => {
+test('la même NOVA bascule automatiquement sur l’IA locale quand Internet est coupé', async () => {
   assert.match(floating, /navigator\.onLine === false/);
   assert.match(floating, /LOCAL_NOVA_URLS.*127\.0\.0\.1:8788.*127\.0\.0\.1:8787/);
-  assert.match(floating, /sendCloud\(\)[\s\S]*catch[\s\S]*sendLocal\(\)/);
+  assert.match(floating, /await sendNovaChat/);
+  const { sendNovaChat } = await import('../src/lib/novaChatTransport.js');
+  assert.deepEqual(await sendNovaChat({ message: 'Bonjour', offline: true,
+    sendCloud: () => assert.fail('Hors connexion, ne pas appeler le cloud'), sendLocal: async () => ({ local: true }),
+  }), { local: true });
   assert.match(floating, /Tu es NOVA, l’unique assistant visible/);
   assert.doesNotMatch(floating, /Julien AI Companion/);
 });

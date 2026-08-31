@@ -15,10 +15,12 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import novaAvatar from '@/assets/nova-avatar-128.png';
 import { chooseNovaVoice } from '@/lib/nova-voice';
 import { inspectMediaFile } from '@/lib/mediaReference';
 import { executeNovaClientAction } from '@/lib/novaClientAction';
+import { isDropboxDeletionRequest, sendNovaChat } from '@/lib/novaChatTransport';
 
 const LOCAL_NOVA_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
 const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
@@ -31,6 +33,7 @@ const AFFIRMATIVE_CONFIRMATION = /^(oui|ok|oki|okay|confirme|je confirme|vas[- ]
 const NEGATIVE_CONFIRMATION = /^(non|annule|annuler|stop)(?:\b|[,.!])/i;
 
 const FloatingAgent = () => {
+  const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState(() => {
     try {
@@ -291,6 +294,7 @@ const FloatingAgent = () => {
       return;
     }
     const requiresLocalTool = LOCAL_TOOL_REQUEST.test(msg);
+    if (isDropboxDeletionRequest(msg)) setConfirmation(null);
 
     setInput('');
     stopSpeaking();
@@ -345,18 +349,15 @@ const FloatingAgent = () => {
         throw lastError || new Error('NOVA locale indisponible');
       };
 
-      let data;
-      if (requiresLocalTool || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
-        data = await sendLocal();
-      } else {
-        try {
-          data = await sendCloud();
-        } catch (error) {
-          if (error?.cockpitResponse) throw error;
-          data = await sendLocal();
-        }
-      }
+      const data = await sendNovaChat({ message: msg, requiresLocalTool,
+        offline: typeof navigator !== 'undefined' && navigator.onLine === false, sendCloud, sendLocal });
 
+      if (data.action_type === 'delete_dropbox_file') {
+        queryClient.invalidateQueries({ queryKey: ['portfolio-dropbox-assets'] });
+        window.dispatchEvent(new Event('cockpit-documents-changed'));
+        queryClient.invalidateQueries({ queryKey: ['Tache'] });
+        setConfirmation(null);
+      }
       let content = data.message || data.response || data.reply || data.content || data.text || 'Réponse vide';
       if (data.local_fallback) content = `Mode local · ${content}`;
       if (data.confirmation) {
@@ -367,14 +368,14 @@ const FloatingAgent = () => {
       setMessages(prev => [...prev, { role: 'assistant', content, ts: Date.now() }]);
       speak(content);
     } catch (err) {
-      const prefix = err?.cockpitResponse
+      const prefix = err?.dropboxVerification ? '⚠️ Suppression Dropbox non vérifiée : ' : err?.cockpitResponse
         ? '⚠️ Le Cockpit a répondu : '
         : requiresLocalTool ? '⚠️ L’agent local requis est injoignable : ' : '⚠️ NOVA cloud et locale sont injoignables : ';
       setMessages(prev => [...prev, { role: 'assistant', content: prefix + err.message, ts: Date.now(), isError: true }]);
     } finally {
       setLoading(false);
     }
-  }, [input, loading, confirmation, executeConfirmation, conversationId, messages, speak, stopSpeaking]);
+  }, [input, loading, confirmation, executeConfirmation, conversationId, messages, speak, stopSpeaking, queryClient]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {

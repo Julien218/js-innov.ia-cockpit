@@ -55,12 +55,17 @@ test('le client consomme une confirmation existante au lieu de repartir au LLM',
   assert.match(clientCompanion, /Confirmer une fois/);
 });
 
-test('NOVA flottante conserve et exécute la confirmation au lieu de la renvoyer au modèle local', () => {
+test('NOVA flottante conserve et exécute la confirmation au lieu de la renvoyer au modèle local', async () => {
   assert.match(floatingCompanion, /setConfirmation\(data\.confirmation\)/);
   assert.match(floatingCompanion, /confirmation && AFFIRMATIVE_CONFIRMATION\.test\(msg\)/);
   assert.match(floatingCompanion, /\/api\/assistant\/confirm/);
   assert.match(floatingCompanion, /Confirmer et exécuter/);
-  assert.match(floatingCompanion, /if \(error\?\.cockpitResponse\) throw error/);
+  assert.match(floatingCompanion, /await sendNovaChat/);
+  const { sendNovaChat } = await import('../src/lib/novaChatTransport.js');
+  await assert.rejects(sendNovaChat({ message: 'Bonjour',
+    sendCloud: async () => { throw Object.assign(new Error('Forbidden'), { cockpitResponse: true }); },
+    sendLocal: () => assert.fail('Un refus serveur ne doit pas appeler le modèle local'),
+  }), /Forbidden/);
 });
 
 test('les sessions client sont séparées par organisation et utilisateur', () => {
