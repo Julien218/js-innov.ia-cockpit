@@ -7,17 +7,21 @@ function normalizeIntent(value) {
 
 let hasImmediateExecutionIntent;
 let isVideoExecutionRequest;
+let stripInjectedContext;
 try {
-  ({ hasImmediateExecutionIntent, isVideoExecutionRequest } = require('./server-immediate-execution-policy.cjs'));
+  ({ hasImmediateExecutionIntent, isVideoExecutionRequest, stripInjectedContext } = require('./server-immediate-execution-policy.cjs'));
 } catch (error) {
   console.warn('[nova-video-direct] politique externe absente, fallback interne activé');
+  stripInjectedContext = (message) => String(message || '')
+    .replace(/\n?\[(?:DIAGNOSTIC LOCAL LECTURE SEULE|AUTORISATION COCKPIT|VERROU PREUVE VID[ÉE]O)[^\]]*\][\s\S]*?\[\/(?:DIAGNOSTIC LOCAL LECTURE SEULE|AUTORISATION COCKPIT|VERROU PREUVE VID[ÉE]O)\]/gi, '')
+    .trim();
   hasImmediateExecutionIntent = (message) => {
-    const text = normalizeIntent(message);
+    const text = normalizeIntent(stripInjectedContext(message));
     if (/\b(?:supprime|efface|delete|drop|truncate|dns|secret|token|cle api|api key|paiement|virement)\b/.test(text)) return false;
     return /\b(?:cree|creer|genere|generer|produis|produire|lance|lancer|execute|executer|effectue|effectuer|immediatement|maintenant|tout de suite|sans confirmation|sans redemander)\b/.test(text);
   };
   isVideoExecutionRequest = (message) => {
-    const text = normalizeIntent(message);
+    const text = normalizeIntent(stripInjectedContext(message));
     return /\b(?:video|videos|grok|imagine|xai|sora|nova-video-production|fabrique video|comfyui)\b/.test(text)
       && /\b(?:cree|creer|genere|generer|produis|produire|lance|lancer|execute|executer|effectue|effectuer|rendu|render|production)\b/.test(text);
   };
@@ -56,7 +60,7 @@ function extractReferenceIds(message, recentMedia) {
 }
 
 function cleanPrompt(message, referenceIds) {
-  const withoutPolicy = String(message || '').split(/\n\[(?:AUTORISATION COCKPIT|VERROU PREUVE VIDEO)/i)[0].trim();
+  const withoutPolicy = stripInjectedContext(message);
   const refs = referenceIds.length > 1
     ? `\n\nRéférences ordonnées: image de départ ${referenceIds[0]}, image cible ${referenceIds[1]}. Commencer visuellement avec la première et converger naturellement vers la seconde en conservant au maximum identité, proportions, personnages, couleurs et composition.`
     : referenceIds.length === 1

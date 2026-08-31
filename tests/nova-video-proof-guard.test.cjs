@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
   isVideoExecutionRequest,
   authorizeImmediateExecutionMessage,
+  stripInjectedContext,
 } = require('../server-immediate-execution-policy.cjs');
 
 function withoutAccents(value) {
@@ -28,4 +29,33 @@ test('injects a hard proof guard for explicit video production', () => {
 test('does not inject the video proof guard for a non-video action', () => {
   const output = withoutAccents(authorizeImmediateExecutionMessage('Corrige immédiatement la page frontend'));
   assert.doesNotMatch(output, /VERROU PREUVE VIDEO/);
+});
+
+test('ignore le diagnostic local et les règles injectées pour décider une production vidéo', () => {
+  const diagnostic = `vérifier et compléter : Synergie Dour ASBL
+
+[DIAGNOSTIC LOCAL LECTURE SEULE — généré automatiquement par le Cockpit]
+Mode vidéo: local.
+ComfyUI 8188: en ligne.
+[/DIAGNOSTIC LOCAL LECTURE SEULE]`;
+  const enriched = `${diagnostic}
+
+[AUTORISATION COCKPIT — ACTION NON SENSIBLE]
+Exécute-la maintenant. Si la demande concerne la Fabrique vidéo, lance le flux réel.
+[/AUTORISATION COCKPIT]`;
+
+  assert.equal(isVideoExecutionRequest(diagnostic), false);
+  assert.equal(isVideoExecutionRequest(enriched), false);
+  assert.equal(stripInjectedContext(enriched), 'vérifier et compléter : Synergie Dour ASBL');
+  assert.doesNotMatch(withoutAccents(authorizeImmediateExecutionMessage(diagnostic)), /AUTORISATION COCKPIT/);
+});
+
+test('conserve une demande vidéo explicite malgré le diagnostic local', () => {
+  const message = `Génère la vidéo Synergie Dour avec Grok.
+
+[DIAGNOSTIC LOCAL LECTURE SEULE — généré automatiquement par le Cockpit]
+Mode vidéo: local.
+[/DIAGNOSTIC LOCAL LECTURE SEULE]`;
+
+  assert.equal(isVideoExecutionRequest(message), true);
 });

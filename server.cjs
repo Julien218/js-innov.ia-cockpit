@@ -13,10 +13,13 @@ try {
   // conserve la politique d'exécution immédiate même si le helper n'est pas encore
   // présent dans une ancienne image, sans désactiver les garde-fous sensibles.
   const normalizeImmediate = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  const isSensitiveImmediate = (message) => /\b(?:supprime|supprimer|efface|effacer|delete|drop|truncate|dns|nameserver|cname|mx|txt|secret|token|cle api|api key|publie en production|publication production|deploy production|deploie en production|envoie email|envoyer email|paiement|virement)\b/.test(normalizeImmediate(message));
+  const stripInjectedImmediateContext = (value) => String(value || '')
+    .replace(/\n?\[(?:DIAGNOSTIC LOCAL LECTURE SEULE|AUTORISATION COCKPIT|VERROU PREUVE VID[ÉE]O)[^\]]*\][\s\S]*?\[\/(?:DIAGNOSTIC LOCAL LECTURE SEULE|AUTORISATION COCKPIT|VERROU PREUVE VID[ÉE]O)\]/gi, '')
+    .trim();
+  const isSensitiveImmediate = (message) => /\b(?:supprime|supprimer|efface|effacer|delete|drop|truncate|dns|nameserver|cname|mx|txt|secret|token|cle api|api key|publie en production|publication production|deploy production|deploie en production|envoie email|envoyer email|paiement|virement)\b/.test(normalizeImmediate(stripInjectedImmediateContext(message)));
   authorizeImmediateExecutionMessage = (message) => {
     const original = String(message || '').trim();
-    const text = normalizeImmediate(original);
+    const text = normalizeImmediate(stripInjectedImmediateContext(original));
     if (!text || isSensitiveImmediate(text)) return original;
     const actionVerb = /\b(?:cree|creer|genere|generer|produis|produire|realise|realiser|lance|lancer|execute|executer|effectue|effectuer|fais|faire|corrige|corriger|modifie|modifier)\b/;
     const supportedTarget = /\b(?:video|videos|image|images|visuel|visuels|page|site|seo|application|app|mobile|workflow|comfyui|ecran geant|tache|taches|action|actions|code|landing|frontend|backend)\b/;
