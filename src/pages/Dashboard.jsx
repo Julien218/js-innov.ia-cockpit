@@ -17,6 +17,8 @@ import {
 } from "recharts";
 import { cn } from "@/lib/utils";
 import { isTaskBlocked, isTaskCompleted } from "@/lib/taskStatus";
+import { useDemandes } from "@/lib/useDemandes";
+import { isNewDemande } from "@/lib/demandePresentation";
 
 const COLORS = ["hsl(217,91%,50%)", "hsl(258,90%,62%)", "hsl(142,71%,45%)", "hsl(38,92%,50%)", "hsl(0,84%,60%)"];
 
@@ -25,7 +27,7 @@ export default function Dashboard() {
   const { data: leads = [], isError: leadsErr } = useQuery({ queryKey: ["leads"], queryFn: () => base44.entities.Lead.list() });
   const { data: projets = [], isError: projetsErr } = useQuery({ queryKey: ["projets"], queryFn: () => base44.entities.Projet.list() });
   const { data: taches = [], isError: tachesErr } = useQuery({ queryKey: ["taches"], queryFn: () => base44.entities.Tache.list() });
-  const { data: demandes = [], isError: demandesErr } = useQuery({ queryKey: ["demandes"], queryFn: () => base44.entities.Demande.list() });
+  const { data: demandes = [], isError: demandesErr } = useDemandes();
   const { data: devis = [], isError: devisErr } = useQuery({ queryKey: ["devis"], queryFn: () => base44.entities.Devis.list() });
   const { data: factures = [], isError: facturesErr } = useQuery({ queryKey: ["factures"], queryFn: () => base44.entities.Facture.list() });
   const { data: commissions = [], isError: commissionsErr } = useQuery({ queryKey: ["commissions"], queryFn: () => base44.entities.Commission.list() });
@@ -41,7 +43,7 @@ export default function Dashboard() {
   const tachesEnRetard = taches.filter(t => t.date_echeance && new Date(t.date_echeance) < new Date() && !isTaskCompleted(t)).length;
   const tachesBloquees = taches.filter(isTaskBlocked).length;
   const tachesActives = taches.filter(t => !isTaskCompleted(t)).length;
-  const demandesOuvertes = demandes.filter(d => d.statut === "ouverte").length;
+  const demandesOuvertes = demandes.filter(isNewDemande).length;
 
   const leadsByStatus = [
     { name: "Nouveau", value: leads.filter(l => l.statut === "nouveau").length },
