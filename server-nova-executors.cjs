@@ -366,6 +366,14 @@ async function executeVideoTask(task, agentRequest, createJob = null, context = 
 
 async function executeSiteTask(executor, task, { readOnly = false, dispatch = null, analyze = analyzeDomain } = {}) {
   const text = normalized(taskText(task));
+  if (/(galerie|galeries|membres?\/.?non.membres|plan de contenu|processus de vente|fonctionnalite|developpement)/.test(text)) {
+    return {
+      completed: false, blocked: true, awaiting_review: true, provider: 'cockpit-server',
+      result: { domain: executor.domain, repository: executor.repository, dispatched: false, verified: false },
+      report: 'Développement assigné, mais aucun exécuteur de développement avec preuve de livraison n’est raccordé à ce moteur de sites.',
+      reason: 'developpement_non_execute_preuve_de_livraison_absente',
+    };
+  }
   const effectiveReadOnly = isReadOnlySiteTask(task, readOnly);
   const before = await analyze(executor.domain);
   if (effectiveReadOnly) {
