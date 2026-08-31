@@ -160,7 +160,7 @@ CREATE TABLE IF NOT EXISTS governance.data_subject_request (
   )),
   assigned_to             TEXT,
   received_at             TIMESTAMPTZ DEFAULT now(),
-  due_date                TIMESTAMPTZ DEFAULT (now() + INTERVAL '30 days'),
+  due_date                TIMESTAMPTZ DEFAULT (now() + INTERVAL '1 month'),
   completed_at            TIMESTAMPTZ,
   resolution_summary      TEXT,
   rejection_reason        TEXT,
@@ -197,7 +197,7 @@ CREATE TABLE IF NOT EXISTS governance.retention_policy (
 );
 
 INSERT INTO governance.retention_policy (category, category_label, retention_period_days, retention_description, action_on_expiry, justification, legal_reference, validation_status) VALUES
-  ('invoices',        'Factures',         2555, '7 ans (obligation comptable belge)',                           'review',    'Obligation comptable belge',                     'Code comptable belge — A VALIDER',  'pending'),
+  ('invoices',        'Factures',         3650, '10 ans (obligation comptable belge)',                          'review',    'Conservation des livres et pièces justificatives', 'Code de droit économique, art. III.86', 'pending'),
   ('quotes',          'Devis',            730,  '2 ans',                                                        'review',    'Delai raisonnable suivi commercial',               NULL,                                 'pending'),
   ('client_data',     'Donnees client',   NULL, 'Tant que relation commerciale dure + delai prescription',       'review',    'Base legale: execution du contrat',               'Art. 6(1)(b) RGPD — A VALIDER',     'pending'),
   ('leads',           'Leads/prospects',  1095, '3 ans',                                                        'anonymize', 'Duree raisonnable prospection',                   'Art. 6(1)(f) RGPD — A VALIDER',     'pending'),
@@ -258,16 +258,16 @@ ALTER TABLE governance.consent_record ENABLE ROW LEVEL SECURITY;
 ALTER TABLE governance.data_subject_request ENABLE ROW LEVEL SECURITY;
 ALTER TABLE governance.retention_policy ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "gov_audit_sr" ON governance.audit_log FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
-CREATE POLICY "gov_dc_sr"    ON governance.data_classification FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
-CREATE POLICY "gov_pa_sr"    ON governance.processing_activity FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
-CREATE POLICY "gov_sr_sr"    ON governance.subprocessor_registry FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
-CREATE POLICY "gov_cr_sr"    ON governance.consent_record FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
-CREATE POLICY "gov_dsr_sr"   ON governance.data_subject_request FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
-CREATE POLICY "gov_rp_sr"    ON governance.retention_policy FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
+CREATE POLICY "gov_audit_sr" ON governance.audit_log FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "gov_dc_sr"    ON governance.data_classification FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "gov_pa_sr"    ON governance.processing_activity FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "gov_sr_sr"    ON governance.subprocessor_registry FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "gov_cr_sr"    ON governance.consent_record FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "gov_dsr_sr"   ON governance.data_subject_request FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "gov_rp_sr"    ON governance.retention_policy FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- 11. Vue audit_log_recent
-CREATE OR REPLACE VIEW governance.audit_log_recent AS
+CREATE OR REPLACE VIEW governance.audit_log_recent WITH (security_invoker = true) AS
 SELECT * FROM governance.audit_log ORDER BY created_at DESC LIMIT 1000;
 
 -- 12. Fonction helper: log_action
@@ -285,5 +285,8 @@ BEGIN
   RETURN v_row;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+REVOKE ALL ON FUNCTION governance.log_action(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, JSONB, TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION governance.log_action(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, JSONB, TEXT, TEXT, TEXT) TO service_role;
 
 COMMIT;

@@ -55,24 +55,54 @@
 const express = require('express');
 const crypto = require('crypto');
 const cookie = require('cookie');
+const { pickExportFields, sanitizeTenantExport } = require('./lib/governance-export.cjs');
 
 const router = express.Router();
+const publicRouter = express.Router();
 
 // ─── Configuration Supabase (gfj = donnees metier) ─────────────────
 const SUPABASE_URL = process.env.SUPABASE_CRM_URL || process.env.SUPABASE_URL || 'https://gfjpryakxzdzwnazlsfz.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_CRM_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const PUBLIC_SITE_KEY = process.env.ELYNEA_SITE_KEY || process.env.PUBLIC_SITE_KEY || '';
+const PUBLIC_SITE_TENANT = process.env.PUBLIC_SITE_TENANT || 'jsinnovia';
 
 const ROLE_LEVEL = { client: 1, collaborateur: 2, admin: 3, superadmin: 4 };
+const GOVERNANCE_RESOURCES = new Set([
+  'audit_log', 'audit_log_recent', 'data_classification', 'processing_activity',
+  'subprocessor_registry', 'consent_record', 'data_subject_request',
+  'retention_policy', 'rpc/log_action',
+]);
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
 function hashIP(ip) {
   if (!ip) return null;
-  return crypto.createHash('sha256').update(String(ip)).digest('hex').slice(0, 32);
+  const secret = process.env.GOVERNANCE_IP_HASH_SECRET || PUBLIC_SITE_KEY || SUPABASE_KEY;
+  const digest = secret
+    ? crypto.createHmac('sha256', secret).update(String(ip)).digest('hex')
+    : crypto.createHash('sha256').update(String(ip)).digest('hex');
+  return digest.slice(0, 32);
 }
 
 function getUserFromReq(req) {
   return req.user || null;
+}
+
+function authorizedSiteKey(value) {
+  if (!PUBLIC_SITE_KEY || PUBLIC_SITE_KEY.length < 32 || !value) return false;
+  const supplied = Buffer.from(String(value));
+  const configured = Buffer.from(PUBLIC_SITE_KEY);
+  return supplied.length === configured.length && crypto.timingSafeEqual(supplied, configured);
+}
+
+function tenantId(req) {
+  const tenant = String(getUserFromReq(req)?.organisation || '').trim();
+  if (!tenant) throw new Error('Organisation de session manquante');
+  return tenant;
+}
+
+function tenantParam(req) {
+  return `tenant_id=eq.${encodeURIComponent(tenantId(req))}`;
 }
 
 function requireMinRole(minRole) {
@@ -124,12 +154,17 @@ async function resolveSessionFromCookie(req) {
 async function supabaseQuery(path, options = {}) {
   if (!SUPABASE_KEY) throw new Error('Supabase CRM key not configured');
   const url = `${SUPABASE_URL}/rest/v1/${path}`;
+  const resource = String(path).split('?')[0];
+  const schemaHeaders = GOVERNANCE_RESOURCES.has(resource)
+    ? { 'Accept-Profile': 'governance', 'Content-Profile': 'governance' }
+    : {};
   const resp = await fetch(url, {
     ...options,
     headers: {
       apikey: SUPABASE_KEY,
       Authorization: `Bearer ${SUPABASE_KEY}`,
       'Content-Type': 'application/json',
+      ...schemaHeaders,
       ...(options.headers || {}),
     },
   });
@@ -140,6 +175,75 @@ async function supabaseQuery(path, options = {}) {
   if (!text) return null;
   return JSON.parse(text);
 }
+
+// Authentification serveur-à-serveur uniquement. Le tenant et le traitement sont imposés ici,
+// jamais acceptés depuis le navigateur public.
+publicRouter.post('/public-consents', async (req, res) => {
+  try {
+    if (!authorizedSiteKey(req.headers['x-elynea-site-key'] || req.headers['x-public-site-key'])) {
+      return res.status(401).json({ error: 'Clé du site invalide' });
+    }
+
+    const body = req.body || {};
+    const personEmail = String(body.person_email || '').trim().toLowerCase();
+    const personName = String(body.person_name || '').trim().slice(0, 200) || null;
+    const purpose = String(body.purpose || '').trim().slice(0, 200);
+    const consentText = String(body.consent_text || '').trim();
+    const textVersion = String(body.text_version || '').trim().slice(0, 50);
+    const submissionId = String(body.submission_id || '').trim().slice(0, 100);
+    const source = String(body.source || 'public_website').trim().slice(0, 100);
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(personEmail)) return res.status(400).json({ error: 'Adresse email invalide' });
+    if (!purpose || !consentText || consentText.length > 2000 || !textVersion) {
+      return res.status(400).json({ error: 'Preuve de consentement incomplète' });
+    }
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,99}$/.test(submissionId)) {
+      return res.status(400).json({ error: 'Identifiant de soumission invalide' });
+    }
+
+    const textHash = crypto.createHash('sha256').update(consentText, 'utf8').digest('hex');
+    const existing = await supabaseQuery(`consent_record?tenant_id=eq.${encodeURIComponent(PUBLIC_SITE_TENANT)}&submission_id=eq.${encodeURIComponent(submissionId)}&select=id,person_email,text_hash,processing_activity_id&limit=1`) || [];
+    if (existing[0]) {
+      if (existing[0].person_email !== personEmail || existing[0].text_hash !== textHash) {
+        return res.status(409).json({ error: 'Identifiant de soumission déjà utilisé avec une autre preuve' });
+      }
+      return res.json({ success: true, data: { id: existing[0].id, processing_activity_id: existing[0].processing_activity_id, duplicate: true } });
+    }
+
+    const activities = await supabaseQuery(`processing_activity?tenant_id=eq.${encodeURIComponent(PUBLIC_SITE_TENANT)}&external_key=eq.public_website_contact&is_active=eq.true&select=id&limit=1`) || [];
+    if (!activities[0]?.id) return res.status(503).json({ error: 'Traitement public non configuré dans le registre' });
+
+    const ip = req.headers['x-real-ip'] || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+    const rows = await supabaseQuery('consent_record', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        person_email: personEmail,
+        person_name: personName,
+        purpose,
+        text_version: textVersion,
+        text_hash: textHash,
+        method: 'web_form',
+        status: 'active',
+        submission_id: submissionId,
+        source,
+        proof_metadata: {
+          ip_hash: hashIP(ip),
+          user_agent: String(req.headers['user-agent'] || '').slice(0, 200),
+          policy_path: '/saas-confidentialite',
+          recorded_at: new Date().toISOString(),
+        },
+        tenant_id: PUBLIC_SITE_TENANT,
+        processing_activity_id: activities[0].id,
+      }),
+    });
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    res.status(201).json({ success: true, data: { id: row?.id, processing_activity_id: row?.processing_activity_id, duplicate: false } });
+  } catch (error) {
+    console.error('[governance] public consent:', error.message);
+    res.status(503).json({ error: 'Enregistrement du consentement indisponible' });
+  }
+});
 
 // ─── Audit Trail Helper ────────────────────────────────────────────
 
@@ -162,7 +266,7 @@ async function auditLog(req, action, entityType, entityId, description, metadata
         p_metadata: metadata,
         p_severity: severity,
         p_source: 'cockpit',
-        p_tenant_id: user?.organisation || 'jsinnovia',
+        p_tenant_id: tenantId(req),
       }),
     });
   } catch (e) {
@@ -178,7 +282,7 @@ router.get('/audit', requireMinRole('admin'), async (req, res) => {
   try {
     const { action, entity_type, severity, limit = 100, offset = 0 } = req.query;
     let path = 'audit_log_recent?';
-    const filters = [];
+    const filters = [tenantParam(req)];
     if (action) filters.push(`action=eq.${encodeURIComponent(action)}`);
     if (entity_type) filters.push(`entity_type=eq.${encodeURIComponent(entity_type)}`);
     if (severity) filters.push(`severity=eq.${encodeURIComponent(severity)}`);
@@ -224,7 +328,7 @@ router.get('/classifications', requireMinRole('client'), async (req, res) => {
 
 router.get('/processing-activities', requireMinRole('admin'), async (req, res) => {
   try {
-    const rows = await supabaseQuery('processing_activity?order=created_at.desc');
+    const rows = await supabaseQuery(`processing_activity?${tenantParam(req)}&order=created_at.desc`);
     res.json({ success: true, data: Array.isArray(rows) ? rows : [] });
   } catch (error) {
     res.status(503).json({ error: error.message });
@@ -249,7 +353,7 @@ router.post('/processing-activities', requireMinRole('admin'), async (req, res) 
       retention_period: body.retention_period || null,
       security_measures: body.security_measures || null,
       owner: body.owner || user?.email || null,
-      tenant_id: user?.organisation || 'jsinnovia',
+      tenant_id: tenantId(req),
       legal_validation_status: 'pending',
     };
     const rows = await supabaseQuery('processing_activity', {
@@ -272,7 +376,8 @@ router.put('/processing-activities/:id', requireMinRole('admin'), async (req, re
     const updateFields = { ...body, updated_at: new Date().toISOString() };
     delete updateFields.id;
     delete updateFields.created_at;
-    const rows = await supabaseQuery(`processing_activity?id=eq.${encodeURIComponent(id)}`, {
+    delete updateFields.tenant_id;
+    const rows = await supabaseQuery(`processing_activity?id=eq.${encodeURIComponent(id)}&${tenantParam(req)}`, {
       method: 'PATCH',
       headers: { Prefer: 'return=representation' },
       body: JSON.stringify(updateFields),
@@ -288,7 +393,7 @@ router.put('/processing-activities/:id', requireMinRole('admin'), async (req, re
 router.delete('/processing-activities/:id', requireMinRole('superadmin'), async (req, res) => {
   try {
     const { id } = req.params;
-    await supabaseQuery(`processing_activity?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await supabaseQuery(`processing_activity?id=eq.${encodeURIComponent(id)}&${tenantParam(req)}`, { method: 'DELETE' });
     await auditLog(req, 'delete', 'ProcessingActivity', id, `Traitement supprimé: ${id}`, {}, 'warning');
     res.json({ success: true });
   } catch (error) {
@@ -302,7 +407,7 @@ router.delete('/processing-activities/:id', requireMinRole('superadmin'), async 
 
 router.get('/subprocessors', requireMinRole('admin'), async (req, res) => {
   try {
-    const rows = await supabaseQuery('subprocessor_registry?is_active=eq.true&order=provider_name.asc');
+    const rows = await supabaseQuery(`subprocessor_registry?${tenantParam(req)}&is_active=eq.true&order=provider_name.asc`);
     res.json({ success: true, data: Array.isArray(rows) ? rows : [] });
   } catch (error) {
     res.status(503).json({ error: error.message });
@@ -324,7 +429,7 @@ router.post('/subprocessors', requireMinRole('admin'), async (req, res) => {
       sub_subprocessors: body.sub_subprocessors || null,
       validation_status: 'pending',
       owner: body.owner || user?.email || null,
-      tenant_id: user?.organisation || 'jsinnovia',
+      tenant_id: tenantId(req),
     };
     const rows = await supabaseQuery('subprocessor_registry', {
       method: 'POST',
@@ -346,7 +451,8 @@ router.put('/subprocessors/:id', requireMinRole('admin'), async (req, res) => {
     const updateFields = { ...body, updated_at: new Date().toISOString() };
     delete updateFields.id;
     delete updateFields.created_at;
-    const rows = await supabaseQuery(`subprocessor_registry?id=eq.${encodeURIComponent(id)}`, {
+    delete updateFields.tenant_id;
+    const rows = await supabaseQuery(`subprocessor_registry?id=eq.${encodeURIComponent(id)}&${tenantParam(req)}`, {
       method: 'PATCH',
       headers: { Prefer: 'return=representation' },
       body: JSON.stringify(updateFields),
@@ -362,7 +468,7 @@ router.put('/subprocessors/:id', requireMinRole('admin'), async (req, res) => {
 router.delete('/subprocessors/:id', requireMinRole('superadmin'), async (req, res) => {
   try {
     const { id } = req.params;
-    await supabaseQuery(`subprocessor_registry?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await supabaseQuery(`subprocessor_registry?id=eq.${encodeURIComponent(id)}&${tenantParam(req)}`, { method: 'DELETE' });
     await auditLog(req, 'delete', 'Subprocessor', id, `Sous-traitant supprimé: ${id}`, {}, 'warning');
     res.json({ success: true });
   } catch (error) {
@@ -378,7 +484,7 @@ router.get('/consents', requireMinRole('admin'), async (req, res) => {
   try {
     const { email, status, limit = 100 } = req.query;
     let path = 'consent_record?';
-    const filters = [];
+    const filters = [tenantParam(req)];
     if (email) filters.push(`person_email=eq.${encodeURIComponent(email)}`);
     if (status) filters.push(`status=eq.${encodeURIComponent(status)}`);
     path += filters.join('&');
@@ -406,7 +512,7 @@ router.post('/consents', requireMinRole('admin'), async (req, res) => {
       method: body.method || 'web_form',
       status: 'active',
       proof_metadata: { ip_hash: hashIP(ip), ua: (req.headers['user-agent'] || '').slice(0, 80) },
-      tenant_id: user?.organisation || 'jsinnovia',
+      tenant_id: tenantId(req),
       processing_activity_id: body.processing_activity_id || null,
     };
     const rows = await supabaseQuery('consent_record', {
@@ -425,7 +531,7 @@ router.post('/consents', requireMinRole('admin'), async (req, res) => {
 router.post('/consents/:id/withdraw', requireMinRole('admin'), async (req, res) => {
   try {
     const { id } = req.params;
-    const rows = await supabaseQuery(`consent_record?id=eq.${encodeURIComponent(id)}`, {
+    const rows = await supabaseQuery(`consent_record?id=eq.${encodeURIComponent(id)}&${tenantParam(req)}`, {
       method: 'PATCH',
       headers: { Prefer: 'return=representation' },
       body: JSON.stringify({ status: 'withdrawn', withdrawn_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
@@ -446,7 +552,7 @@ router.get('/dsr', requireMinRole('admin'), async (req, res) => {
   try {
     const { status, type, limit = 50 } = req.query;
     let path = 'data_subject_request?';
-    const filters = [];
+    const filters = [tenantParam(req)];
     if (status) filters.push(`status=eq.${encodeURIComponent(status)}`);
     if (type) filters.push(`request_type=eq.${encodeURIComponent(type)}`);
     path += filters.join('&');
@@ -471,7 +577,7 @@ router.post('/dsr', requireMinRole('client'), async (req, res) => {
       requester_id: user?.id || null,
       description: body.description || null,
       scope: body.scope || null,
-      tenant_id: user?.organisation || 'jsinnovia',
+      tenant_id: tenantId(req),
       status: 'received',
     };
     const rows = await supabaseQuery('data_subject_request', {
@@ -490,7 +596,7 @@ router.post('/dsr', requireMinRole('client'), async (req, res) => {
 router.get('/dsr/:id', requireMinRole('admin'), async (req, res) => {
   try {
     const { id } = req.params;
-    const rows = await supabaseQuery(`data_subject_request?id=eq.${encodeURIComponent(id)}&limit=1`);
+    const rows = await supabaseQuery(`data_subject_request?id=eq.${encodeURIComponent(id)}&${tenantParam(req)}&limit=1`);
     res.json({ success: true, data: Array.isArray(rows) ? rows[0] : null });
   } catch (error) {
     res.status(503).json({ error: error.message });
@@ -504,7 +610,8 @@ router.put('/dsr/:id', requireMinRole('admin'), async (req, res) => {
     const updateFields = { ...body, updated_at: new Date().toISOString() };
     delete updateFields.id;
     delete updateFields.created_at;
-    const rows = await supabaseQuery(`data_subject_request?id=eq.${encodeURIComponent(id)}`, {
+    delete updateFields.tenant_id;
+    const rows = await supabaseQuery(`data_subject_request?id=eq.${encodeURIComponent(id)}&${tenantParam(req)}`, {
       method: 'PATCH',
       headers: { Prefer: 'return=representation' },
       body: JSON.stringify(updateFields),
@@ -521,7 +628,7 @@ router.post('/dsr/:id/complete', requireMinRole('admin'), async (req, res) => {
   try {
     const { id } = req.params;
     const { resolution_summary, legal_retention_note } = req.body;
-    const rows = await supabaseQuery(`data_subject_request?id=eq.${encodeURIComponent(id)}`, {
+    const rows = await supabaseQuery(`data_subject_request?id=eq.${encodeURIComponent(id)}&${tenantParam(req)}`, {
       method: 'PATCH',
       headers: { Prefer: 'return=representation' },
       body: JSON.stringify({
@@ -546,7 +653,7 @@ router.post('/dsr/:id/complete', requireMinRole('admin'), async (req, res) => {
 
 router.get('/retention-policies', requireMinRole('admin'), async (req, res) => {
   try {
-    const rows = await supabaseQuery('retention_policy?is_active=eq.true&order=category.asc');
+    const rows = await supabaseQuery(`retention_policy?${tenantParam(req)}&is_active=eq.true&order=category.asc`);
     res.json({ success: true, data: Array.isArray(rows) ? rows : [] });
   } catch (error) {
     res.status(503).json({ error: error.message });
@@ -560,7 +667,8 @@ router.put('/retention-policies/:id', requireMinRole('admin'), async (req, res) 
     const updateFields = { ...body, updated_at: new Date().toISOString() };
     delete updateFields.id;
     delete updateFields.created_at;
-    const rows = await supabaseQuery(`retention_policy?id=eq.${encodeURIComponent(id)}`, {
+    delete updateFields.tenant_id;
+    const rows = await supabaseQuery(`retention_policy?id=eq.${encodeURIComponent(id)}&${tenantParam(req)}`, {
       method: 'PATCH',
       headers: { Prefer: 'return=representation' },
       body: JSON.stringify(updateFields),
@@ -580,7 +688,7 @@ router.put('/retention-policies/:id', requireMinRole('admin'), async (req, res) 
 router.post('/export', requireMinRole('client'), async (req, res) => {
   try {
     const user = getUserFromReq(req);
-    const tenant = user?.organisation || 'jsinnovia';
+    const tenant = tenantId(req);
 
     // Collect all data for the user's tenant (or just their personal data if client)
     const exportData = {
@@ -593,11 +701,17 @@ router.post('/export', requireMinRole('client'), async (req, res) => {
     if (user?.role === 'client') {
       // Export only the client's personal data
       const clientFilter = `?email=eq.${encodeURIComponent(user.email)}&organisation_id=eq.${encodeURIComponent(tenant)}&select=*`;
-      exportData.clients = await supabaseQuery(`Client${clientFilter}`) || [];
-      exportData.leads = await supabaseQuery(`Lead${clientFilter}`) || [];
-      exportData.demandes = await supabaseQuery(`Demande${clientFilter}`) || [];
-      // Get documents for this client
-      exportData.documents = await supabaseQuery(`DocumentIndex?tenant_id=eq.${encodeURIComponent(tenant)}&select=id,filename,mime_type,size_bytes,created_at`) || [];
+      const clients = await supabaseQuery(`Client${clientFilter}`) || [];
+      exportData.clients = pickExportFields(clients, 'Client');
+      exportData.leads = pickExportFields(await supabaseQuery(`Lead${clientFilter}`) || [], 'Lead');
+      exportData.demandes = pickExportFields(await supabaseQuery(`Demande${clientFilter}`) || [], 'Demande');
+      const documentRows = [];
+      for (const client of clients) {
+        if (!client?.id) continue;
+        const rows = await supabaseQuery(`DocumentIndex?tenant_id=eq.${encodeURIComponent(tenant)}&client_id=eq.${encodeURIComponent(client.id)}&deleted_at=is.null&select=id,client_id,filename,mime_type,size_bytes,created_at,updated_at`) || [];
+        documentRows.push(...rows);
+      }
+      exportData.documents = pickExportFields(documentRows, 'DocumentIndex');
     } else {
       // Admin+: export all tenant data
       const orgFilter = `?organisation_id=eq.${encodeURIComponent(tenant)}&select=*`;
@@ -611,15 +725,11 @@ router.post('/export', requireMinRole('client'), async (req, res) => {
       exportData.documents = await supabaseQuery(`DocumentIndex?tenant_id=eq.${encodeURIComponent(tenant)}&deleted_at=is.null&select=*`) || [];
     }
 
-    // Filter out sensitive fields from export
-    const sanitize = (arr) => (arr || []).map(row => {
-      const { ...data } = row;
-      return data;
-    });
-
-    Object.keys(exportData).forEach(k => {
-      if (Array.isArray(exportData[k])) exportData[k] = sanitize(exportData[k]);
-    });
+    if (user?.role !== 'client') {
+      Object.keys(exportData).forEach((key) => {
+        if (Array.isArray(exportData[key])) exportData[key] = sanitizeTenantExport(exportData[key]);
+      });
+    }
 
     await auditLog(req, 'export', 'DataExport', null, `Export de données par ${user?.email} (${user?.role})`, { scope: user?.role === 'client' ? 'personal' : 'tenant' }, 'warning');
 
@@ -643,7 +753,7 @@ router.post('/erasure', requireMinRole('admin'), async (req, res) => {
     if (!reason) return res.status(400).json({ error: 'reason (motif) requis' });
 
     const user = getUserFromReq(req);
-    const tenant = user?.organisation || 'jsinnovia';
+    const tenant = tenantId(req);
     const results = { email, scope, reason, timestamp: new Date().toISOString(), actions: [] };
 
     // Step 1: Identify data
@@ -651,7 +761,7 @@ router.post('/erasure', requireMinRole('admin'), async (req, res) => {
     results.identified = { clients: clients.length };
 
     // Step 2: Check legal retention obligations
-    // NOTE: Factures must be retained for 7 years ( Belgian accounting law)
+    // NOTE: Belgian accounting documents are retained for 10 years.
     // We anonymize instead of deleting for invoices
     if (legal_retention_note) {
       results.legal_retention = legal_retention_note;
@@ -659,7 +769,7 @@ router.post('/erasure', requireMinRole('admin'), async (req, res) => {
 
     // Step 3: Anonymize client data (not delete, to preserve referential integrity)
     for (const client of clients) {
-      await supabaseQuery(`Client?id=eq.${encodeURIComponent(client.id)}`, {
+      await supabaseQuery(`Client?id=eq.${encodeURIComponent(client.id)}&organisation_id=eq.${encodeURIComponent(tenant)}`, {
         method: 'PATCH',
         body: JSON.stringify({
           nom: '[ANONYMIZED]',
@@ -678,7 +788,7 @@ router.post('/erasure', requireMinRole('admin'), async (req, res) => {
     // Anonymize leads
     const leads = await supabaseQuery(`Lead?email=eq.${encodeURIComponent(email)}&organisation_id=eq.${encodeURIComponent(tenant)}&select=id`) || [];
     for (const lead of leads) {
-      await supabaseQuery(`Lead?id=eq.${encodeURIComponent(lead.id)}`, {
+      await supabaseQuery(`Lead?id=eq.${encodeURIComponent(lead.id)}&organisation_id=eq.${encodeURIComponent(tenant)}`, {
         method: 'PATCH',
         body: JSON.stringify({
           nom: '[ANONYMIZED]', prenom: '[ANONYMIZED]', email: null,
@@ -691,7 +801,7 @@ router.post('/erasure', requireMinRole('admin'), async (req, res) => {
     // Anonymize demandes
     const demandes = await supabaseQuery(`Demande?email=eq.${encodeURIComponent(email)}&organisation_id=eq.${encodeURIComponent(tenant)}&select=id`) || [];
     for (const dem of demandes) {
-      await supabaseQuery(`Demande?id=eq.${encodeURIComponent(dem.id)}`, {
+      await supabaseQuery(`Demande?id=eq.${encodeURIComponent(dem.id)}&organisation_id=eq.${encodeURIComponent(tenant)}`, {
         method: 'PATCH',
         body: JSON.stringify({
           nom: '[ANONYMIZED]', email: null, telephone: null,
@@ -702,18 +812,18 @@ router.post('/erasure', requireMinRole('admin'), async (req, res) => {
     }
 
     // Withdraw consents
-    const consents = await supabaseQuery(`consent_record?person_email=eq.${encodeURIComponent(email)}&status=eq.active&select=id`) || [];
+    const consents = await supabaseQuery(`consent_record?person_email=eq.${encodeURIComponent(email)}&tenant_id=eq.${encodeURIComponent(tenant)}&status=eq.active&select=id`) || [];
     for (const c of consents) {
-      await supabaseQuery(`consent_record?id=eq.${encodeURIComponent(c.id)}`, {
+      await supabaseQuery(`consent_record?id=eq.${encodeURIComponent(c.id)}&tenant_id=eq.${encodeURIComponent(tenant)}`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'withdrawn', withdrawn_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
       });
       results.actions.push({ entity: 'ConsentRecord', id: c.id, action: 'withdrawn' });
     }
 
-    // NOTE: Factures are NOT deleted (legal retention 7 years)
+    // NOTE: Factures are NOT deleted (legal retention 10 years)
     // They are kept but the client reference is anonymized
-    results.actions.push({ entity: 'Facture', action: 'retained (legal obligation 7 years — Art. 17(3)(b) RGPD)' });
+    results.actions.push({ entity: 'Facture', action: 'retained (legal obligation 10 years — Art. 17(3)(b) RGPD)' });
 
     await auditLog(req, 'gdpr_request', 'DataErasure', email, `Effacement/anonymisation: ${email}`, { reason, scope, actions_count: results.actions.length }, 'warning');
 
@@ -730,24 +840,25 @@ router.post('/erasure', requireMinRole('admin'), async (req, res) => {
 
 router.get('/dashboard', requireMinRole('admin'), async (req, res) => {
   try {
-    const tenant = req.user?.organisation || 'jsinnovia';
+    const tenant = tenantId(req);
+    const tenantFilter = `tenant_id=eq.${encodeURIComponent(tenant)}`;
 
     // Count audit entries
-    const auditRows = await supabaseQuery('audit_log?select=id&limit=1') || [];
+    const auditRows = await supabaseQuery(`audit_log?${tenantFilter}&select=id`) || [];
     // Count DSRs by status
-    const dsrReceived = await supabaseQuery('data_subject_request?status=eq.received&select=id') || [];
-    const dsrProcessing = await supabaseQuery('data_subject_request?status=eq.processing&select=id') || [];
-    const dsrCompleted = await supabaseQuery('data_subject_request?status=eq.completed&select=id') || [];
+    const dsrReceived = await supabaseQuery(`data_subject_request?${tenantFilter}&status=eq.received&select=id`) || [];
+    const dsrProcessing = await supabaseQuery(`data_subject_request?${tenantFilter}&status=eq.processing&select=id`) || [];
+    const dsrCompleted = await supabaseQuery(`data_subject_request?${tenantFilter}&status=eq.completed&select=id`) || [];
     // Count subprocessors
-    const subprocessors = await supabaseQuery('subprocessor_registry?is_active=eq.true&select=id') || [];
-    const dpaSigned = await supabaseQuery('subprocessor_registry?dpa_signed=eq.true&select=id') || [];
+    const subprocessors = await supabaseQuery(`subprocessor_registry?${tenantFilter}&is_active=eq.true&select=id`) || [];
+    const dpaSigned = await supabaseQuery(`subprocessor_registry?${tenantFilter}&dpa_signed=eq.true&select=id`) || [];
     // Processing activities
-    const paPending = await supabaseQuery('processing_activity?legal_validation_status=eq.pending&select=id') || [];
-    const paValidated = await supabaseQuery('processing_activity?legal_validation_status=eq.validated&select=id') || [];
+    const paPending = await supabaseQuery(`processing_activity?${tenantFilter}&legal_validation_status=eq.pending&select=id`) || [];
+    const paValidated = await supabaseQuery(`processing_activity?${tenantFilter}&legal_validation_status=eq.validated&select=id`) || [];
     // Retention policies
-    const rpPending = await supabaseQuery('retention_policy?validation_status=eq.pending&select=id') || [];
+    const rpPending = await supabaseQuery(`retention_policy?${tenantFilter}&validation_status=eq.pending&select=id`) || [];
     // Consents
-    const activeConsents = await supabaseQuery('consent_record?status=eq.active&select=id') || [];
+    const activeConsents = await supabaseQuery(`consent_record?${tenantFilter}&status=eq.active&select=id`) || [];
 
     res.json({
       success: true,
@@ -781,3 +892,6 @@ router.get('/dashboard', requireMinRole('admin'), async (req, res) => {
 });
 
 module.exports = router;
+module.exports.publicRouter = publicRouter;
+module.exports.pickExportFields = pickExportFields;
+module.exports.sanitizeTenantExport = sanitizeTenantExport;
