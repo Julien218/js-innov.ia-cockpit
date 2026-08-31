@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { FileText, FolderKanban, Receipt } from 'lucide-react';
 import StatusBadge from '@/components/shared/StatusBadge';
+import { useAuth } from '@/lib/AuthContext';
 
 const CONFIG = {
   projects: {
@@ -18,19 +19,21 @@ const CONFIG = {
   invoices: {
     table: 'Facture',
     title: 'Mes factures',
-    subtitle: 'Factures disponibles dans votre espace client',
+    subtitle: 'Factures que JS-Innov.IA vous adresse, pour vos différentes structures',
     icon: Receipt,
   },
 };
 
-async function loadRows(table) {
-  const response = await fetch(`/api/data/${table}?limit=300`, { credentials: 'same-origin' });
-  const data = await response.json().catch(() => []);
-  if (!response.ok) throw new Error(data.error || 'Données momentanément indisponibles');
-  return Array.isArray(data) ? data : [];
+async function loadRows(table, signal) {
+  const response = await fetch(`/api/data/${table}?limit=300`, { credentials: 'same-origin', signal });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.error || 'Données momentanément indisponibles');
+  if (!Array.isArray(data)) throw new Error('Réponse invalide du service de données');
+  return data;
 }
 
 function money(value) {
+  if (value == null || value === '') return '—';
   const number = Number(value);
   return Number.isFinite(number) ? number.toLocaleString('fr-BE', { style: 'currency', currency: 'EUR' }) : '—';
 }
@@ -68,6 +71,7 @@ function BillingCard({ row, kind }) {
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{row.numero || (isQuote ? 'Devis' : 'Facture')}</p>
           <h2 className="mt-1 font-semibold text-foreground">{row.objet || (isQuote ? 'Devis JS-Innov.IA' : 'Facture JS-Innov.IA')}</h2>
+          {!isQuote && <p className="mt-2 text-xs text-muted-foreground">Émetteur : JS-Innov.IA · Facturé à : {row.client_nom || 'Votre structure'}</p>}
         </div>
         {row.statut && <StatusBadge status={row.statut} />}
       </div>
@@ -77,19 +81,34 @@ function BillingCard({ row, kind }) {
           <p className="text-lg font-bold text-foreground">{money(row.montant_ttc)}</p>
         </div>
         <div className="text-right text-xs text-muted-foreground">
+          {!isQuote && <div>Émission : {date(row.date_emission)}</div>}
           {isQuote ? `Validité : ${date(row.date_validite)}` : `Échéance : ${date(row.date_echeance)}`}
         </div>
       </div>
+      {!isQuote && <details className="mt-4 border-t border-border pt-3 text-sm">
+        <summary className="cursor-pointer font-medium">Détail de la facture</summary>
+        <div className="mt-3 space-y-3">
+          {(row.invoice_lines || []).map((line, index) => <div key={index} className="flex justify-between gap-4">
+            <div><p>{line.description || 'Prestation'}</p>{line.periode && <p className="text-xs text-muted-foreground">{line.periode}</p>}<p className="text-xs text-muted-foreground">Prix unitaire HT : {money(line.prix_unitaire_ht ?? line.unit_price_ht)}{line.quantite != null || line.quantity != null ? ` · Quantité : ${line.quantite ?? line.quantity}` : ''}</p></div>
+            {line.total_ttc != null && <span className="whitespace-nowrap">{money(line.total_ttc)} TTC</span>}
+          </div>)}
+          {!row.invoice_lines?.length && <p className="text-muted-foreground">Détail des prestations non renseigné.</p>}
+          <p>Total HT : {money(row.montant_ht)} · Total TTC : {money(row.montant_ttc)}</p>
+        </div>
+      </details>}
     </article>
   );
 }
 
 export default function ClientRecords({ kind }) {
+  const { user } = useAuth();
   const config = CONFIG[kind] || CONFIG.projects;
   const Icon = config.icon;
   const { data = [], isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['client-records', config.table],
-    queryFn: () => loadRows(config.table),
+    queryKey: ['client-records', user?.id, config.table],
+    queryFn: ({ signal }) => loadRows(config.table, signal),
+    enabled: Boolean(user?.id),
+    gcTime: 0,
   });
 
   return (
@@ -120,7 +139,7 @@ export default function ClientRecords({ kind }) {
       )}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        {data.map((row) => kind === 'projects'
+        {(isError ? [] : data).map((row) => kind === 'projects'
           ? <ProjectCard key={row.id} row={row} />
           : <BillingCard key={row.id} row={row} kind={kind} />)}
       </div>
