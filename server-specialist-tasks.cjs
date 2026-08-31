@@ -48,6 +48,8 @@ function proofMessage(result, payload) {
 }
 
 async function processSpecialistMessage({ agent, message, user, tenant, conversationId, requestId, chat, agentFetch, execute = executeTaskBatch }) {
+  const { isEmailTriage, triageEmails } = require('./server-nova-email-triage.cjs');
+  if (isEmailTriage(message)) return triageEmails({ message, user });
   const { deletionMention, deleteFromMessage } = require('./server-nova-document-delete.cjs');
   if (deletionMention(message)) return deleteFromMessage({ message, user });
   const requested = taskIntent(message);

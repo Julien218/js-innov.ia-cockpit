@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
+import { setNovaMailboxContext } from '@/lib/novaMailboxContext';
 import {
   Mail, RefreshCw, Paperclip, Search, ArrowLeft, User, Calendar,
   Shield, Store, Send, Loader2, Reply, Trash2, Archive, Check, AlertCircle,
@@ -360,6 +361,10 @@ export default function Emails() {
     })),
   ], [googleAccounts]);
   const activeMailboxCfg = mailboxes.find(m => m.id === activeMailbox) || mailboxes[1];
+  useEffect(() => {
+    setNovaMailboxContext({ id: activeMailbox });
+    return () => setNovaMailboxContext(null);
+  }, [activeMailbox]);
 
   useEffect(() => {
     fetch('/api/google-mail/accounts', { credentials: 'same-origin' })

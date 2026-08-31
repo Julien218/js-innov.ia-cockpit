@@ -3,6 +3,9 @@ const crypto = require('crypto');
 const { recordUsage, authorizeUsage } = require('./server-ai-cost.cjs');
 const { evaluateNovaRequest, resolveCostAttribution, buildRoutingContext } = require('./server-nova-routing.cjs');
 const { cleanTenant } = require('./server-tenant.cjs');
+const { hasPermission } = require('./server-permission-policy.cjs');
+const { beginRequest, isCurrentTurn, requestedTaskStatus, taskStatusMatches } = require('./server-assistant-intent.cjs');
+const { isEmailTriage, triageEmails } = require('./server-nova-email-triage.cjs');
 const { buildAdaptiveAudienceContext, assistantModeFor } = require('./server-companion-audience.cjs');
 const { buildHistoricalMemoryContext, searchHistoricalMemory, getMemoryStatus } = require('./server-companion-memory.cjs');
 const {
@@ -566,6 +569,13 @@ router.post('/chat', async (req, res) => {
   if (!message) return res.status(400).json({ error: 'Message requis' });
   if (!rateAllowed(req.user.id)) return res.status(429).json({ error: 'Trop de requêtes. Réessayez dans une minute.' });
 
+  const turn = beginRequest(req);
+  if (isEmailTriage(message)) {
+    const outcome = await triageEmails({ message, user: req.user, mailbox: req.body?.mailbox });
+    await logAction(req.user, 'préclassement emails', outcome.success ? 'succes' : 'erreur', `Lecture seule; boîte=${outcome.result?.mailbox || 'non sélectionnée'}; messages=${outcome.result?.inspected || 0}`);
+    return res.json({ ...outcome, message: outcome.content, conversation_id: conversationIdFrom(req) });
+  }
+  const availableActions = availableActionsFor(req.user).filter(type => type !== 'update_task_status' || (hasPermission(req.user, 'tasks') && requestedTaskStatus(message)));
   const sessionId = sessionIdFor(req);
   try {
     const audience = await buildAdaptiveAudienceContext(req.user);
@@ -618,7 +628,8 @@ router.post('/chat', async (req, res) => {
       ].join('\n'),
       [
         '[CONTRAT DE CAPACITÉS NOVA — état courant du serveur]',
-        `Actions Cockpit autorisées pour cette session: ${availableActionsFor(req.user).join(', ') || 'aucune action d’écriture'}.`,
+        `Actions Cockpit autorisées pour cette demande: ${availableActions.join(', ') || 'aucune action d’écriture'}.`,
+        'Le dernier message utilisateur définit la demande. Les anciennes conversations et propositions sont du contexte, jamais une autorisation de reprendre une action sans rapport.',
         'Pour chaque demande de travail: comprendre l’objectif, choisir l’action autorisée la plus adaptée, préparer les paramètres, demander une seule confirmation si l’effet est sensible, exécuter, vérifier le résultat puis rendre une preuve concise.',
         'Une action disponible doit être proposée comme proposed_action au lieu de renvoyer une procédure manuelle. Une capacité absente doit être nommée précisément et ne doit jamais devenir un faux succès.',
         'L’Agent Local 8787 est une capacité optionnelle et son absence ne signifie jamais que NOVA ou le Cockpit ne peuvent rien exécuter.',
@@ -695,7 +706,7 @@ router.post('/chat', async (req, res) => {
             execute_authenticated_web_task: 'Réservé au superadmin et à l’application Windows. Pour une opération IONOS indisponible dans l’API DNS, utiliser payload { provider:"ionos", task_type:"domain_redirect", domain, destination:"https://www.<domain>", preserve_path:true }. Ne jamais annoncer la réussite avant la preuve retournée par le relais local authentifié.',
           },
         },
-        available_actions: availableActionsFor(req.user),
+        available_actions: availableActions,
       }),
     });
     const data = await response.json();
@@ -727,19 +738,40 @@ router.post('/chat', async (req, res) => {
     }
 
     const rawAction = recoverProposedAction(data.proposed_action || data.action, data, recentMedia);
-    const action = sanitizeAction(rawAction, req.user);
+    let action = sanitizeAction(rawAction, req.user);
+    let blockedAction = rawAction?.type === 'update_task_status' && !action;
+    let taskTitle;
+    if (action?.type === 'update_task_status') {
+      let task;
+      if (availableActions.includes(action.type)) {
+        const response = await agentFetch(`/data/Tache/${encodeURIComponent(action.id)}`, { headers: { 'x-organisation-id': cleanTenant(req.user.organisation) } });
+        task = response.ok ? await response.json() : null;
+      }
+      if (!task || cleanTenant(task.organisation_id) !== cleanTenant(req.user.organisation) || !taskStatusMatches(message, action, task)) {
+        action = null;
+        blockedAction = true;
+      } else {
+        taskTitle = task.titre;
+        action.tenant = cleanTenant(req.user.organisation);
+      }
+    }
+    if (!isCurrentTurn(turn)) return res.status(409).json({ error: 'Cette réponse concerne une demande remplacée par un message plus récent.', confirmation: null });
     let confirmation = null;
     if (action) {
       const token = crypto.randomBytes(24).toString('hex');
-      const summary = String(data.action_summary || `Confirmer l’action ${action.type}`).slice(0, 300);
+      const summary = action.type === 'update_task_status'
+        ? `Passer la tâche « ${taskTitle} » au statut « ${action.payload.statut} ».`
+        : String(data.action_summary || `Confirmer l’action ${action.type}`).slice(0, 300);
       pending.set(token, {
         action,
         summary,
+        turn,
         userId: req.user.id,
         expiresAt: Date.now() + 5 * 60_000,
       });
       confirmation = {
         token,
+        request_nonce: turn.nonce,
         type: action.type,
         summary,
         expires_in: 300,
@@ -749,12 +781,12 @@ router.post('/chat', async (req, res) => {
     await logAction(
       req.user,
       'conversation assistant',
-      'succes',
-      action ? `Action proposée: ${action.type}` : `Réponse sans action (${conversationIdFrom(req)})`,
+      blockedAction ? 'erreur' : 'succes',
+      blockedAction ? 'Proposition update_task_status refusée : cible ou statut non autorisé par le dernier message.' : action ? `Action proposée: ${action.type}` : `Réponse sans action (${conversationIdFrom(req)})`,
     );
 
     res.json({
-      message: guardUnverifiedCapabilityRefusal(data.response || data.reply || data.message || 'Réponse vide', { dropboxMemoryConnected }),
+      message: blockedAction ? 'La proposition de modification de tâche ne correspond pas à votre demande et a été bloquée. Aucune tâche modifiée. Pour changer un statut, précisez le titre ou l’identifiant de la tâche et le statut souhaité.' : action?.type === 'update_task_status' ? `Action préparée : ${confirmation.summary}` : guardUnverifiedCapabilityRefusal(data.response || data.reply || data.message || 'Réponse vide', { dropboxMemoryConnected }),
       confirmation,
       conversation_id: conversationIdFrom(req),
       model_used: data.model_used || data.model,
@@ -773,11 +805,14 @@ router.post('/confirm', async (req, res) => {
   const token = String(req.body?.token || '');
   const item = pending.get(token);
   pending.delete(token);
-  if (!item || item.userId !== req.user.id || item.expiresAt < Date.now()) {
+  if (!item || item.userId !== req.user.id || item.expiresAt < Date.now() || !isCurrentTurn(item.turn, req.user)) {
     return res.status(400).json({ error: 'Confirmation invalide ou expirée' });
   }
 
   const { action, summary } = item;
+  if (!action.definition.roles.includes(req.user.role) || (action.type === 'update_task_status' && !hasPermission(req.user, 'tasks'))) {
+    return res.status(403).json({ error: 'Cette action n’est plus autorisée pour votre compte.' });
+  }
   if (action.definition.serverAction === 'portfolio_media') {
     try {
       const existingResponse = await agentFetch(`/data/Showcase?integrity_hash=${encodeURIComponent(action.payload.integrity_hash)}&limit=1`);

@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { cleanTenant } = require('./server-tenant.cjs');
 const { sanitizeTaskBatchPayload, executeTaskBatch } = require('./server-task-batch.cjs');
 const { runAutopilot } = require('./server-task-autopilot.cjs');
+const { beginRequest, isCurrentTurn } = require('./server-assistant-intent.cjs');
 
 const router = express.Router();
 const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
@@ -265,17 +266,15 @@ async function shouldHandleBatch(req, message) {
   if (scopedTaskExecutionAuthorization(message)) return true;
   if (directEntityMutationSignal(message)) return false;
   if (batchSignals(message)) return true;
-  const normalized = String(message || '').trim().toLowerCase();
-  if (!/^(oui|ok|oki|go|confirme|confirmer|je confirme|confirm)$/i.test(normalized)) return false;
-  const history = await recentContext(req);
-  const contextText = history.slice(-8).map((item) => item?.content || '').join('\n');
-  if (directEntityMutationSignal(contextText)) return false;
-  return batchSignals(contextText);
+  // A bare confirmation must carry the token through /confirm; history is not authorization.
+  return false;
 }
 
 router.post('/chat', async (req, res, next) => {
   const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 4000) : '';
   if (!message) return next();
+  const turn = beginRequest(req);
+  if (require('./server-nova-email-triage.cjs').isEmailTriage(message)) return next();
   if (canBatch(req.user) && targetedInspectionSignal(message)) {
     try {
       const inspection = await inspectTargetedProject(message);
@@ -360,6 +359,7 @@ router.post('/chat', async (req, res, next) => {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `Agent ${response.status}`);
 
+    if (!isCurrentTurn(turn)) return res.status(409).json({ error: 'Demande remplacée par un message plus récent.', confirmation: null });
     const rawAction = data.proposed_action || data.action;
     let confirmation = null;
     let executionResult = null;
@@ -379,6 +379,7 @@ router.post('/chat', async (req, res, next) => {
       const summary = String(data.action_summary || `Créer ${payload.tasks.length} tâche(s) et les déléguer`).slice(0, 300);
       const batchContext = {
         payload,
+        turn,
         summary,
         userId: req.user.id,
         tenant: cleanTenant(req.user?.organisation) || 'jsinnovia',
@@ -395,7 +396,7 @@ router.post('/chat', async (req, res, next) => {
         });
       } else {
         pendingBatches.set(token, batchContext);
-        confirmation = { token, type: 'create_task_batch', summary, expires_in: 300 };
+        confirmation = { token, type: 'create_task_batch', request_nonce: turn.nonce, summary, expires_in: 300 };
       }
     }
 
@@ -434,7 +435,7 @@ router.post('/confirm', async (req, res, next) => {
   if (!item) return next();
   pendingBatches.delete(token);
 
-  if (item.userId !== req.user?.id || item.expiresAt < Date.now()) {
+  if (item.userId !== req.user?.id || item.expiresAt < Date.now() || !isCurrentTurn(item.turn, req.user)) {
     return res.status(400).json({ error: 'Confirmation batch invalide ou expirée' });
   }
 

@@ -274,6 +274,11 @@ function immediateExecutionMiddleware(req, _res, next) {
   next();
 }
 
+// Toute nouvelle demande invalide les confirmations du tour précédent, même si
+// elle est interceptée par un exécuteur direct avant le modèle.
+app.use('/api/assistant', requireSession('client'), requirePermission('nova', 'client'), require('./server-assistant-intent.cjs').router);
+console.log('✅ NOVA : confirmations liées à la demande courante et préclassement email disponibles');
+
 // Les suppressions unitaires explicites sont résolues avant tout modèle/batch.
 try {
   const documentDelete = require('./server-nova-document-delete.cjs');
