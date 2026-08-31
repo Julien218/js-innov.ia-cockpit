@@ -48,6 +48,7 @@ COPY --from=builder /app/server-user-access.cjs ./server-user-access.cjs
 COPY --from=builder /app/server-tenant.cjs ./server-tenant.cjs
 COPY --from=builder /app/server-data-proxy.cjs ./server-data-proxy.cjs
 COPY --from=builder /app/server-project-data.cjs ./server-project-data.cjs
+COPY --from=builder /app/server-miss-dour-data.cjs ./server-miss-dour-data.cjs
 COPY --from=builder /app/server-bce.cjs ./server-bce.cjs
 COPY --from=builder /app/server-hainoflow.cjs ./server-hainoflow.cjs
 COPY --from=builder /app/server-assistant.cjs ./server-assistant.cjs
