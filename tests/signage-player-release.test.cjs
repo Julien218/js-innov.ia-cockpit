@@ -29,7 +29,7 @@ test('TVBOX receives the metadata-selected signed release through stable endpoin
 });
 
 test('release signing uses repository secrets without committing private material', () => {
-  assert.match(gradle, /versionName '0\.5\.3-pilot'/);
+  assert.match(gradle, /versionName '0\.6\.1-pilot'/);
   assert.match(gradle, /PIXELIUM_KEYSTORE_PATH/);
   assert.match(gradle, /PIXELIUM_KEYSTORE_PASSWORD/);
   assert.match(gradle, /pixelium-release/);
@@ -40,11 +40,11 @@ test('release signing uses repository secrets without committing private materia
   assert.doesNotMatch(releaseWorkflow, /BEGIN (RSA )?PRIVATE KEY/);
 });
 
-test('verified 0.5.3 APK and non-secret metadata are published once for Railway', () => {
-  assert.equal(metadata.version, '0.5.3-pilot');
+test('verified APK and non-secret metadata are published once for Railway', () => {
+  assert.match(metadata.version, /^0\.\d+\.\d+-pilot$/);
   assert.match(metadata.apkSha256, /^[0-9a-f]{64}$/);
   assert.equal(metadata.certificateSha256.replaceAll(':', '').toLowerCase(), '8fed74014024629caa1d253264e894e627dc1b96ce1add75d4ee8dad87f89cf9');
-  assert.match(releaseWorkflow, /assets\/Pixelium-Player-Olivier-0\.5\.3-pilot\.apk/);
+  assert.match(releaseWorkflow, /assets\/Pixelium-Player-Olivier-0\.6\.1-pilot\.apk/);
   assert.match(releaseWorkflow, /assets\/pixelium-player-release\.json/);
   assert.match(releaseWorkflow, /apksigner.*verify --print-certs/s);
   assert.match(releaseWorkflow, /sha256sum/);

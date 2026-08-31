@@ -39,7 +39,7 @@ public class PixeliumGuardianService extends Service {
   private static final String CHANNEL_ID = "pixelium_player_runtime";
   private static final int NOTIFICATION_ID = 5102;
   private static final String RUNTIME_VERSION = "2";
-  private static final String PLAYER_VERSION = "0.5.3-pilot";
+  private static final String PLAYER_VERSION = "0.6.1-pilot";
   private static final long RUNTIME_HEARTBEAT_INTERVAL_MS = 30_000L;
   private static final long WATCHDOG_INTERVAL_MS = 45_000L;
   private static final long PLAYBACK_STALE_MS = 90_000L;

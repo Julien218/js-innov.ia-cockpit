@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BASE_URL: https://olivier-signage-cockpit-production.up.railway.app
-      EXPECTED_VERSION: 0.5.3-pilot
+      EXPECTED_VERSION: 0.6.1-pilot
       EXPECTED_CERT: 8fed74014024629caa1d253264e894e627dc1b96ce1add75d4ee8dad87f89cf9
     steps:
       - name: Mark live smoke pending
@@ -37,9 +37,9 @@ jobs:
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -d '{"state":"pending","context":"Pixelium live smoke","description":"Waiting for Railway and validating Player 0.5.3","target_url":"'"${RUN_URL}"'"}'
+            -d '{"state":"pending","context":"Pixelium live smoke","description":"Waiting for Railway and validating Player 0.6.1","target_url":"'"${RUN_URL}"'"}'
 
-      - name: Wait for Railway deployment and signed 0.5.3 metadata
+      - name: Wait for Railway deployment and signed 0.6.1 metadata
         shell: bash
         run: |
           set -euo pipefail
@@ -121,7 +121,7 @@ jobs:
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -d '{"state":"success","context":"Pixelium live smoke","description":"Railway serves signed Player 0.5.3 and protected runtime route","target_url":"'"${RUN_URL}"'"}'
+            -d '{"state":"success","context":"Pixelium live smoke","description":"Railway serves signed Player 0.6.1 and protected runtime route","target_url":"'"${RUN_URL}"'"}'
 
       - name: Mark live smoke failed
         if: failure()
@@ -135,4 +135,4 @@ jobs:
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -d '{"state":"failure","context":"Pixelium live smoke","description":"Live Player 0.5.3 validation failed","target_url":"'"${RUN_URL}"'"}' || true
+            -d '{"state":"failure","context":"Pixelium live smoke","description":"Live Player 0.6.1 validation failed","target_url":"'"${RUN_URL}"'"}' || true
