@@ -3,6 +3,7 @@ const router = express.Router();
 const { cleanTenant, resolveTenant } = require('./server-tenant.cjs');
 const { hasPermission } = require('./server-permission-policy.cjs');
 const { invoiceScope, readClientInvoices } = require('./server-client-invoices.cjs');
+const { normalizeDemandeWrite } = require('./server-demande-status.cjs');
 
 const ROLE_LEVEL = { client: 1, collaborateur: 2, admin: 3, superadmin: 4 };
 const TENANT_TABLES = new Set(['Client', 'Projet', 'Tache', 'Devis', 'Facture', 'Demande']);
@@ -95,6 +96,9 @@ router.use(async (req, res) => {
     }
 
     let payload = req.body;
+    if (table === 'Demande' && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
+      payload = normalizeDemandeWrite(payload, req.method);
+    }
     if (tenant && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
       if (payload?.organisation_id && cleanTenant(payload.organisation_id) !== tenant) {
         return res.status(403).json({ error: 'Organisation du document non autorisée.' });

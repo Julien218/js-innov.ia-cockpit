@@ -1,7 +1,10 @@
-const STATUS_ALIASES = { ouverte: 'nouveau', en_traitement: 'en_cours', resolue: 'traite' };
+import demandeStatuses from '../../demande-status.json' with { type: 'json' };
+const STATUS_ALIASES = demandeStatuses.aliases;
+export const DEMANDE_STATUS_OPTIONS = Object.entries(demandeStatuses.labels).map(([value, label]) => ({ value, label }));
+export const DEMANDE_STATUS_FILTERS = demandeStatuses.filters;
 
 export function demandeStatus(demande) {
-  return STATUS_ALIASES[demande.statut] || demande.statut || '';
+  return Object.hasOwn(STATUS_ALIASES, demande.statut) ? STATUS_ALIASES[demande.statut] : demande.statut || '';
 }
 
 export function isNewDemande(demande) {

@@ -1,0 +1,22 @@
+{
+  "labels": {
+    "nouveau": "Nouvelle",
+    "lu": "Lue",
+    "en_cours": "En cours",
+    "traite": "Traitée",
+    "archive": "Archivée"
+  },
+  "filters": {
+    "nouveau": "Nouvelles",
+    "lu": "Lues",
+    "en_cours": "En cours",
+    "traite": "Traitées",
+    "archive": "Archivées"
+  },
+  "aliases": {
+    "ouverte": "nouveau",
+    "en_traitement": "en_cours",
+    "resolue": "traite",
+    "ferme": "archive"
+  }
+}
