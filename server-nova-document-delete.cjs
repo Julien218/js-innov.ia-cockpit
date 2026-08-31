@@ -18,9 +18,10 @@ function explicitDeletion(message) {
   return /^(?:(?:bonjour|salut|hello)[,!\s]+)?(?:(?:peux[- ]tu|pouvez[- ]vous|pourrais[- ]tu|merci de|je veux|je souhaite)\s+)?(?:supprime[rz]?|efface[rz]?|effece[rz]?|delete)\b/.test(text);
 }
 
-function exactMention(message, value) {
+function exactMention(message, value, caseSensitive = false) {
   if (!value) return false;
-  const text = norm(message), needle = norm(value);
+  const normalize = caseSensitive ? input => String(input || '').normalize('NFC').replace(/\\_/g, '_') : norm;
+  const text = normalize(message), needle = normalize(value);
   let offset = text.indexOf(needle);
   while (offset !== -1) {
     const before = text[offset - 1] || '', after = text[offset + needle.length] || '';
@@ -40,7 +41,7 @@ function resolveDocument(message, documents, tenant) {
   if (documents.length >= 1000) throw new Error('Index trop volumineux : préciser un identifiant documentaire pour un contrôle ciblé.');
   // Include tombstones so an interrupted index/journal update can be resumed.
   const eligible = documents.filter(doc => cleanTenant(doc.organisation) === tenant);
-  const explicit = eligible.filter(doc => documentPaths(doc).some(path => exactMention(message, path)) || exactMention(message, doc.dropbox_file_id) || exactMention(message, doc.id));
+  const explicit = eligible.filter(doc => documentPaths(doc).some(path => exactMention(message, path)) || exactMention(message, doc.dropbox_file_id, true) || exactMention(message, doc.id));
   const matches = explicit.length ? explicit : eligible.filter(doc => {
     // An unmatched supplied path must never fall back to a same-named file elsewhere.
     return exactMention(message, doc.filename) && !norm(message).includes('/' + norm(doc.filename)) && !norm(message).includes('\\' + norm(doc.filename));

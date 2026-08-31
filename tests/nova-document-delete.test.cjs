@@ -106,8 +106,35 @@ test('nom exact ambigu, nom partiel, mauvais chemin et autre organisation sont r
   assert.throws(() => resolveDocument('Supprime le fichier Img 4136', [document], 'jsinnovia'), /Aucun/);
   assert.throws(() => resolveDocument(`Supprime /Wrong/${document.filename}`, [document], 'jsinnovia'), /Aucun/);
   assert.throws(() => resolveDocument(message, [{ ...document, organisation: 'other' }], 'jsinnovia'), /Aucun/);
+  assert.throws(() => resolveDocument('Supprime le fichier id:TEST_IMAGE', [document], 'jsinnovia'), /Aucun/);
   assert.equal(resolveDocument(`Supprime ${document.dropbox_path}`, [document, other], 'jsinnovia').id, document.id);
   assert.equal(resolveDocument(`Supprime /Cockpit/A\\_Classer/Images/${document.filename}`, [document, other], 'jsinnovia').id, document.id);
+});
+
+test('une panne cloud pendant une suppression ne bascule jamais vers un modèle local', async () => {
+  const { sendNovaChat } = await import('../src/lib/novaChatTransport.js');
+  let localCalls = 0, cloudCalls = 0;
+  await assert.rejects(sendNovaChat({ message, requiresLocalTool: true,
+    sendCloud: async () => { cloudCalls++; throw new Error('Network error'); },
+    sendLocal: async () => { localCalls++; return { response: 'supprimé' }; },
+  }), error => error.dropboxVerification && /inconnu/.test(error.message));
+  assert.equal(cloudCalls, 1); assert.equal(localCalls, 0);
+});
+
+test('hors connexion, une suppression Dropbox n’appelle ni le cloud ni le modèle local', async () => {
+  const { sendNovaChat } = await import('../src/lib/novaChatTransport.js');
+  await assert.rejects(sendNovaChat({ message, offline: true,
+    sendCloud: () => { assert.fail('No cloud request'); }, sendLocal: () => { assert.fail('No local request'); },
+  }), error => error.dropboxVerification && /Aucune suppression lancée/.test(error.message));
+});
+
+test('le chat ordinaire conserve son repli local, mais jamais après un refus du Cockpit', async () => {
+  const { sendNovaChat } = await import('../src/lib/novaChatTransport.js');
+  let localCalls = 0;
+  const sendLocal = async () => { localCalls++; return { response: 'mode local' }; };
+  assert.deepEqual(await sendNovaChat({ message: 'Bonjour', sendCloud: async () => { throw new Error('Network error'); }, sendLocal }), { response: 'mode local' });
+  await assert.rejects(sendNovaChat({ message: 'Bonjour', sendCloud: async () => { throw Object.assign(new Error('Forbidden'), { cockpitResponse: true }); }, sendLocal }), /Forbidden/);
+  assert.equal(localCalls, 1);
 });
 
 test('un identifiant documentaire permet une lecture ciblée avec contrôle de l’organisation', async () => {

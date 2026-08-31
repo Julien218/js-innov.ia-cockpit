@@ -20,6 +20,7 @@ import novaAvatar from '@/assets/nova-avatar-128.png';
 import { chooseNovaVoice } from '@/lib/nova-voice';
 import { inspectMediaFile } from '@/lib/mediaReference';
 import { executeNovaClientAction } from '@/lib/novaClientAction';
+import { isDropboxDeletionRequest, sendNovaChat } from '@/lib/novaChatTransport';
 
 const LOCAL_NOVA_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
 const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
@@ -293,6 +294,7 @@ const FloatingAgent = () => {
       return;
     }
     const requiresLocalTool = LOCAL_TOOL_REQUEST.test(msg);
+    if (isDropboxDeletionRequest(msg)) setConfirmation(null);
 
     setInput('');
     stopSpeaking();
@@ -347,17 +349,8 @@ const FloatingAgent = () => {
         throw lastError || new Error('NOVA locale indisponible');
       };
 
-      let data;
-      if (requiresLocalTool || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
-        data = await sendLocal();
-      } else {
-        try {
-          data = await sendCloud();
-        } catch (error) {
-          if (error?.cockpitResponse) throw error;
-          data = await sendLocal();
-        }
-      }
+      const data = await sendNovaChat({ message: msg, requiresLocalTool,
+        offline: typeof navigator !== 'undefined' && navigator.onLine === false, sendCloud, sendLocal });
 
       if (data.action_type === 'delete_dropbox_file') {
         queryClient.invalidateQueries({ queryKey: ['portfolio-dropbox-assets'] });
@@ -375,7 +368,7 @@ const FloatingAgent = () => {
       setMessages(prev => [...prev, { role: 'assistant', content, ts: Date.now() }]);
       speak(content);
     } catch (err) {
-      const prefix = err?.cockpitResponse
+      const prefix = err?.dropboxVerification ? '⚠️ Suppression Dropbox non vérifiée : ' : err?.cockpitResponse
         ? '⚠️ Le Cockpit a répondu : '
         : requiresLocalTool ? '⚠️ L’agent local requis est injoignable : ' : '⚠️ NOVA cloud et locale sont injoignables : ';
       setMessages(prev => [...prev, { role: 'assistant', content: prefix + err.message, ts: Date.now(), isError: true }]);

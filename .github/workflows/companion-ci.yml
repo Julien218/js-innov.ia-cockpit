@@ -35,6 +35,7 @@ on:
       - 'src/lib/roles.js'
       - 'src/lib/assistantConfirmationBridge.js'
       - 'src/lib/mediaReference.js'
+      - 'src/lib/novaChatTransport.js'
       - 'src/components/ClientCompanion.jsx'
       - 'src/components/RoleAwareFloatingAgent.jsx'
       - 'src/components/FloatingAgent.jsx'
