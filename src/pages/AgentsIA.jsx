@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 // === Styles (système de conception JS-Innov.IA) ===
 const COLORS = {
@@ -26,6 +27,7 @@ const COLORS = {
 };
 
 export default function AgentsIA() {
+  const queryClient = useQueryClient();
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -121,12 +123,17 @@ export default function AgentsIA() {
 
       const data = await resp.json();
       setMessages(prev => [...prev, { role: 'assistant', content: data.content, id: data.id }]);
+      if (data.action_type === 'delete_dropbox_file') {
+        queryClient.invalidateQueries({ queryKey: ['portfolio-dropbox-assets'] });
+        window.dispatchEvent(new Event('cockpit-documents-changed'));
+        queryClient.invalidateQueries({ queryKey: ['Tache'] });
+      }
     } catch (err) {
       setMessages(prev => [...prev, { role: 'system', content: `Erreur: ${err.message}` }]);
     } finally {
       setSending(false);
     }
-  }, [input, selectedAgent, conversation, sending]);
+  }, [input, selectedAgent, conversation, sending, queryClient]);
 
   // Auto-scroll vers le bas
   useEffect(() => {

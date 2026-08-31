@@ -48,6 +48,8 @@ function proofMessage(result, payload) {
 }
 
 async function processSpecialistMessage({ agent, message, user, tenant, conversationId, requestId, chat, agentFetch, execute = executeTaskBatch }) {
+  const { deletionMention, deleteFromMessage } = require('./server-nova-document-delete.cjs');
+  if (deletionMention(message)) return deleteFromMessage({ message, user });
   const requested = taskIntent(message);
   const allowed = ['collaborateur', 'admin', 'superadmin'].includes(user?.role) && hasPermission(user, 'tasks');
   if (requested && !allowed) return { content: 'Création refusée : votre compte ne dispose pas de la permission Tâches.', execution_result: null };

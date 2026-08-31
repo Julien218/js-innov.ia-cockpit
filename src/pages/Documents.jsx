@@ -97,6 +97,10 @@ export default function Documents() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    window.addEventListener('cockpit-documents-changed', load);
+    return () => window.removeEventListener('cockpit-documents-changed', load);
+  }, [load]);
 
   const brands = useMemo(() => [...new Set(documents.map(d => d.brand).filter(Boolean))].sort(), [documents]);
   const categories = useMemo(() => [...new Set(documents.map(d => d.category).filter(Boolean))].sort(), [documents]);

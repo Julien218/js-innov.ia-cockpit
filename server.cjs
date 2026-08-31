@@ -274,6 +274,15 @@ function immediateExecutionMiddleware(req, _res, next) {
   next();
 }
 
+// Les suppressions unitaires explicites sont résolues avant tout modèle/batch.
+try {
+  const documentDelete = require('./server-nova-document-delete.cjs');
+  app.use('/api/assistant', requireSession('client'), requirePermission('nova', 'client'), documentDelete.router);
+  console.log('✅ Suppression Dropbox unitaire NOVA activée (identité + révision + vérification)');
+} catch (e) {
+  console.warn('⚠️ Suppression Dropbox NOVA indisponible:', e.message);
+}
+
 // ── NOVA vidéo directe : ordre explicite → vrai video_job_id ─
 try {
   const novaVideoDirectRouter = require('./server-nova-video-direct.cjs');

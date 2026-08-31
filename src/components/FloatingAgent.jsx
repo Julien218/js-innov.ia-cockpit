@@ -15,6 +15,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import novaAvatar from '@/assets/nova-avatar-128.png';
 import { chooseNovaVoice } from '@/lib/nova-voice';
 import { inspectMediaFile } from '@/lib/mediaReference';
@@ -31,6 +32,7 @@ const AFFIRMATIVE_CONFIRMATION = /^(oui|ok|oki|okay|confirme|je confirme|vas[- ]
 const NEGATIVE_CONFIRMATION = /^(non|annule|annuler|stop)(?:\b|[,.!])/i;
 
 const FloatingAgent = () => {
+  const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState(() => {
     try {
@@ -357,6 +359,12 @@ const FloatingAgent = () => {
         }
       }
 
+      if (data.action_type === 'delete_dropbox_file') {
+        queryClient.invalidateQueries({ queryKey: ['portfolio-dropbox-assets'] });
+        window.dispatchEvent(new Event('cockpit-documents-changed'));
+        queryClient.invalidateQueries({ queryKey: ['Tache'] });
+        setConfirmation(null);
+      }
       let content = data.message || data.response || data.reply || data.content || data.text || 'Réponse vide';
       if (data.local_fallback) content = `Mode local · ${content}`;
       if (data.confirmation) {
@@ -374,7 +382,7 @@ const FloatingAgent = () => {
     } finally {
       setLoading(false);
     }
-  }, [input, loading, confirmation, executeConfirmation, conversationId, messages, speak, stopSpeaking]);
+  }, [input, loading, confirmation, executeConfirmation, conversationId, messages, speak, stopSpeaking, queryClient]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
