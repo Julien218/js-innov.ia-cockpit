@@ -19,8 +19,9 @@ function beginRequest(req) {
   return turn;
 }
 
-function isCurrentTurn(turn) {
-  return Boolean(turn && turn.expiresAt > Date.now() && turns.get(turn.scope)?.nonce === turn.nonce);
+function isCurrentTurn(turn, user) {
+  const sameAccount = !user || turn?.scope.startsWith(`${cleanTenant(user.organisation)}:${user.id}:`);
+  return Boolean(sameAccount && turn && turn.expiresAt > Date.now() && turns.get(turn.scope)?.nonce === turn.nonce);
 }
 
 function requestedTaskStatus(message) {

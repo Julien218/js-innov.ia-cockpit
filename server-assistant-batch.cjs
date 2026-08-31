@@ -435,7 +435,7 @@ router.post('/confirm', async (req, res, next) => {
   if (!item) return next();
   pendingBatches.delete(token);
 
-  if (item.userId !== req.user?.id || item.expiresAt < Date.now() || !isCurrentTurn(item.turn)) {
+  if (item.userId !== req.user?.id || item.expiresAt < Date.now() || !isCurrentTurn(item.turn, req.user)) {
     return res.status(400).json({ error: 'Confirmation batch invalide ou expirée' });
   }
 

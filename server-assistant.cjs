@@ -805,7 +805,7 @@ router.post('/confirm', async (req, res) => {
   const token = String(req.body?.token || '');
   const item = pending.get(token);
   pending.delete(token);
-  if (!item || item.userId !== req.user.id || item.expiresAt < Date.now() || !isCurrentTurn(item.turn)) {
+  if (!item || item.userId !== req.user.id || item.expiresAt < Date.now() || !isCurrentTurn(item.turn, req.user)) {
     return res.status(400).json({ error: 'Confirmation invalide ou expirée' });
   }
 

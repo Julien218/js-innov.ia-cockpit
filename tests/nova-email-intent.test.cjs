@@ -93,6 +93,8 @@ test('une nouvelle demande invalide le tour précédent, mais pas une autre conv
   assert.equal(isCurrentTurn(old), false);
   assert.equal(isCurrentTurn(otherChat), true);
   assert.equal(isCurrentTurn(otherUser), true);
+  assert.equal(isCurrentTurn(otherUser, { ...user, id: 'two', organisation: 'another-company' }), false);
+  assert.equal(isCurrentTurn(otherUser, { ...user, id: 'two' }), true);
 });
 
 test('HTTP : emails sans action parasite, vieille confirmation rejetée, nouveau statut vérifié et usage unique', async t => {
