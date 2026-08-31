@@ -78,7 +78,7 @@ function gmailMessageToEmail(message) {
     else body.text.push(decodeBase64Url(directData));
   }
   const labels = message?.labelIds || [];
-  return {
+  return require('./server-email-presentation.cjs').presentMailboxEmail({
     uid: message.id,
     messageId: message.id,
     threadId: message.threadId,
@@ -96,7 +96,7 @@ function gmailMessageToEmail(message) {
     html: body.html.join('\n').trim(),
     attachments: body.attachments,
     hasAttachment: body.attachments.length > 0,
-  };
+  });
 }
 
 function normalized(value) {
