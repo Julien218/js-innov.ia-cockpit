@@ -12,7 +12,7 @@ import java.util.Locale;
 import java.util.TimeZone;
 
 public class ScheduledMainActivity extends MainActivity {
-  static final String SCHEDULED_APP_VERSION = "0.5.3-pilot";
+  static final String SCHEDULED_APP_VERSION = "0.6.1-pilot";
   static final String PREF_ADS_BLOCKED = "adsBlocked";
   static final String PREF_BLOCK_REASON = "adsBlockReason";
   static final String PREF_NEXT_CHANGE_AT = "adsNextChangeAt";
@@ -53,6 +53,11 @@ public class ScheduledMainActivity extends MainActivity {
       playback.put("cachedItems", items == null ? 0 : items.length());
       playback.put("preparingPublication", preparingCandidate);
       playback.put("candidatePublicationId", candidatePublicationId == null ? JSONObject.NULL : candidatePublicationId);
+      playback.put("currentMediaId", currentMediaId.isEmpty() ? JSONObject.NULL : currentMediaId);
+      playback.put("currentMediaName", currentMediaName.isEmpty() ? JSONObject.NULL : currentMediaName);
+      playback.put("currentMediaMimeType", currentMediaMimeType.isEmpty() ? JSONObject.NULL : currentMediaMimeType);
+      playback.put("currentMediaUploadedAt", currentMediaUploadedAt.isEmpty() ? JSONObject.NULL : currentMediaUploadedAt);
+      playback.put("currentMediaStartedAt", currentMediaStartedAt > 0 ? currentMediaStartedAt : JSONObject.NULL);
       playback.put("scheduleBlocked", adsBlocked || cachedBlockStillActive());
       playback.put("guardian", "foreground-special-use");
       playback.put("runtimeState", PlayerRuntimeState.snapshot(this));
@@ -82,6 +87,7 @@ public class ScheduledMainActivity extends MainActivity {
         JSONObject response = jsonRequest(server + "/api/signage/player/heartbeat", "POST", request);
         PlayerRuntimeState.markPlaybackHeartbeat(this);
         PlayerUpdateManager.checkForUpdate(this, server, SCHEDULED_APP_VERSION);
+        processRemoteCommand();
 
         boolean allowed = response.optBoolean("adsAllowed", true);
         String reason = response.optString("reason", allowed ? "allowed" : "blocked");
@@ -162,6 +168,7 @@ public class ScheduledMainActivity extends MainActivity {
       candidateItems = null;
       candidatePublicationId = null;
       try { if (video != null) video.stopPlayback(); } catch (Exception ignored) {}
+      clearCurrentMedia();
       if (video != null) video.setVisibility(View.GONE);
       if (image != null) {
         image.setImageDrawable(null);

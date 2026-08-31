@@ -91,7 +91,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "versionName '0.5.3-pilot'" player-android/app/build.gradle
+          grep -q "versionName '0.6.1-pilot'" player-android/app/build.gradle
           grep -q 'foregroundServiceType="specialUse"' player-android/app/src/main/AndroidManifest.xml
           grep -q 'FOREGROUND_SERVICE_SPECIAL_USE' player-android/app/src/main/AndroidManifest.xml
           grep -q '/api/signage/player/runtime-heartbeat' player-android/app/src/main/java/ia/jsinnov/pixeliumplayer/PixeliumGuardianService.java
@@ -106,11 +106,11 @@ jobs:
           AAPT="$(find "${ANDROID_HOME}/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -n "$AAPT"
           "$AAPT" dump badging "$APK" | tee player-badging.txt
-          grep -q "versionName='0.5.3-pilot'" player-badging.txt
+          grep -q "versionName='0.6.1-pilot'" player-badging.txt
       - name: Upload Player debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: pixelium-player-0.5.3-pilot-debug
+          name: pixelium-player-0.6.1-pilot-debug
           path: |
             player-android/app/build/outputs/apk/debug/app-debug.apk
             player-badging.txt

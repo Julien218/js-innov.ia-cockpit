@@ -100,7 +100,7 @@ test('Android only acknowledges after decoding and restores cached playback afte
   assert.match(androidPlayer, /acknowledge\(publicationId, "failed", reason\)/);
   assert.match(androidPlayer, /ImageView/);
   assert.match(androidPlayer, /checksum_sha256/);
-  assert.match(scheduledPlayer, /0\.5\.3-pilot/);
+  assert.match(scheduledPlayer, /0\.6\.1-pilot/);
 });
 
 test('guardian remains visible to the server even when playback activity is stopped', () => {

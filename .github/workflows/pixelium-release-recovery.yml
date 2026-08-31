@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       EXPECTED_CERT: 8fed74014024629caa1d253264e894e627dc1b96ce1add75d4ee8dad87f89cf9
-      APK_NAME: Pixelium-Player-Olivier-0.5.3-pilot.apk
+      APK_NAME: Pixelium-Player-Olivier-0.6.1-pilot.apk
     steps:
       - uses: actions/checkout@v4
         with:
@@ -98,7 +98,7 @@ jobs:
           APK_SHA="$(sha256sum "$RELEASE_DIR/${APK_NAME}" | awk '{print $1}')"
           cat > "$RELEASE_DIR/pixelium-player-release.json" <<EOF
           {
-            "version": "0.5.3-pilot",
+            "version": "0.6.1-pilot",
             "certificateSha256": "8F:ED:74:01:40:24:62:9C:AA:1D:25:32:64:E8:94:E6:27:DC:1B:96:CE:1A:DD:75:D4:EE:8D:AD:87:F8:9C:F9",
             "apkSha256": "${APK_SHA}",
             "sourceCommit": "${GITHUB_SHA}"
@@ -111,9 +111,9 @@ jobs:
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pixelium-player-0.5.3-pilot-release
+          name: pixelium-player-0.6.1-pilot-release
           path: |
-            assets/Pixelium-Player-Olivier-0.5.3-pilot.apk
+            assets/Pixelium-Player-Olivier-0.6.1-pilot.apk
             assets/pixelium-player-release.json
             release-apk-cert.txt
             release-signature.txt
@@ -136,7 +136,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No release file changes to publish."
           else
-            git commit -m "release: publish signed Pixelium Player 0.5.3-pilot [skip ci]"
+            git commit -m "release: publish signed Pixelium Player 0.6.1-pilot [skip ci]"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
 
