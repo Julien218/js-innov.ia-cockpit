@@ -40,6 +40,7 @@ const statusStyles = {
   // Demandes
   ouverte: "bg-blue-500/10 text-blue-600 border-blue-500/20",
   traite: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+  lu: "bg-slate-500/10 text-slate-600 border-slate-500/20",
   ferme: "bg-slate-500/10 text-slate-600 border-slate-500/20",
   en_traitement: "bg-amber-500/10 text-amber-600 border-amber-500/20",
   resolue: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
@@ -72,6 +73,7 @@ const statusLabels = {
   a_faire: "À faire", en_cours_tache: "En cours", terminee: "Terminée", bloquee: "Bloquée",
   ouverte: "Ouverte", en_traitement: "En traitement", resolue: "Résolue",
   traite: "Traitée", ferme: "Fermée",
+  lu: "Lue",
   disponible: "Disponible", indisponible: "Indisponible",
   haute: "Haute", urgente: "Urgente", moyenne: "Moyenne", basse: "Basse",
   // Assets (Portfolio)

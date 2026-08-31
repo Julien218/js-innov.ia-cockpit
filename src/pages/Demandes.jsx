@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDemandes } from "@/lib/useDemandes";
-import { demandeStatus, isNewDemande, demandeOrigin, demandeTitle, demandeFormData } from "@/lib/demandePresentation";
+import { demandeStatus, isNewDemande, demandeOrigin, demandeTitle, demandeFormData, DEMANDE_STATUS_OPTIONS, DEMANDE_STATUS_FILTERS } from "@/lib/demandePresentation";
 const useMutationAny = /** @type {any} */ (useMutation);
 import PageHeader from "@/components/shared/PageHeader";
 import ErrorState from "@/components/shared/ErrorState";
@@ -28,12 +28,7 @@ const formFields = [
     { value: "support", label: "Support" },
     { value: "autre", label: "Autre" },
   ]},
-  { key: "statut", label: "Statut", type: "select", options: [
-    { value: "nouveau", label: "Nouvelle" },
-    { value: "en_cours", label: "En cours" },
-    { value: "traite", label: "Traitée" },
-    { value: "ferme", label: "Fermée" },
-  ]},
+  { key: "statut", label: "Statut", type: "select", options: DEMANDE_STATUS_OPTIONS },
 ];
 
 export default function Demandes() {
@@ -131,10 +126,10 @@ export default function Demandes() {
         onSearch={setSearch}
         actions={
           <div className="flex gap-1 bg-muted rounded-lg p-0.5">
-            {["tous", "nouveau", "en_cours", "traite", "ferme"].map(s => (
+            {["tous", ...Object.keys(DEMANDE_STATUS_FILTERS)].map(s => (
               <button key={s} onClick={() => setFilterStatut(s)}
                 className={`px-3 py-1.5 text-xs rounded-md font-medium transition-all ${filterStatut === s ? "bg-white shadow text-foreground" : "text-muted-foreground"}`}>
-                {s === "tous" ? "Tous" : s === "nouveau" ? "Nouvelles" : s === "en_cours" ? "En cours" : s === "ferme" ? "Fermées" : "Traitées"}
+                {s === "tous" ? "Tous" : DEMANDE_STATUS_FILTERS[s]}
               </button>
             ))}
           </div>
