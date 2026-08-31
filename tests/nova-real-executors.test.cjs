@@ -104,6 +104,8 @@ test('NOVA attribue Windows et les données métier à ses exécuteurs internes'
   assert.equal(resolveNovaExecutor({ titre: 'Création vidéo Proxiled — écran géant' }).id, 'nova-video-production');
   assert.equal(resolveNovaExecutor({ titre: 'Créer une vidéo pour jsinnovia.com' }).id, 'nova-video-production');
   assert.equal(resolveNovaExecutor({ titre: 'Écrire une nouvelle application inconnue' }).kind, 'unsupported');
+  assert.equal(resolveNovaExecutor({ titre: 'Vérifier la nouvelle page web' }).reason, 'cible_site_ou_depot_absente_de_la_tache');
+  assert.equal(resolveNovaExecutor({ titre: "Analyser l'application liée aux caméras" }).reason, 'media_source_absente_ou_non_exploitable');
 });
 
 test('l’exécuteur vidéo exige le client et la source annoncée avant lancement', async () => {

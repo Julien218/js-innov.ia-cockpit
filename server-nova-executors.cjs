@@ -123,6 +123,11 @@ function resolveNovaExecutor(task = {}) {
   if (/(fiche\s+projet|projet\s+[a-z0-9]|villeconnect\s*os|villeconnectos)/.test(text)) {
     return { kind: 'project', ...INTERNAL_EXECUTORS.project_data };
   }
+  const missingTargetReason = /(site|page web|depot github|repository|application web)/.test(text)
+    ? 'cible_site_ou_depot_absente_de_la_tache'
+    : /(image|media|photo|camera)/.test(text)
+      ? 'media_source_absente_ou_non_exploitable'
+      : 'aucun_executeur_reel_enregistre_pour_ce_type_de_tache';
   return {
     kind: 'unsupported',
     id: 'nova-architect',
@@ -130,7 +135,7 @@ function resolveNovaExecutor(task = {}) {
     provider: 'cockpit-server',
     role: 'orchestration',
     execution_mode: 'prepare_only',
-    reason: 'aucun_executeur_reel_enregistre_pour_ce_type_de_tache',
+    reason: missingTargetReason,
   };
 }
 
