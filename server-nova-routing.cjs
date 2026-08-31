@@ -81,7 +81,7 @@ function resolveCostAttribution({ body = {}, audience = {}, user = {} } = {}) {
   const clientAudience = safeKey(audience.client_id);
   const ownerOrStaff = audience.mode === 'owner' || audience.mode === 'staff';
 
-  const clientKey = clientAudience || requestedClient || (ownerOrStaff ? INTERNAL_CLIENT_KEY : null);
+  const clientKey = clientAudience || (ownerOrStaff ? requestedClient || INTERNAL_CLIENT_KEY : null);
   const projectKey = requestedProject || (ownerOrStaff && !requestedClient ? INTERNAL_PROJECT_KEY : null);
 
   return {

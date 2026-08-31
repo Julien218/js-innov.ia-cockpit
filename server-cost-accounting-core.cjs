@@ -194,6 +194,7 @@ function stableRef(parts) {
 function parseGitHubUsage(data, mapping, period, env = process.env) {
   const items = Array.isArray(data?.usageItems) ? data.usageItems : [];
   const wantedRepo = mapping.service_type === 'github_repo' ? String(mapping.external_id || '').toLowerCase() : '';
+  const account = String(mapping.metadata?.billing_account || (wantedRepo ? wantedRepo.split('/')[0] : mapping.external_id) || '').trim().toLowerCase();
   return items
     .filter((item) => {
       if (!wantedRepo) return true;
@@ -205,16 +206,19 @@ function parseGitHubUsage(data, mapping, period, env = process.env) {
       const amountUsd = number(item.netAmount, 0);
       if (amountUsd < 0) throw new Error('GitHub a retourné un avoir négatif; import comptable manuel requis');
       const converted = sourceToEurMinor(amountUsd, 'USD', env);
-      const reference = stableRef([period, item.date, item.product, item.sku, item.repositoryName, item.netAmount]);
+      const rawRepository = String(item.repositoryName || '').trim().toLowerCase();
+      const repository = rawRepository && !rawRepository.includes('/') ? `${account}/${rawRepository}` : rawRepository;
+      const reference = stableRef([account, period, item.date, item.product, item.sku, repository, item.unitType]);
       return {
         line_type: 'github',
         description: `GitHub — ${item.product || 'Service'} — ${item.sku || 'usage'}${item.repositoryName ? ` — ${item.repositoryName}` : ''}`,
         total_minor: converted.totalMinor,
-        external_ref: `github:${mapping.external_id}:${period}:${reference}`,
+        external_ref: `github:${account}:${period}:${reference}`,
         metadata: {
           evidence_status: 'actual',
           verification_ref: `github-billing-api:${mapping.external_id}:${period}:${reference}`,
           source: 'github',
+          billing_account: account,
           source_amount: amountUsd,
           source_currency: 'USD',
           fx_rate: converted.fxRate,
@@ -229,6 +233,24 @@ function parseGitHubUsage(data, mapping, period, env = process.env) {
         },
       };
     });
+}
+
+function mappingConflict(candidate, mappings = []) {
+  const id = (m) => String(m.external_id || '').trim().toLowerCase();
+  const githubOwner = (m) => String(m.metadata?.billing_account || id(m).split('/')[0]).toLowerCase();
+  const railwayProject = (m) => m.service_type === 'railway_project' ? id(m) : String(m.metadata?.project_id || '').toLowerCase();
+  return mappings.find((m) => {
+    if (m.is_active === false || (candidate.id && m.id === candidate.id)) return false;
+    if (m.service_type === candidate.service_type && id(m) === id(candidate)) return true;
+    if (m.service_type.startsWith('github_') && candidate.service_type.startsWith('github_')) {
+      return githubOwner(m) === githubOwner(candidate) && (m.service_type !== 'github_repo' || candidate.service_type !== 'github_repo');
+    }
+    if (m.service_type.startsWith('railway_') && candidate.service_type.startsWith('railway_')) {
+      return railwayProject(m) && railwayProject(m) === railwayProject(candidate)
+        && (m.service_type === 'railway_project' || candidate.service_type === 'railway_project');
+    }
+    return false;
+  }) || null;
 }
 
 function parseTwilioUsage(data, mapping, period, env = process.env) {
@@ -271,4 +293,5 @@ module.exports = {
   parseGitHubUsage,
   parseTwilioUsage,
   stableRef,
+  mappingConflict,
 };

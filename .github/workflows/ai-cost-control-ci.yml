@@ -3,6 +3,15 @@ name: AI Cost Control CI
 on:
   pull_request:
     paths:
+      - 'server-ai-cost-attribution.cjs'
+      - 'server-ai-cost-ledger-aggregate.cjs'
+      - 'server-cost-accounting-core.cjs'
+      - 'server-cost-centers.cjs'
+      - 'server-nova-routing.cjs'
+      - 'vite.config.js'
+      - 'scripts/public-env.mjs'
+      - 'tests/cost-attribution-isolation.test.cjs'
+      - 'tests/cost-ledger-isolation-http.test.cjs'
       - 'server-ai-cost.cjs'
       - 'server-client-costs.cjs'
       - 'server-openai-cost-diagnostic.cjs'

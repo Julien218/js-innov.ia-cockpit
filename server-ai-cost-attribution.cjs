@@ -31,9 +31,16 @@ async function resolveClient(organisation, actor) {
   if (!response.ok) return null;
   const rows = await response.json().catch(() => []);
   if (!Array.isArray(rows) || !rows.length) return null;
-  const email = String(actor || '').toLowerCase();
-  return rows.find((row) => [row.email, row.email_facturation]
-    .some((value) => String(value || '').toLowerCase() === email)) || rows[0];
+  return selectUnambiguousClient(rows, tenant, actor);
+}
+
+function selectUnambiguousClient(rows, tenant, actor) {
+  const email = safe(actor).toLowerCase();
+  if (!email || !email.includes('@')) return null;
+  const matches = rows.filter((row) => row?.id && cleanTenant(row.organisation_id) === cleanTenant(tenant)
+    && [row.email, row.email_facturation].some((value) => safe(value).toLowerCase() === email));
+  // One login may represent several legal clients: never choose the first one.
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function installAICostAttribution() {
@@ -77,10 +84,11 @@ function installAICostAttribution() {
     // Les échanges owner/staff sont des coûts internes JS-Innov.IA par défaut.
     return original({
       ...raw,
-      metadata: { ...metadata, billable: metadata.billable === true && mode === 'client' },
+      client_key: null,
+      metadata: { ...metadata, canonical_client_id: null, billable: false, attribution: mode === 'client' ? 'unresolved_client' : 'internal_unassigned' },
     }, actor);
   };
   installed = true;
 }
 
-module.exports = { installAICostAttribution, resolveClient };
+module.exports = { installAICostAttribution, resolveClient, selectUnambiguousClient };

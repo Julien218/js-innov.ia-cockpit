@@ -220,7 +220,8 @@ async function importRailwayCharges(mapping, periodYear, periodMonth, options = 
     const costLines = [];
     let totalUsd = 0;
     for (const item of (data.costs || data.data || [])) {
-      if (serviceId && item.service_id && String(item.service_id) !== serviceId) continue;
+      if (serviceId && !item.service_id) return { lines: [], totalUsd: 0, error: 'Adaptateur Railway : service_id requis pour attribuer ce coût à un service' };
+      if (serviceId && String(item.service_id) !== serviceId) continue;
       const sourceAmount = parseFloat(item.net_amount ?? item.cost ?? item.amount ?? 0);
       const sourceCurrency = String(item.currency || "USD").toUpperCase();
       if (sourceAmount <= 0) continue;
@@ -236,7 +237,7 @@ async function importRailwayCharges(mapping, periodYear, periodMonth, options = 
         quantity: 1,
         unit_price_minor: converted.totalMinor,
         total_minor: converted.totalMinor,
-        external_ref: `railway:${projectId}:${serviceId || 'all'}:${period}:${stableRef([item.service_id, item.service, sourceAmount, sourceCurrency, item.verification_ref])}`,
+        external_ref: `railway:${projectId}:${period}:${stableRef([item.id, item.service_id, item.environment_id, item.service, item.resource, sourceCurrency, item.verification_ref])}`,
         metadata: {
           evidence_status: "actual", verification_ref: item.verification_ref,
           source: "railway", source_amount: sourceAmount, source_currency: sourceCurrency,

@@ -122,7 +122,7 @@ export default function AICostControl() {
     refetchInterval: 60000,
   });
   const [mappingForm, setMappingForm] = useState({ cost_center_id: '', service_type: 'github_repo', external_id: '', external_label: '', project_id: '' });
-  const [centerForm, setCenterForm] = useState({ client_id: '', product_code: '' });
+  const [centerForm, setCenterForm] = useState({ client_id: '', product_code: '', project_id: '' });
   const [localRatesForm, setLocalRatesForm] = useState({ power_watts: '', energy_eur_kwh: '', machine_eur_hour: '' });
   const [manualCostForm, setManualCostForm] = useState({ client_id: '', cost_center_id: '', source_type: 'supabase', amount_eur: '', verification_ref: '', description: '' });
 
@@ -344,8 +344,8 @@ export default function AICostControl() {
   };
 
   const saveCostCenter = async () => {
-    if (!centerForm.client_id || !centerForm.product_code.trim()) {
-      setNotice({ type: 'error', text: 'Choisis un client et donne un code court au projet.' });
+    if (!centerForm.client_id || !centerForm.project_id || !centerForm.product_code.trim()) {
+      setNotice({ type: 'error', text: 'Choisis un client, son projet métier et un code court.' });
       return;
     }
     setSaving('center');
@@ -355,7 +355,7 @@ export default function AICostControl() {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(centerForm),
       });
       setCenterForm((value) => ({ ...value, product_code: '' }));
-      setNotice({ type: 'success', text: 'Centre de coût client/projet créé.' });
+      setNotice({ type: 'success', text: 'Centre de coût client/projet créé. Refacturation désactivée jusqu’à validation des règles.' });
       const refreshed = await centersQuery.refetch();
       if (result.cost_center?.id) setMappingForm((value) => ({ ...value, cost_center_id: result.cost_center.id }));
       await Promise.all([clientsQuery.refetch(), accountingQuery.refetch()]);
@@ -577,9 +577,13 @@ export default function AICostControl() {
                 <h3 className="font-semibold text-sm">1. Créer le centre de coût du projet</h3>
                 <p className="text-xs text-muted-foreground mt-1">À faire une seule fois par client et par projet facturable.</p>
                 <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2 mt-3">
-                  <select value={centerForm.client_id} onChange={(event) => setCenterForm((value) => ({ ...value, client_id: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm">
+                  <select value={centerForm.client_id} onChange={(event) => setCenterForm((value) => ({ ...value, client_id: event.target.value, project_id: '' }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm">
                     <option value="">Client</option>
                     {(clientsQuery.data?.clients || []).map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+                  </select>
+                  <select aria-label="Projet métier du client" value={centerForm.project_id} onChange={(event) => setCenterForm((value) => ({ ...value, project_id: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm">
+                    <option value="">Projet métier</option>
+                    {(clientsQuery.data?.clients || []).find((client) => client.id === centerForm.client_id)?.projects?.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
                   </select>
                   <input value={centerForm.product_code} onChange={(event) => setCenterForm((value) => ({ ...value, product_code: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm" placeholder="Code projet, ex. ROUGRAFF_VIDEO" />
                   <button onClick={saveCostCenter} disabled={saving === 'center' || clientsQuery.isLoading} className="h-10 px-3 rounded-xl border border-primary text-primary hover:bg-primary/10 disabled:opacity-50 text-sm font-medium">{saving === 'center' ? 'Création…' : 'Créer le centre'}</button>
