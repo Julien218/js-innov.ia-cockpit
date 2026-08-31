@@ -10,6 +10,14 @@ const scope = invoiceScope(user, raw);
 const row = { id: invoiceId, client_id: recipient, organisation_id: 'jsinnovia', statut: 'envoyee', numero: 'TEST-LOCAL', montant_ttc: 100, notes: 'PRIVATE', marge: 25, pdf_dropbox_path: '/private.pdf', lignes: [{ internal_cost: 12 }] };
 const response = rows => ({ response: { ok: true }, raw: JSON.stringify(rows) });
 
+test('cache de consultation séparé par compte, purgé au démontage et masqué en cas de refus', () => {
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/pages/ClientRecords.jsx'), 'utf8');
+  assert.match(source, /queryKey: \['client-records', user\?\.id, config\.table\]/);
+  assert.match(source, /gcTime: 0/);
+  assert.match(source, /\(isError \? \[\] : data\)\.map/);
+  assert.match(source, /loadRows\(config\.table, signal\)/);
+});
+
 test('destinataire lié à identifiant ET email, sans changement de tenant', () => {
   assert.equal(invoiceScope({ ...user, role: 'admin' }, raw), null);
   assert.equal(invoiceScope({ ...user, id: otherRecipient }, raw), null);

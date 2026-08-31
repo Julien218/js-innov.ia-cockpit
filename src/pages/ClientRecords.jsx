@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { FileText, FolderKanban, Receipt } from 'lucide-react';
 import StatusBadge from '@/components/shared/StatusBadge';
+import { useAuth } from '@/lib/AuthContext';
 
 const CONFIG = {
   projects: {
@@ -23,11 +24,12 @@ const CONFIG = {
   },
 };
 
-async function loadRows(table) {
-  const response = await fetch(`/api/data/${table}?limit=300`, { credentials: 'same-origin' });
-  const data = await response.json().catch(() => []);
-  if (!response.ok) throw new Error(data.error || 'Données momentanément indisponibles');
-  return Array.isArray(data) ? data : [];
+async function loadRows(table, signal) {
+  const response = await fetch(`/api/data/${table}?limit=300`, { credentials: 'same-origin', signal });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.error || 'Données momentanément indisponibles');
+  if (!Array.isArray(data)) throw new Error('Réponse invalide du service de données');
+  return data;
 }
 
 function money(value) {
@@ -99,11 +101,14 @@ function BillingCard({ row, kind }) {
 }
 
 export default function ClientRecords({ kind }) {
+  const { user } = useAuth();
   const config = CONFIG[kind] || CONFIG.projects;
   const Icon = config.icon;
   const { data = [], isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['client-records', config.table],
-    queryFn: () => loadRows(config.table),
+    queryKey: ['client-records', user?.id, config.table],
+    queryFn: ({ signal }) => loadRows(config.table, signal),
+    enabled: Boolean(user?.id),
+    gcTime: 0,
   });
 
   return (
@@ -134,7 +139,7 @@ export default function ClientRecords({ kind }) {
       )}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        {data.map((row) => kind === 'projects'
+        {(isError ? [] : data).map((row) => kind === 'projects'
           ? <ProjectCard key={row.id} row={row} />
           : <BillingCard key={row.id} row={row} kind={kind} />)}
       </div>
