@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { MAIL_CATEGORIES, mailCategory, mailCategoryCounts, filterMailboxEmails } from '@/lib/mailboxCategories';
 import { useSearchParams } from "react-router-dom";
 import { setNovaMailboxContext } from '@/lib/novaMailboxContext';
 import {
@@ -110,7 +111,8 @@ function EmailListItem({ email, isSelected, onClick, onDelete, onArchive, sentFo
             <span className={`text-sm truncate ${!email.seen && !sentFolder ? 'font-semibold text-white' : 'font-medium text-gray-300'}`}>{sender.name}</span>
             <span className="text-[10px] text-gray-500 whitespace-nowrap ml-2">{timeAgo(email.date)}</span>
           </div>
-          <p className="text-xs truncate text-gray-300">{email.subject || '(sans objet)'}</p>
+          <p className="text-xs line-clamp-2 break-words text-gray-200" title={email.subject || '(sans objet)'}>{email.subject || '(sans objet)'}</p>
+          {!sentFolder && <span className="inline-block mt-1 text-[10px] rounded bg-white/10 px-1.5 py-0.5 text-gray-300" title="Classement automatique indicatif d’après l’objet et l’expéditeur">{MAIL_CATEGORIES[mailCategory(email)]}</span>}
           {(email.body || email.preview) && <p className="text-[11px] text-gray-600 truncate mt-0.5">{cleanTextBody(email.body || email.preview).substring(0, 90)}</p>}
         </div>
       </div>
@@ -339,6 +341,10 @@ function ComposeModal({ open, onClose, mailbox, replyTo, onSend }) {
 export default function Emails() {
   const [activeMailbox, setActiveMailbox] = useState('assurances');
   const [googleAccounts, setGoogleAccounts] = useState([]);
+  const [ionosMailboxes, setIonosMailboxes] = useState(IONOS_MAILBOXES);
+  const [category, setCategory] = useState('all');
+  const listRequest = useRef(null);
+  const detailRequest = useRef(null);
   const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -354,12 +360,12 @@ export default function Emails() {
   const isSentFolder = folder === 'sent';
 
   const mailboxes = useMemo(() => [
-    ...IONOS_MAILBOXES,
+    ...ionosMailboxes,
     ...googleAccounts.filter((account) => account.active).map((account) => ({
       id: `google:${account.id}`, accountId: account.id, provider: 'google', label: account.label || account.email,
       email: account.email, icon: Mail, color: '#4285F4', isAlias: false, canSend: false, brand: account.brand || 'js-innov-ia',
     })),
-  ], [googleAccounts]);
+  ], [googleAccounts, ionosMailboxes]);
   const activeMailboxCfg = mailboxes.find(m => m.id === activeMailbox) || mailboxes[1];
   useEffect(() => {
     setNovaMailboxContext({ id: activeMailbox });
@@ -367,6 +373,13 @@ export default function Emails() {
   }, [activeMailbox]);
 
   useEffect(() => {
+    fetch('/api/emails/mailboxes/list', { credentials: 'same-origin' })
+      .then(response => response.json())
+      .then(data => { if (data.success) setIonosMailboxes(IONOS_MAILBOXES.map(box => {
+        const configured = data.mailboxes?.find(item => item.id === box.id);
+        return configured ? { ...box, email: configured.email, label: configured.label, isAlias: configured.isAlias } : box;
+      })); })
+      .catch(() => {});
     fetch('/api/google-mail/accounts', { credentials: 'same-origin' })
       .then((response) => response.json())
       .then((data) => { if (data.success) setGoogleAccounts(data.accounts || []); })
@@ -379,6 +392,9 @@ export default function Emails() {
   };
 
   const fetchList = useCallback(async () => {
+    listRequest.current?.abort();
+    const controller = new AbortController();
+    listRequest.current = controller;
     if (activeMailboxCfg?.isAlias) { setEmails([]); setLoading(false); setError(null); return; }
     setLoading(true); setError(null);
     try {
@@ -387,19 +403,23 @@ export default function Emails() {
         : (isSentFolder
           ? `${API_BASE}/api/emails/sent?mailbox=${activeMailbox}&limit=50`
           : `${API_BASE}/api/emails?mailbox=${activeMailbox}&limit=50`);
-      const res = await fetch(endpoint, { credentials: 'same-origin' });
+      const res = await fetch(endpoint, { credentials: 'same-origin', signal: controller.signal });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Erreur de chargement');
-      setEmails(data.emails || []);
+      if (!controller.signal.aborted) setEmails(data.emails || []);
     } catch (err) {
-      setError(err.message); setEmails([]);
+      if (!controller.signal.aborted) { setError(err.message); setEmails([]); }
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [activeMailbox, activeMailboxCfg?.isAlias, activeMailboxCfg?.provider, activeMailboxCfg?.accountId, isSentFolder]);
 
   const fetchDetail = useCallback(async (email) => {
+    detailRequest.current?.abort();
+    const controller = new AbortController();
+    detailRequest.current = controller;
     setSelectedUid(email.uid);
+    setDetail(null);
     if (isSentFolder && activeMailboxCfg?.provider !== 'google') {
       setDetail({ ...email, text: email.preview || email.body || '' });
       return;
@@ -409,15 +429,16 @@ export default function Emails() {
       const endpoint = activeMailboxCfg?.provider === 'google'
         ? `${API_BASE}/api/google-mail/messages/${encodeURIComponent(email.uid)}?account_id=${encodeURIComponent(activeMailboxCfg.accountId)}`
         : `${API_BASE}/api/emails/${email.uid}?mailbox=${activeMailbox}`;
-      const res = await fetch(endpoint, { credentials: 'same-origin' });
+      const res = await fetch(endpoint, { credentials: 'same-origin', signal: controller.signal });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Erreur');
+      if (controller.signal.aborted) return;
       setDetail(data.email);
       setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: true } : e));
     } catch (err) {
-      flash('error', err.message);
+      if (!controller.signal.aborted) flash('error', err.message);
     } finally {
-      setLoadingDetail(false);
+      if (!controller.signal.aborted) setLoadingDetail(false);
     }
   }, [activeMailbox, activeMailboxCfg?.provider, activeMailboxCfg?.accountId, isSentFolder]);
 
@@ -463,12 +484,14 @@ export default function Emails() {
   };
 
   useEffect(() => {
-    fetchList(); setSelectedUid(null); setDetail(null);
+    setEmails([]); setCategory('all'); setSelectedUid(null); setDetail(null); setLoadingDetail(false);
+    fetchList();
+    const interval = window.setInterval(() => { if (!document.hidden) fetchList(); }, 60000);
+    return () => { window.clearInterval(interval); listRequest.current?.abort(); detailRequest.current?.abort(); };
   }, [fetchList]);
 
-  const filtered = search
-    ? emails.filter(e => [e.subject, e.from, e.to].some(v => String(v || '').toLowerCase().includes(search.toLowerCase())))
-    : emails;
+  const filtered = filterMailboxEmails(emails, isSentFolder ? 'all' : category, search);
+  const categoryCounts = mailCategoryCounts(emails);
   const unreadCount = isSentFolder ? 0 : emails.filter(e => !e.seen).length;
 
   return (
@@ -490,6 +513,15 @@ export default function Emails() {
         </div>
 
         <div className="mt-3 relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher dans les emails..." className="w-full bg-white/[0.04] border border-white/10 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4AF37]/40" /></div>
+        {!isSentFolder && !activeMailboxCfg?.isAlias && <div className="mt-3">
+          <div className="flex gap-1.5 overflow-x-auto pb-1" aria-label="Catégories des emails">
+            {Object.entries(MAIL_CATEGORIES).map(([key, label]) => <button key={key} onClick={() => setCategory(key)} aria-pressed={category === key}
+              className={`whitespace-nowrap rounded-lg px-2.5 py-2 text-xs border ${category === key ? 'border-[#D4AF37]/50 text-[#D4AF37] bg-[#D4AF37]/10' : 'border-white/10 text-gray-400 hover:text-white'}`}>
+              {label} <span className="ml-1">{categoryCounts[key]}</span>
+            </button>)}
+          </div>
+          <p className="text-[10px] text-gray-400 mt-1">Classement automatique indicatif · {emails.length} messages chargés (50 maximum) · aucun déplacement ni suppression</p>
+        </div>}
       </div>
 
       {actionMsg && <div className={`mx-3 mt-2 px-3 py-2 rounded-lg text-xs border ${actionMsg.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>{actionMsg.text}</div>}

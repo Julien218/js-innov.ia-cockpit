@@ -14,6 +14,7 @@
  *   POST /api/emails/send         → { mailbox, to, subject, text, html, cc, replyToUid }
  */
 const Imap = require('imap');
+const { parseMailHeaders, presentMailboxEmail } = require('./server-email-presentation.cjs');
 const { findTrashMailbox } = require('./server-email-trash-core.cjs');
 const { simpleParser } = require('mailparser');
 const nodemailer = require('nodemailer');
@@ -113,6 +114,8 @@ router.get('/mailboxes/list', requireApiKey, (req, res) => {
     label: cfg.label,
     email: cfg.email,
     configured: !!cfg.password,
+    isAlias: Boolean(cfg.isAlias),
+    color: cfg.color,
   }));
   res.json({ success: true, mailboxes: list });
 });
@@ -151,16 +154,18 @@ function fetchEmails(mailboxKey, { folder = 'INBOX', limit = 30, offset = 0 } = 
           const f = imap.seq.fetch(`${start}:${end}`, {
             bodies: ['HEADER.FIELDS (FROM TO SUBJECT DATE)', 'TEXT'],
             struct: true,
+            markSeen: false,
           });
 
           f.on('message', (msg) => {
             const email = { rawHeaders: '', rawBody: '' };
             msg.on('body', (stream, info) => {
-              let buf = '';
-              stream.on('data', c => buf += c.toString('utf8'));
+              const chunks = [];
+              stream.on('data', c => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
               stream.once('end', () => {
-                if (info.which === 'TEXT') email.rawBody = buf;
-                else email.rawHeaders = buf;
+                const buffer = Buffer.concat(chunks);
+                if (info.which === 'TEXT') email.rawBody = buffer.toString('utf8');
+                else email.rawHeaders = buffer;
               });
             });
             msg.once('attributes', a => {
@@ -177,22 +182,14 @@ function fetchEmails(mailboxKey, { folder = 'INBOX', limit = 30, offset = 0 } = 
           f.once('end', () => {
             imap.end();
             const parsed = emails.map(e => {
-              let from = '', subject = '', to = '', date = e.date;
-              e.rawHeaders.split(/\r?\n/).forEach(line => {
-                if (/^from:/i.test(line)) from = line.replace(/^from:\s*/i, '').trim();
-                if (/^subject:/i.test(line)) subject = line.replace(/^subject:\s*/i, '').trim();
-                if (/^to:/i.test(line)) to = line.replace(/^to:\s*/i, '').trim();
-                if (/^date:/i.test(line)) {
-                  const d = line.replace(/^date:\s*/i, '').trim();
-                  if (d) try { date = new Date(d); } catch(_) {}
-                }
-              });
+              const { from, subject, to, date } = parseMailHeaders(e.rawHeaders, e.date);
               let hasAttachment = false;
               if (e.struct) {
                 const checkStruct = (s) => {
                   if (!Array.isArray(s)) return;
                   for (const part of s) {
-                    if (part.disposition === 'attachment' ||
+                    if (Array.isArray(part)) { checkStruct(part); continue; }
+                    if (part.disposition === 'attachment' || part.disposition?.type?.toLowerCase() === 'attachment' ||
                         (part.params && part.params.name)) {
                       hasAttachment = true;
                       break;
@@ -202,13 +199,13 @@ function fetchEmails(mailboxKey, { folder = 'INBOX', limit = 30, offset = 0 } = 
                 };
                 checkStruct(e.struct);
               }
-              return {
+              return presentMailboxEmail({
                 uid: e.uid,
                 from, subject, to, date,
                 seen: e.seen,
                 hasAttachment,
                 body: e.rawBody ? e.rawBody.substring(0, 200).replace(/\s+/g, ' ').trim() : '',
-              };
+              });
             }).sort((a, b) => new Date(b.date) - new Date(a.date));
             resolve({ emails: parsed, total, unread: unreadCount });
           });
