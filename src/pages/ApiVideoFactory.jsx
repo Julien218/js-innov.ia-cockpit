@@ -37,6 +37,7 @@ export default function ApiVideoFactory() {
   const [loadWarning, setLoadWarning] = useState('');
   const [notice, setNotice] = useState(null);
   const selectedClient = useMemo(() => clients.find((client) => String(client.id) === String(clientId)), [clients, clientId]);
+  const selectedCenter = useMemo(() => (selectedClient?.cost_centers || []).find((center) => String(center.id) === String(costCenterId)), [selectedClient, costCenterId]);
 
   const refresh = async () => {
     const [configurationResult, clientResult, jobResult] = await Promise.allSettled([
@@ -85,14 +86,15 @@ export default function ApiVideoFactory() {
   }, [jobs]);
 
   const createVideo = async () => {
-    if (!selectedClient) return setNotice({ type: 'error', text: 'Sélectionne le client ou projet qui supportera le coût.' });
+    if (!selectedClient) return setNotice({ type: 'error', text: 'Sélectionne le client qui supportera le coût.' });
+    if ((selectedClient.cost_centers || []).length > 1 && !selectedCenter) return setNotice({ type: 'error', text: 'Sélectionne le projet / centre de coût concerné.' });
     setBusy(true); setNotice(null);
     try {
       const data = await fetchJson('/api/video-generation/jobs', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider, client_id: selectedClient.id, client_name: selectedClient.name,
-          cost_center_id: costCenterId || null, campaign_name: campaign, prompt,
+          project_id: selectedCenter?.project_id || null, cost_center_id: costCenterId || null, campaign_name: campaign, prompt,
           sector: 'innovation numérique', rights_confirmed: rightsConfirmed,
         }),
       });
@@ -131,9 +133,9 @@ export default function ApiVideoFactory() {
               {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
             </select>
           </label>
-          <label className="text-sm font-medium">Centre de coût
+          <label className="text-sm font-medium">Projet / Centre de coût
             <select className="mt-1 w-full rounded-lg border bg-background p-2.5" value={costCenterId} onChange={(event) => setCostCenterId(event.target.value)}>
-              <option value="">Client général</option>
+              <option value="">{(selectedClient?.cost_centers || []).length === 1 ? 'Attribution automatique' : 'Sélectionner…'}</option>
               {(selectedClient?.cost_centers || []).map((center) => <option key={center.id} value={center.id}>{center.product_code}</option>)}
             </select>
           </label>

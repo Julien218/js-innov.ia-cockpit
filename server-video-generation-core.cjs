@@ -82,6 +82,33 @@ function validateJobInput(input = {}) {
   };
 }
 
+function resolveCostScope(input = {}, centers = []) {
+  const clientId = clean(input.client_id, 180);
+  if (!clientId) return input;
+  const available = (Array.isArray(centers) ? centers : []).filter((center) =>
+    String(center?.client_id || '') === clientId
+      && String(center?.metadata?.project_id || '').trim()
+  );
+  const requestedCenterId = clean(input.cost_center_id, 180);
+  let center = null;
+  if (requestedCenterId) {
+    center = available.find((candidate) => String(candidate.id) === requestedCenterId) || null;
+    if (!center) throw new Error('Le centre de coût sélectionné n’appartient pas à ce client ou ne possède aucun projet validé.');
+  } else if (available.length === 1) {
+    [center] = available;
+  } else {
+    throw new Error(available.length
+      ? 'Plusieurs projets sont disponibles pour ce client : sélectionne le centre de coût concerné.'
+      : 'Aucun projet comptable validé n’est disponible pour ce client.');
+  }
+  const canonicalProjectId = clean(center.metadata.project_id, 180);
+  const requestedProjectId = clean(input.project_id, 180);
+  if (requestedProjectId && requestedProjectId !== canonicalProjectId) {
+    throw new Error('Le projet demandé ne correspond pas au centre de coût sélectionné.');
+  }
+  return { ...input, cost_center_id: String(center.id), project_id: canonicalProjectId };
+}
+
 function buildProviderRequest(provider, prompt, { imageDataUri = null, referenceImageDataUris = [] } = {}) {
   if (provider === 'xai') {
     const refs = Array.isArray(referenceImageDataUris) ? referenceImageDataUris.filter(Boolean).slice(0, 7) : [];
@@ -138,6 +165,7 @@ module.exports = {
   providerAvailability,
   chooseProvider,
   validateJobInput,
+  resolveCostScope,
   buildProviderRequest,
   xaiUsdFromUsage,
   estimateSoraUsd,

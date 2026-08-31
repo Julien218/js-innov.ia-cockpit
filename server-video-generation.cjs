@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto = require('node:crypto');
 const {
-  chooseProvider, validateJobInput, buildProviderRequest, xaiUsdFromUsage,
+  chooseProvider, validateJobInput, resolveCostScope, buildProviderRequest, xaiUsdFromUsage,
   estimateSoraUsd, publicConfig,
 } = require('./server-video-generation-core.cjs');
 const { encodeVideoPackage } = require('./server-video-provenance-core.cjs');
@@ -143,13 +143,19 @@ async function listVideoClients(organisation = 'jsinnovia') {
   const payload = await response.json().catch(() => null);
   if (!response.ok) throw new Error(payload?.error || `Chargement des clients impossible (${response.status}).`);
   const clients = normalizeClientRows(payload);
-  const centers = await crm('client_cost_centers?select=id,client_id,product_code&is_active=eq.true&limit=2000').catch(() => []);
+  const centers = await crm('client_cost_centers?select=id,client_id,product_code,metadata&is_active=eq.true&limit=2000').catch(() => []);
   return clients
     .filter((client) => client?.id)
     .map((client) => ({
       id: client.id,
       name: canonicalClientName(client) || `Client ${client.id}`,
-      cost_centers: (Array.isArray(centers) ? centers : []).filter((center) => String(center.client_id) === String(client.id)),
+      cost_centers: (Array.isArray(centers) ? centers : [])
+        .filter((center) => String(center.client_id) === String(client.id))
+        .map((center) => ({
+          id: center.id,
+          product_code: center.product_code,
+          project_id: String(center.metadata?.project_id || '').trim() || null,
+        })),
     }))
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
 }
@@ -358,7 +364,9 @@ router.get('/jobs/:id', async (req, res) => {
 
 async function createVideoGenerationJob(body, user = {}) {
   const resolvedBody = await resolveClientInput(body);
-  const input = validateJobInput(resolvedBody);
+  const preliminaryInput = validateJobInput(resolvedBody);
+  const centers = await crm(`client_cost_centers?select=id,client_id,metadata&client_id=eq.${encodeURIComponent(preliminaryInput.clientId)}&is_active=eq.true&limit=100`);
+  const input = validateJobInput(resolveCostScope(resolvedBody, centers));
   const provider = chooseProvider(resolvedBody.provider);
   const referenceIds = input.referenceDocumentIds || [];
   const sourceIds = referenceIds.length ? referenceIds : (input.sourceDocumentId ? [input.sourceDocumentId] : []);

@@ -53,6 +53,28 @@ test('une génération ne part jamais sans attribution client et prompt exploita
   assert.equal(normalized.campaign, 'Identité');
 });
 
+test('le projet vidéo est dérivé du centre et un choix ambigu est refusé', () => {
+  const { resolveCostScope } = require('../server-video-generation-core.cjs');
+  const centers = [
+    { id: 'center-miss', client_id: 'starlight', metadata: { project_id: 'project-miss' } },
+    { id: 'center-tour', client_id: 'starlight', metadata: { project_id: 'project-tour' } },
+  ];
+  assert.deepEqual(resolveCostScope({ client_id: 'starlight', cost_center_id: 'center-miss' }, centers), {
+    client_id: 'starlight', cost_center_id: 'center-miss', project_id: 'project-miss',
+  });
+  assert.throws(() => resolveCostScope({ client_id: 'starlight' }, centers), /Plusieurs projets/);
+  assert.throws(() => resolveCostScope({ client_id: 'starlight', cost_center_id: 'center-miss', project_id: 'project-tour' }, centers), /ne correspond pas/);
+});
+
+test('un centre unique est attribué automatiquement au travail vidéo', () => {
+  const { resolveCostScope } = require('../server-video-generation-core.cjs');
+  const result = resolveCostScope({ client_id: 'pixelium' }, [
+    { id: 'center-proxiled', client_id: 'pixelium', metadata: { project_id: 'project-proxiled' } },
+  ]);
+  assert.equal(result.cost_center_id, 'center-proxiled');
+  assert.equal(result.project_id, 'project-proxiled');
+});
+
 test('le document Dropbox source est conservé dans le travail vidéo', () => {
   const normalized = validateJobInput({
     client_id: 'client-1', client_name: 'Proximedia', campaign_name: 'Écran géant Espace C',
