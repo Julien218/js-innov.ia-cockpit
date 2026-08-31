@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { cleanTenant, resolveTenant } = require('./server-tenant.cjs');
 const { hasPermission } = require('./server-permission-policy.cjs');
+const { invoiceScope, readClientInvoices } = require('./server-client-invoices.cjs');
 
 const ROLE_LEVEL = { client: 1, collaborateur: 2, admin: 3, superadmin: 4 };
 const TENANT_TABLES = new Set(['Client', 'Projet', 'Tache', 'Devis', 'Facture', 'Demande']);
@@ -21,7 +22,7 @@ const CLIENT_VISIBLE_FIELDS = {
   Demande: new Set(['id', 'nom', 'email', 'telephone', 'entreprise', 'message', 'type', 'statut', 'created_at', 'updated_at']),
 };
 
-async function agentRequest(path, { method = 'GET', body, tenant } = {}) {
+async function agentRequest(path, { method = 'GET', body, tenant, signal, redirect } = {}) {
   if (!AGENT_PROXY_KEY) {
     const error = new Error('Clé du service jsinnovia-agent non configurée.');
     error.status = 503;
@@ -29,6 +30,8 @@ async function agentRequest(path, { method = 'GET', body, tenant } = {}) {
   }
   const response = await fetch(`${AGENT_PROXY_URL}${path}`, {
     method,
+    ...(signal ? { signal } : {}),
+    ...(redirect ? { redirect } : {}),
     headers: {
       'Content-Type': 'application/json',
       'x-agent-key': AGENT_PROXY_KEY,
@@ -72,6 +75,17 @@ router.use(async (req, res) => {
     }
     if (ADMIN_TABLES.has(table) && (ROLE_LEVEL[role] || 0) < ROLE_LEVEL.admin) {
       return res.status(403).json({ error: 'Cette ressource nécessite un administrateur.' });
+    }
+
+    if (role === 'client' && table === 'Facture') {
+      const scope = invoiceScope(req.user);
+      if (scope) {
+        res.setHeader('Cache-Control', 'private, no-store');
+        const parts = req.path.split('/').filter(Boolean);
+        if (parts.length > 2 || req.headers['x-managed-organisation']) return res.status(403).json({ error: 'Consultation des factures destinataires uniquement.' });
+        // Browser-supplied client/organisation/filter parameters cannot widen scope.
+        return res.json(await readClientInvoices(scope, agentRequest, parts[1] || null));
+      }
     }
 
     const tenant = TENANT_TABLES.has(table) ? resolveTenant(req) : null;
