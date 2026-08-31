@@ -6,6 +6,10 @@ on:
     paths:
       - 'server-assistant.cjs'
       - 'server-assistant-batch.cjs'
+      - 'server-base44-agents.cjs'
+      - 'server-specialist-tasks.cjs'
+      - 'src/pages/AgentsIA.jsx'
+      - 'tests/specialist-tasks.test.cjs'
       - 'server-task-batch.cjs'
       - 'server-nova-executors.cjs'
       - 'server-domain-ops.cjs'
@@ -76,6 +80,8 @@ jobs:
           node --check server.cjs
           node --check server-assistant.cjs
           node --check server-assistant-batch.cjs
+          node --check server-base44-agents.cjs
+          node --check server-specialist-tasks.cjs
           node --check server-task-batch.cjs
           node --check server-nova-executors.cjs
           node --check server-task-autopilot.cjs

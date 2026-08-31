@@ -161,7 +161,7 @@ async function createRun(agentFetch, task, item, executor, token, index, organis
   return readJson(response, `Création run HTTP ${response.status}`);
 }
 
-async function executeTaskBatch({ payload, token, user, tenant, agentFetch, executionHandlers = {} }) {
+async function executeTaskBatch({ payload, token, user, tenant, agentFetch, executionHandlers = {}, prepareOnly = false, resolveExecutor = null }) {
   if (!payload?.tasks?.length) {
     return {
       success: false,
@@ -193,7 +193,7 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
   const results = [];
   for (let index = 0; index < payload.tasks.length; index += 1) {
     const item = payload.tasks[index];
-    const executor = resolveNovaExecutor(item.existing_task_id ? { titre: item.record.titre } : item.record);
+    const executor = resolveExecutor ? resolveExecutor(item.record) : resolveNovaExecutor(item.existing_task_id ? { titre: item.record.titre } : item.record);
     let task = null;
     let run = null;
     try {
@@ -209,6 +209,10 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
         task = existingByTitle.get(canonicalTaskTitle(item.record.titre)) || null;
       }
       const reused = Boolean(task);
+      if (prepareOnly && task) {
+        results.push({ index, success: true, task_id: task.id, run_id: String(task.notes || '').match(/run_id=([a-zA-Z0-9-]+)/)?.[1] || null, executor: null, status: 'existing', reused: true, reason: 'tache_existante_conservee_sans_relance' });
+        continue;
+      }
       if (task) {
         const active = await activeRunForTask(agentFetch, task.id, organisation);
         if (active?.id) {
@@ -230,7 +234,16 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
           body: JSON.stringify(item.record),
         });
         task = await readJson(response, `Création tâche HTTP ${response.status}`);
+        if (!task?.id) throw new Error('Création de tâche non vérifiable : identifiant absent.');
         existingByTitle.set(canonicalTaskTitle(item.record.titre), task);
+      }
+
+      if (prepareOnly) {
+        run = await createRun(agentFetch, task, item, executor, token, index, organisation, requestedBy, 'awaiting_approval');
+        if (!run?.id) throw new Error('Assignation non vérifiable : identifiant du run absent.');
+        await patchTask(agentFetch, task.id, { statut: 'a_faire', notes: taskNotes(item, `Assignée à ${executor.id}; exécution non lancée; run_id=${run.id}.`) }, organisation);
+        results.push({ index, success: true, task_id: task.id, run_id: run.id, executor: executor.id, status: 'planned', reused });
+        continue;
       }
 
       if (executor.kind === 'unsupported') {
@@ -274,8 +287,8 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
       } else {
         const reason = outcome.reason || 'resultat_final_non_verifie';
         await patchRun(agentFetch, run.id, { status: 'awaiting_approval', result: outcome.result || { report: outcome.report }, error: reason, base44_conv_id: outcome.conversation_id || null }, organisation);
-        await patchTask(agentFetch, task.id, { statut: 'en_cours', notes: taskNotes(item, `Résultat reçu mais non finalisé: ${reason}; run_id=${run.id}.`) }, organisation);
-        results.push({ index, success: true, task_id: task.id, run_id: run.id, executor: executor.id, status: 'awaiting_review', reused, reason });
+        await patchTask(agentFetch, task.id, { statut: outcome.blocked ? 'bloquee' : 'en_cours', notes: taskNotes(item, `Résultat reçu mais non finalisé: ${reason}; run_id=${run.id}.`) }, organisation);
+        results.push({ index, success: !outcome.blocked, task_id: task.id, run_id: run.id, executor: executor.id, status: outcome.blocked ? 'blocked' : 'awaiting_review', reused, reason });
       }
     } catch (error) {
       if (run?.id) await patchRun(agentFetch, run.id, { status: 'failed', error: cleanText(error.message, 500), completed_at: new Date().toISOString() }, organisation).catch(() => null);

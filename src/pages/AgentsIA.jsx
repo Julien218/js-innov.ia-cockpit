@@ -110,7 +110,7 @@ export default function AgentsIA() {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: userMsg.content })
+          body: JSON.stringify({ content: userMsg.content, request_id: crypto.randomUUID() })
         }
       );
 
