@@ -98,3 +98,18 @@ test('la route client-costs est réservée aux admins', () => {
   assert.match(source, /app\.use\('\/api\/client-costs', adminGuard, requirePermission\('ai_cost_control', 'admin'\), aiCostLedgerAggregateRouter\)/);
   assert.match(source, /app\.use\('\/api\/client-costs', adminGuard, requirePermission\('ai_cost_control', 'admin'\), clientCostsRouter\)/);
 });
+
+test('AI Cost Control reste interdit aux clients même avec une permission forcée', () => {
+  const { hasPermission } = require('../server-permission-policy.cjs');
+  const permission_overrides = [{ permission_code: 'ai_cost_control', enabled: true }];
+  for (const role of ['client', 'collaborateur']) {
+    assert.equal(hasPermission({ role, permission_overrides }, 'ai_cost_control'), false);
+  }
+  assert.equal(hasPermission({ role: 'admin', permission_overrides }, 'ai_cost_control'), true);
+  assert.equal(hasPermission({ role: 'superadmin' }, 'ai_cost_control'), true);
+  assert.match(read('server.cjs'), /app\.use\('\/api\/ai-cost', requireSession\('admin'\), requirePermission\('ai_cost_control', 'admin'\), aiCostRouter\)/);
+});
+
+test('Mes factures indique explicitement la réservation administrative d’AI Cost Control', () => {
+  assert.match(read('src/pages/ClientRecords.jsx'), /kind === 'invoices' && \(\s*<p[^>]*>\s*AI Cost Control est réservé à l’administration\./);
+});

@@ -123,6 +123,12 @@ export default function ClientRecords({ kind }) {
         </div>
       </header>
 
+      {kind === 'invoices' && (
+        <p className="text-sm text-muted-foreground">
+          AI Cost Control est réservé à l’administration.
+        </p>
+      )}
+
       {isLoading && <div className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">Chargement…</div>}
 
       {isError && (
