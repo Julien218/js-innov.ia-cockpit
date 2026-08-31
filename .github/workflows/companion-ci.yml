@@ -5,6 +5,11 @@ on:
   pull_request:
     paths:
       - 'server-assistant.cjs'
+      - 'server-assistant-intent.cjs'
+      - 'server-nova-email-triage.cjs'
+      - 'src/lib/novaMailboxContext.js'
+      - 'src/pages/Emails.jsx'
+      - 'tests/nova-email-intent.test.cjs'
       - 'server-assistant-batch.cjs'
       - 'server-base44-agents.cjs'
       - 'server-specialist-tasks.cjs'
@@ -84,6 +89,8 @@ jobs:
         run: |
           node --check server.cjs
           node --check server-assistant.cjs
+          node --check server-assistant-intent.cjs
+          node --check server-nova-email-triage.cjs
           node --check server-assistant-batch.cjs
           node --check server-base44-agents.cjs
           node --check server-specialist-tasks.cjs

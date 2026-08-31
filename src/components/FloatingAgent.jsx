@@ -21,6 +21,7 @@ import { chooseNovaVoice } from '@/lib/nova-voice';
 import { inspectMediaFile } from '@/lib/mediaReference';
 import { executeNovaClientAction } from '@/lib/novaClientAction';
 import { isDropboxDeletionRequest, sendNovaChat } from '@/lib/novaChatTransport';
+import { getNovaMailboxContext } from '@/lib/novaMailboxContext';
 
 const LOCAL_NOVA_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
 const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
@@ -275,6 +276,17 @@ const FloatingAgent = () => {
     }
   }, [confirmation, loading, speak, stopSpeaking]);
 
+  const cancelPendingConfirmation = useCallback(async () => {
+    setConfirmation(null);
+    if (!confirmation) return;
+    try {
+      await fetch('/api/assistant/cancel', { method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversation_id: conversationId, request_nonce: confirmation.request_nonce }),
+      });
+    } catch { /* A new cloud request also invalidates the previous token. */ }
+  }, [confirmation, conversationId]);
+
   // === Chat ===
   const doSend = useCallback(async (text) => {
     const msg = (text || input).trim();
@@ -290,7 +302,7 @@ const FloatingAgent = () => {
         { role: 'user', content: msg, ts: Date.now() },
         { role: 'assistant', content: 'Action annulée. Aucune modification n’a été exécutée.', ts: Date.now() },
       ]);
-      setConfirmation(null);
+      await cancelPendingConfirmation();
       return;
     }
     const requiresLocalTool = LOCAL_TOOL_REQUEST.test(msg);
@@ -300,8 +312,10 @@ const FloatingAgent = () => {
     stopSpeaking();
     setMessages(prev => [...prev, { role: 'user', content: msg, ts: Date.now() }]);
     setLoading(true);
+    setConfirmation(null);
 
     try {
+      if (confirmation) await cancelPendingConfirmation();
       const sendCloud = async () => {
         let recentMedia = null;
         try { recentMedia = JSON.parse(localStorage.getItem(RECENT_MEDIA_KEY) || 'null'); } catch {}
@@ -309,7 +323,7 @@ const FloatingAgent = () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ message: msg, conversation_id: conversationId, recent_media: recentMedia }),
+          body: JSON.stringify({ message: msg, conversation_id: conversationId, recent_media: recentMedia, mailbox: getNovaMailboxContext()?.id }),
         });
         if (!resp.ok) {
           const errData = await resp.json().catch(() => ({}));
@@ -363,19 +377,19 @@ const FloatingAgent = () => {
       if (data.confirmation) {
         content += '\n\n⚠️ Action proposée: ' + (data.confirmation.type || 'Action') + '. Confirme pour exécuter.';
         setConfirmation(data.confirmation);
-      }
+      } else setConfirmation(null);
 
       setMessages(prev => [...prev, { role: 'assistant', content, ts: Date.now() }]);
       speak(content);
     } catch (err) {
-      const prefix = err?.dropboxVerification ? '⚠️ Suppression Dropbox non vérifiée : ' : err?.cockpitResponse
+      const prefix = err?.emailVerification ? '⚠️ Préclassement emails non vérifié : ' : err?.dropboxVerification ? '⚠️ Suppression Dropbox non vérifiée : ' : err?.cockpitResponse
         ? '⚠️ Le Cockpit a répondu : '
         : requiresLocalTool ? '⚠️ L’agent local requis est injoignable : ' : '⚠️ NOVA cloud et locale sont injoignables : ';
       setMessages(prev => [...prev, { role: 'assistant', content: prefix + err.message, ts: Date.now(), isError: true }]);
     } finally {
       setLoading(false);
     }
-  }, [input, loading, confirmation, executeConfirmation, conversationId, messages, speak, stopSpeaking, queryClient]);
+  }, [input, loading, confirmation, executeConfirmation, conversationId, messages, speak, stopSpeaking, queryClient, cancelPendingConfirmation]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -385,15 +399,16 @@ const FloatingAgent = () => {
   }, [doSend]);
 
   const resetConversation = useCallback(async () => {
+    await cancelPendingConfirmation();
     stopSpeaking();
     setMessages([]);
     setConfirmation(null);
     localStorage.removeItem('agent_chat_messages');
     localStorage.removeItem(RECENT_MEDIA_KEY);
     try {
-      await fetch('/api/assistant/history?conversation_id=floating', { method: 'DELETE', credentials: 'include' });
+      await fetch(`/api/assistant/history?conversation_id=${encodeURIComponent(conversationId)}`, { method: 'DELETE', credentials: 'include' });
     } catch {}
-  }, [stopSpeaking]);
+  }, [stopSpeaking, conversationId, cancelPendingConfirmation]);
 
   // === File Upload → Classify → Dropbox ===
   const handleFileUpload = useCallback(async (incomingFiles) => {
@@ -638,7 +653,7 @@ const FloatingAgent = () => {
                 <button type="button" onClick={() => executeConfirmation('Je confirme')} disabled={loading} style={{ border: 0, borderRadius: '7px', padding: '7px 10px', background: '#D4AF37', color: '#0B0B0F', fontSize: '11px', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}>
                   {loading ? 'Exécution…' : 'Confirmer et exécuter'}
                 </button>
-                <button type="button" onClick={() => setConfirmation(null)} disabled={loading} style={{ border: '1px solid #475569', borderRadius: '7px', padding: '7px 10px', background: 'transparent', color: '#cbd5e1', fontSize: '11px', cursor: loading ? 'not-allowed' : 'pointer' }}>Annuler</button>
+                <button type="button" onClick={cancelPendingConfirmation} disabled={loading} style={{ border: '1px solid #475569', borderRadius: '7px', padding: '7px 10px', background: 'transparent', color: '#cbd5e1', fontSize: '11px', cursor: loading ? 'not-allowed' : 'pointer' }}>Annuler</button>
               </div>
             </div>
           )}

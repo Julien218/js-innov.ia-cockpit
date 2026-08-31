@@ -91,6 +91,8 @@ COPY --from=builder /app/server-documents.cjs ./server-documents.cjs
 COPY --from=builder /app/server-governance.cjs ./server-governance.cjs
 COPY --from=builder /app/server-base44-agents.cjs ./server-base44-agents.cjs
 COPY --from=builder /app/server-specialist-tasks.cjs ./server-specialist-tasks.cjs
+COPY --from=builder /app/server-assistant-intent.cjs ./server-assistant-intent.cjs
+COPY --from=builder /app/server-nova-email-triage.cjs ./server-nova-email-triage.cjs
 COPY --from=builder /app/server-nova-document-delete.cjs ./server-nova-document-delete.cjs
 COPY --from=builder /app/server-push.cjs ./server-push.cjs
 COPY assets ./assets
