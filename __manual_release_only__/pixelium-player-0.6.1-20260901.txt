@@ -1,0 +1,3 @@
+Pixelium Player 0.6.1-pilot signed release deployment.
+APK: assets/Pixelium-Player-Olivier-0.6.1-pilot.apk
+Short download path: /p
