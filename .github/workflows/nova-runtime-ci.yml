@@ -1,0 +1,50 @@
+name: NOVA Runtime, PDF & Avatar CI
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'nixpacks.toml'
+      - 'server-task-context.cjs'
+      - 'server-nova-document-*.cjs'
+      - 'server-supplier-invoice.cjs'
+      - 'server-email-accounting-core.cjs'
+      - 'src/components/NovaDocumentUploadBridge.jsx'
+      - 'src/components/RoleAwareFloatingAgent.jsx'
+      - 'src/api/avatarFactoryClient.js'
+      - 'src/pages/AvatarFactory.jsx'
+      - 'tests/supplier-invoice-*.test.cjs'
+      - 'tests/email-accounting-currency.test.cjs'
+      - '.github/workflows/nova-runtime-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Validate runtime modules
+        run: |
+          test -f server-task-context.cjs
+          node --check server-task-context.cjs
+          node --check server-nova-document-preload.cjs
+          node --check server-nova-document-upload.cjs
+          node --check server-supplier-invoice.cjs
+          node --check server-email-accounting-core.cjs
+      - name: Test supplier invoices and email currency
+        run: node --test tests/supplier-invoice-server.test.cjs tests/email-accounting-currency.test.cjs
+      - name: Build Cockpit
+        run: npm run build
+      - name: Verify packaged runtime contract
+        run: |
+          grep -q 'COPY --from=builder /app/\*.cjs' Dockerfile
+          grep -q 'server-task-context.cjs' Dockerfile
+          grep -q 'server-nova-document-preload.cjs' Dockerfile
+          grep -q 'server-nova-document-preload.cjs' nixpacks.toml
