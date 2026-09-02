@@ -18,7 +18,7 @@ test("the dedicated SIGNELYA menu only exposes its two services", () => {
 });
 
 test("SIGNELYA identity is used across navigation and authentication", () => {
-  assert.match(sidebar, /signelya-logo\.svg/);
+  assert.match(sidebar, /signelya-symbol-approved-512\\.png/);
   assert.match(sidebar, /Vos écrans prennent vie/);
   assert.match(topbar, /Pilotage SIGNELYA/);
   assert.match(login, />\s*SIGNELYA\s*</);
