@@ -3,4 +3,5 @@ Release SIGNELYA — identité d’installation ordinateur et mobile.
 - nom complet : SIGNELYA by JS-Innov.IA
 - symbole SIGNELYA seul sur les petites icônes pour préserver sa lisibilité
 - formats favicon, Apple Touch, PWA standard, PWA maskable et Windows
+- images 512 px validées après décodage complet avant publication
 - aucun changement de playlist, de publication ou d’horaire de diffusion
