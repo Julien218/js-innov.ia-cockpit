@@ -8,7 +8,10 @@ const ALLOWED_TABLES = new Set([
   'signage_players','signage_media','signage_playlists','signage_publications','camera_gateways','cameras',
   'camera_recordings','signage_audit_events','signage_player_schedule_settings','signage_player_schedule_ranges',
   'signage_player_schedule_exceptions','signage_schedule_audit','signage_sites','signage_display_profiles',
-  'client_signage_requests','client_signage_request_assets','client_content_reviews','client_content_review_proposals'
+  'client_signage_requests','client_signage_request_assets','client_content_reviews','client_content_review_proposals',
+  'signelya_notification_contacts','signelya_client_commercial_assignments','signelya_notification_events',
+  'signelya_device_alert_state','signelya_whatsapp_deliveries','signelya_email_deliveries',
+  'signelya_push_subscriptions','signelya_push_deliveries'
 ]);
 const JSON_COLUMNS = new Map([
   ['signage_players', new Set(['diagnostics','runtime_diagnostics'])],
@@ -19,7 +22,8 @@ const JSON_COLUMNS = new Map([
   ['signage_audit_events', new Set(['details'])],
   ['signage_player_schedule_exceptions', new Set(['ranges'])],
   ['signage_schedule_audit', new Set(['details'])],
-  ['signage_display_profiles', new Set(['fallback_modes','last_stable_mode'])]
+  ['signage_display_profiles', new Set(['fallback_modes','last_stable_mode'])],
+  ['signelya_notification_events', new Set(['payload'])]
 ]);
 const postgresValue = (table, column, value) => {
   if (!JSON_COLUMNS.get(table)?.has(column) || value === null || value === undefined) return value;
@@ -53,7 +57,8 @@ async function migrate() {
       '007_signage_display_manager.sql',
       '008_signage_player_runtime_health.sql',
       '009_signage_client_portal.sql',
-      '010_signage_three_proposal_approval.sql'
+      '010_signage_three_proposal_approval.sql',
+      '011_signelya_whatsapp_notifications.sql'
     ]) {
       const exists = await client.query('select 1 from pilot_schema_migrations where name=$1', [file]);
       if (exists.rowCount) continue;

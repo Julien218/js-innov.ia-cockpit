@@ -8,7 +8,12 @@ const { requireSession, requireSameOrigin, ROLE_LEVEL } = require('./server-secu
 require('./server-postgres.cjs').ensureReady().catch(error => console.error('[postgres] migration failed:', error.message));
 
 app.set('trust proxy', 1);
-app.use(express.json({ limit: '25mb' }));
+app.use(express.json({
+  limit: '25mb',
+  verify: (req, _res, buffer) => {
+    if (String(req.originalUrl || '').startsWith('/api/whatsapp/webhook')) req.rawBody = Buffer.from(buffer);
+  },
+}));
 app.use(requireSameOrigin);
 
 try {
@@ -105,6 +110,15 @@ try {
   console.log('Digital Signage legacy schedule compatibility active');
 } catch (e) {
   console.warn('Signage runtime unavailable:', e.message);
+}
+
+try {
+  const signelyaWhatsApp = require('./server-signelya-whatsapp.cjs');
+  app.use('/api/whatsapp', signelyaWhatsApp.router);
+  signelyaWhatsApp.startMonitor();
+  console.log('Notifications WhatsApp SIGNELYA actives');
+} catch (e) {
+  console.warn('Notifications WhatsApp SIGNELYA indisponibles:', e.message);
 }
 
 try {

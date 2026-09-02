@@ -6,6 +6,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { requireSession } = require('./server-security.cjs');
 const { postgresRest, getPool } = require('./server-postgres.cjs');
+const { notifyVideosOnline } = require('./server-signelya-whatsapp.cjs');
 const router = express.Router();
 
 const SUPABASE_URL = process.env.SUPABASE_CRM_URL || process.env.SUPABASE_URL || '';
@@ -491,6 +492,8 @@ router.post('/player/publications/:id/ack', async(req,res)=>{
       await db(`signage_players?id=eq.${p.id}`,{method:'PATCH',body:JSON.stringify({current_publication_id:publication.id,status:'online',updated_at:now})});
       const next=nextScheduledAt(publication.scheduled_at,publication.recurrence);
       if(next) await db('signage_publications',{method:'POST',body:JSON.stringify({owner_email:p.owner_email,player_id:p.id,playlist_id:publication.playlist_id,status:'pending',manifest:publication.manifest,previous_publication_id:publication.id,scheduled_at:next,recurrence:publication.recurrence})});
+      notifyVideosOnline({publicationId:publication.id,ownerEmail:p.owner_email,playerName:p.name})
+        .catch(error=>console.error('[signelya][videos-online]',error.message));
     } else if(publication.previous_publication_id) {
       await db(`signage_players?id=eq.${p.id}`,{method:'PATCH',body:JSON.stringify({current_publication_id:publication.previous_publication_id,status:'online',updated_at:now})});
     }
