@@ -38,7 +38,7 @@ export default function Login() {
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-2xl shadow-[#00D4FF]/20 mb-4 ring-2 ring-[#00D4FF]/30">
-            <img src="/signelya-logo.svg" alt="SIGNELYA" className="w-full h-full object-cover" />
+            <img src="/signelya-symbol-approved-512.png" alt="SIGNELYA" className="w-full h-full object-cover" />
           </div>
           <h1 className="text-2xl font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
             SIGNELYA
