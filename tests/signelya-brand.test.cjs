@@ -23,6 +23,7 @@ test("SIGNELYA identity is used across navigation and authentication", () => {
   assert.match(topbar, /Pilotage SIGNELYA/);
   assert.match(login, />\s*SIGNELYA\s*</);
   assert.match(login, /#00D4FF/);
+  assert.match(app, /politique-de-confidentialite/);
 });
 
 test("the dedicated cockpit opens on the giant screen service", () => {
