@@ -109,12 +109,25 @@ export default function DigitalSignage() {
   const diagnosticsQuery = useQuery({ queryKey: ["signage-player-diagnostics"], queryFn: () => api("/manage/player-diagnostics"), enabled: isAdmin, refetchInterval: 30000 });
   const managedClients = clientsQuery.data?.clients || [];
   React.useEffect(() => {
-    if (isAdmin && !managedClient && managedClients.length) setManagedClient(preferredManagedClient(managedClients));
+    if (!isAdmin || managedClient || !managedClients.length) return;
+    const preferred = preferredManagedClient(managedClients);
+    setManagedClient(preferred);
+    window.localStorage.setItem(managedClientKey, preferred);
   }, [isAdmin, managedClient, managedClients]);
   const dashboardEnabled = !isAdmin || Boolean(managedClient);
   const { data = {}, isLoading, error } = useQuery({ queryKey: ["signage-dashboard", managedClient || "self"], queryFn: () => api("/manage/dashboard", {}, managedClient), enabled: dashboardEnabled, refetchInterval: 30000 });
   const players = data.players || [], media = data.media || [], playlists = data.playlists || [], publications = data.publications || [], auditEvents = data.auditEvents || [];
-  React.useEffect(() => { if (media.length && !selectedMediaIds.length) setSelectedMediaIds([media[0].id]); }, [media, selectedMediaIds.length]);
+  const selectionScopeRef = React.useRef("");
+  React.useEffect(() => {
+    const scope = `${managedClient || user?.email || "self"}:${playlists[0]?.id || "none"}`;
+    if (selectionScopeRef.current === scope || !media.length) return;
+    selectionScopeRef.current = scope;
+    const mediaIds = new Set(media.map(item => item.id));
+    const savedIds = (playlists[0]?.items || [])
+      .map(item => item.mediaId || item.media_id)
+      .filter(id => id && mediaIds.has(id));
+    setSelectedMediaIds(savedIds.length ? savedIds : [media[0].id]);
+  }, [managedClient, user?.email, media, playlists]);
   const player = [...players].sort((a, b) => new Date(b.last_seen_at || 0).getTime() - new Date(a.last_seen_at || 0).getTime())[0];
   const diagnosticPlayers = diagnosticsQuery.data?.players || [];
   const connectedElsewhere = diagnosticPlayers.find(item => item.owner_email !== managedClient && item.status === "online" && item.last_seen_at && Date.now() - new Date(item.last_seen_at).getTime() < 120000);

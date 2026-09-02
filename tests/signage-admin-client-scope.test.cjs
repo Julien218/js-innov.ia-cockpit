@@ -50,3 +50,9 @@ test('admin can atomically attach a recent connected Player to the selected clie
 });
 
 
+
+test('automatic admin client selection is shared with all signage panels', () => {
+  assert.match(page, /localStorage\.setItem\(managedClientKey, preferred\)/);
+  assert.match(page, /selectionScopeRef/);
+  assert.match(page, /playlists\[0\]\?\.items/);
+});
