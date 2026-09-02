@@ -48,7 +48,7 @@ test('the redesign preserves the existing media and publication APIs', () => {
 });
 
 test('the client page carries the SIGNELYA visual identity', () => {
-  assert.match(page, /src="\/signelya-symbol-approved-512\\.png" alt="SIGNELYA"/);
+  assert.match(page, /src="\/signelya-symbol-approved-512\.png" alt="SIGNELYA"/);
   assert.match(page, /SIGNELYA · Écran géant/);
   assert.match(page, /#070B1C/);
   assert.match(page, /#101B3D/);
