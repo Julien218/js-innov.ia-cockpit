@@ -5,6 +5,7 @@ const { ensureReady, getPool } = require('./server-postgres.cjs');
 const { requireSession } = require('./server-security.cjs');
 
 const router = express.Router();
+const NOTIFICATIONS_ENABLED = process.env.SIGNELYA_NOTIFICATIONS_ENABLED === 'true';
 const GRAPH_VERSION = String(process.env.WHATSAPP_GRAPH_VERSION || 'v23.0');
 const PHONE_NUMBER_ID = String(process.env.WHATSAPP_PHONE_NUMBER_ID || '');
 const ACCESS_TOKEN = String(process.env.WHATSAPP_ACCESS_TOKEN || '');
@@ -159,6 +160,7 @@ async function sendSuperadminOfflineEmail(client, event, { playerName, clientNam
 }
 
 async function notifyConfirmedOffline(player) {
+  if (!NOTIFICATIONS_ENABLED) return { disabled: true };
   await ensureReady();
   const pool = getPool();
   const client = await pool.connect();
@@ -198,6 +200,7 @@ async function notifyConfirmedOffline(player) {
 }
 
 async function notifyVideosOnline({ publicationId, ownerEmail, playerName }) {
+  if (!NOTIFICATIONS_ENABLED) return { disabled: true };
   await ensureReady();
   const pool = getPool();
   const client = await pool.connect();
@@ -234,7 +237,7 @@ async function notifyVideosOnline({ publicationId, ownerEmail, playerName }) {
 }
 
 async function pollOfflinePlayers() {
-  if (monitorBusy) return;
+  if (!NOTIFICATIONS_ENABLED || monitorBusy) return;
   monitorBusy = true;
   const pool = getPool();
   if (!pool) { monitorBusy = false; return; }
@@ -345,6 +348,7 @@ router.get('/status', requireSession('superadmin'), async (req, res) => {
       pool.query('select recipient_email,recipient_role,template_name,status,error,created_at from signelya_whatsapp_deliveries order by created_at desc limit 30')
     ]);
     res.json({
+      enabled: NOTIFICATIONS_ENABLED,
       configured: configured(),
       phoneNumberIdConfigured: Boolean(PHONE_NUMBER_ID),
       accessTokenConfigured: Boolean(ACCESS_TOKEN),
