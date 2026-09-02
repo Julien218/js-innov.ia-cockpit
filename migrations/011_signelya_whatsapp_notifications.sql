@@ -50,6 +50,16 @@ create table if not exists signelya_whatsapp_deliveries (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists signelya_email_deliveries (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid references signelya_notification_events(id) on delete set null,
+  recipient_email text not null,
+  status text not null default 'queued',
+  error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists signelya_notification_events_owner_created_idx
   on signelya_notification_events(owner_email, created_at desc);
 create index if not exists signelya_whatsapp_deliveries_message_idx
