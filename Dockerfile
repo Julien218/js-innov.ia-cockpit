@@ -37,15 +37,15 @@ COPY --from=builder /app/public ./public
 
 RUN npm ci --omit=dev --legacy-peer-deps
 
-# Contrôle de l'image finale, y compris les dépendances réellement chargées
-# par le dispatch batch et le registre des spécialistes.
-RUN test -f /app/server-task-context.cjs \
- && test -f /app/server-assistant-batch.cjs \
- && test -f /app/server-specialist-tasks.cjs \
- && node --check /app/server-task-context.cjs \
- && node --check /app/server-assistant-batch.cjs \
- && node --check /app/server-specialist-tasks.cjs \
- && node -e "require('/app/server-assistant-batch.cjs'); require('/app/server-specialist-tasks.cjs'); require('/app/server-base44-agents.cjs'); require('/app/server-led-ad-director.cjs'); require('/app/server-agent-registry.cjs'); require('/app/server-nova-routing.cjs'); console.log('Required runtime modules check OK')"
+# Contrôle de l'image finale : présence des dépendances critiques, syntaxe de
+# tous les modules serveur et chargement réel des routes de dispatch.
+RUN set -eu; \
+    test -f /app/server-task-context.cjs; \
+    test -f /app/server-assistant-batch.cjs; \
+    test -f /app/server-specialist-tasks.cjs; \
+    node -e "JSON.parse(require('node:fs').readFileSync('/app/permission-catalog.json','utf8')); JSON.parse(require('node:fs').readFileSync('/app/demande-status.json','utf8'))"; \
+    for file in /app/server*.cjs; do node --check "$file"; done; \
+    node -e "require('/app/server-assistant-batch.cjs'); require('/app/server-specialist-tasks.cjs'); require('/app/server-base44-agents.cjs'); require('/app/server-led-ad-director.cjs'); require('/app/server-agent-registry.cjs'); require('/app/server-nova-routing.cjs'); console.log('Required runtime modules check OK')"
 
 RUN mkdir -p /etc/nginx/http.d && cat > /etc/nginx/http.d/default.conf << 'NGINXEOF'
 server {
