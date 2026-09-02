@@ -1,12 +1,14 @@
 {
+  "id": "/",
   "name": "SIGNELYA",
   "short_name": "SIGNELYA",
   "description": "Pilotage des écrans géants et de la vidéosurveillance",
   "start_url": "/ecran-geant",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#0a0a14",
-  "theme_color": "#050817",
+  "background_color": "#03050A",
+  "theme_color": "#03050A",
   "icons": [
     {
       "src": "/icon-192.png",
@@ -15,7 +17,7 @@
       "purpose": "any maskable"
     },
     {
-      "src": "/signelya-symbol-approved-512.png",
+      "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

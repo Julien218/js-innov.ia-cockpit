@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 // Routes publiques
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
 
 // Layout & guard
 import AppLayout from "@/components/layout/AppLayout";
@@ -76,6 +77,8 @@ const AppRoutes = () => {
     <Routes>
       <Route path="/login" element={isAuthenticated ? <Navigate to="/ecran-geant" replace /> : <Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/politique-de-confidentialite" element={<PrivacyPolicy />} />
+      <Route path="/privacy-policy" element={<Navigate to="/politique-de-confidentialite" replace />} />
 
       <Route element={<ProtectedRoute />}>
         <Route element={<AppErrorBoundary><AppLayout /></AppErrorBoundary>}>

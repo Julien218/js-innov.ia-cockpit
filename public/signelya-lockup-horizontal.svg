@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 520" role="img" aria-labelledby="title desc">
+  <title id="title">SIGNELYA — lockup horizontal master</title>
+  <desc id="desc">Symbole S-ruban avec wordmark SIGNELYA et slogan Vos écrans prennent vie.</desc>
+  <defs>
+    <linearGradient id="brand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00D9FF"/>
+      <stop offset="38%" stop-color="#1778FF"/>
+      <stop offset="68%" stop-color="#754BFF"/>
+      <stop offset="100%" stop-color="#F100FF"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(30 35)">
+    <rect x="75" y="62" width="315" height="278" rx="28" fill="none" stroke="url(#brand)" stroke-width="10" opacity="0.85"/>
+    <rect x="10" y="130" width="26" height="26" rx="4" fill="#1778FF"/>
+    <rect x="40" y="94" width="38" height="38" rx="5" fill="#00D9FF"/>
+    <rect x="22" y="194" width="32" height="32" rx="5" fill="#754BFF"/>
+    <rect x="56" y="158" width="46" height="46" rx="6" fill="#00D9FF"/>
+    <path d="M340 92 C288 57 199 58 151 92 C110 121 112 172 156 196 C182 210 216 215 248 227 C298 246 305 290 268 319 C233 346 183 340 137 360"
+          fill="none" stroke="url(#brand)" stroke-width="68" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g transform="translate(495 116)">
+    <text x="0" y="130" font-family="Space Grotesk, Inter, Arial, sans-serif" font-size="154" font-weight="700" letter-spacing="7" fill="#F7F9FF">SIGNE</text>
+    <text x="590" y="130" font-family="Space Grotesk, Inter, Arial, sans-serif" font-size="154" font-weight="700" letter-spacing="7" fill="url(#brand)">LYA</text>
+    <text x="8" y="235" font-family="Space Grotesk, Inter, Arial, sans-serif" font-size="49" font-weight="400" letter-spacing="11" fill="#F7F9FF">Vos écrans</text>
+    <text x="405" y="235" font-family="Space Grotesk, Inter, Arial, sans-serif" font-size="49" font-weight="500" font-style="italic" letter-spacing="8" fill="url(#brand)"> prennent vie.</text>
+  </g>
+</svg>

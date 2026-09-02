@@ -31,7 +31,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
     )}>
       <div className={cn("flex items-center gap-3 border-b border-white/10 px-4 py-5", collapsed && "md:justify-center md:px-2")}>
         <div className="h-11 w-11 shrink-0 overflow-hidden rounded-2xl border border-cyan-300/30 bg-black/30 shadow-[0_0_28px_rgba(0,212,255,0.22)]">
-          <img src="/signelya-symbol-approved-512.png" alt="SIGNELYA" className="h-full w-full object-cover" />
+          <img src="/signelya-symbol-master.svg" alt="SIGNELYA" className="h-full w-full object-contain" />
         </div>
         {!collapsed && <div className="min-w-0 flex-1"><p className="bg-[linear-gradient(90deg,#00D4FF,#8A2BE2,#FF00CC)] bg-clip-text text-lg font-extrabold tracking-[0.13em] text-transparent">SIGNELYA</p><p className="mt-0.5 text-[10px] font-medium tracking-[0.16em] text-white/45">by JS‑Innov.IA</p></div>}
         <button onClick={onCloseMobile} className="rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white md:hidden" aria-label="Fermer le menu"><X className="h-5 w-5" /></button>
