@@ -39,7 +39,7 @@ export const avatarFactory = {
   rejectJob: (id, reason) => request(`/jobs/${encodeURIComponent(id)}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
   costSummary: () => request('/costs/summary'),
   candidateUrl: id => `${PREVIEW_URL}/jobs/${encodeURIComponent(id)}/candidate.glb`,
-  uploadReference: async (file, characterId) => {
+  uploadReference: async (file, characterId, options = {}) => {
     if (!file) throw new Error('Aucune image sélectionnée.');
     const allowed = ['image/png', 'image/jpeg', 'image/webp'];
     if (!allowed.includes(file.type)) throw new Error('Format accepté : PNG, JPG/JPEG ou WEBP.');
@@ -52,6 +52,8 @@ export const avatarFactory = {
         mime_type: file.type,
         data_base64: dataBase64,
         character_id: characterId || 'avatar',
+        display_name: String(options.displayName || '').slice(0, 120),
+        subject_type: String(options.subjectType || 'auto').slice(0, 40),
       }),
     }, UPLOAD_URL);
   },
