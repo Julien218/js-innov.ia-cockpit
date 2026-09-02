@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const webpush = require('web-push');
 const { ensureReady, getPool } = require('./server-postgres.cjs');
 const { requireSession } = require('./server-security.cjs');
 
@@ -20,6 +21,11 @@ const SMTP_EMAIL = String(process.env.EMAIL_STORE_ADDRESS || 'info@jsinnovia.sto
 const SMTP_PASSWORD = String(process.env.EMAIL_PASSWORD_STORE || '');
 const SMTP_HOST = String(process.env.SMTP_HOST_STORE || 'smtp.ionos.fr');
 const SMTP_PORT = Number(process.env.SMTP_PORT_STORE || 465);
+const VAPID_PUBLIC_KEY = String(process.env.SIGNELYA_VAPID_PUBLIC_KEY || '');
+const VAPID_PRIVATE_KEY = String(process.env.SIGNELYA_VAPID_PRIVATE_KEY || '');
+const VAPID_SUBJECT = String(process.env.SIGNELYA_VAPID_SUBJECT || `mailto:${SUPERADMIN_EMAIL}`);
+const pushConfigured = () => Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+if (pushConfigured()) webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 let mailTransport = null;
 
 let monitorTimer = null;
@@ -159,6 +165,40 @@ async function sendSuperadminOfflineEmail(client, event, { playerName, clientNam
   }
 }
 
+async function sendSuperadminPush(client, event, { playerName, clientName, minutes }) {
+  if (!pushConfigured()) return { configured: false, sent: 0 };
+  const subscriptions = await client.query(
+    `select id,subscription from signelya_push_subscriptions
+     where enabled=true and role='superadmin'`
+  );
+  let sent = 0;
+  for (const row of subscriptions.rows) {
+    try {
+      await webpush.sendNotification(row.subscription, JSON.stringify({
+        title: 'SIGNELYA — Écran hors ligne',
+        body: `${clientName} · ${playerName} est hors ligne depuis ${minutes} minutes.`,
+        url: '/ecran-geant',
+        tag: `signelya-offline-${event.id}`
+      }));
+      sent += 1;
+      await client.query(
+        `insert into signelya_push_deliveries (event_id,subscription_id,status)
+         values ($1,$2,'sent')`, [event.id, row.id]
+      );
+    } catch (error) {
+      const statusCode = Number(error.statusCode || 0);
+      if ([404,410].includes(statusCode)) {
+        await client.query('update signelya_push_subscriptions set enabled=false,updated_at=now() where id=$1', [row.id]);
+      }
+      await client.query(
+        `insert into signelya_push_deliveries (event_id,subscription_id,status,error)
+         values ($1,$2,'failed',$3)`, [event.id, row.id, String(error.message || error).slice(0,1000)]
+      );
+    }
+  }
+  return { configured: true, sent };
+}
+
 async function notifyConfirmedOffline(player) {
   if (!NOTIFICATIONS_ENABLED) return { disabled: true };
   await ensureReady();
@@ -193,7 +233,10 @@ async function notifyConfirmedOffline(player) {
       playerName: player.name || 'Écran SIGNELYA', clientName: name,
       minutes, lastSeenAt: lastSeen.toISOString()
     });
-    return { eventId: event.id, recipients: contacts.rowCount, results, superadminEmail: emailResult };
+    const pushResult = await sendSuperadminPush(client, event, {
+      playerName: player.name || 'Écran SIGNELYA', clientName: name, minutes
+    });
+    return { eventId: event.id, recipients: contacts.rowCount, results, superadminEmail: emailResult, superadminPush: pushResult };
   } finally {
     client.release();
   }
@@ -275,7 +318,7 @@ async function pollOfflinePlayers() {
         [String(player.id), normalizeEmail(player.owner_email), offline ? 'offline' : 'online',
           offline ? player.last_seen_at : null, player.last_seen_at]
       );
-      if (offline && previousState !== 'offline') {
+      if (offline && previousState === 'online') {
         const result = await notifyConfirmedOffline(player);
         if (result?.eventId) {
           await client.query(
@@ -338,14 +381,60 @@ router.post('/webhook', async (req, res) => {
   }
 });
 
+router.get('/push/public-key', requireSession('superadmin'), (req, res) => {
+  if (!pushConfigured()) return res.status(503).json({ error: 'Notifications mobiles non configurées' });
+  res.json({ publicKey: VAPID_PUBLIC_KEY });
+});
+
+router.post('/push/subscriptions', requireSession('superadmin'), async (req, res) => {
+  try {
+    await ensureReady();
+    const subscription = req.body?.subscription;
+    const endpoint = String(subscription?.endpoint || '');
+    if (!endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+      return res.status(400).json({ error: 'Abonnement mobile invalide' });
+    }
+    const result = await getPool().query(
+      `insert into signelya_push_subscriptions
+        (user_email,role,endpoint,subscription,user_agent,enabled,updated_at)
+       values ($1,'superadmin',$2,$3::jsonb,$4,true,now())
+       on conflict (endpoint) do update set
+         user_email=excluded.user_email,role='superadmin',subscription=excluded.subscription,
+         user_agent=excluded.user_agent,enabled=true,updated_at=now()
+       returning id,user_email,role,enabled`,
+      [normalizeEmail(req.user.email), endpoint, JSON.stringify(subscription), String(req.headers['user-agent'] || '').slice(0,500)]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+router.delete('/push/subscriptions', requireSession('superadmin'), async (req, res) => {
+  try {
+    await ensureReady();
+    const endpoint = String(req.body?.endpoint || '');
+    if (!endpoint) return res.status(400).json({ error: 'Endpoint requis' });
+    await getPool().query(
+      `update signelya_push_subscriptions set enabled=false,updated_at=now()
+       where endpoint=$1 and lower(user_email)=lower($2)`,
+      [endpoint, normalizeEmail(req.user.email)]
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 router.get('/status', requireSession('superadmin'), async (req, res) => {
   try {
     await ensureReady();
     const pool = getPool();
-    const [contacts, assignments, deliveries] = await Promise.all([
+    const [contacts, assignments, deliveries, pushSubscriptions] = await Promise.all([
       pool.query('select email,phone_e164,role,enabled,whatsapp_opt_in_at from signelya_notification_contacts order by role,email'),
       pool.query('select * from signelya_client_commercial_assignments order by client_email'),
-      pool.query('select recipient_email,recipient_role,template_name,status,error,created_at from signelya_whatsapp_deliveries order by created_at desc limit 30')
+      pool.query('select recipient_email,recipient_role,template_name,status,error,created_at from signelya_whatsapp_deliveries order by created_at desc limit 30'),
+      pool.query("select count(*)::int as count from signelya_push_subscriptions where enabled=true and role='superadmin'")
     ]);
     res.json({
       enabled: NOTIFICATIONS_ENABLED,
@@ -359,7 +448,9 @@ router.get('/status', requireSession('superadmin'), async (req, res) => {
       assignments: assignments.rows,
       deliveries: deliveries.rows,
       superadminAlertEmail: SUPERADMIN_EMAIL,
-      superadminEmailConfigured: Boolean(SMTP_PASSWORD)
+      superadminEmailConfigured: Boolean(SMTP_PASSWORD),
+      mobilePushConfigured: pushConfigured(),
+      mobilePushSubscriptions: pushSubscriptions.rows[0]?.count || 0
     });
   } catch (error) {
     res.status(503).json({ error: error.message });
