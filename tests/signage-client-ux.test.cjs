@@ -47,13 +47,13 @@ test('the redesign preserves the existing media and publication APIs', () => {
   assert.match(page, /\/manage\/publications/);
 });
 
-test('the client page carries the JS-Innov.IA visual identity', () => {
-  assert.match(page, /src="\/logo\.png" alt="JS-Innov\.IA"/);
-  assert.match(page, /JS-Innov\.IA · Signage/);
+test('the client page carries the SIGNELYA visual identity', () => {
+  assert.match(page, /src="\/signelya-logo\.svg" alt="SIGNELYA"/);
+  assert.match(page, /SIGNELYA · Écran géant/);
   assert.match(page, /#070B1C/);
   assert.match(page, /#101B3D/);
-  assert.match(page, /#D4AF37/);
-  assert.match(page, /#E7C75F/);
+  assert.match(page, /#8A2BE2/);
+  assert.match(page, /#00D4FF/);
   assert.match(page, /#2563EB/);
   assert.match(page, /#0891B2/);
 });

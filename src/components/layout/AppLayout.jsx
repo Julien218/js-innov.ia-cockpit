@@ -7,7 +7,7 @@ export default function AppLayout() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen overflow-hidden bg-[radial-gradient(circle_at_top_right,rgba(138,43,226,0.08),transparent_32%),#F6F8FC]">
       {/* Sidebar desktop (fixe) + mobile (overlay) */}
       <Sidebar
         mobileOpen={mobileSidebarOpen}

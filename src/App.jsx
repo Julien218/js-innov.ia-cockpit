@@ -14,7 +14,6 @@ import AppLayout from "@/components/layout/AppLayout";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
 // Pages
-import Dashboard from "@/pages/Dashboard";
 import Assurances from "@/pages/Assurances";
 import Documents from "@/pages/Documents";
 // ── Nouvelles pages v2
@@ -68,19 +67,19 @@ const AppRoutes = () => {
   if (!authChecked || isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-[#0a0a14]">
-        <div className="w-8 h-8 border-4 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-4 border-[#00D4FF]/20 border-t-[#00D4FF] rounded-full animate-spin"></div>
       </div>
     );
   }
 
   return (
     <Routes>
-      <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
+      <Route path="/login" element={isAuthenticated ? <Navigate to="/ecran-geant" replace /> : <Login />} />
       <Route path="/register" element={<Register />} />
 
       <Route element={<ProtectedRoute />}>
         <Route element={<AppErrorBoundary><AppLayout /></AppErrorBoundary>}>
-          <Route path="/" element={<PageBoundary><Dashboard /></PageBoundary>} />
+          <Route path="/" element={<Navigate to="/ecran-geant" replace />} />
           <Route path="/assurances" element={<PageBoundary><Assurances /></PageBoundary>} />
           <Route path="/documents" element={<PageBoundary><Documents /></PageBoundary>} />
 

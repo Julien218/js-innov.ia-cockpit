@@ -54,7 +54,7 @@ const uploadMedia = (file, onProgress, clientEmail = "") => new Promise((resolve
 });
 
 const STATUS_TONES = {
-  gold: "border-[#D4AF37]/25 bg-[#D4AF37]/5 text-[#A77E10]",
+  gold: "border-[#8A2BE2]/25 bg-[#8A2BE2]/5 text-[#A77E10]",
   cyan: "border-cyan-500/20 bg-cyan-500/5 text-cyan-700",
   blue: "border-blue-500/20 bg-blue-500/5 text-blue-700",
   navy: "border-slate-900/15 bg-slate-900/[0.03] text-slate-800",
@@ -186,13 +186,13 @@ export default function DigitalSignage() {
   }, "Prévisualisation chargée.");
 
   return <div className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
-    <section className="relative overflow-hidden rounded-3xl border border-[#D4AF37]/30 bg-[linear-gradient(135deg,#070B1C_0%,#101B3D_55%,#0B2940_100%)] p-5 text-white shadow-xl shadow-[#101B3D]/15 md:p-7">
+    <section className="relative overflow-hidden rounded-3xl border border-[#8A2BE2]/30 bg-[linear-gradient(135deg,#070B1C_0%,#101B3D_55%,#0B2940_100%)] p-5 text-white shadow-xl shadow-[#101B3D]/15 md:p-7">
       <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-cyan-400/15 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-[#D4AF37]/15 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-[#8A2BE2]/15 blur-3xl" />
       <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
-          <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-[#D4AF37]/40 bg-black/25 p-1 shadow-lg shadow-black/20"><img src="/logo.png" alt="JS-Innov.IA" className="h-full w-full rounded-xl object-cover" /></div>
-          <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-[#E7C75F]">JS-Innov.IA · Signage</p><h1 className="mt-1 text-2xl font-bold tracking-tight md:text-3xl">Mon écran géant</h1><p className="mt-1 text-sm text-slate-300">Ajoutez vos médias, choisissez leur ordre puis lancez la diffusion.</p></div>
+          <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-[#8A2BE2]/40 bg-black/25 p-1 shadow-lg shadow-black/20"><img src="/signelya-logo.svg" alt="SIGNELYA" className="h-full w-full rounded-xl object-cover" /></div>
+          <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-[#00D4FF]">SIGNELYA · Écran géant</p><h1 className="mt-1 text-2xl font-bold tracking-tight md:text-3xl">Mon écran géant</h1><p className="mt-1 text-sm text-slate-300">Ajoutez vos médias, choisissez leur ordre puis lancez la diffusion.</p></div>
         </div>
         <div className="inline-flex w-fit items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-xs font-medium text-slate-100 backdrop-blur-sm"><span className="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.9)]" /> Service écran géant</div>
       </div>
@@ -213,10 +213,10 @@ export default function DigitalSignage() {
       <p className={`text-xs ${transfer.state === "error" ? "text-red-700" : transfer.state === "done" ? "text-emerald-700" : "text-muted-foreground"}`}>{transfer.label}</p>
     </div>}
     {enrollmentToken && <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2"><p className="font-semibold">Jeton d’association — affiché une seule fois</p><p className="text-xs text-muted-foreground">Saisissez exactement ce jeton sur la MXQ, puis effacez-le de toute note temporaire.</p><div className="flex gap-2"><input readOnly value={enrollmentToken} className="flex-1 rounded-lg border bg-background px-3 py-2 font-mono text-sm"/><button onClick={() => navigator.clipboard.writeText(enrollmentToken)} className="rounded-lg border px-4 py-2 text-sm">Copier</button></div></div>}
-    <section className={`rounded-3xl border p-5 shadow-sm md:p-6 ${playerOnline ? "border-cyan-500/25 bg-[linear-gradient(135deg,rgba(6,182,212,0.08),rgba(37,99,235,0.04))]" : "border-[#D4AF37]/35 bg-[#D4AF37]/5"}`}>
+    <section className={`rounded-3xl border p-5 shadow-sm md:p-6 ${playerOnline ? "border-cyan-500/25 bg-[linear-gradient(135deg,rgba(6,182,212,0.08),rgba(37,99,235,0.04))]" : "border-[#8A2BE2]/35 bg-[#8A2BE2]/5"}`}>
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-start gap-3">
-          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-lg ${playerOnline ? "bg-cyan-500 text-white shadow-cyan-500/20" : "bg-[#D4AF37] text-[#07111F] shadow-[#D4AF37]/20"}`}>
+          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-lg ${playerOnline ? "bg-cyan-500 text-white shadow-cyan-500/20" : "bg-[#8A2BE2] text-[#07111F] shadow-[#8A2BE2]/20"}`}>
             {playerOnline ? <CheckCircle2 className="h-6 w-6" /> : <CircleAlert className="h-6 w-6" />}
           </div>
           <div>
@@ -227,7 +227,7 @@ export default function DigitalSignage() {
             {player?.last_seen_at && <p className="mt-2 text-xs text-muted-foreground">Dernier contact : {new Date(player.last_seen_at).toLocaleString("fr-BE")}</p>}
           </div>
         </div>
-        <button disabled={busy || isLoading} onClick={() => fileInput.current?.click()} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#D4AF37] px-5 py-3 text-sm font-bold text-[#07111F] shadow-lg shadow-[#D4AF37]/20 transition-colors hover:bg-[#E5C55B] disabled:opacity-50">
+        <button disabled={busy || isLoading} onClick={() => fileInput.current?.click()} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#8A2BE2] px-5 py-3 text-sm font-bold text-[#07111F] shadow-lg shadow-[#8A2BE2]/20 transition-colors hover:bg-[#E5C55B] disabled:opacity-50">
           <Upload className="h-4 w-4" /> Ajouter une vidéo ou une image
         </button>
       </div>
@@ -244,12 +244,12 @@ export default function DigitalSignage() {
     {latestPublication?.status === "failed" && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-700"><p className="font-semibold">La dernière diffusion a échoué sur le Player.</p><p className="mt-1">{latestPublication.error || "Le Player n’a pas pu lire le média."}</p></div>}
 
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
-      <section className="rounded-2xl border border-[#D4AF37]/20 bg-card p-4 shadow-sm md:p-5">
+      <section className="rounded-2xl border border-[#8A2BE2]/20 bg-card p-4 shadow-sm md:p-5">
         <div className="flex items-start gap-3">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0B1633] text-sm font-bold text-[#E7C75F] ring-2 ring-[#D4AF37]/25">1</span>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0B1633] text-sm font-bold text-[#00D4FF] ring-2 ring-[#8A2BE2]/25">1</span>
           <div><h2 className="text-base font-semibold">Ajoutez vos médias</h2><p className="mt-1 text-sm text-muted-foreground">Cochez les vidéos et images à diffuser. L’ordre choisi sera conservé.</p></div>
         </div>
-        <div className="mt-4 space-y-2">{media.map(item => { const selected = selectedMediaIds.includes(item.id); const position = selectedMediaIds.indexOf(item.id); return <div key={item.id} className={`rounded-xl border p-3 flex items-center gap-2 ${selected ? "border-[#D4AF37]/55 bg-[#D4AF37]/5 shadow-sm" : ""}`}><input type="checkbox" checked={selected} onChange={() => toggleMedia(item.id)} aria-label={`Sélectionner ${item.name}`}/><div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{item.name}</p><p className="text-xs text-muted-foreground">{formatBytes(Number(item.size_bytes || 0))} · {MEDIA_STATUS_LABELS[item.status] || "État inconnu"}</p></div><button onClick={() => previewMedia(item)} className="rounded-lg border p-2 hover:border-cyan-500/40 hover:text-cyan-700" aria-label={`Prévisualiser ${item.name}`}><Eye className="w-4 h-4"/></button>{selected && <><button disabled={position <= 0} onClick={() => moveMedia(item.id, -1)} className="rounded-lg border p-2 disabled:opacity-30" aria-label="Monter"><ArrowUp className="w-4 h-4"/></button><button disabled={position === selectedMediaIds.length - 1} onClick={() => moveMedia(item.id, 1)} className="rounded-lg border p-2 disabled:opacity-30" aria-label="Descendre"><ArrowDown className="w-4 h-4"/></button><span className="w-6 text-center text-xs font-semibold text-[#9A7414]">{position + 1}</span></>}</div>})}{!media.length && <div className="rounded-xl border border-dashed p-8 text-center"><p className="text-sm font-medium">Aucun média pour le moment</p><button onClick={() => fileInput.current?.click()} className="mt-3 rounded-xl bg-[#D4AF37] px-4 py-2 text-sm font-semibold text-[#07111F]">Ajouter le premier média</button></div>}</div>
+        <div className="mt-4 space-y-2">{media.map(item => { const selected = selectedMediaIds.includes(item.id); const position = selectedMediaIds.indexOf(item.id); return <div key={item.id} className={`rounded-xl border p-3 flex items-center gap-2 ${selected ? "border-[#8A2BE2]/55 bg-[#8A2BE2]/5 shadow-sm" : ""}`}><input type="checkbox" checked={selected} onChange={() => toggleMedia(item.id)} aria-label={`Sélectionner ${item.name}`}/><div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{item.name}</p><p className="text-xs text-muted-foreground">{formatBytes(Number(item.size_bytes || 0))} · {MEDIA_STATUS_LABELS[item.status] || "État inconnu"}</p></div><button onClick={() => previewMedia(item)} className="rounded-lg border p-2 hover:border-cyan-500/40 hover:text-cyan-700" aria-label={`Prévisualiser ${item.name}`}><Eye className="w-4 h-4"/></button>{selected && <><button disabled={position <= 0} onClick={() => moveMedia(item.id, -1)} className="rounded-lg border p-2 disabled:opacity-30" aria-label="Monter"><ArrowUp className="w-4 h-4"/></button><button disabled={position === selectedMediaIds.length - 1} onClick={() => moveMedia(item.id, 1)} className="rounded-lg border p-2 disabled:opacity-30" aria-label="Descendre"><ArrowDown className="w-4 h-4"/></button><span className="w-6 text-center text-xs font-semibold text-[#9A7414]">{position + 1}</span></>}</div>})}{!media.length && <div className="rounded-xl border border-dashed p-8 text-center"><p className="text-sm font-medium">Aucun média pour le moment</p><button onClick={() => fileInput.current?.click()} className="mt-3 rounded-xl bg-[#8A2BE2] px-4 py-2 text-sm font-semibold text-[#07111F]">Ajouter le premier média</button></div>}</div>
       </section>
 
       <section className="rounded-2xl border bg-card p-4 md:p-5">
@@ -269,18 +269,18 @@ export default function DigitalSignage() {
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <section className="rounded-2xl border bg-card p-4 md:p-5">
         <div className="flex items-start gap-3">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0B1633] text-sm font-bold text-[#E7C75F] ring-2 ring-[#D4AF37]/25">2</span>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0B1633] text-sm font-bold text-[#00D4FF] ring-2 ring-[#8A2BE2]/25">2</span>
           <div><h2 className="text-base font-semibold">Préparez votre programme</h2><p className="mt-1 text-sm text-muted-foreground">{selectedMedia.length ? `${selectedMedia.length} média${selectedMedia.length > 1 ? "s" : ""} sélectionné${selectedMedia.length > 1 ? "s" : ""}.` : "Choisissez au moins un média à l’étape 1."}</p></div>
         </div>
         <div className="mt-4 rounded-xl bg-muted/40 p-3 text-sm">
           {selectedMedia.length ? selectedMedia.map((item, index) => <p key={item.id} className="truncate py-1"><span className="mr-2 font-bold text-primary">{index + 1}.</span>{item.name}</p>) : <p className="text-muted-foreground">Votre programme apparaîtra ici.</p>}
         </div>
-        <button disabled={busy || !selectedMedia.length} onClick={createPlaylist} className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#D4AF37]/60 px-4 py-3 text-sm font-semibold text-[#8A6812] transition-colors hover:bg-[#D4AF37]/10 disabled:opacity-40"><ListVideo className="h-4 w-4" /> Enregistrer ce programme</button>
+        <button disabled={busy || !selectedMedia.length} onClick={createPlaylist} className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#8A2BE2]/60 px-4 py-3 text-sm font-semibold text-[#8A6812] transition-colors hover:bg-[#8A2BE2]/10 disabled:opacity-40"><ListVideo className="h-4 w-4" /> Enregistrer ce programme</button>
       </section>
 
       <section className="rounded-2xl border bg-card p-4 md:p-5">
         <div className="flex items-start gap-3">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0B1633] text-sm font-bold text-[#E7C75F] ring-2 ring-[#D4AF37]/25">3</span>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0B1633] text-sm font-bold text-[#00D4FF] ring-2 ring-[#8A2BE2]/25">3</span>
           <div><h2 className="text-base font-semibold">Lancez la diffusion</h2><p className="mt-1 text-sm text-muted-foreground">Diffusez maintenant ou choisissez une date.</p></div>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">

@@ -20,7 +20,7 @@ export default function Login() {
     const result = await login(email.trim(), password);
     setLoading(false);
     if (result.success) {
-      navigate("/", { replace: true });
+      navigate("/ecran-geant", { replace: true });
     } else {
       setError(result.error || "Identifiants incorrects.");
     }
@@ -30,20 +30,20 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-[#0a0a14] px-4">
       {/* Fond animé */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#D4AF37]/5 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#00D4FF]/5 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-purple-600/5 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "1s" }} />
       </div>
 
       <div className="relative w-full max-w-md">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-2xl shadow-[#D4AF37]/20 mb-4 ring-2 ring-[#D4AF37]/30">
-            <img src="/logo.png" alt="JS-Innov.IA" className="w-full h-full object-cover" />
+          <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-2xl shadow-[#00D4FF]/20 mb-4 ring-2 ring-[#00D4FF]/30">
+            <img src="/signelya-logo.svg" alt="SIGNELYA" className="w-full h-full object-cover" />
           </div>
           <h1 className="text-2xl font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            JS-Innov.IA
+            SIGNELYA
           </h1>
-          <p className="text-sm text-white/40 mt-1 tracking-widest uppercase">Cockpit</p>
+          <p className="text-sm text-white/40 mt-1 tracking-widest uppercase">Vos écrans prennent vie.</p>
         </div>
 
         {/* Card */}
@@ -68,7 +68,7 @@ export default function Login() {
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 placeholder="vous@exemple.com"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/50 focus:border-[#D4AF37]/50 transition-all"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50 focus:border-[#00D4FF]/50 transition-all"
                 autoComplete="email"
                 required
               />
@@ -84,7 +84,7 @@ export default function Login() {
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 pr-11 text-sm text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/50 focus:border-[#D4AF37]/50 transition-all"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 pr-11 text-sm text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50 focus:border-[#00D4FF]/50 transition-all"
                   autoComplete="current-password"
                   required
                 />
@@ -102,7 +102,7 @@ export default function Login() {
               type="submit"
               disabled={loading || !email || !password}
               className="w-full py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              style={{ backgroundColor: "#D4AF37", color: "#0a0a14" }}
+              style={{ backgroundColor: "#00D4FF", color: "#0a0a14" }}
             >
               {loading ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> Connexion…</>
@@ -115,7 +115,7 @@ export default function Login() {
           <div className="mt-6 pt-6 border-t border-white/5 text-center">
             <p className="text-xs text-white/20">
               Vous avez reçu une invitation ?{" "}
-              <a href="/register" className="text-[#D4AF37]/60 hover:text-[#D4AF37] transition-colors">
+              <a href="/register" className="text-[#00D4FF]/60 hover:text-[#00D4FF] transition-colors">
                 Créer un compte
               </a>
             </p>
@@ -123,7 +123,7 @@ export default function Login() {
         </div>
 
         <p className="text-center text-xs text-white/15 mt-6">
-          🚀 JS-Innov.IA — Intelligence artificielle amplifiée par l'humain
+          SIGNELYA — by JS‑Innov.IA
         </p>
       </div>
     </div>

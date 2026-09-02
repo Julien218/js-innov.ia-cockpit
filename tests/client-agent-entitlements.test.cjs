@@ -9,8 +9,8 @@ const guard = read('src/components/ProtectedRoute.jsx');
 const server = read('server-agents.cjs');
 const appServer = read('server.cjs');
 
-test('client Agents IA access is gated in menu and direct routes', () => {
-  assert.match(sidebar, /path: "\/agents-ia", module: "ai_agents"/);
+test('the dedicated cockpit hides Agents IA while direct routes remain gated', () => {
+  assert.doesNotMatch(sidebar, /path: "\/agents-ia"/);
   assert.match(guard, /'\/agents-ia': 'ai_agents'/);
   assert.match(guard, /!hasModule\(requiredModule\)/);
 });
