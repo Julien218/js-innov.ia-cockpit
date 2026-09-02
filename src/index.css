@@ -349,13 +349,20 @@ html {
   gap: 6px;
   margin-top: 14px;
 }
-.elynea-capabilities span {
+.elynea-capabilities button {
   padding: 5px 8px;
   border: 1px solid rgba(138, 43, 226, 0.25);
   border-radius: 999px;
   color: #c4b5fd;
   background: rgba(138, 43, 226, 0.08);
+  cursor: pointer;
   font-size: 0.68rem;
+}
+.elynea-capabilities button:hover,
+.elynea-capabilities button:focus-visible {
+  border-color: rgba(0, 212, 255, 0.55);
+  color: #cffafe;
+  outline: none;
 }
 .elynea-message {
   max-width: 86%;
@@ -514,10 +521,10 @@ html {
   .elynea-panel {
     right: max(10px, env(safe-area-inset-right));
     left: max(10px, env(safe-area-inset-left));
-    bottom: max(10px, env(safe-area-inset-bottom));
+    bottom: max(8px, env(safe-area-inset-bottom));
     width: auto;
-    height: min(520px, 64dvh);
-    max-height: calc(100dvh - 84px);
+    height: min(540px, 68dvh);
+    max-height: calc(100dvh - 104px - env(safe-area-inset-top));
     border-radius: 20px;
   }
   .elynea-header {
@@ -528,14 +535,15 @@ html {
     height: 38px;
   }
   .elynea-heading p {
-    max-width: 170px;
+    max-width: 148px;
   }
   .elynea-actions button {
     width: 32px;
     height: 32px;
   }
   .elynea-messages {
-    padding: 13px 11px;
+    scroll-padding-bottom: 12px;
+    padding: 12px 10px;
   }
   .elynea-welcome {
     padding: 6px;
@@ -543,6 +551,25 @@ html {
   .elynea-welcome > img {
     width: 52px;
     height: 52px;
+  }
+  .elynea-message {
+    max-width: 92%;
+    font-size: 0.8rem;
+  }
+  .elynea-composer {
+    position: relative;
+    z-index: 2;
+    padding: 8px 9px max(8px, env(safe-area-inset-bottom));
+  }
+  .elynea-composer textarea {
+    min-height: 42px;
+    padding: 10px;
+    font-size: 16px;
+  }
+  .elynea-mic,
+  .elynea-send {
+    width: 42px;
+    height: 42px;
   }
 }
 

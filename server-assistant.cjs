@@ -13,8 +13,53 @@ const SIGNELYA_ASSISTANT_CONTEXT = [
   'Tu sais que Signelya est le service de pilotage d’affichage numérique de JS-Innov.IA.',
   'Présente-toi toujours comme Elynea et jamais comme Nova.',
   'Réponds en français, avec un ton professionnel, rassurant et concret.',
+  'Ne répète pas ta présentation ou ton bonjour après le premier échange.',
+  'Réponds brièvement et directement, avec des phrases adaptées à un écran de téléphone.',
+  'Quand les données Signelya sont fournies, utilise-les pour répondre précisément sur le Player, les playlists, les programmations et les horaires.',
+  'N’annonce jamais que tu vas vérifier, revenir plus tard ou demander un instant : donne le résultat disponible dans la même réponse.',
+  'Si une donnée manque, dis exactement laquelle est indisponible et indique où la consulter dans Signelya.',
   'Ne prétends jamais avoir exécuté une action si elle n’a pas été confirmée puis réellement effectuée.'
 ].join(' ');
+const DAYS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+
+function sanitizeSignelyaContext(value) {
+  if (!value || typeof value !== 'object') return null;
+  try {
+    const serialized = JSON.stringify(value);
+    if (serialized.length > 24000) return null;
+    return JSON.parse(serialized);
+  } catch { return null; }
+}
+
+function scheduleReply(context) {
+  if (!context) return null;
+  const lines = [];
+  if (context.player) {
+    lines.push(`Écran : ${context.player.status === 'online' ? 'connecté' : 'hors ligne'}${context.player.lastSeenAt ? ` (dernier contact : ${new Date(context.player.lastSeenAt).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels' })})` : ''}.`);
+  } else {
+    lines.push("Aucun écran n’est actuellement associé à ce compte.");
+  }
+
+  const schedule = context.schedule;
+  if (!schedule) {
+    lines.push("Les horaires de l’écran ne sont pas disponibles pour le moment.");
+  } else if (!schedule.configured) {
+    lines.push("Les horaires automatiques ne sont pas activés : aucune plage hebdomadaire ne commande actuellement l’écran.");
+  } else {
+    const ranges = (schedule.ranges || []).map(item => `${DAYS[item.dayOfWeek] || 'jour'} ${item.start}–${item.end}`);
+    lines.push(ranges.length ? `Horaires actifs : ${ranges.join(', ')}.` : "Les horaires sont activés, mais aucune plage de diffusion n’est définie.");
+    if (schedule.blockBelgianHolidays) lines.push("Les jours fériés belges sont bloqués.");
+  }
+
+  const pendingPublications = (context.publications || []).filter(item => ['pending', 'active'].includes(item.status));
+  if (pendingPublications.length) {
+    const playlistNames = new Map((context.playlists || []).map(item => [item.id, item.name]));
+    lines.push(`Diffusions prévues : ${pendingPublications.slice(0, 5).map(item => `${playlistNames.get(item.playlistId) || 'programme'} le ${new Date(item.scheduledAt).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels' })}`).join(' ; ')}.`);
+  } else {
+    lines.push("Aucune nouvelle diffusion n’est actuellement en attente.");
+  }
+  return lines.join('\n');
+}
 const pending = new Map();
 const pendingCompletions = new Map();
 const requestWindows = new Map();
@@ -181,12 +226,22 @@ router.post('/chat', async (req, res) => {
 
   const sessionId = sessionIdFor(req);
   try {
+    const signelyaContext = sanitizeSignelyaContext(req.body?.signelya_context);
+    const asksForSchedule = /\b(programmation|programmé|programmée|planning|horaire|heures?|quand|diffusions? prévues?)\b/i.test(message);
+    if (req.body?.surface === 'signelya' && asksForSchedule && signelyaContext) {
+      const directReply = scheduleReply(signelyaContext);
+      if (directReply) {
+        await logAction(req.user, 'consultation programmation Signelya', 'succes', `Réponse directe (${conversationIdFrom(req)})`);
+        return res.json({ message: directReply, conversation_id: conversationIdFrom(req), source: 'signelya-live-context' });
+      }
+    }
     // === Enrichissement contexte Dropbox ===
     let dropboxContext = '';
     try {
       dropboxContext = await buildDropboxContext(message);
     } catch (e) { console.warn('[assistant] Dropbox context failed:', e.message); }
-    const enrichedMessage = SIGNELYA_ASSISTANT_CONTEXT + '\n\n[Demande du client]\n' + message + (dropboxContext || '');
+    const liveContext = signelyaContext ? `\n\n[Données Signelya consultées maintenant — source prioritaire]\n${JSON.stringify(signelyaContext)}` : '';
+    const enrichedMessage = SIGNELYA_ASSISTANT_CONTEXT + liveContext + '\n\n[Demande du client]\n' + message + (dropboxContext || '');
     const response = await agentFetch('/chat', { method: 'POST', body: JSON.stringify({
       message: enrichedMessage,
       session_id: sessionId,

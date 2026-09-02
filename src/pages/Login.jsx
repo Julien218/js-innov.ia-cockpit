@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
+import InstallSignelyaButton from "@/components/InstallSignelyaButton";
 
 export default function Login() {
   const { login } = useAuth();
@@ -109,6 +110,8 @@ export default function Login() {
               )}
             </button>
           </form>
+
+          <InstallSignelyaButton />
 
           <div className="mt-6 pt-6 border-t border-white/5 text-center">
             <p className="text-xs text-white/20">

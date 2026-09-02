@@ -1,0 +1,1 @@
+Restaure le logo Signelya, améliore les réponses d’Elynea, optimise le widget mobile et ajoute l’installation PWA depuis la page publique.

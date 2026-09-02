@@ -10,9 +10,62 @@ import { Mic, RefreshCw, Send, Square, Volume2, VolumeX, X } from "lucide-react"
 import { useAuth } from "@/lib/AuthContext";
 import elyneaAvatar from "@/assets/nova-avatar-128.png";
 
-const MESSAGE_STORAGE_KEY = "elynea_signelya_messages_v1";
-const CONVERSATION_STORAGE_KEY = "elynea_signelya_conversation_id";
+const MESSAGE_STORAGE_KEY = "elynea_signelya_messages_v2";
+const CONVERSATION_STORAGE_KEY = "elynea_signelya_conversation_id_v2";
 const TTS_STORAGE_KEY = "elynea_signelya_tts_enabled";
+const MANAGED_CLIENT_KEY = "jsinnovia-managed-client";
+
+const compactSignelyaContext = async user => {
+  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const managedClient = isAdmin ? (localStorage.getItem(MANAGED_CLIENT_KEY) || "") : "";
+  const headers = managedClient ? { "X-Client-Email": managedClient } : {};
+  const response = await fetch("/api/signage/manage/dashboard", { credentials: "same-origin", headers });
+  if (!response.ok) throw new Error("Données Signelya indisponibles");
+  const data = await response.json();
+  const players = Array.isArray(data.players) ? data.players : [];
+  const player = [...players].sort((a, b) => new Date(b.last_seen_at || 0) - new Date(a.last_seen_at || 0))[0] || null;
+  let schedule = null;
+
+  if (player?.id) {
+    const scheduleResponse = await fetch(`/api/signage/manage/players/${encodeURIComponent(player.id)}/schedule`, {
+      credentials: "same-origin",
+      headers,
+    });
+    if (scheduleResponse.ok) schedule = await scheduleResponse.json();
+  }
+
+  return {
+    capturedAt: new Date().toISOString(),
+    timezone: "Europe/Brussels",
+    managedClient: managedClient || user?.email || "client connecté",
+    player: player ? { name: player.name, status: player.status, lastSeenAt: player.last_seen_at, resolution: player.resolution } : null,
+    schedule: schedule ? {
+      configured: Boolean(schedule.settings?.configured),
+      blockBelgianHolidays: schedule.settings?.block_belgian_holidays !== false,
+      ranges: (schedule.ranges || []).slice(0, 30).map(item => ({
+        dayOfWeek: Number(item.day_of_week),
+        start: String(item.start_time || "").slice(0, 5),
+        end: String(item.end_time || "").slice(0, 5),
+      })),
+      exceptions: (schedule.exceptions || []).slice(0, 12).map(item => ({
+        date: item.exception_date,
+        mode: item.mode,
+        ranges: item.ranges || [],
+      })),
+    } : null,
+    playlists: (data.playlists || []).slice(0, 20).map(item => ({
+      id: item.id,
+      name: item.name || item.nom || "Programme sans nom",
+      mediaCount: Array.isArray(item.items) ? item.items.length : 0,
+    })),
+    publications: (data.publications || []).slice(0, 20).map(item => ({
+      status: item.status,
+      scheduledAt: item.scheduled_at || item.created_at,
+      playlistId: item.playlist_id || item.playlistId,
+      recurrence: item.recurrence?.type || item.recurrence || "none",
+    })),
+  };
+};
 
 const displayFirstName = user => {
   const source = user?.first_name || user?.prenom || user?.full_name || user?.name || user?.email?.split("@")[0] || "";
@@ -36,7 +89,7 @@ export default function FloatingAgent() {
   const [conversationId] = useState(() => {
     const existing = localStorage.getItem(CONVERSATION_STORAGE_KEY);
     if (existing) return existing;
-    const created = "elynea-signelya";
+    const created = "elynea-signelya-v2";
     localStorage.setItem(CONVERSATION_STORAGE_KEY, created);
     return created;
   });
@@ -129,6 +182,10 @@ export default function FloatingAgent() {
     setLoading(true);
 
     try {
+      let signelyaContext = null;
+      try {
+        signelyaContext = await compactSignelyaContext(user);
+      } catch {}
       const response = await fetch("/api/assistant/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -137,6 +194,7 @@ export default function FloatingAgent() {
           message,
           conversation_id: conversationId,
           surface: "signelya",
+          signelya_context: signelyaContext,
         }),
       });
       if (!response.ok) {
@@ -161,7 +219,7 @@ export default function FloatingAgent() {
     } finally {
       setLoading(false);
     }
-  }, [conversationId, input, loading, speak, stopSpeaking]);
+  }, [conversationId, input, loading, speak, stopSpeaking, user]);
 
   useEffect(() => {
     sendRef.current = doSend;
@@ -259,7 +317,7 @@ export default function FloatingAgent() {
                 <div className="elynea-title-line">
                   <strong>Elynea</strong>
                   <span className="elynea-service">
-                    <img src="/signelya-symbol-approved-512.png" alt="" />
+                    <img src="/signelya-icon-512.png" alt="" />
                     Signelya
                   </span>
                 </div>
@@ -285,8 +343,10 @@ export default function FloatingAgent() {
                   L’assistante de JS‑Innov.IA intégrée à Signelya. Je vous accompagne pour préparer,
                   programmer et suivre vos diffusions sur écran géant.
                 </p>
-                <div className="elynea-capabilities">
-                  <span>Programmes</span><span>Diffusion</span><span>Suivi écran</span>
+                <div className="elynea-capabilities" aria-label="Questions rapides">
+                  <button type="button" onClick={() => doSend("Montrez-moi mes programmes enregistrés.")}>Programmes</button>
+                  <button type="button" onClick={() => doSend("Quelles sont les prochaines diffusions programmées ?")}>Diffusions</button>
+                  <button type="button" onClick={() => doSend("Quels sont les horaires actuels de mon écran ?")}>Horaires écran</button>
                 </div>
               </div>
             )}

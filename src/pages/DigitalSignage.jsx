@@ -389,7 +389,7 @@ export default function DigitalSignage() {
       <div className="pointer-events-none absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-[#8A2BE2]/15 blur-3xl" />
       <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
-          <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-[#8A2BE2]/40 bg-black/25 p-1 shadow-lg shadow-black/20"><img src="/signelya-symbol-approved-512.png" alt="SIGNELYA" className="h-full w-full rounded-xl object-cover" /></div>
+          <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-[#8A2BE2]/40 bg-black/25 p-1 shadow-lg shadow-black/20"><img src="/signelya-icon-512.png" alt="Logo SIGNELYA" className="h-full w-full rounded-xl object-cover" /></div>
           <div><p className="flex items-center text-xs font-bold uppercase tracking-[0.2em]"><SignelyaWordmark /><span className="ml-1 text-[#9BEEFF]">· Écran géant</span></p><h1 className="mt-1 text-2xl font-bold tracking-tight md:text-3xl">Mon écran géant</h1><p className="mt-1 text-sm text-slate-300">Ajoutez vos médias, choisissez leur ordre puis lancez la diffusion.</p></div>
         </div>
         <div className="inline-flex w-fit items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-xs font-medium text-slate-100 backdrop-blur-sm"><span className="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.9)]" /> Service écran géant</div>

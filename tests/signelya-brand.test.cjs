@@ -15,6 +15,9 @@ const assistantServer = fs.readFileSync(path.join(root, "server-assistant.cjs"),
 const indexHtml = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "public", "manifest.json"), "utf8"));
 const desktopManifest = JSON.parse(fs.readFileSync(path.join(root, "electron", "package.json"), "utf8"));
+const installer = fs.readFileSync(path.join(root, "src", "components", "InstallSignelyaButton.jsx"), "utf8");
+const main = fs.readFileSync(path.join(root, "src", "main.jsx"), "utf8");
+const serviceWorker = fs.readFileSync(path.join(root, "public", "sw.js"), "utf8");
 
 function readPngDimensions(filename) {
   const image = fs.readFileSync(path.join(root, filename));
@@ -62,6 +65,11 @@ test("the customer assistant is Elynea and understands its Signelya mission", ()
   assert.match(assistantServer, /SIGNELYA_ASSISTANT_CONTEXT/);
   assert.match(assistantServer, /Tu es Elynea/);
   assert.match(assistantServer, /jamais comme Nova/);
+  assert.match(assistantServer, /N’annonce jamais que tu vas vérifier/);
+  assert.match(assistantServer, /source: 'signelya-live-context'/);
+  assert.match(elynea, /signelya_context: signelyaContext/);
+  assert.match(elynea, /Horaires écran/);
+  assert.match(styles, /font-size: 16px/);
 });
 
 test("the installable app uses the complete SIGNELYA by JS-Innov.IA identity", () => {
@@ -92,4 +100,14 @@ test("desktop and mobile icon sizes use the official text-free SIGNELYA symbol",
   assert.equal(desktopIcon[0], desktopIcon[1]);
   assert.ok(desktopIcon[0] >= 512);
   assert.ok(fs.statSync(path.join(root, "electron", "icon.ico")).size > 0);
+});
+
+test("the public landing page offers a proper mobile app installation", () => {
+  assert.match(login, /InstallSignelyaButton/);
+  assert.match(installer, /Installer SIGNELYA sur ce téléphone/);
+  assert.match(installer, /beforeinstallprompt/);
+  assert.match(installer, /Sur l’écran d’accueil/);
+  assert.match(installer, /appinstalled/);
+  assert.match(main, /serviceWorker\.register\('\/sw\.js'\)/);
+  assert.match(serviceWorker, /self\.addEventListener\('fetch'/);
 });
