@@ -1,0 +1,4 @@
+Déploiement des logos officiels SIGNELYA
+PR: #224
+Merge: a3961ad8b487ec126f262e632339040d82586364
+Date UTC: 2026-09-02
