@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Bell, BellRing, Menu } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
+import SignelyaWordmark from "@/components/brand/SignelyaWordmark";
 
 function applicationServerKey(value) {
   const padding = "=".repeat((4 - value.length % 4) % 4);
@@ -60,7 +61,7 @@ export default function TopBar({ onOpenMobileMenu }) {
 
   return <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between border-b border-cyan-400/10 bg-[#050817]/95 px-3 text-white shadow-lg shadow-black/10 backdrop-blur-xl sm:px-5">
     <button onClick={onOpenMobileMenu} className="rounded-xl p-2 text-white/75 hover:bg-white/10 hover:text-white md:hidden" aria-label="Ouvrir le menu"><Menu className="h-5 w-5" /></button>
-    <div className="hidden md:block"><p className="text-sm font-semibold text-white/90">Pilotage SIGNELYA</p><p className="text-xs text-white/40">Écran géant & vidéosurveillance</p></div>
+    <div className="hidden md:block"><p className="text-sm font-semibold text-white/90">Pilotage <SignelyaWordmark className="tracking-[0.08em]" /></p><p className="text-xs text-white/40">Écran géant & vidéosurveillance</p></div>
     <div className="ml-auto flex items-center gap-3">
       {isSuperadmin && <button
         type="button"

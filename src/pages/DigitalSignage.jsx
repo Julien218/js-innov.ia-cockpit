@@ -1,7 +1,8 @@
 import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Upload, Download, ListVideo, CalendarClock, Wifi, HardDrive, Eye, ArrowUp, ArrowDown, CheckCircle2, CircleAlert, Play, Clock3 } from "lucide-react";
+import { Upload, Download, ListVideo, CalendarClock, Wifi, HardDrive, Eye, ArrowUp, ArrowDown, CheckCircle2, CircleAlert, Play, Pause, Clock3, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, MonitorPlay } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
+import SignelyaWordmark from "@/components/brand/SignelyaWordmark";
 
 const api = async (path, options = {}, clientEmail = "") => {
   const response = await fetch(`/api/signage${path}`, { credentials: "same-origin", ...options, headers: { "Content-Type": "application/json", ...(clientEmail ? { "X-Client-Email": clientEmail } : {}), ...(options.headers || {}) } });
@@ -90,6 +91,182 @@ const preferredManagedClient = clients => {
   return clients.find(client => !String(client.email).endsWith(".invalid"))?.email || clients[0]?.email || "";
 };
 
+const parseJsonObject = value => {
+  if (!value || typeof value === "object") return value || {};
+  try { return JSON.parse(value); } catch { return {}; }
+};
+
+const publicationPlaylistId = publication => {
+  const manifest = parseJsonObject(publication?.manifest);
+  return publication?.playlist_id || publication?.playlistId || manifest.playlistId || "";
+};
+
+const publicationItems = (publication, playlist) => {
+  const manifest = parseJsonObject(publication?.manifest);
+  if (Array.isArray(manifest.items) && manifest.items.length) return manifest.items;
+  return Array.isArray(playlist?.items) ? playlist.items : [];
+};
+
+const mediaIdOf = item => item?.mediaId || item?.media_id || item?.media?.id || "";
+
+const parseResolution = value => {
+  const match = String(value || "").match(/(\d+)\s*[x×]\s*(\d+)/i);
+  return match ? { width: Number(match[1]), height: Number(match[2]) } : { width: 1920, height: 1080 };
+};
+
+function SignageLoopPreview({ items, clientEmail = "", resolution = "1920x1080", onSelectItem }) {
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  const [cycle, setCycle] = React.useState(0);
+  const [playing, setPlaying] = React.useState(true);
+  const [muted, setMuted] = React.useState(true);
+  const [urls, setUrls] = React.useState({});
+  const [errors, setErrors] = React.useState({});
+  const screenRef = React.useRef(null);
+  const videoRef = React.useRef(null);
+  const itemKey = items.map(item => mediaIdOf(item)).join("|");
+  const dimensions = parseResolution(resolution);
+  const current = items[activeIndex] || null;
+  const currentId = mediaIdOf(current);
+  const currentMedia = current?.media || {};
+  const currentUrl = urls[currentId];
+  const isImage = String(currentMedia.mime_type || "").startsWith("image/");
+
+  const goTo = React.useCallback(index => {
+    if (!items.length) return;
+    const nextIndex = (index + items.length) % items.length;
+    setActiveIndex(nextIndex);
+    setCycle(value => value + 1);
+    setPlaying(true);
+    onSelectItem?.(nextIndex);
+  }, [items.length, onSelectItem]);
+
+  const next = React.useCallback(() => goTo(activeIndex + 1), [activeIndex, goTo]);
+
+  React.useEffect(() => {
+    setActiveIndex(0);
+    setCycle(value => value + 1);
+    setPlaying(true);
+  }, [itemKey]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setUrls({});
+    setErrors({});
+    Promise.all(items.map(async item => {
+      const mediaId = mediaIdOf(item);
+      if (!mediaId) return;
+      try {
+        const result = await api("/manage/media/" + mediaId + "/download", {}, clientEmail);
+        if (!cancelled) setUrls(currentUrls => ({ ...currentUrls, [mediaId]: result.url }));
+      } catch (error) {
+        if (!cancelled) setErrors(currentErrors => ({ ...currentErrors, [mediaId]: error.message }));
+      }
+    }));
+    return () => { cancelled = true; };
+  }, [clientEmail, itemKey]);
+
+  React.useEffect(() => {
+    if (!playing || !isImage || !currentUrl) return undefined;
+    const seconds = Math.max(3, Number(current?.durationSeconds || current?.duration_seconds || 15));
+    const timer = window.setTimeout(next, seconds * 1000);
+    return () => window.clearTimeout(timer);
+  }, [activeIndex, current?.durationSeconds, current?.duration_seconds, currentUrl, cycle, isImage, next, playing]);
+
+  React.useEffect(() => {
+    const video = videoRef.current;
+    if (!video || isImage) return;
+    video.muted = muted;
+    if (playing) video.play().catch(() => {});
+    else video.pause();
+  }, [activeIndex, currentUrl, cycle, isImage, muted, playing]);
+
+  const handleVideoEnd = () => {
+    if (items.length === 1 && videoRef.current) {
+      videoRef.current.currentTime = 0;
+      videoRef.current.play().catch(() => {});
+      setCycle(value => value + 1);
+      return;
+    }
+    next();
+  };
+
+  if (!items.length) {
+    return <div className="flex aspect-video items-center justify-center rounded-2xl bg-black px-6 text-center text-sm text-white/60">Aucun média dans ce programme.</div>;
+  }
+
+  return <div>
+    <div
+      ref={screenRef}
+      className="relative flex w-full items-stretch overflow-hidden rounded-2xl border border-cyan-400/20 bg-black shadow-[0_18px_42px_rgba(2,6,23,0.34)]"
+      style={{ aspectRatio: dimensions.width + " / " + dimensions.height }}
+      aria-label={"Aperçu écran " + dimensions.width + " par " + dimensions.height}
+    >
+      <div className="absolute inset-y-0 flex items-center justify-center bg-black" style={{ left: "1.5%", right: "1.5%" }}>
+        {!currentUrl && !errors[currentId] && <div className="flex items-center gap-2 text-sm text-white/55"><span className="h-2 w-2 animate-pulse rounded-full bg-cyan-400" />Chargement du média…</div>}
+        {errors[currentId] && <p className="max-w-sm px-5 text-center text-sm text-red-300">{errors[currentId]}</p>}
+        {currentUrl && !errors[currentId] && (isImage
+          ? <img key={currentId + "-" + cycle} src={currentUrl} alt={currentMedia.name || "Média programmé"} className="h-full w-full object-contain" />
+          : <video
+              key={currentId + "-" + cycle}
+              ref={videoRef}
+              src={currentUrl}
+              autoPlay
+              muted={muted}
+              playsInline
+              onEnded={handleVideoEnd}
+              onError={() => setErrors(currentErrors => ({ ...currentErrors, [currentId]: "Cette vidéo ne peut pas être lue dans ce navigateur." }))}
+              className="h-full w-full object-contain"
+            />)}
+      </div>
+      <div className="pointer-events-none absolute left-3 top-3 rounded-full border border-white/15 bg-black/65 px-2.5 py-1 text-[11px] font-medium text-white/80 backdrop-blur-sm">
+        Écran {dimensions.width}×{dimensions.height} · {activeIndex + 1}/{items.length}
+      </div>
+    </div>
+
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      <button type="button" onClick={() => goTo(activeIndex - 1)} className="grid h-10 w-10 place-items-center rounded-xl border bg-background" aria-label="Média précédent"><SkipBack className="h-4 w-4" /></button>
+      <button type="button" onClick={() => setPlaying(value => !value)} className="grid h-10 w-10 place-items-center rounded-xl bg-[linear-gradient(135deg,#0066FF,#8A2BE2)] text-white" aria-label={playing ? "Mettre l’aperçu en pause" : "Lire l’aperçu"}>{playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}</button>
+      <button type="button" onClick={next} className="grid h-10 w-10 place-items-center rounded-xl border bg-background" aria-label="Média suivant"><SkipForward className="h-4 w-4" /></button>
+      <button type="button" onClick={() => setMuted(value => !value)} className="grid h-10 w-10 place-items-center rounded-xl border bg-background" aria-label={muted ? "Activer le son de l’aperçu" : "Couper le son de l’aperçu"}>{muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}</button>
+      <button type="button" onClick={() => screenRef.current?.requestFullscreen?.()} className="grid h-10 w-10 place-items-center rounded-xl border bg-background" aria-label="Afficher l’aperçu en plein écran"><Maximize2 className="h-4 w-4" /></button>
+      <div className="min-w-0 flex-1 pl-1">
+        <p className="break-words text-sm font-semibold">{currentMedia.name || "Média programmé"}</p>
+        <p className="text-xs text-muted-foreground">{isImage ? Math.max(3, Number(current?.durationSeconds || current?.duration_seconds || 15)) + " secondes" : "Durée complète de la vidéo"}</p>
+      </div>
+    </div>
+    <div className="mt-4 overflow-hidden rounded-2xl border bg-muted/20">
+      <div className="flex items-center justify-between gap-3 border-b px-3 py-2.5">
+        <div>
+          <p className="text-sm font-semibold">Ordre exact de la boucle</p>
+          <p className="text-xs text-muted-foreground">Touchez un média pour le visualiser immédiatement.</p>
+        </div>
+        <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">{items.length} média{items.length > 1 ? "s" : ""}</span>
+      </div>
+      <ol className="max-h-72 divide-y overflow-y-auto">
+        {items.map((item, index) => {
+          const itemMedia = item.media || {};
+          const itemIsImage = String(itemMedia.mime_type || "").startsWith("image/");
+          const itemDuration = Math.max(3, Number(item.durationSeconds || item.duration_seconds || 15));
+          return <li key={mediaIdOf(item) || index}>
+            <button
+              type="button"
+              onClick={() => goTo(index)}
+              className={"flex w-full items-start gap-3 px-3 py-3 text-left transition-colors " + (index === activeIndex ? "bg-[linear-gradient(90deg,rgba(0,212,255,0.10),rgba(138,43,226,0.08))]" : "hover:bg-muted/50")}
+            >
+              <span className={"grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold " + (index === activeIndex ? "bg-[linear-gradient(135deg,#0066FF,#8A2BE2)] text-white" : "border bg-background text-muted-foreground")}>{index + 1}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block break-words text-sm font-medium leading-5">{itemMedia.name || "Média indisponible"}</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">{itemIsImage ? itemDuration + " secondes" : "Vidéo complète"}{index === activeIndex ? " · À l’écran" : ""}</span>
+              </span>
+              {index === activeIndex && <span className="mt-1 h-2 w-2 shrink-0 animate-pulse rounded-full bg-cyan-500 shadow-[0_0_9px_rgba(6,182,212,0.75)]" />}
+            </button>
+          </li>;
+        })}
+      </ol>
+    </div>
+  </div>;
+}
+
 export default function DigitalSignage() {
   const { user } = useAuth();
   const isAdmin = ['admin', 'superadmin'].includes(user?.role);
@@ -104,6 +281,7 @@ export default function DigitalSignage() {
   const [recurrence, setRecurrence] = React.useState("none");
   const [preview, setPreview] = React.useState(null);
   const [previewError, setPreviewError] = React.useState("");
+  const [previewPublicationId, setPreviewPublicationId] = React.useState("");
   const fileInput = React.useRef(null);
   const clientsQuery = useQuery({ queryKey: ["signage-managed-clients"], queryFn: () => api("/manage/clients"), enabled: isAdmin, staleTime: 60000 });
   const diagnosticsQuery = useQuery({ queryKey: ["signage-player-diagnostics"], queryFn: () => api("/manage/player-diagnostics"), enabled: isAdmin, refetchInterval: 30000 });
@@ -135,6 +313,26 @@ export default function DigitalSignage() {
   const playerOnline = player?.status === "online";
   const readyMediaCount = media.filter(item => item.status === "ready").length;
   const selectedMedia = selectedMediaIds.map(id => media.find(item => item.id === id)).filter(Boolean);
+  const scheduledPublications = React.useMemo(
+    () => publications.filter(publication => ["pending", "active"].includes(publication.status)),
+    [publications]
+  );
+  React.useEffect(() => {
+    const candidates = scheduledPublications.length ? scheduledPublications : publications.slice(0, 1);
+    if (!candidates.length) {
+      setPreviewPublicationId("");
+      return;
+    }
+    if (!candidates.some(publication => publication.id === previewPublicationId)) {
+      setPreviewPublicationId(candidates[0].id);
+    }
+  }, [previewPublicationId, publications, scheduledPublications]);
+  const previewPublication = publications.find(publication => publication.id === previewPublicationId) || scheduledPublications[0] || publications[0] || null;
+  const previewPlaylist = playlists.find(playlist => playlist.id === publicationPlaylistId(previewPublication)) || playlists[0] || null;
+  const loopItems = publicationItems(previewPublication, previewPlaylist).map(item => {
+    const mediaId = mediaIdOf(item);
+    return { ...item, media: media.find(mediaItem => mediaItem.id === mediaId) || item.media || { id: mediaId, name: "Média indisponible" } };
+  });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["signage-dashboard", managedClient || "self"] });
   const run = async (task, success) => { setBusy(true); setMessage(""); try { await task(); setMessage(success); await refresh(); } catch (e) { setMessage(e.message); } finally { setBusy(false); } };
 
@@ -192,7 +390,7 @@ export default function DigitalSignage() {
       <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-[#8A2BE2]/40 bg-black/25 p-1 shadow-lg shadow-black/20"><img src="/signelya-symbol-approved-512.png" alt="SIGNELYA" className="h-full w-full rounded-xl object-cover" /></div>
-          <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-[#00D4FF]">SIGNELYA · Écran géant</p><h1 className="mt-1 text-2xl font-bold tracking-tight md:text-3xl">Mon écran géant</h1><p className="mt-1 text-sm text-slate-300">Ajoutez vos médias, choisissez leur ordre puis lancez la diffusion.</p></div>
+          <div><p className="flex items-center text-xs font-bold uppercase tracking-[0.2em]"><SignelyaWordmark /><span className="ml-1 text-[#9BEEFF]">· Écran géant</span></p><h1 className="mt-1 text-2xl font-bold tracking-tight md:text-3xl">Mon écran géant</h1><p className="mt-1 text-sm text-slate-300">Ajoutez vos médias, choisissez leur ordre puis lancez la diffusion.</p></div>
         </div>
         <div className="inline-flex w-fit items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-xs font-medium text-slate-100 backdrop-blur-sm"><span className="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.9)]" /> Service écran géant</div>
       </div>
@@ -243,6 +441,63 @@ export default function DigitalSignage() {
     </div>
     {latestPublication?.status === "failed" && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-700"><p className="font-semibold">La dernière diffusion a échoué sur le Player.</p><p className="mt-1">{latestPublication.error || "Le Player n’a pas pu lire le média."}</p></div>}
 
+    <section className="overflow-hidden rounded-3xl border border-cyan-500/20 bg-card shadow-sm">
+      <div className="flex flex-col gap-3 border-b bg-[linear-gradient(135deg,rgba(0,212,255,0.08),rgba(138,43,226,0.07))] p-4 md:flex-row md:items-center md:justify-between md:p-5">
+        <div className="flex items-start gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#07152D] text-cyan-300 shadow-[0_0_22px_rgba(0,212,255,0.14)]"><MonitorPlay className="h-5 w-5" /></span>
+          <div>
+            <h2 className="text-base font-bold">Boucle programmée · aperçu fidèle à l’écran</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Fond noir, média affiché en entier, ordre et durées identiques au Player Signelya.</p>
+          </div>
+        </div>
+        {previewPublication && <span className="w-fit rounded-full border border-cyan-500/20 bg-background/75 px-3 py-1.5 text-xs font-semibold text-cyan-700">{PUBLICATION_STATUS_LABELS[previewPublication.status] || "Programme enregistré"}</span>}
+      </div>
+
+      <div className="space-y-4 p-4 md:p-5">
+        {scheduledPublications.length > 0 ? <div>
+          <div className="mb-2 flex items-center justify-between gap-3"><p className="text-sm font-semibold">Toutes les diffusions programmées</p><span className="text-xs text-muted-foreground">{scheduledPublications.length} programmation{scheduledPublications.length > 1 ? "s" : ""}</span></div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {scheduledPublications.map(publication => {
+              const playlist = playlists.find(item => item.id === publicationPlaylistId(publication));
+              const count = publicationItems(publication, playlist).length;
+              const selected = publication.id === previewPublication?.id;
+              return <button
+                key={publication.id}
+                type="button"
+                onClick={() => setPreviewPublicationId(publication.id)}
+                className={"rounded-2xl border p-3 text-left transition-all " + (selected ? "border-cyan-500/50 bg-cyan-500/[0.07] shadow-[0_8px_24px_rgba(6,182,212,0.10)]" : "hover:border-primary/30 hover:bg-muted/30")}
+              >
+                <span className="flex items-center justify-between gap-2">
+                  <span className="break-words text-sm font-semibold">{playlist?.name || "Programme Signelya"}</span>
+                  <span className={"h-2.5 w-2.5 shrink-0 rounded-full " + (publication.status === "active" ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" : "bg-blue-500")} />
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">{new Date(publication.scheduled_at || publication.created_at).toLocaleString("fr-BE")} · {count} média{count > 1 ? "s" : ""}</span>
+                {publication.recurrence?.type && publication.recurrence.type !== "none" && <span className="mt-1 block text-xs font-medium text-primary">{RECURRENCE_LABELS[publication.recurrence.type] || "Diffusion répétée"}</span>}
+              </button>;
+            })}
+          </div>
+        </div> : previewPlaylist ? <div className="rounded-2xl border border-dashed bg-muted/20 p-3">
+          <p className="text-sm font-semibold">Dernier programme enregistré</p>
+          <p className="mt-1 text-xs text-muted-foreground">Aucune diffusion future n’est encore programmée. Vous visualisez la dernière boucle sauvegardée.</p>
+        </div> : null}
+
+        {previewPlaylist ? <>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-700">Programme visualisé</p>
+              <p className="mt-1 break-words text-lg font-bold">{previewPlaylist.name || "Programme Signelya"}</p>
+            </div>
+            {previewPublication?.scheduled_at && <div className="text-left md:text-right"><p className="text-xs text-muted-foreground">Diffusion prévue</p><p className="text-sm font-semibold">{new Date(previewPublication.scheduled_at).toLocaleString("fr-BE")}</p></div>}
+          </div>
+          <SignageLoopPreview items={loopItems} clientEmail={managedClient} resolution={player?.resolution || "1920x1080"} />
+        </> : <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed bg-muted/20 px-5 text-center">
+          <ListVideo className="h-8 w-8 text-muted-foreground/60" />
+          <p className="mt-3 text-sm font-semibold">Aucun programme à visualiser</p>
+          <p className="mt-1 max-w-md text-xs text-muted-foreground">Sélectionnez vos médias puis enregistrez un programme. Son aperçu complet apparaîtra ici avant la diffusion.</p>
+        </div>}
+      </div>
+    </section>
+
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
       <section className="rounded-2xl border border-[#8A2BE2]/20 bg-card p-4 shadow-sm md:p-5">
         <div className="flex items-start gap-3">
@@ -262,7 +517,7 @@ export default function DigitalSignage() {
             : <p className="px-4 text-center text-sm text-white/60">Sélectionnez l’icône œil d’un média</p>}
           {previewError && <p className="absolute rounded-lg bg-black/80 px-3 py-2 text-xs text-red-300">{previewError}</p>}
         </div>
-        {preview && <p className="mt-2 text-xs text-muted-foreground truncate">{preview.name}</p>}
+        {preview && <p className="mt-2 break-words text-xs text-muted-foreground">{preview.name}</p>}
       </section>
     </div>
 
@@ -273,7 +528,7 @@ export default function DigitalSignage() {
           <div><h2 className="text-base font-semibold">Préparez votre programme</h2><p className="mt-1 text-sm text-muted-foreground">{selectedMedia.length ? `${selectedMedia.length} média${selectedMedia.length > 1 ? "s" : ""} sélectionné${selectedMedia.length > 1 ? "s" : ""}.` : "Choisissez au moins un média à l’étape 1."}</p></div>
         </div>
         <div className="mt-4 rounded-xl bg-muted/40 p-3 text-sm">
-          {selectedMedia.length ? selectedMedia.map((item, index) => <p key={item.id} className="truncate py-1"><span className="mr-2 font-bold text-primary">{index + 1}.</span>{item.name}</p>) : <p className="text-muted-foreground">Votre programme apparaîtra ici.</p>}
+          {selectedMedia.length ? selectedMedia.map((item, index) => <p key={item.id} className="flex items-start gap-2 py-1"><span className="shrink-0 font-bold text-primary">{index + 1}.</span><span className="min-w-0 break-words">{item.name}</span></p>) : <p className="text-muted-foreground">Votre programme apparaîtra ici.</p>}
         </div>
         <button disabled={busy || !selectedMedia.length} onClick={createPlaylist} className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#8A2BE2]/60 px-4 py-3 text-sm font-semibold text-[#8A6812] transition-colors hover:bg-[#8A2BE2]/10 disabled:opacity-40"><ListVideo className="h-4 w-4" /> Enregistrer ce programme</button>
       </section>
@@ -309,6 +564,3 @@ export default function DigitalSignage() {
     </details>}
   </div>;
 }
-
-
-

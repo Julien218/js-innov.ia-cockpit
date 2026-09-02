@@ -124,3 +124,448 @@ html {
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
   }
 }
+
+/* Elynea — assistante clientèle JS-Innov.IA dans l’espace Signelya */
+.elynea-launcher {
+  position: fixed;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  z-index: 99999;
+  width: 62px;
+  height: 62px;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid rgba(246, 214, 107, 0.72);
+  border-radius: 50%;
+  background: #070a13;
+  cursor: pointer;
+  box-shadow: 0 10px 28px rgba(3, 7, 18, 0.34), 0 0 24px rgba(246, 214, 107, 0.22);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.elynea-launcher:hover {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 14px 34px rgba(3, 7, 18, 0.4), 0 0 30px rgba(0, 212, 255, 0.25);
+}
+.elynea-launcher:focus-visible {
+  outline: 3px solid #00d4ff;
+  outline-offset: 3px;
+}
+.elynea-launcher img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.elynea-launcher span {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  width: 11px;
+  height: 11px;
+  border: 2px solid #070a13;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.9);
+}
+.elynea-panel {
+  position: fixed;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  z-index: 99999;
+  display: flex;
+  width: min(410px, calc(100vw - 36px));
+  height: min(610px, calc(100dvh - 96px));
+  max-height: 76dvh;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(0, 212, 255, 0.24);
+  border-radius: 22px;
+  background: linear-gradient(180deg, #070b18 0%, #080b12 100%);
+  color: #f8fafc;
+  box-shadow: 0 24px 64px rgba(2, 6, 23, 0.55), 0 0 0 1px rgba(138, 43, 226, 0.14);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.elynea-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 14px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  background: linear-gradient(120deg, rgba(15, 23, 42, 0.98), rgba(20, 16, 47, 0.98));
+}
+.elynea-identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+.elynea-avatar {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+}
+.elynea-avatar > img {
+  width: 100%;
+  height: 100%;
+  border: 1px solid rgba(246, 214, 107, 0.45);
+  border-radius: 50%;
+  object-fit: cover;
+}
+.elynea-avatar > span {
+  position: absolute;
+  right: 0;
+  bottom: 1px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #11152a;
+  border-radius: 50%;
+  box-shadow: 0 0 9px currentColor;
+}
+.elynea-heading {
+  min-width: 0;
+}
+.elynea-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.elynea-title-line strong {
+  color: #f6d66b;
+  font: 700 1rem/1.15 "Space Grotesk", Inter, sans-serif;
+  letter-spacing: 0.01em;
+}
+.elynea-service {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border: 1px solid rgba(0, 212, 255, 0.22);
+  border-radius: 999px;
+  color: #9beeff;
+  background: rgba(0, 212, 255, 0.07);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.elynea-service img {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+.elynea-heading p {
+  overflow: hidden;
+  margin: 2px 0 0;
+  color: #cbd5e1;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.elynea-heading small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+  color: #94a3b8;
+  font-size: 0.65rem;
+  line-height: 1;
+}
+.elynea-heading small i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.elynea-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+.elynea-actions button,
+.elynea-mic,
+.elynea-send {
+  display: grid;
+  place-items: center;
+  border: 0;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+.elynea-actions button {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: #94a3b8;
+  background: transparent;
+}
+.elynea-actions button:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+.elynea-actions svg {
+  width: 17px;
+  height: 17px;
+}
+.elynea-messages {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 14px;
+}
+.elynea-welcome {
+  max-width: 320px;
+  margin: auto;
+  padding: 12px 10px;
+  color: #cbd5e1;
+  text-align: center;
+}
+.elynea-welcome > img {
+  width: 62px;
+  height: 62px;
+  margin: 0 auto 12px;
+  border: 1px solid rgba(246, 214, 107, 0.28);
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 0 26px rgba(0, 212, 255, 0.12);
+}
+.elynea-welcome .elynea-welcome-title {
+  margin: 0;
+  color: #fff;
+  font: 700 1.05rem/1.3 "Space Grotesk", Inter, sans-serif;
+}
+.elynea-welcome > p:not(.elynea-welcome-title) {
+  margin: 8px 0 0;
+  color: #aebbd0;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+.elynea-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 14px;
+}
+.elynea-capabilities span {
+  padding: 5px 8px;
+  border: 1px solid rgba(138, 43, 226, 0.25);
+  border-radius: 999px;
+  color: #c4b5fd;
+  background: rgba(138, 43, 226, 0.08);
+  font-size: 0.68rem;
+}
+.elynea-message {
+  max-width: 86%;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px 14px 14px 4px;
+  color: #dbe5f2;
+  background: rgba(30, 41, 59, 0.62);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.elynea-message.is-user {
+  align-self: flex-end;
+  border-color: rgba(0, 212, 255, 0.2);
+  border-radius: 14px 14px 4px 14px;
+  color: #f8fafc;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.24), rgba(138, 43, 226, 0.18));
+}
+.elynea-message.is-error {
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fecaca;
+}
+.elynea-message-author {
+  display: block;
+  margin-bottom: 3px;
+  color: #f6d66b;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.elynea-thinking {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 4px;
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+.elynea-thinking span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00d4ff;
+  animation: elynea-pulse 1.2s ease-in-out infinite;
+}
+.elynea-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+  padding: 10px 11px max(10px, env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(5, 9, 20, 0.96);
+}
+.elynea-composer textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  max-height: 96px;
+  resize: none;
+  border: 1px solid rgba(100, 116, 139, 0.42);
+  border-radius: 13px;
+  outline: 0;
+  padding: 11px 12px;
+  color: #f8fafc;
+  background: #10182c;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
+.elynea-composer textarea::placeholder {
+  color: #718096;
+}
+.elynea-composer textarea:focus {
+  border-color: rgba(0, 212, 255, 0.65);
+  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+}
+.elynea-mic,
+.elynea-send {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border-radius: 13px;
+}
+.elynea-mic {
+  border: 1px solid rgba(100, 116, 139, 0.35);
+  color: #cbd5e1;
+  background: #172036;
+}
+.elynea-mic.is-listening {
+  border-color: #00d4ff;
+  color: #67e8f9;
+  background: rgba(0, 212, 255, 0.12);
+  box-shadow: 0 0 16px rgba(0, 212, 255, 0.18);
+}
+.elynea-send {
+  color: #fff;
+  background: linear-gradient(135deg, #0066ff, #8a2be2);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.2);
+}
+.elynea-mic:hover,
+.elynea-send:hover {
+  transform: translateY(-1px);
+}
+.elynea-mic:disabled,
+.elynea-send:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  transform: none;
+}
+.elynea-mic svg,
+.elynea-send svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Le halo parcourt SIGNELYA lettre par lettre en continu. */
+.signelya-wordmark {
+  display: inline-flex;
+  isolation: isolate;
+}
+.signelya-wordmark-letter {
+  color: var(--signelya-letter);
+  text-shadow: 0 0 0 transparent;
+  animation: signelya-letter-glow 2.2s ease-in-out infinite;
+  animation-delay: calc(var(--signelya-index) * 0.24s);
+  will-change: filter, text-shadow, transform;
+}
+
+@keyframes elynea-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.75); }
+}
+@keyframes signelya-letter-glow {
+  0%, 30%, 100% {
+    filter: brightness(0.82) saturate(0.92);
+    text-shadow: 0 0 0 transparent;
+    transform: translateY(0);
+  }
+  8%, 16% {
+    filter: brightness(1.55) saturate(1.3);
+    text-shadow: 0 0 6px var(--signelya-letter), 0 0 16px var(--signelya-letter), 0 0 28px rgba(0, 212, 255, 0.22);
+    transform: translateY(-1px);
+  }
+}
+
+@media (max-width: 520px) {
+  .elynea-launcher {
+    right: max(14px, env(safe-area-inset-right));
+    bottom: max(14px, env(safe-area-inset-bottom));
+    width: 58px;
+    height: 58px;
+  }
+  .elynea-panel {
+    right: max(10px, env(safe-area-inset-right));
+    left: max(10px, env(safe-area-inset-left));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    width: auto;
+    height: min(520px, 64dvh);
+    max-height: calc(100dvh - 84px);
+    border-radius: 20px;
+  }
+  .elynea-header {
+    padding: 11px;
+  }
+  .elynea-avatar {
+    width: 38px;
+    height: 38px;
+  }
+  .elynea-heading p {
+    max-width: 170px;
+  }
+  .elynea-actions button {
+    width: 32px;
+    height: 32px;
+  }
+  .elynea-messages {
+    padding: 13px 11px;
+  }
+  .elynea-welcome {
+    padding: 6px;
+  }
+  .elynea-welcome > img {
+    width: 52px;
+    height: 52px;
+  }
+}
+
+@media (max-width: 370px) {
+  .elynea-service,
+  .elynea-heading p {
+    display: none;
+  }
+  .elynea-panel {
+    left: 7px;
+    right: 7px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .elynea-thinking span,
+  .signelya-wordmark-letter {
+    animation: none;
+  }
+  .elynea-launcher,
+  .elynea-actions button,
+  .elynea-mic,
+  .elynea-send {
+    transition: none;
+  }
+}

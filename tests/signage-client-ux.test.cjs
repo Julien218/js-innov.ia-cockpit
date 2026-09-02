@@ -49,11 +49,27 @@ test('the redesign preserves the existing media and publication APIs', () => {
 
 test('the client page carries the SIGNELYA visual identity', () => {
   assert.match(page, /src="\/signelya-symbol-approved-512\.png" alt="SIGNELYA"/);
-  assert.match(page, /SIGNELYA · Écran géant/);
+  assert.match(page, /SignelyaWordmark/);
   assert.match(page, /#070B1C/);
   assert.match(page, /#101B3D/);
   assert.match(page, /#8A2BE2/);
   assert.match(page, /#00D4FF/);
   assert.match(page, /#2563EB/);
   assert.match(page, /#0891B2/);
+});
+
+test('the client can preview every scheduled playlist exactly like the Android Player', () => {
+  assert.match(page, /Boucle programmée · aperçu fidèle à l’écran/);
+  assert.match(page, /Toutes les diffusions programmées/);
+  assert.match(page, /Ordre exact de la boucle/);
+  assert.match(page, /requestFullscreen/);
+  assert.match(page, /style=\{\{ left: "1\.5%", right: "1\.5%" \}\}/);
+  assert.match(page, /object-contain/);
+  assert.match(page, /onEnded=\{handleVideoEnd\}/);
+  assert.match(page, /Math\.max\(3, Number\(current\?\.durationSeconds/);
+});
+
+test('program media names remain fully readable on mobile', () => {
+  assert.match(page, /min-w-0 break-words/);
+  assert.match(page, /Touchez un média pour le visualiser immédiatement/);
 });

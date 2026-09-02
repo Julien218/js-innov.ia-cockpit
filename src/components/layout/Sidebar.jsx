@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/AuthContext";
 import { usePermissions } from "@/lib/usePermissions";
 import { useCommerceEntitlements } from "@/lib/useCommerceEntitlements";
+import SignelyaWordmark from "@/components/brand/SignelyaWordmark";
 
 const NAV_ITEMS = [
   { label: "Écran géant", icon: MonitorPlay, path: "/ecran-geant", module: "digital_signage" },
@@ -33,7 +34,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
         <div className="h-11 w-11 shrink-0 overflow-hidden rounded-2xl border border-cyan-300/30 bg-black/30 shadow-[0_0_28px_rgba(0,212,255,0.22)]">
           <img src="/signelya-app-icon-approved.png" alt="SIGNELYA" className="h-full w-full object-contain" />
         </div>
-        {!collapsed && <div className="min-w-0 flex-1"><p className="bg-[linear-gradient(90deg,#00D4FF,#8A2BE2,#FF00CC)] bg-clip-text text-lg font-extrabold tracking-[0.13em] text-transparent">SIGNELYA</p><p className="mt-0.5 text-[10px] font-medium tracking-[0.16em] text-white/45">by JS‑Innov.IA</p></div>}
+        {!collapsed && <div className="min-w-0 flex-1"><SignelyaWordmark className="text-lg font-extrabold tracking-[0.13em]" /><p className="mt-0.5 text-[10px] font-medium tracking-[0.16em] text-white/55">by JS‑Innov.IA</p></div>}
         <button onClick={onCloseMobile} className="rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white md:hidden" aria-label="Fermer le menu"><X className="h-5 w-5" /></button>
       </div>
       {!collapsed && <div className="mx-3 mt-4 rounded-2xl border border-cyan-400/15 bg-white/[0.04] px-3 py-3"><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-300">Cockpit affichage</p><p className="mt-1 text-xs text-white/45">Vos écrans prennent vie.</p></div>}

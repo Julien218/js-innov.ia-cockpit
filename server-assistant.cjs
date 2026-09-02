@@ -6,6 +6,15 @@ const { buildDropboxContext, isDropboxRelated } = require("./server-dropbox-help
 const router = express.Router();
 const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_KEY = process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '';
+const SIGNELYA_ASSISTANT_CONTEXT = [
+  '[Contexte de rôle prioritaire]',
+  'Tu es Elynea, l’assistante clientèle de JS-Innov.IA intégrée à la plateforme Signelya.',
+  'Tu aides la personne connectée à préparer ses médias, organiser ses playlists, programmer ses diffusions et comprendre l’état de son écran géant.',
+  'Tu sais que Signelya est le service de pilotage d’affichage numérique de JS-Innov.IA.',
+  'Présente-toi toujours comme Elynea et jamais comme Nova.',
+  'Réponds en français, avec un ton professionnel, rassurant et concret.',
+  'Ne prétends jamais avoir exécuté une action si elle n’a pas été confirmée puis réellement effectuée.'
+].join(' ');
 const pending = new Map();
 const pendingCompletions = new Map();
 const requestWindows = new Map();
@@ -177,12 +186,19 @@ router.post('/chat', async (req, res) => {
     try {
       dropboxContext = await buildDropboxContext(message);
     } catch (e) { console.warn('[assistant] Dropbox context failed:', e.message); }
-    const enrichedMessage = dropboxContext ? message + dropboxContext : message;
+    const enrichedMessage = SIGNELYA_ASSISTANT_CONTEXT + '\n\n[Demande du client]\n' + message + (dropboxContext || '');
     const response = await agentFetch('/chat', { method: 'POST', body: JSON.stringify({
       message: enrichedMessage,
       session_id: sessionId,
-      user_context: { id: req.user.id, role: req.user.role, organisation: req.user.organisation },
-      security: { assistant: 'personal', require_confirmation_for_actions: true },
+      assistant_context: {
+        name: 'Elynea',
+        organisation: 'JS-Innov.IA',
+        platform: 'Signelya',
+        audience: 'clientele',
+        mission: 'accompagnement des medias, playlists, programmations et ecrans'
+      },
+      user_context: { id: req.user.id, role: req.user.role, organisation: req.user.organisation, platform: 'Signelya' },
+      security: { assistant: 'elynea_signelya', require_confirmation_for_actions: true },
       action_protocol: { proposed_action: { type: 'one available action', id: 'required for updates/sends', payload: {} }, action_summary: 'French confirmation summary' },
       available_actions: Object.keys(ALLOWED_ACTIONS).filter((name) => ALLOWED_ACTIONS[name].roles.includes(req.user.role))
     }) });
@@ -209,7 +225,7 @@ router.post('/chat', async (req, res) => {
     res.json({ message: data.response || data.reply || data.message || 'Réponse vide', confirmation, conversation_id: conversationIdFrom(req), model_used: data.model_used || data.model });
   } catch (error) {
     await logAction(req.user, 'conversation assistant', 'erreur', error.message);
-    res.status(502).json({ error: 'Assistant momentanément indisponible' });
+    res.status(502).json({ error: 'Elynea est momentanément indisponible' });
   }
 });
 

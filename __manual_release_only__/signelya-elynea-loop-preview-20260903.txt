@@ -1,0 +1,4 @@
+Release Signelya — 2026-09-03
+- NOVA devient Elynea, assistante clientèle de JS-Innov.IA intégrée à Signelya.
+- Ajout de l’aperçu fidèle des boucles programmées, dans leur ordre réel.
+- Ajout du halo permanent qui parcourt SIGNELYA lettre par lettre.
