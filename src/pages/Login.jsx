@@ -38,7 +38,7 @@ export default function Login() {
         {/* Logo */}
         <div className="mb-8 flex flex-col items-center">
           <img
-            src="/signelya-lockup-horizontal.svg"
+            src="/signelya-lockup-approved.png"
             alt="SIGNELYA — Vos écrans prennent vie"
             className="h-auto w-full max-w-[360px]"
           />

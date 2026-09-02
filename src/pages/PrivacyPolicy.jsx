@@ -37,7 +37,7 @@ export default function PrivacyPolicy() {
       <div className="relative mx-auto max-w-4xl">
         <header className="mb-8 rounded-3xl border border-cyan-300/15 bg-[#090D16]/90 p-6 shadow-2xl shadow-cyan-950/20 sm:p-9">
           <a href="/login" aria-label="Retour à SIGNELYA" className="block max-w-xl">
-            <img src="/signelya-lockup-horizontal.svg" alt="SIGNELYA — Vos écrans prennent vie" className="h-auto w-full" />
+            <img src="/signelya-lockup-approved.png" alt="SIGNELYA — Vos écrans prennent vie" className="h-auto w-full" />
           </a>
           <p className="mt-7 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">Protection des données</p>
           <h1 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">Politique de confidentialité</h1>
