@@ -1,12 +1,12 @@
 {
-  "name": "Cockpit JS-Innov.IA",
-  "short_name": "JS Cockpit",
-  "description": "Cockpit de pilotage JS-Innov.IA",
-  "start_url": "/",
+  "name": "SIGNELYA",
+  "short_name": "SIGNELYA",
+  "description": "Pilotage des écrans géants et de la vidéosurveillance",
+  "start_url": "/ecran-geant",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#0a0a14",
-  "theme_color": "#D4AF37",
+  "theme_color": "#050817",
   "icons": [
     {
       "src": "/icon-192.png",
