@@ -1,4 +1,4 @@
-const DEFAULT_LOCAL_URLS = ['http://127.0.0.1:8787', 'http://127.0.0.1:8788'];
+const DEFAULT_LOCAL_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
 
 export const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
 export const LOCAL_AUTOPILOT_LAST_RUN_KEY = 'nova_local_autopilot_last_run_v1';
@@ -96,6 +96,15 @@ function pendingResults(storage) {
   return Array.isArray(pending) ? pending : [];
 }
 
+function syncableLocalResults(items) {
+  return (Array.isArray(items) ? items : []).filter((item) => (
+    item?.completed === true
+    && String(item?.task_id || '').trim()
+    && Array.isArray(item?.tool_runs)
+    && item.tool_runs.length > 0
+  ));
+}
+
 function mergePendingResults(existing, incoming) {
   const merged = new Map();
   for (const item of [...existing, ...incoming]) {
@@ -122,12 +131,18 @@ async function flushPending({ fetchImpl, storage }) {
     signal: AbortSignal.timeout(120_000),
   });
   const data = await readJson(response, `Synchronisation locale HTTP ${response.status}`);
-  const failedIds = new Set((Array.isArray(data?.results) ? data.results : [])
-    .filter((item) => item?.error)
-    .map((item) => String(item.task_id || '')));
-  const remaining = pending.filter((item) => failedIds.has(String(item.task_id || '')));
+  const responseRows = Array.isArray(data?.results) ? data.results : [];
+  const successfulIds = new Set(responseRows
+    .filter((item) => item?.task_id && !item?.error)
+    .map((item) => String(item.task_id)));
+  const remaining = pending.filter((item) => !successfulIds.has(String(item.task_id || '')));
   storageSet(storage, LOCAL_PENDING_RESULTS_KEY, remaining);
-  return { attempted: pending.length, synced: pending.length - remaining.length, remaining, response: data };
+  return {
+    attempted: pending.length,
+    synced: pending.length - remaining.length,
+    remaining,
+    response: data,
+  };
 }
 
 async function cloudSnapshot({ fetchImpl, storage, now }) {
@@ -172,14 +187,17 @@ export async function syncLocalAgentQueue({
 } = {}) {
   try { storage?.setItem(LOCAL_AUTOPILOT_LAST_RUN_KEY, String(now)); } catch {}
 
+  const cloudErrors = [];
   let flushedBefore = { attempted: 0, synced: 0, remaining: pendingResults(storage) };
-  if (online && flushedBefore.remaining.length) flushedBefore = await flushPending({ fetchImpl, storage });
+  if (online && flushedBefore.remaining.length) {
+    try { flushedBefore = await flushPending({ fetchImpl, storage }); }
+    catch (error) { cloudErrors.push(`preuves en attente: ${String(error.message || error)}`); }
+  }
 
   let snapshot = storageGet(storage, LOCAL_TASK_SNAPSHOT_KEY, { synced_at: null, tasks: [] });
-  let cloudError = null;
   if (online) {
     try { snapshot = await cloudSnapshot({ fetchImpl, storage, now }); }
-    catch (error) { cloudError = String(error.message || error); }
+    catch (error) { cloudErrors.push(`copie des tâches: ${String(error.message || error)}`); }
   }
 
   const alreadyPending = new Set(pendingResults(storage).map((item) => String(item.task_id || '')));
@@ -189,12 +207,16 @@ export async function syncLocalAgentQueue({
   };
 
   const local = await localRun({ fetchImpl, localUrls, snapshot: runnableSnapshot });
-  const localResults = Array.isArray(local.result?.task_results) ? local.result.task_results : [];
-  const merged = mergePendingResults(pendingResults(storage), localResults);
+  const allLocalResults = Array.isArray(local.result?.task_results) ? local.result.task_results : [];
+  const completedLocalResults = syncableLocalResults(allLocalResults);
+  const merged = mergePendingResults(pendingResults(storage), completedLocalResults);
   storageSet(storage, LOCAL_PENDING_RESULTS_KEY, merged);
 
   let flushedAfter = { attempted: 0, synced: 0, remaining: merged };
-  if (online && merged.length) flushedAfter = await flushPending({ fetchImpl, storage });
+  if (online && merged.length) {
+    try { flushedAfter = await flushPending({ fetchImpl, storage }); }
+    catch (error) { cloudErrors.push(`synchronisation des nouvelles preuves: ${String(error.message || error)}`); }
+  }
 
   const status = {
     ok: true,
@@ -208,9 +230,11 @@ export async function syncLocalAgentQueue({
     runnable_tasks: runnableSnapshot.tasks.length,
     local_examined: Number(local.result?.examined || 0),
     local_executed: Number(local.result?.executed || 0),
+    local_completed: completedLocalResults.length,
+    local_failed: allLocalResults.filter((item) => item?.completed !== true).length,
     synced_results: flushedBefore.synced + flushedAfter.synced,
     pending_results: flushedAfter.remaining.length,
-    cloud_error: cloudError,
+    cloud_error: cloudErrors.length ? cloudErrors.join(' | ').slice(0, 1000) : null,
   };
   storageSet(storage, LOCAL_AGENT_STATUS_KEY, status);
   return status;
