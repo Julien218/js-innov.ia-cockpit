@@ -233,7 +233,7 @@ router.use(async (req, res, next) => {
     // Une confirmation seule ne doit jamais créer un nouveau tour et invalider la proposition active.
     // Le pont UI ou le bouton transmet le jeton exact à /confirm.
     if (bareConfirmationSignal(message)) {
-      return res.json({ message: 'Aucune action précise n’a été confirmée. Utilisez le bouton de la proposition encore active ou reformulez la demande avec sa cible. La proposition active n’a pas été invalidée.', confirmation: null });
+      return res.json({ message: 'Aucune ancienne action reprise. Aucune action précise n’a été confirmée. Utilisez le bouton de la proposition encore active ou reformulez la demande avec sa cible. La proposition active n’a pas été invalidée.', confirmation: null });
     }
 
     beginRequest(req);
