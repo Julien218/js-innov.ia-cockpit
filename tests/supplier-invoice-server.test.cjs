@@ -19,3 +19,16 @@ test('parses a Railway supplier invoice without confusing amount due and total c
   assert.equal(invoice.cost_basis_amount, 44);
   assert.equal(invoice.allocation_status, 'requires_review');
 });
+
+
+test('parses grouped US and European supplier amounts', () => {
+  const usd = parseSupplierInvoiceText('Invoice INV-2026-008\nTotal $1,234.56\nAmount due $234.56 USD', 'invoice.pdf');
+  assert.equal(usd.invoice_number, 'INV-2026-008');
+  assert.equal(usd.total_amount, 1234.56);
+  assert.equal(usd.amount_due, 234.56);
+
+  const eur = parseSupplierInvoiceText('Facture numéro BE-2026-009\nTotal 1.234,56 EUR\nMontant à payer 234,56 EUR', 'facture.pdf');
+  assert.equal(eur.invoice_number, 'BE-2026-009');
+  assert.equal(eur.total_amount, 1234.56);
+  assert.equal(eur.amount_due, 234.56);
+});

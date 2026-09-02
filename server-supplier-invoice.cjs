@@ -16,11 +16,32 @@ function cleanText(value) {
 
 function decimal(value) {
   if (value === null || value === undefined) return null;
-  const normalized = String(value)
-    .replace(/\s/g, '')
-    .replace(/[^0-9,.-]/g, '')
-    .replace(/,(?=\d{2}$)/, '.');
-  const parsed = Number(normalized);
+  const compact = String(value).replace(/\s/g, '').replace(/[^0-9,+.-]/g, '');
+  if (!compact || !/\d/.test(compact)) return null;
+
+  const sign = compact.startsWith('-') ? -1 : 1;
+  const unsigned = compact.replace(/^[+-]/, '');
+  const comma = unsigned.lastIndexOf(',');
+  const dot = unsigned.lastIndexOf('.');
+  let normalized = unsigned;
+
+  if (comma >= 0 && dot >= 0) {
+    const decimalSeparator = comma > dot ? ',' : '.';
+    const groupingSeparator = decimalSeparator === ',' ? '.' : ',';
+    normalized = unsigned.split(groupingSeparator).join('');
+    if (decimalSeparator === ',') normalized = normalized.replace(',', '.');
+  } else {
+    const separator = comma >= 0 ? ',' : dot >= 0 ? '.' : '';
+    if (separator) {
+      const parts = unsigned.split(separator);
+      const fraction = parts.pop();
+      const integer = parts.join('');
+      if (parts.length >= 1 && fraction.length === 3) normalized = `${integer}${fraction}`;
+      else normalized = `${integer}.${fraction}`;
+    }
+  }
+
+  const parsed = sign * Number(normalized);
   return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : null;
 }
 
@@ -47,7 +68,7 @@ function currencyFrom(text) {
 }
 
 function invoiceNumber(text, fileName = '') {
-  const labelled = String(text || '').match(/\b(?:invoice|facture)\s+(?:number|n(?:o|°)|num[eé]ro)\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{2,50})/i);
+  const labelled = String(text || '').match(/\b(?:invoice|facture)(?:\s+(?:number|n(?:o|°)|num[eé]ro))?\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{2,50})/i);
   const tokens = String(fileName || '').match(/[A-Z0-9]+(?:[-_][A-Z0-9]+)+/gi) || [];
   const fileCandidate = tokens
     .map((token) => token.replace(/_/g, '-').replace(/^(?:railway-)?invoice-/i, ''))

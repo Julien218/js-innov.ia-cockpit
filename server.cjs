@@ -315,8 +315,9 @@ try {
 // ── Companion adaptatif : owner / équipe / client ──────────
 try {
   const assistantRouter = require('./server-assistant.cjs');
+  require('./server-nova-document-upload.cjs').installNovaDocumentRoutes(assistantRouter);
   app.use('/api/assistant', requireSession('client'), requirePermission('nova', 'client'), assistantRouter);
-  console.log('✅ Companion adaptatif activé (owner/staff/client cloisonnés)');
+  console.log('✅ Companion adaptatif activé (owner/staff/client cloisonnés + factures PDF)');
 } catch (e) {
   console.warn('⚠️ Route assistant indisponible:', e.message);
 }

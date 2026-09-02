@@ -61,6 +61,7 @@ export default function AvatarFactory() {
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState('');
   const previewUrlsRef = useRef(new Set());
+  const characterIdEditedRef = useRef(false);
   const inputRefs = { front: useRef(null), left: useRef(null), back: useRef(null), right: useRef(null) };
   const [references, setReferences] = useState({ front: null, left: null, back: null, right: null });
   const [form, setForm] = useState({
@@ -211,15 +212,15 @@ export default function AvatarFactory() {
           <div><h2 className="font-semibold">Nouvelle production</h2><p className="text-xs text-muted-foreground mt-1">Vue principale obligatoire. Les trois vues complémentaires restent optionnelles, mais doivent être fournies ensemble.</p></div>
           <div className="grid sm:grid-cols-2 gap-3">
             {['front', 'back', 'left', 'right'].map((view) => (
-              <ReferenceUploader key={view} title={{ front: 'Vue principale · obligatoire', back: 'Vue arrière · optionnelle', left: 'Vue gauche · optionnelle', right: 'Vue droite · optionnelle' }[view]} reference={references[view]} busy={busy === `upload-${view}`} online={uploaderOnline} onBrowse={() => inputRefs[view].current?.click()} onDrop={(event) => { event.preventDefault(); const file = event.dataTransfer.files?.[0]; if (file) upload(view, file); }} onClear={() => clearReference(view)} />
+              <ReferenceUploader key={view} title={{ front: 'Vue avant · obligatoire', back: 'Vue arrière · optionnelle', left: 'Vue gauche · optionnelle', right: 'Vue droite · optionnelle' }[view]} reference={references[view]} busy={busy === `upload-${view}`} online={uploaderOnline} onBrowse={() => inputRefs[view].current?.click()} onDrop={(event) => { event.preventDefault(); const file = event.dataTransfer.files?.[0]; if (file) upload(view, file); }} onClear={() => clearReference(view)} />
             ))}
           </div>
           {['front', 'back', 'left', 'right'].map((view) => <input key={view} ref={inputRefs[view]} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) upload(view, file); event.target.value = ''; }} />)}
 
           <div className="grid sm:grid-cols-2 gap-3">
-            <Field label="Nom du sujet"><input className={inputClass} value={form.subject_name} onChange={(event) => setForm((value) => ({ ...value, subject_name: event.target.value, character_id: value.character_id || slug(event.target.value, '') }))} placeholder="Ex. Canari, chat, tasse…" /></Field>
+            <Field label="Nom du sujet"><input className={inputClass} value={form.subject_name} onChange={(event) => { const subjectName = event.target.value; setForm((value) => ({ ...value, subject_name: subjectName, character_id: characterIdEditedRef.current ? value.character_id : slug(subjectName, '') })); }} placeholder="Ex. Canari, chat, tasse…" /></Field>
             <Field label="Type de sujet"><select className={inputClass} value={form.subject_type} onChange={(event) => setForm((value) => ({ ...value, subject_type: event.target.value }))}>{SUBJECT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></Field>
-            <Field label="Identifiant technique" hint="Créé automatiquement, modifiable avant le premier envoi."><input className={inputClass} value={form.character_id} onChange={(event) => setForm((value) => ({ ...value, character_id: slug(event.target.value, '') }))} placeholder="canari-jaune" /></Field>
+            <Field label="Identifiant technique" hint="Créé automatiquement, modifiable avant le premier envoi."><input className={inputClass} value={form.character_id} onChange={(event) => { const rawId = event.target.value; characterIdEditedRef.current = Boolean(rawId.trim()); setForm((value) => ({ ...value, character_id: rawId.trim() ? slug(rawId, '') : slug(value.subject_name, '') })); }} placeholder="canari-jaune" /></Field>
             <Field label="Client ID"><input className={inputClass} value={form.client_id} onChange={(event) => setForm((value) => ({ ...value, client_id: event.target.value }))} required /></Field>
             <Field label="Société / ASBL / entité"><input className={inputClass} value={form.entity_id} onChange={(event) => setForm((value) => ({ ...value, entity_id: event.target.value }))} required /></Field>
             <Field label="Projet"><input className={inputClass} value={form.project_id} onChange={(event) => setForm((value) => ({ ...value, project_id: event.target.value }))} required /></Field>
@@ -287,5 +288,5 @@ function Mini({ label, value }) {
 
 function ProductionProgress({ job, compact = false, prominent = false }) {
   const progress = getAvatarProductionProgress(job);
-  return <div className={`${prominent ? 'premium-panel p-4' : compact ? 'mt-2' : ''}`}><div className="flex items-center justify-between gap-2 text-[11px]"><span className="font-medium">{progress.label}</span><span className="text-muted-foreground">{progress.percent}%</span></div><div className="h-1.5 mt-2 rounded-full bg-muted overflow-hidden"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress.percent}%` }} /></div></div>;
+  return <div className={`${prominent ? 'premium-panel p-4' : compact ? 'mt-2' : ''}`}><div className="flex items-center justify-between gap-2 text-[11px]"><span className="font-medium">{progress.label}</span><span className="text-muted-foreground">{progress.percent}%</span></div><div className="h-1.5 mt-2 rounded-full bg-muted overflow-hidden" role="progressbar" aria-label={`Avancement de ${job.character_id || 'la production'}`} aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress.percent}><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress.percent}%` }} /></div></div>;
 }

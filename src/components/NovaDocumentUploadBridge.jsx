@@ -4,6 +4,7 @@ import { FileCheck2, FileWarning, Loader2, X } from 'lucide-react';
 const NOVA_INPUT_MARKER = 'nova-document-bridge';
 const RECENT_MEDIA_KEY = 'nova_recent_media_v1';
 const CHAT_MESSAGES_KEY = 'agent_chat_messages';
+const CHAT_APPEND_EVENT = 'nova-chat-append';
 const MAX_PDF_BYTES = 15 * 1024 * 1024;
 
 function isPdf(file) {
@@ -36,12 +37,14 @@ function appendPersistentMessages(userContent, assistantContent) {
   try {
     const current = JSON.parse(localStorage.getItem(CHAT_MESSAGES_KEY) || '[]');
     const messages = Array.isArray(current) ? current : [];
-    messages.push(
-      { role: 'user', content: userContent, ts: Date.now(), isFile: true },
-      { role: 'assistant', content: assistantContent, ts: Date.now() + 1 },
-    );
+    const now = Date.now();
+    const appended = [
+      { role: 'user', content: userContent, ts: now, isFile: true },
+      { role: 'assistant', content: assistantContent, ts: now + 1 },
+    ];
+    messages.push(...appended);
     localStorage.setItem(CHAT_MESSAGES_KEY, JSON.stringify(messages.slice(-50)));
-    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent(CHAT_APPEND_EVENT, { detail: { messages: appended } }));
   } catch { /* Le panneau de résultat reste visible si le stockage navigateur est indisponible. */ }
 }
 

@@ -21,3 +21,8 @@ test('Railway USD amount and currency are preserved', () => {
 test('EUR amounts remain supported', () => {
   assert.deepEqual(parseMoneyAmount('Montant à payer 123,45 EUR'), { amount_minor: 12345, currency: 'EUR' });
 });
+
+
+test('generic invoice identifiers remain supported', () => {
+  assert.equal(invoiceNumber('Invoice INV-2026-008'), 'INV-2026-008');
+});

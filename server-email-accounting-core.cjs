@@ -73,6 +73,7 @@ function invoiceNumber(text) {
   const patterns = [
     /(?:facture|invoice|reçu|receipt)\s+(?:n[°o]|number|numéro)\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{2,50})/i,
     /(?:invoice|facture)\s*[:#-]\s*([A-Z0-9][A-Z0-9._/-]{2,50})/i,
+    /(?:invoice|facture)\s+([A-Z0-9][A-Z0-9._/-]{2,50})/i,
   ];
   for (const pattern of patterns) {
     const candidate = clean(source.match(pattern)?.[1], 60);

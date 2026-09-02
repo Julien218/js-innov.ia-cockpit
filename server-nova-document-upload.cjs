@@ -17,17 +17,43 @@ async function extractPdf(buffer) {
   };
 }
 
-async function findExistingDocument(fingerprint) {
+function resolveUploadOrganisation(user) {
+  return String(user?.organisation || 'jsinnovia')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._ -]/g, '-')
+    .replace(/[\\/]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 100) || 'jsinnovia';
+}
+
+async function findExistingDocument(fingerprint, organisation) {
   if (!AGENT_KEY) return null;
   try {
-    const response = await fetch(`${AGENT_URL.replace(/\/$/, '')}/data/DocumentIndex?sort=created_at&order=desc&limit=1000`, {
-      headers: { 'Content-Type': 'application/json', 'x-agent-key': AGENT_KEY },
+    const scopedOrganisation = resolveUploadOrganisation({ organisation });
+    const query = new URLSearchParams({
+      organisation: scopedOrganisation,
+      sort: 'created_at',
+      order: 'desc',
+      limit: '1000',
+    });
+    const response = await fetch(`${AGENT_URL.replace(/\/$/, '')}/data/DocumentIndex?${query.toString()}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'x-agent-key': AGENT_KEY,
+        'x-organisation-id': scopedOrganisation,
+      },
       signal: AbortSignal.timeout(10_000),
     });
     const data = await response.json().catch(() => []);
     const marker = `nova-pdf:${fingerprint}`;
     return response.ok && Array.isArray(data)
-      ? data.find((row) => String(row?.email_message_id || '') === marker && !row?.deleted_at) || null
+      ? data.find((row) => (
+        String(row?.organisation || row?.tenant_id || '') === scopedOrganisation
+        && String(row?.email_message_id || '') === marker
+        && !row?.deleted_at
+      )) || null
       : null;
   } catch {
     return null;
@@ -62,7 +88,8 @@ function installNovaDocumentRoutes(router) {
       }
       const buffer = decodePdfBase64(req.body?.fileData, MAX_PDF_BYTES);
       const fingerprint = crypto.createHash('sha256').update(buffer).digest('hex');
-      const existing = await findExistingDocument(fingerprint);
+      const organisation = resolveUploadOrganisation(req.user);
+      const existing = await findExistingDocument(fingerprint, organisation);
       const parsed = await extractPdf(buffer);
       const invoice = parseSupplierInvoiceText(parsed.text, fileName);
 
@@ -70,7 +97,7 @@ function installNovaDocumentRoutes(router) {
       if (!document) {
         document = await storeBuffer({
           user: req.user,
-          organisation: req.user?.organisation || 'jsinnovia',
+          organisation,
           brand: 'js-innov-ia',
           clientId: null,
           category: 'factures-fournisseurs',
@@ -110,4 +137,4 @@ function installNovaDocumentRoutes(router) {
   return router;
 }
 
-module.exports = { extractPdf, installNovaDocumentRoutes, MAX_PDF_BYTES };
+module.exports = { extractPdf, findExistingDocument, installNovaDocumentRoutes, resolveUploadOrganisation, MAX_PDF_BYTES };
