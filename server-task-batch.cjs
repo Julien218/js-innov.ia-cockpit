@@ -9,7 +9,17 @@ const {
 } = require('./server-nova-executors.cjs');
 
 const PRIORITIES = new Set(['basse', 'moyenne', 'haute', 'urgente']);
-const ACTIVE_STATUSES = new Set(['pending', 'queued', 'dispatching', 'dispatched', 'running']);
+// Les runs en attente d'une validation ou d'une revue restent actifs. Les considérer
+// comme terminés recrée le même dispatch à chaque passage de l'autopilote.
+const ACTIVE_STATUSES = new Set([
+  'pending',
+  'queued',
+  'dispatching',
+  'dispatched',
+  'running',
+  'awaiting_approval',
+  'awaiting_review',
+]);
 const STALE_RUNNING_MS = 30 * 60 * 1000;
 const MAX_BATCH_TASKS = 250;
 
