@@ -1,6 +1,13 @@
 [phases.build]
-cmds = ["npm ci --legacy-peer-deps", "npm run build"]
+cmds = [
+  "npm ci --legacy-peer-deps",
+  "test -f server-task-context.cjs",
+  "node --check server-task-context.cjs",
+  "node --check server-nova-document-preload.cjs",
+  "node --check server-nova-document-upload.cjs",
+  "node --test tests/supplier-invoice-server.test.cjs tests/email-accounting-currency.test.cjs",
+  "npm run build"
+]
 
 [start]
-cmd = "node server.cjs"
-
+cmd = "test -f server-task-context.cjs && node -r ./server-nova-document-preload.cjs server.cjs"
