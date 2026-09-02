@@ -1,26 +1,39 @@
 {
   "id": "/",
-  "name": "SIGNELYA",
+  "name": "SIGNELYA by JS-Innov.IA",
   "short_name": "SIGNELYA",
-  "description": "Pilotage des écrans géants et de la vidéosurveillance",
+  "description": "SIGNELYA by JS-Innov.IA — pilotage des écrans géants et de la vidéosurveillance",
   "start_url": "/ecran-geant",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "background_color": "#03050A",
   "theme_color": "#03050A",
+  "categories": ["business", "productivity"],
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/signelya-icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/signelya-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/signelya-icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/signelya-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

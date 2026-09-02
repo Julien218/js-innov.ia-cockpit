@@ -1,7 +1,7 @@
 {
-  "name": "jsinnovia-cockpit",
-  "version": "1.1.1",
-  "description": "JS-Innov.IA Cockpit \u2014 Application desktop Windows",
+  "name": "signelya-desktop",
+  "version": "1.1.2",
+  "description": "SIGNELYA by JS-Innov.IA — application desktop Windows",
   "main": "main.js",
   "author": "Julien Pagin <julien@jsinnovia.com>",
   "license": "MIT",
@@ -24,8 +24,8 @@
   },
   "build": {
     "appId": "com.jsinnovia.cockpit",
-    "productName": "JS-Innov.IA Cockpit",
-    "copyright": "Copyright 2026 Julien Pagin \u2014 JS-Innov.IA",
+    "productName": "SIGNELYA by JS-Innov.IA",
+    "copyright": "Copyright 2026 Julien Pagin — JS-Innov.IA",
     "directories": {
       "output": "dist",
       "buildResources": "."
@@ -63,10 +63,10 @@
         "fr_FR"
       ],
       "language": "1036",
-      "shortcutName": "JS-Innov.IA Cockpit",
+      "shortcutName": "SIGNELYA by JS-Innov.IA",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "uninstallDisplayName": "JS-Innov.IA Cockpit",
+      "uninstallDisplayName": "SIGNELYA by JS-Innov.IA",
       "installerIcon": "icon.ico",
       "uninstallerIcon": "icon.ico"
     },

@@ -12,6 +12,15 @@ const wordmark = fs.readFileSync(path.join(root, "src", "components", "brand", "
 const styles = fs.readFileSync(path.join(root, "src", "index.css"), "utf8");
 const elynea = fs.readFileSync(path.join(root, "src", "components", "FloatingAgent.jsx"), "utf8");
 const assistantServer = fs.readFileSync(path.join(root, "server-assistant.cjs"), "utf8");
+const indexHtml = fs.readFileSync(path.join(root, "index.html"), "utf8");
+const manifest = JSON.parse(fs.readFileSync(path.join(root, "public", "manifest.json"), "utf8"));
+const desktopManifest = JSON.parse(fs.readFileSync(path.join(root, "electron", "package.json"), "utf8"));
+
+function readPngDimensions(filename) {
+  const image = fs.readFileSync(path.join(root, filename));
+  assert.equal(image.toString("ascii", 1, 4), "PNG");
+  return [image.readUInt32BE(16), image.readUInt32BE(20)];
+}
 
 test("the dedicated SIGNELYA menu only exposes its two services", () => {
   assert.match(sidebar, /Écran géant/);
@@ -53,4 +62,34 @@ test("the customer assistant is Elynea and understands its Signelya mission", ()
   assert.match(assistantServer, /SIGNELYA_ASSISTANT_CONTEXT/);
   assert.match(assistantServer, /Tu es Elynea/);
   assert.match(assistantServer, /jamais comme Nova/);
+});
+
+test("the installable app uses the complete SIGNELYA by JS-Innov.IA identity", () => {
+  assert.equal(manifest.name, "SIGNELYA by JS-Innov.IA");
+  assert.equal(manifest.short_name, "SIGNELYA");
+  assert.equal(manifest.orientation, "any");
+  assert.match(indexHtml, /name="application-name" content="SIGNELYA by JS-Innov\.IA"/);
+  assert.match(indexHtml, /<title>SIGNELYA by JS-Innov\.IA — Vos écrans prennent vie<\/title>/);
+  assert.equal(desktopManifest.build.productName, "SIGNELYA by JS-Innov.IA");
+  assert.equal(desktopManifest.build.nsis.shortcutName, "SIGNELYA by JS-Innov.IA");
+});
+
+test("desktop and mobile icon sizes use the official text-free SIGNELYA symbol", () => {
+  const icons = new Map(manifest.icons.map((icon) => [`${icon.src}:${icon.purpose}`, icon]));
+  assert.ok(icons.has("/signelya-icon-192.png:any"));
+  assert.ok(icons.has("/signelya-icon-512.png:any"));
+  assert.ok(icons.has("/signelya-icon-maskable-192.png:maskable"));
+  assert.ok(icons.has("/signelya-icon-maskable-512.png:maskable"));
+  assert.deepEqual(readPngDimensions("public/signelya-favicon.png"), [64, 64]);
+  assert.deepEqual(readPngDimensions("public/signelya-apple-touch-icon.png"), [180, 180]);
+  assert.deepEqual(readPngDimensions("public/signelya-icon-192.png"), [192, 192]);
+  assert.deepEqual(readPngDimensions("public/signelya-icon-512.png"), [512, 512]);
+  assert.deepEqual(readPngDimensions("public/signelya-icon-maskable-192.png"), [192, 192]);
+  assert.deepEqual(readPngDimensions("public/signelya-icon-maskable-512.png"), [512, 512]);
+  assert.deepEqual(readPngDimensions("public/icon-192.png"), [192, 192]);
+  assert.deepEqual(readPngDimensions("public/icon-512.png"), [512, 512]);
+  const desktopIcon = readPngDimensions("electron/icon.png");
+  assert.equal(desktopIcon[0], desktopIcon[1]);
+  assert.ok(desktopIcon[0] >= 512);
+  assert.ok(fs.statSync(path.join(root, "electron", "icon.ico")).size > 0);
 });
