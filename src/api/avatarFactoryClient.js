@@ -1,6 +1,7 @@
-const BASE_URL = import.meta.env.VITE_AVATAR_FACTORY_URL || 'http://127.0.0.1:8791';
-const UPLOAD_URL = import.meta.env.VITE_AVATAR_REFERENCE_UPLOAD_URL || 'http://127.0.0.1:8792';
-const PREVIEW_URL = import.meta.env.VITE_AVATAR_PREVIEW_URL || 'http://127.0.0.1:8793';
+const ENV = import.meta.env || {};
+const BASE_URL = ENV.VITE_AVATAR_FACTORY_URL || 'http://127.0.0.1:8791';
+const UPLOAD_URL = ENV.VITE_AVATAR_REFERENCE_UPLOAD_URL || 'http://127.0.0.1:8792';
+const PREVIEW_URL = ENV.VITE_AVATAR_PREVIEW_URL || 'http://127.0.0.1:8793';
 
 const SUBJECT_KINDS = new Set(['auto', 'person', 'animal', 'bird', 'object', 'other']);
 const RIG_MODES = new Set(['auto', 'none', 'humanoid', 'quadruped', 'avian', 'generic']);
