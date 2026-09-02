@@ -1,6 +1,6 @@
 const path = require('path');
 
-const INVOICE_TERMS = /\b(facture|invoice|rechnung|receipt|reçu|abonnement|subscription|échéance|payment due|montant ttc)\b/i;
+const INVOICE_TERMS = /\b(facture|invoice|rechnung|receipt|reçu|abonnement|subscription|échéance|payment due|amount due|montant ttc)\b/i;
 const REQUEST_TERMS = /\b(devis|quote|offre|demande|request|renseignement|information|rendez-vous|proposition)\b/i;
 const GITHUB_NOTIFICATION_SENDER = /(?:notifications|noreply)@github\.com/i;
 const GITHUB_BILLING_SUBJECT = /\b(invoice|facture|receipt|reçu|billing|payment due|paiement)\b/i;
@@ -20,21 +20,67 @@ function providerFromEmail(email) {
   return clean(name || senderDomain(from) || 'Fournisseur non identifié', 100);
 }
 
-function parseEuroAmount(text) {
+function normalizeNumber(raw) {
+  const value = String(raw || '').replace(/\u00a0/g, ' ').trim();
+  if (!value) return null;
+  const compact = value.replace(/\s/g, '');
+  const comma = compact.lastIndexOf(',');
+  const dot = compact.lastIndexOf('.');
+  let normalized = compact;
+  if (comma > dot) normalized = compact.replace(/\./g, '').replace(',', '.');
+  else if (dot > comma) normalized = compact.replace(/,/g, '');
+  else normalized = compact.replace(',', '.');
+  const amount = Number(normalized);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+function parseMoneyAmount(text) {
   const source = String(text || '').replace(/\u00a0/g, ' ');
-  const labelled = source.match(/(?:total(?:\s+ttc)?|montant(?:\s+à\s+payer)?|amount due)[^\d]{0,20}(\d{1,3}(?:[ .]\d{3})*(?:[,.]\d{2})|\d+[,.]\d{2})\s*(?:€|EUR)/i);
-  const generic = source.match(/(\d{1,3}(?:[ .]\d{3})*(?:[,.]\d{2})|\d+[,.]\d{2})\s*(?:€|EUR)/i)
-    || source.match(/(?:€|EUR)\s*(\d{1,3}(?:[ .]\d{3})*(?:[,.]\d{2})|\d+[,.]\d{2})/i);
-  const raw = labelled?.[1] || generic?.[1];
-  if (!raw) return null;
-  const normalized = raw.replace(/[ .](?=\d{3}(?:\D|$))/g, '').replace(',', '.');
-  const value = Number(normalized);
-  return Number.isFinite(value) && value > 0 ? Math.round(value * 100) : null;
+  const patterns = [
+    /(?:total(?:\s+ttc)?|montant(?:\s+(?:restant\s+)?[àa]\s+payer)?|amount due|balance due)[^\d$€]{0,24}(?:([$€])\s*)?(\d{1,3}(?:[ ,.']\d{3})*(?:[,.]\d{2})|\d+[,.]\d{2})(?:\s*(USD|EUR))?/i,
+    /(?:([$€])\s*)(\d{1,3}(?:[ ,.']\d{3})*(?:[,.]\d{2})|\d+[,.]\d{2})(?:\s*(USD|EUR))?/i,
+    /(\d{1,3}(?:[ ,.']\d{3})*(?:[,.]\d{2})|\d+[,.]\d{2})\s*(USD|EUR|€)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = source.match(pattern);
+    if (!match) continue;
+    let symbol;
+    let raw;
+    let explicit;
+    if (pattern === patterns[2]) {
+      raw = match[1];
+      explicit = match[2];
+    } else {
+      symbol = match[1];
+      raw = match[2];
+      explicit = match[3];
+    }
+    const amount = normalizeNumber(raw);
+    if (!amount) continue;
+    const currency = explicit === '€' ? 'EUR' : String(explicit || (symbol === '$' ? 'USD' : symbol === '€' ? 'EUR' : '')).toUpperCase() || null;
+    return { amount_minor: Math.round(amount * 100), currency };
+  }
+  return { amount_minor: null, currency: null };
+}
+
+function parseEuroAmount(text) {
+  const parsed = parseMoneyAmount(text);
+  return parsed.currency === 'EUR' ? parsed.amount_minor : null;
 }
 
 function invoiceNumber(text) {
-  const match = String(text || '').match(/(?:facture|invoice|reçu|receipt)(?:\s+(?:n[°o]|number|numéro))?\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{2,30})/i);
-  return clean(match?.[1], 40) || null;
+  const source = String(text || '');
+  const patterns = [
+    /(?:facture|invoice|reçu|receipt)\s+(?:n[°o]|number|numéro)\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{2,50})/i,
+    /(?:invoice|facture)\s*[:#-]\s*([A-Z0-9][A-Z0-9._/-]{2,50})/i,
+  ];
+  for (const pattern of patterns) {
+    const candidate = clean(source.match(pattern)?.[1], 60);
+    if (!candidate || !/\d/.test(candidate)) continue;
+    if (/^(?:due|payment|invoice|facture|total)$/i.test(candidate)) continue;
+    return candidate;
+  }
+  return null;
 }
 
 function isOperationalGitHubNotification(email) {
@@ -60,11 +106,13 @@ function classifyEmail(email) {
 
 function extractAccountingMetadata(email) {
   const text = `${email?.subject || ''}\n${email?.text || email?.body || ''}`;
+  const amount = parseMoneyAmount(text);
+  const fallbackCurrency = /\bUSD\b|\$\s*\d/i.test(text) ? 'USD' : /(?:€|\bEUR\b)/i.test(text) ? 'EUR' : null;
   return {
     provider: providerFromEmail(email),
     invoice_number: invoiceNumber(text),
-    amount_minor: parseEuroAmount(text),
-    currency: /(?:€|\bEUR\b)/i.test(text) ? 'EUR' : null,
+    amount_minor: amount.amount_minor,
+    currency: amount.currency || fallbackCurrency,
   };
 }
 
@@ -111,4 +159,14 @@ function buildDailyDigest(date, items) {
   return { counts, text, subject: `NOVA — Compte rendu e-mails du ${date}` };
 }
 
-module.exports = { classifyEmail, extractAccountingMetadata, shouldArchiveAttachment, sourceTypeForProvider, buildDailyDigest, parseEuroAmount, invoiceNumber, isOperationalGitHubNotification };
+module.exports = {
+  classifyEmail,
+  extractAccountingMetadata,
+  shouldArchiveAttachment,
+  sourceTypeForProvider,
+  buildDailyDigest,
+  parseEuroAmount,
+  parseMoneyAmount,
+  invoiceNumber,
+  isOperationalGitHubNotification,
+};
