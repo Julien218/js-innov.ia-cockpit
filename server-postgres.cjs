@@ -10,7 +10,8 @@ const ALLOWED_TABLES = new Set([
   'signage_player_schedule_exceptions','signage_schedule_audit','signage_sites','signage_display_profiles',
   'client_signage_requests','client_signage_request_assets','client_content_reviews','client_content_review_proposals',
   'signelya_notification_contacts','signelya_client_commercial_assignments','signelya_notification_events',
-  'signelya_device_alert_state','signelya_whatsapp_deliveries'
+  'signelya_device_alert_state','signelya_whatsapp_deliveries','signelya_email_deliveries',
+  'signelya_push_subscriptions','signelya_push_deliveries'
 ]);
 const JSON_COLUMNS = new Map([
   ['signage_players', new Set(['diagnostics','runtime_diagnostics'])],
