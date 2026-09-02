@@ -1,5 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 const { ensureReady, getPool } = require('./server-postgres.cjs');
 const { requireSession } = require('./server-security.cjs');
 
@@ -13,6 +14,12 @@ const LANGUAGE_CODE = String(process.env.WHATSAPP_TEMPLATE_LANGUAGE || 'fr');
 const OFFLINE_SECONDS = Math.max(180, Number(process.env.SIGNELYA_OFFLINE_CONFIRM_SECONDS || 300));
 const OFFLINE_TEMPLATE = String(process.env.WHATSAPP_TEMPLATE_SCREEN_OFFLINE || 'signelya_screen_offline_confirmed');
 const VIDEOS_ONLINE_TEMPLATE = String(process.env.WHATSAPP_TEMPLATE_VIDEOS_ONLINE || 'signelya_client_videos_online');
+const SUPERADMIN_EMAIL = String(process.env.SIGNELYA_SUPERADMIN_ALERT_EMAIL || 'info@jsinnovia.store').trim().toLowerCase();
+const SMTP_EMAIL = String(process.env.EMAIL_STORE_ADDRESS || 'info@jsinnovia.store');
+const SMTP_PASSWORD = String(process.env.EMAIL_PASSWORD_STORE || '');
+const SMTP_HOST = String(process.env.SMTP_HOST_STORE || 'smtp.ionos.fr');
+const SMTP_PORT = Number(process.env.SMTP_PORT_STORE || 465);
+let mailTransport = null;
 
 let monitorTimer = null;
 let monitorBusy = false;
@@ -97,6 +104,60 @@ async function clientName(client, ownerEmail) {
   return order.rows[0]?.company || ownerEmail;
 }
 
+function getMailTransport() {
+  if (!SMTP_PASSWORD) return null;
+  if (!mailTransport) {
+    mailTransport = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_PORT === 465,
+      auth: { user: SMTP_EMAIL, pass: SMTP_PASSWORD },
+      tls: { rejectUnauthorized: process.env.SMTP_ALLOW_INVALID_CERT !== 'true' },
+    });
+  }
+  return mailTransport;
+}
+
+async function sendSuperadminOfflineEmail(client, event, { playerName, clientName, minutes, lastSeenAt }) {
+  const delivery = await client.query(
+    `insert into signelya_email_deliveries
+      (event_id,recipient_email,status)
+     values ($1,$2,'queued') returning id`,
+    [event.id, SUPERADMIN_EMAIL]
+  );
+  const deliveryId = delivery.rows[0].id;
+  try {
+    const transport = getMailTransport();
+    if (!transport) throw new Error('SMTP JS-Innov.IA non configuré');
+    await transport.sendMail({
+      from: `"SIGNELYA Assistance" <${SMTP_EMAIL}>`,
+      to: SUPERADMIN_EMAIL,
+      subject: `[SIGNELYA] Écran hors ligne confirmé — ${clientName}`,
+      text: [
+        'Écran hors ligne confirmé.',
+        `Client : ${clientName}`,
+        `Écran : ${playerName}`,
+        `Durée sans heartbeat : ${minutes} minutes`,
+        `Dernier signal : ${lastSeenAt}`,
+        '',
+        "Vérifiez l'alimentation électrique et la connexion Internet."
+      ].join('\n')
+    });
+    await client.query(
+      "update signelya_email_deliveries set status='sent',updated_at=now() where id=$1",
+      [deliveryId]
+    );
+    return { sent: true };
+  } catch (error) {
+    await client.query(
+      "update signelya_email_deliveries set status='failed',error=$2,updated_at=now() where id=$1",
+      [deliveryId, String(error.message || error).slice(0,1000)]
+    );
+    console.error('[signelya][email]', error.message);
+    return { sent: false, error: error.message };
+  }
+}
+
 async function notifyConfirmedOffline(player) {
   await ensureReady();
   const pool = getPool();
@@ -117,7 +178,7 @@ async function notifyConfirmedOffline(player) {
     const contacts = await client.query(
       `select email,phone_e164,role from signelya_notification_contacts
        where enabled=true and whatsapp_opt_in_at is not null
-         and ((role='client' and lower(email)=lower($1)) or role='superadmin')`,
+         and role='client' and lower(email)=lower($1)`,
       [ownerEmail]
     );
     const results = [];
@@ -126,7 +187,11 @@ async function notifyConfirmedOffline(player) {
         player.name || 'Écran SIGNELYA', name, String(minutes)
       ]));
     }
-    return { eventId: event.id, recipients: contacts.rowCount, results };
+    const emailResult = await sendSuperadminOfflineEmail(client, event, {
+      playerName: player.name || 'Écran SIGNELYA', clientName: name,
+      minutes, lastSeenAt: lastSeen.toISOString()
+    });
+    return { eventId: event.id, recipients: contacts.rowCount, results, superadminEmail: emailResult };
   } finally {
     client.release();
   }
@@ -288,7 +353,9 @@ router.get('/status', requireSession('superadmin'), async (req, res) => {
       offlineConfirmSeconds: OFFLINE_SECONDS,
       contacts: contacts.rows,
       assignments: assignments.rows,
-      deliveries: deliveries.rows
+      deliveries: deliveries.rows,
+      superadminAlertEmail: SUPERADMIN_EMAIL,
+      superadminEmailConfigured: Boolean(SMTP_PASSWORD)
     });
   } catch (error) {
     res.status(503).json({ error: error.message });
