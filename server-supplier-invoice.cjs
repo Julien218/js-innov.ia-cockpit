@@ -68,14 +68,19 @@ function currencyFrom(text) {
 }
 
 function invoiceNumber(text, fileName = '') {
-  const labelled = String(text || '').match(/\b(?:invoice|facture)(?:\s+(?:number|n(?:o|°)|num[eé]ro))?\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{2,50})/i);
+  const source = String(text || '');
+  const labelledCandidates = [
+    source.match(/\b(?:invoice|facture)\s+(?:number|n(?:o|°)|num[eé]ro)\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{2,50})/i)?.[1],
+    source.match(/\b(?:invoice|facture)\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{2,50})/i)?.[1],
+  ]
+    .map((value) => String(value || '').replace(/_/g, '-').trim())
+    .find((value) => value && /\d/.test(value) && !/^(?:due|payment|invoice|facture|number|num[eé]ro)$/i.test(value));
+
   const tokens = String(fileName || '').match(/[A-Z0-9]+(?:[-_][A-Z0-9]+)+/gi) || [];
   const fileCandidate = tokens
     .map((token) => token.replace(/_/g, '-').replace(/^(?:railway-)?invoice-/i, ''))
     .find((token) => /\d/.test(token));
-  const candidate = String(labelled?.[1] || fileCandidate || '').replace(/_/g, '-').trim();
-  if (!candidate || !/\d/.test(candidate) || /^(?:due|payment|invoice|facture)$/i.test(candidate)) return null;
-  return candidate;
+  return labelledCandidates || fileCandidate || null;
 }
 
 function dateForLabel(text, label) {
