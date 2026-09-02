@@ -22,6 +22,23 @@ async function bridge() {
   return import('../src/lib/localAgentQueueBridge.js');
 }
 
+function proof(taskId, title = 'Tâche locale') {
+  return {
+    task_id: taskId,
+    title,
+    completed: true,
+    tool_runs: [{
+      id: `${taskId.padEnd(8, 'a').slice(0, 8)}-bbbb-cccc-dddd-eeeeeeeeeeee`,
+      tool: 'find_local_workflows',
+      success: true,
+      started_at: '2026-09-02T10:00:00Z',
+      completed_at: '2026-09-02T10:00:01Z',
+      exit_code: 0,
+      output: 'ok',
+    }],
+  };
+}
+
 test('la file locale conserve un seul objectif canonique actif', async () => {
   const { selectCanonicalOpenTasks } = await bridge();
   const tasks = selectCanonicalOpenTasks([
@@ -34,7 +51,7 @@ test('la file locale conserve un seul objectif canonique actif', async () => {
   assert.equal(tasks[0].id, 'courant');
 });
 
-test('la passerelle interroge le service local, exécute une fois et synchronise la preuve', async () => {
+test('la passerelle préfère le service courant, exécute une fois et synchronise la preuve', async () => {
   const {
     LOCAL_PENDING_RESULTS_KEY,
     syncLocalAgentQueue,
@@ -49,14 +66,14 @@ test('la passerelle interroge le service local, exécute une fois et synchronise
         { id: 't2', titre: 'Contrôler la persistance des workflows vidéo IA', statut: 'en_cours', created_at: '2026-08-21T10:00:00Z', updated_at: '2026-09-02T10:00:00Z' },
       ]);
     }
-    if (url === 'http://127.0.0.1:8787/health') {
+    if (url === 'http://127.0.0.1:8788/health') {
       return jsonResponse({ agent: { version: '1.5.0' }, services: { ollama: { online: true }, ffmpeg: { online: true }, ffprobe: { online: true } } });
     }
-    if (url === 'http://127.0.0.1:8787/api/tasks/autopilot') {
+    if (url === 'http://127.0.0.1:8788/api/tasks/autopilot') {
       const payload = JSON.parse(options.body);
       assert.equal(payload.task_snapshot.tasks.length, 1);
       assert.equal(payload.task_snapshot.tasks[0].id, 't2');
-      return jsonResponse({ examined: 1, executed: 1, task_results: [{ task_id: 't2', title: payload.task_snapshot.tasks[0].titre, completed: true, tool_runs: [{ id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', tool: 'find_local_workflows', success: true, started_at: '2026-09-02T10:00:00Z', completed_at: '2026-09-02T10:00:01Z', exit_code: 0, output: 'ok' }] }] });
+      return jsonResponse({ examined: 1, executed: 1, task_results: [proof('t2', payload.task_snapshot.tasks[0].titre)] });
     }
     if (url === '/api/task-autopilot/local-results') {
       const payload = JSON.parse(options.body);
@@ -69,9 +86,10 @@ test('la passerelle interroge le service local, exécute une fois et synchronise
 
   const status = await syncLocalAgentQueue({ fetchImpl, storage, online: true, now: Date.parse('2026-09-02T10:00:00Z') });
   assert.equal(status.ok, true);
-  assert.equal(status.endpoint, 'http://127.0.0.1:8787');
+  assert.equal(status.endpoint, 'http://127.0.0.1:8788');
   assert.equal(status.snapshot_tasks, 1);
   assert.equal(status.local_executed, 1);
+  assert.equal(status.local_completed, 1);
   assert.equal(status.synced_results, 1);
   assert.equal(status.pending_results, 0);
   assert.deepEqual(JSON.parse(storage.getItem(LOCAL_PENDING_RESULTS_KEY)), []);
@@ -88,10 +106,10 @@ test('hors ligne, la passerelle utilise la dernière copie et garde la preuve à
     [LOCAL_TASK_SNAPSHOT_KEY]: JSON.stringify({ synced_at: '2026-09-02T09:00:00Z', tasks: [{ id: 'local-1', titre: 'Vérifier les workflows Minimax en local', statut: 'en_cours' }] }),
   });
   const fetchImpl = async (url, options = {}) => {
-    if (url === 'http://127.0.0.1:8787/health') return jsonResponse({ agent: { version: '1.5.0' }, services: { ollama: { online: false }, ffmpeg: { online: true }, ffprobe: { online: true } } });
-    if (url === 'http://127.0.0.1:8787/api/tasks/autopilot') {
+    if (url === 'http://127.0.0.1:8788/health') return jsonResponse({ agent: { version: '1.5.0' }, services: { ollama: { online: false }, ffmpeg: { online: true }, ffprobe: { online: true } } });
+    if (url === 'http://127.0.0.1:8788/api/tasks/autopilot') {
       const payload = JSON.parse(options.body);
-      return jsonResponse({ examined: 1, executed: 1, task_results: [{ task_id: 'local-1', title: payload.task_snapshot.tasks[0].titre, completed: true, tool_runs: [{ id: '11111111-2222-3333-4444-555555555555', tool: 'find_local_workflows', success: true, started_at: '2026-09-02T10:00:00Z', completed_at: '2026-09-02T10:00:01Z', exit_code: 0, output: 'workflow trouvé' }] }] });
+      return jsonResponse({ examined: 1, executed: 1, task_results: [proof('local-1', payload.task_snapshot.tasks[0].titre)] });
     }
     throw new Error(`Le cloud ne devait pas être appelé hors ligne: ${url}`);
   };
@@ -102,4 +120,30 @@ test('hors ligne, la passerelle utilise la dernière copie et garde la preuve à
   assert.equal(status.pending_results, 1);
   const pending = JSON.parse(storage.getItem(LOCAL_PENDING_RESULTS_KEY));
   assert.equal(pending[0].task_id, 'local-1');
+});
+
+test('une preuve non reconnue par le serveur reste en attente au lieu d’être perdue', async () => {
+  const {
+    LOCAL_PENDING_RESULTS_KEY,
+    syncLocalAgentQueue,
+  } = await bridge();
+  const storage = createStorage({
+    [LOCAL_PENDING_RESULTS_KEY]: JSON.stringify([proof('attente-1')]),
+  });
+  let syncCalls = 0;
+  const fetchImpl = async (url) => {
+    if (url === '/api/task-autopilot/local-results') {
+      syncCalls += 1;
+      return jsonResponse({ received: 1, synced: 0, results: [{ task_id: 'attente-1', error: 'preuve refusée' }] });
+    }
+    if (url === '/api/data/Tache?limit=1000') return jsonResponse([]);
+    if (url === 'http://127.0.0.1:8788/health') return jsonResponse({ agent: { version: '1.5.0' }, services: { ollama: { online: true }, ffmpeg: { online: true }, ffprobe: { online: true } } });
+    if (url === 'http://127.0.0.1:8788/api/tasks/autopilot') return jsonResponse({ examined: 0, executed: 0, task_results: [] });
+    throw new Error(`URL inattendue: ${url}`);
+  };
+
+  const status = await syncLocalAgentQueue({ fetchImpl, storage, online: true, now: Date.parse('2026-09-02T10:00:00Z') });
+  assert.equal(syncCalls, 2);
+  assert.equal(status.pending_results, 1);
+  assert.equal(JSON.parse(storage.getItem(LOCAL_PENDING_RESULTS_KEY))[0].task_id, 'attente-1');
 });

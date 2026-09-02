@@ -15,14 +15,16 @@ test('desktop starts through the global bootstrap', () => {
 });
 
 test('desktop bundles and starts NOVA Local Tools without a second assistant UI', () => {
-  assert.equal(pkg.version, '1.0.38');
+  assert.equal(pkg.version, '1.0.39');
   const localAgentResource = pkg.build?.extraResources?.find((item) => item.to === 'local-agent');
   assert.ok(localAgentResource);
   assert.ok(localAgentResource.filter.includes('server.js'));
   assert.ok(localAgentResource.filter.includes('package.json'));
   assert.match(bootstrap, /startBundledLocalAgent/);
   assert.match(bootstrap, /ELECTRON_RUN_AS_NODE:\s*"1"/);
-  assert.match(bootstrap, /legacyOnline \? 8788 : 8787/);
+  assert.match(bootstrap, /LOCAL_AGENT_PRIMARY_PORT\s*=\s*8787/);
+  assert.match(bootstrap, /LOCAL_AGENT_FALLBACK_PORT\s*=\s*8788/);
+  assert.match(bootstrap, /selectLocalAgentPort/);
   const offlineWebResource = pkg.build?.extraResources?.find((item) => item.to === 'offline-web');
   assert.ok(offlineWebResource);
   assert.match(bootstrap, /startBundledOfflineCockpit/);
@@ -74,4 +76,6 @@ test('packaged desktop enables startup with Windows', () => {
 test('desktop release runs when NOVA local capabilities change', () => {
   assert.match(workflow, /- "local-agent\/\*\*"/);
   assert.match(workflow, /- "src\/components\/FloatingAgent\.jsx"/);
+  assert.match(workflow, /- "src\/components\/LocalAgentQueueBridge\.jsx"/);
+  assert.match(workflow, /- "src\/lib\/localAgentQueueBridge\.js"/);
 });

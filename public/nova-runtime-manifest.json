@@ -1,0 +1,14 @@
+{
+  "runtime": "nova-canonical-dispatch-local-watchdog",
+  "version": "2026.09.02.2",
+  "electron_version": "1.0.39",
+  "local_agent_version": "1.5.0",
+  "features": [
+    "canonical-task-per-objective",
+    "single-active-run",
+    "proof-required-before-completion",
+    "local-agent-watchdog",
+    "offline-proof-queue",
+    "pending-run-deduplication"
+  ]
+}
