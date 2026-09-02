@@ -60,6 +60,27 @@ create table if not exists signelya_email_deliveries (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists signelya_push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_email text not null,
+  role text not null check (role in ('superadmin')),
+  endpoint text not null unique,
+  subscription jsonb not null,
+  user_agent text,
+  enabled boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists signelya_push_deliveries (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid references signelya_notification_events(id) on delete set null,
+  subscription_id uuid references signelya_push_subscriptions(id) on delete set null,
+  status text not null default 'queued',
+  error text,
+  created_at timestamptz not null default now()
+);
+
 create index if not exists signelya_notification_events_owner_created_idx
   on signelya_notification_events(owner_email, created_at desc);
 create index if not exists signelya_whatsapp_deliveries_message_idx
