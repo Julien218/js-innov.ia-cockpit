@@ -67,7 +67,11 @@ export default function DigitalSignageScheduled() {
       </details>}
       <details className="rounded-2xl border bg-card">
         <summary className="cursor-pointer list-none p-4 text-sm font-semibold md:p-5">Gérer ou supprimer des fichiers</summary>
-        <div className="border-t p-3 md:p-4"><SignageMediaManager managedClient={managedClient} /></div>
+        <div className="border-t p-3 md:p-4">
+          {(!isAdmin || managedClient)
+            ? <SignageMediaManager managedClient={managedClient} />
+            : <p className="text-sm text-muted-foreground">Sélectionnez d’abord le client dont vous souhaitez gérer les fichiers.</p>}
+        </div>
       </details>
       {isAdmin && player && <details className="rounded-2xl border bg-card">
         <summary className="cursor-pointer list-none p-4 text-sm font-semibold md:p-5">Diagnostic avancé de l’écran</summary>
