@@ -10,7 +10,7 @@ const server = read('server-agents.cjs');
 const appServer = read('server.cjs');
 
 test('the dedicated cockpit hides Agents IA while direct routes remain gated', () => {
-  assert.match(sidebar, /path: "\/agents-ia", module: "ai_agents"/);
+  assert.doesNotMatch(sidebar, /path: "\/agents-ia"/);
   assert.match(guard, /'\/agents-ia': 'ai_agents'/);
   assert.match(guard, /!hasModule\(requiredModule\)/);
 });
