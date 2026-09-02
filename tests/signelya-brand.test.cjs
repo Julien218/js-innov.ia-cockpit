@@ -18,10 +18,10 @@ test("the dedicated SIGNELYA menu only exposes its two services", () => {
 });
 
 test("SIGNELYA identity is used across navigation and authentication", () => {
-  assert.match(sidebar, /signelya-symbol-master\.svg/);
+  assert.match(sidebar, /signelya-app-icon-approved\.png/);
   assert.match(sidebar, /Vos écrans prennent vie/);
   assert.match(topbar, /Pilotage SIGNELYA/);
-  assert.match(login, /signelya-lockup-horizontal\.svg/);
+  assert.match(login, /signelya-lockup-approved\.png/);
   assert.match(login, /#00D4FF/);
   assert.match(app, /politique-de-confidentialite/);
 });
