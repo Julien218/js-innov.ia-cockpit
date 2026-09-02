@@ -1,7 +1,12 @@
 const crypto = require('node:crypto');
 const express = require('express');
 const { cleanTenant } = require('./server-tenant.cjs');
+
 const turns = new Map();
+const AGENT_URL = String(process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app').replace(/\/$/, '');
+const AGENT_KEY = String(process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '').trim();
+const STALE_RUNNING_MS = 30 * 60 * 1000;
+const STALE_PENDING_MS = 24 * 60 * 60 * 1000;
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
 function scopeFor(req) {
@@ -43,20 +48,239 @@ function taskStatusMatches(message, action, task) {
   return task?.id === action.id && requestedTaskStatus(message) === action.payload.statut && Boolean(idMentioned || titleMentioned);
 }
 
+function bareConfirmationSignal(message) {
+  return /^(oui|ok|oki|okay|je confirme|confirme|go|vas[- ]y|execute)[.!\s]*$/.test(normalize(message));
+}
+
+function ambiguousMessageSignal(message) {
+  const source = String(message || '').trim();
+  return Boolean(source) && /^[?!.…,;:\s]+$/.test(source);
+}
+
+function dispatchVerificationSignal(message) {
+  const raw = String(message || '').trim();
+  const text = normalize(raw);
+  const mentionsTasks = /\btaches?\b/.test(text);
+  const mentionsRouting = /\b(?:dispatch\w*|delegu\w*|assign\w*|rout\w*)\b/.test(text);
+  const asksForState = /[?]\s*$/.test(raw)
+    || /^(?:as(?: tu)?|est ce que|peux tu|pourrais tu|verifie|controle|confirme|dis moi)\b/.test(text)
+    || /\b(?:etat|statut|sont elles|ont elles|bien ete)\b/.test(text);
+  const asksToExecute = /\b(?:puis|et ensuite|ensuite|maintenant)\s+(?:dispatch\w*|delegu\w*|assign\w*)\b/.test(text);
+  return mentionsTasks && mentionsRouting && asksForState && !asksToExecute;
+}
+
+function rowsFrom(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  return [];
+}
+
+function canonicalTaskTitle(value) {
+  return normalize(value)
+    .replace(/\b(delegation automatique|duplicata|copie)\b/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function timestamp(value) {
+  const parsed = Date.parse(value || '');
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizedRunStatus(run) {
+  return normalize(run?.status).replace(/\s+/g, '_');
+}
+
+function dispatchState(run, now = Date.now()) {
+  if (!run) return 'non_dispatchee';
+  const status = normalizedRunStatus(run);
+  const changedAt = timestamp(run.updated_at || run.started_at || run.created_at);
+  const age = changedAt ? now - changedAt : Number.POSITIVE_INFINITY;
+  if (status === 'running' && age > STALE_RUNNING_MS) return 'execution_obsolete';
+  if (['pending', 'queued', 'dispatching', 'dispatched'].includes(status) && age > STALE_PENDING_MS) return 'en_attente_prolongee';
+  if (status === 'awaiting_approval' || status === 'awaiting_review') return 'en_attente_validation';
+  if (status === 'running') return 'en_execution';
+  if (['pending', 'queued', 'dispatching', 'dispatched'].includes(status)) return 'dispatch_en_attente';
+  if (status === 'completed') return 'resultat_non_synchronise';
+  if (['failed', 'cancelled', 'canceled'].includes(status)) return 'echec';
+  return status || 'inconnu';
+}
+
+function summarizeTaskDispatches(tasksPayload, runsPayload, now = Date.now()) {
+  const tasks = rowsFrom(tasksPayload).filter((task) => !['terminee', 'terminée', 'archivee', 'archivée'].includes(normalize(task.statut || task.status)));
+  const runs = rowsFrom(runsPayload);
+  const groups = new Map();
+  for (const task of tasks) {
+    const key = canonicalTaskTitle(task.titre || task.title) || String(task.id || crypto.randomUUID());
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(task);
+  }
+
+  const entries = [];
+  for (const group of groups.values()) {
+    const orderedTasks = [...group].sort((a, b) => timestamp(a.created_at || a.date_creation) - timestamp(b.created_at || b.date_creation));
+    const canonical = orderedTasks[0];
+    const taskIds = new Set(orderedTasks.map((task) => String(task.id || '')).filter(Boolean));
+    const relatedRuns = runs
+      .filter((run) => taskIds.has(String(run.task_id || '')))
+      .sort((a, b) => timestamp(b.updated_at || b.started_at || b.created_at) - timestamp(a.updated_at || a.started_at || a.created_at));
+    const latest = relatedRuns[0] || null;
+    entries.push({
+      task_id: canonical?.id || null,
+      task_ids: [...taskIds],
+      title: canonical?.titre || canonical?.title || 'Tâche sans titre',
+      task_status: canonical?.statut || canonical?.status || null,
+      priority: canonical?.priorite || canonical?.priority || null,
+      duplicate_task_count: Math.max(0, orderedTasks.length - 1),
+      run_count: relatedRuns.length,
+      duplicate_run_count: Math.max(0, relatedRuns.length - 1),
+      latest_run_id: latest?.id || null,
+      latest_run_status: latest?.status || null,
+      latest_run_at: latest?.updated_at || latest?.started_at || latest?.created_at || null,
+      latest_agent: latest?.agent_id || latest?.provider_agent_id || latest?.provider_name || null,
+      latest_error: latest?.error || null,
+      dispatch_state: dispatchState(latest, now),
+    });
+  }
+
+  const severity = {
+    non_dispatchee: 0,
+    echec: 1,
+    execution_obsolete: 2,
+    en_attente_prolongee: 3,
+    en_attente_validation: 4,
+    dispatch_en_attente: 5,
+    en_execution: 6,
+    resultat_non_synchronise: 7,
+  };
+  entries.sort((a, b) => (severity[a.dispatch_state] ?? 8) - (severity[b.dispatch_state] ?? 8) || String(a.title).localeCompare(String(b.title), 'fr'));
+
+  const count = (state) => entries.filter((entry) => entry.dispatch_state === state).length;
+  return {
+    inspected_at: new Date(now).toISOString(),
+    task_rows: tasks.length,
+    unique_tasks: entries.length,
+    duplicate_task_rows: entries.reduce((sum, entry) => sum + entry.duplicate_task_count, 0),
+    duplicate_runs: entries.reduce((sum, entry) => sum + entry.duplicate_run_count, 0),
+    non_dispatched: count('non_dispatchee'),
+    failed: count('echec'),
+    stale: count('execution_obsolete') + count('en_attente_prolongee'),
+    awaiting_validation: count('en_attente_validation'),
+    active: count('en_execution') + count('dispatch_en_attente'),
+    unsynchronised_results: count('resultat_non_synchronise'),
+    entries,
+  };
+}
+
+function dispatchReportMessage(report) {
+  const stateLabel = {
+    non_dispatchee: 'non dispatchée',
+    echec: 'échec',
+    execution_obsolete: 'exécution obsolète',
+    en_attente_prolongee: 'attente prolongée',
+    en_attente_validation: 'attente de validation',
+    dispatch_en_attente: 'dispatchée, en attente',
+    en_execution: 'en exécution',
+    resultat_non_synchronise: 'résultat à synchroniser',
+  };
+  const lines = report.entries.slice(0, 80).map((entry, index) => {
+    const duplicates = entry.duplicate_task_count || entry.duplicate_run_count
+      ? ` · doublons tâches=${entry.duplicate_task_count} · relances=${entry.duplicate_run_count}`
+      : '';
+    const error = entry.latest_error ? ` · blocage=${String(entry.latest_error).replace(/[\r\n]+/g, ' ').slice(0, 180)}` : '';
+    return `${index + 1}. ${entry.title} · ${stateLabel[entry.dispatch_state] || entry.dispatch_state} · agent=${entry.latest_agent || 'aucun'} · task_id=${entry.task_id || 'absent'} · run_id=${entry.latest_run_id || 'aucun'}${duplicates}${error}`;
+  });
+  const hidden = report.entries.length > 80 ? `\n… ${report.entries.length - 80} autre(s) tâche(s) disponible(s) dans le rapport structuré.` : '';
+  return [
+    'Contrôle réel des délégations terminé, sans aucune modification.',
+    `Tâches ouvertes: ${report.task_rows} ligne(s), ${report.unique_tasks} objectif(s) unique(s), ${report.duplicate_task_rows} doublon(s) de tâche.`,
+    `État: ${report.active} réellement active(s), ${report.awaiting_validation} en attente de validation, ${report.stale} stagnante(s), ${report.failed} en échec, ${report.non_dispatched} non dispatchée(s), ${report.unsynchronised_results} résultat(s) non synchronisé(s).`,
+    'Le statut « en cours » d’une fiche n’est pas considéré comme une preuve: seuls les agent_runs et leurs horodatages sont utilisés.',
+    ...lines,
+  ].join('\n') + hidden;
+}
+
+async function readAgentJson(path, organisation) {
+  if (!AGENT_KEY) throw new Error('Agent server key not configured');
+  const response = await fetch(`${AGENT_URL}${path}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      'x-agent-key': AGENT_KEY,
+      'x-organisation-id': organisation,
+    },
+    signal: AbortSignal.timeout(45_000),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || data?.message || `Agent HTTP ${response.status}`);
+  return data;
+}
+
+async function inspectTaskDispatches(req) {
+  const organisation = cleanTenant(req.user?.organisation) || 'jsinnovia';
+  const [tasks, runs] = await Promise.all([
+    readAgentJson('/data/Tache?limit=500', organisation),
+    readAgentJson('/agent-runs?limit=1000', organisation),
+  ]);
+  return summarizeTaskDispatches(tasks, runs);
+}
+
 const router = express.Router();
-router.use((req, res, next) => {
+router.use(async (req, res, next) => {
   if (req.method === 'POST' && req.path === '/chat' && typeof req.body?.message === 'string' && req.body.message.trim()) {
+    const message = req.body.message.trim();
+
+    // Une confirmation seule ne doit jamais créer un nouveau tour et invalider la proposition active.
+    // Le pont UI ou le bouton transmet le jeton exact à /confirm.
+    if (bareConfirmationSignal(message)) {
+      return res.json({ message: 'Aucune ancienne action reprise. Aucune action précise n’a été confirmée. Utilisez le bouton de la proposition encore active ou reformulez la demande avec sa cible. La proposition active n’a pas été invalidée.', confirmation: null });
+    }
+
     beginRequest(req);
-    if (/^(oui|ok|oki|okay|je confirme|confirme|go|vas[- ]y|execute)[.!\s]*$/.test(normalize(req.body.message))) {
-      return res.json({ message: 'Aucune action précise n’a été confirmée. Utilisez le bouton de la proposition encore active ou reformulez la demande avec sa cible. Aucune ancienne action reprise.', confirmation: null });
+
+    if (ambiguousMessageSignal(message)) {
+      return res.json({ message: 'Message trop ambigu pour exécuter une action. Aucune tâche, aucun projet et aucune donnée n’ont été modifiés.', confirmation: null });
+    }
+
+    if (dispatchVerificationSignal(message)) {
+      try {
+        const report = await inspectTaskDispatches(req);
+        const reportMessage = dispatchReportMessage(report);
+        return res.json({
+          message: reportMessage,
+          response: reportMessage,
+          confirmation: null,
+          inspection_only: true,
+          dispatch_report: report,
+          conversation_id: String(req.body?.conversation_id || 'main'),
+        });
+      } catch (error) {
+        return res.status(502).json({
+          error: 'Contrôle des délégations impossible',
+          details: String(error.message || error).slice(0, 300),
+          confirmation: null,
+        });
+      }
     }
   }
   next();
 });
+
 router.post('/cancel', (req, res) => {
   const scope = scopeFor(req);
   if (!req.body?.request_nonce || turns.get(scope)?.nonce === req.body.request_nonce) turns.delete(scope);
   res.json({ success: true, confirmation: null });
 });
 
-module.exports = { router, beginRequest, isCurrentTurn, requestedTaskStatus, taskStatusMatches };
+module.exports = {
+  router,
+  beginRequest,
+  isCurrentTurn,
+  requestedTaskStatus,
+  taskStatusMatches,
+  bareConfirmationSignal,
+  ambiguousMessageSignal,
+  dispatchVerificationSignal,
+  summarizeTaskDispatches,
+  dispatchReportMessage,
+};

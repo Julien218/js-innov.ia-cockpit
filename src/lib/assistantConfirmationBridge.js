@@ -8,6 +8,7 @@ const NEGATIVE = new Set([
   'non', 'annule', 'annuler', 'stop', 'laisse tomber', 'ne fais pas', 'ne pas executer',
 ]);
 
+const STORAGE_KEY = 'jsinnovia:assistant-confirmations:v1';
 const state = new Map();
 
 function isAffirmativeIntent(value) {
@@ -56,6 +57,58 @@ async function requestJson(input, init) {
 
 function conversationKey(body = {}) {
   return String(body.conversation_id || 'main').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'main';
+}
+
+function sessionStore() {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function persistState() {
+  const store = sessionStore();
+  if (!store) return;
+  try {
+    const now = Date.now();
+    const entries = [...state.entries()].filter(([, pending]) => pending?.token && Number(pending.expiresAt) > now);
+    store.setItem(STORAGE_KEY, JSON.stringify(entries));
+  } catch {
+    // Une indisponibilité du stockage ne bloque jamais l'assistant.
+  }
+}
+
+function restoreState() {
+  const store = sessionStore();
+  if (!store) return;
+  try {
+    const entries = JSON.parse(store.getItem(STORAGE_KEY) || '[]');
+    const now = Date.now();
+    for (const [key, pending] of Array.isArray(entries) ? entries : []) {
+      if (pending?.token && Number(pending.expiresAt) > now) state.set(String(key), pending);
+    }
+    persistState();
+  } catch {
+    try { store.removeItem(STORAGE_KEY); } catch { /* rien à faire */ }
+  }
+}
+
+function setPending(key, pending) {
+  state.set(key, pending);
+  persistState();
+}
+
+function deletePending(key) {
+  state.delete(key);
+  persistState();
+}
+
+function deletePendingByToken(token) {
+  for (const [key, pending] of state.entries()) {
+    if (pending.token === token) state.delete(key);
+  }
+  persistState();
 }
 
 function jsonResponse(payload, status = 200) {
@@ -145,6 +198,7 @@ async function executeConfirmedAction(originalFetch, pending, userMessage) {
 export function installAssistantConfirmationBridge() {
   if (typeof window === 'undefined' || window.__JSINNOVIA_ASSISTANT_CONFIRMATION_BRIDGE__) return;
   window.__JSINNOVIA_ASSISTANT_CONFIRMATION_BRIDGE__ = true;
+  restoreState();
 
   const originalFetch = window.fetch.bind(window);
 
@@ -154,10 +208,8 @@ export function installAssistantConfirmationBridge() {
     if (url.includes('/api/assistant/confirm')) {
       const body = await requestJson(input, init);
       const response = await originalFetch(input, init);
-      if (response.ok && body.token) {
-        for (const [key, pending] of state.entries()) {
-          if (pending.token === body.token) state.delete(key);
-        }
+      if (body.token && (response.ok || [400, 404, 409, 410].includes(response.status))) {
+        deletePendingByToken(body.token);
       }
       return response;
     }
@@ -169,10 +221,10 @@ export function installAssistantConfirmationBridge() {
     const pending = state.get(key);
     const intent = normalize(body.message);
 
-    if (pending && Date.now() > pending.expiresAt) state.delete(key);
+    if (pending && Date.now() > pending.expiresAt) deletePending(key);
 
     if (pending && NEGATIVE.has(intent)) {
-      state.delete(key);
+      deletePending(key);
       const message = 'Action annulée. Aucune modification n’a été exécutée.';
       appendHistory(originalFetch, key, body.message, message);
       return jsonResponse({ message, response: message, confirmation: null, cancelled: true, conversation_id: key });
@@ -180,7 +232,7 @@ export function installAssistantConfirmationBridge() {
 
     if (pending && isAffirmativeIntent(intent)) {
       // On consomme le jeton avant l'appel : un double clic ou une répétition ne peut pas rejouer l'action.
-      state.delete(key);
+      deletePending(key);
       return executeConfirmedAction(originalFetch, pending, body.message);
     }
 
@@ -188,7 +240,7 @@ export function installAssistantConfirmationBridge() {
     try {
       const data = await response.clone().json();
       if (response.ok && data?.confirmation?.token) {
-        state.set(key, {
+        setPending(key, {
           token: data.confirmation.token,
           type: data.confirmation.type || null,
           summary: data.confirmation.summary || null,
