@@ -36,14 +36,12 @@ export default function Login() {
 
       <div className="relative w-full max-w-md">
         {/* Logo */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-2xl shadow-[#00D4FF]/20 mb-4 ring-2 ring-[#00D4FF]/30">
-            <img src="/signelya-symbol-approved-512.png" alt="SIGNELYA" className="w-full h-full object-cover" />
-          </div>
-          <h1 className="text-2xl font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            SIGNELYA
-          </h1>
-          <p className="text-sm text-white/40 mt-1 tracking-widest uppercase">Vos écrans prennent vie.</p>
+        <div className="mb-8 flex flex-col items-center">
+          <img
+            src="/signelya-lockup-horizontal.svg"
+            alt="SIGNELYA — Vos écrans prennent vie"
+            className="h-auto w-full max-w-[360px]"
+          />
         </div>
 
         {/* Card */}
@@ -122,9 +120,13 @@ export default function Login() {
           </div>
         </div>
 
-        <p className="text-center text-xs text-white/15 mt-6">
-          SIGNELYA — by JS‑Innov.IA
-        </p>
+        <div className="mt-6 flex items-center justify-center gap-2 text-center text-xs text-white/30">
+          <span>SIGNELYA — by JS‑Innov.IA</span>
+          <span aria-hidden="true">•</span>
+          <a href="/politique-de-confidentialite" className="hover:text-[#00D9FF] transition-colors">
+            Confidentialité
+          </a>
+        </div>
       </div>
     </div>
   );
