@@ -24,6 +24,7 @@ CREATE SEQUENCE IF NOT EXISTS pixelium_quote_reference_seq START WITH 1 INCREMEN
 
 CREATE TABLE IF NOT EXISTS pixelium_quote_requests (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  external_id text NOT NULL UNIQUE,
   reference_number bigint NOT NULL DEFAULT nextval('pixelium_quote_reference_seq'),
   commercial_id uuid NOT NULL REFERENCES pixelium_commercials(id),
   commercial_code text NOT NULL,
