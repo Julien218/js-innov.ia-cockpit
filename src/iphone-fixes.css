@@ -1,0 +1,69 @@
+/* Signelya — durcissement responsive iPhone / PWA */
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 100%;
+  margin: 0;
+  overflow-x: hidden;
+}
+
+/* Les safe areas sont gérées par les composants plein écran, pas par body. */
+body {
+  padding: 0 !important;
+}
+
+img,
+video,
+canvas,
+svg,
+input,
+select,
+textarea,
+button {
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  html,
+  body,
+  #root {
+    min-height: 100dvh;
+  }
+
+  body {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  input,
+  select,
+  textarea {
+    min-width: 0;
+  }
+
+  /* Empêche Safari iOS de zoomer au focus des champs. */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  /* Elynea reste accessible sans recouvrir les gros CTA du bas. */
+  .elynea-launcher {
+    right: max(10px, env(safe-area-inset-right));
+    bottom: max(10px, calc(env(safe-area-inset-bottom) + 8px));
+    width: 52px;
+    height: 52px;
+  }
+
+  .elynea-panel {
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(8px, env(safe-area-inset-bottom));
+    width: auto;
+    max-width: none;
+  }
+}
