@@ -66,24 +66,26 @@ export default function TopBar({ onOpenMobileMenu }) {
     navigate("/login", { replace: true });
   }
 
-  return <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between border-b border-cyan-400/10 bg-[#050817]/95 px-3 text-white shadow-lg shadow-black/10 backdrop-blur-xl sm:px-5">
-    <button onClick={onOpenMobileMenu} className="rounded-xl p-2 text-white/75 hover:bg-white/10 hover:text-white md:hidden" aria-label="Ouvrir le menu"><Menu className="h-5 w-5" /></button>
-    <div className="hidden md:block"><p className="text-sm font-semibold text-white/90">Pilotage <SignelyaWordmark className="tracking-[0.08em]" /></p><p className="text-xs text-white/40">Écran géant & vidéosurveillance</p></div>
-    <div className="ml-auto flex items-center gap-3">
-      {isSuperadmin && <button
-        type="button"
-        onClick={enableMobileNotifications}
-        disabled={pushState === "loading"}
-        className="relative rounded-xl p-2 text-white/75 hover:bg-white/10 hover:text-white disabled:opacity-50"
-        aria-label={pushState === "active" ? "Notifications mobiles activées" : "Activer les notifications mobiles"}
-        title={pushState === "active" ? "Notifications mobiles activées" : "Activer les notifications mobiles"}
-      >
-        {pushState === "active" ? <BellRing className="h-5 w-5 text-cyan-300" /> : <Bell className="h-5 w-5" />}
-        {pushState === "active" && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-emerald-400" />}
-      </button>}
-      <span className="hidden text-xs text-white/45 sm:block">{user?.email}</span>
-      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[linear-gradient(135deg,#00D4FF,#8A2BE2,#FF00CC)] text-xs font-bold text-white shadow-[0_0_20px_rgba(0,212,255,0.28)]">{initial}</div>
-      <button type="button" onClick={handleLogout} className="rounded-xl p-2 text-white/75 hover:bg-white/10 hover:text-white" aria-label="Se déconnecter" title="Se déconnecter"><LogOut className="h-5 w-5" /></button>
+  return <header className="sticky top-0 z-20 shrink-0 border-b border-cyan-400/10 bg-[#050817]/95 pt-[env(safe-area-inset-top)] text-white shadow-lg shadow-black/10 backdrop-blur-xl">
+    <div className="flex h-14 min-w-0 items-center justify-between px-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] sm:h-16 sm:px-5">
+      <button onClick={onOpenMobileMenu} className="shrink-0 rounded-xl p-2 text-white/75 hover:bg-white/10 hover:text-white md:hidden" aria-label="Ouvrir le menu"><Menu className="h-5 w-5" /></button>
+      <div className="hidden md:block"><p className="text-sm font-semibold text-white/90">Pilotage <SignelyaWordmark className="tracking-[0.08em]" /></p><p className="text-xs text-white/40">Écran géant & vidéosurveillance</p></div>
+      <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-3">
+        {isSuperadmin && <button
+          type="button"
+          onClick={enableMobileNotifications}
+          disabled={pushState === "loading"}
+          className="relative shrink-0 rounded-xl p-2 text-white/75 hover:bg-white/10 hover:text-white disabled:opacity-50"
+          aria-label={pushState === "active" ? "Notifications mobiles activées" : "Activer les notifications mobiles"}
+          title={pushState === "active" ? "Notifications mobiles activées" : "Activer les notifications mobiles"}
+        >
+          {pushState === "active" ? <BellRing className="h-5 w-5 text-cyan-300" /> : <Bell className="h-5 w-5" />}
+          {pushState === "active" && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-emerald-400" />}
+        </button>}
+        <span className="hidden max-w-[180px] truncate text-xs text-white/45 lg:block">{user?.email}</span>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#00D4FF,#8A2BE2,#FF00CC)] text-xs font-bold text-white shadow-[0_0_20px_rgba(0,212,255,0.28)]">{initial}</div>
+        <button type="button" onClick={handleLogout} className="shrink-0 rounded-xl p-2 text-white/75 hover:bg-white/10 hover:text-white" aria-label="Se déconnecter" title="Se déconnecter"><LogOut className="h-5 w-5" /></button>
+      </div>
     </div>
   </header>;
 }
