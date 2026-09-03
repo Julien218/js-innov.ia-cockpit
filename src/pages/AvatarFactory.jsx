@@ -81,6 +81,11 @@ export default function AvatarFactory() {
   });
 
   useEffect(() => { if (!selectedId && jobs.data?.jobs?.[0]?.id) setSelectedId(jobs.data.jobs[0].id); }, [jobs.data, selectedId]);
+  useEffect(() => {
+    if (form.client_id.trim().toLowerCase() === 'olivier' && form.billing_policy !== 'technical_costs_only') {
+      setForm((current) => ({ ...current, billing_policy: 'technical_costs_only' }));
+    }
+  }, [form.client_id, form.billing_policy]);
   useEffect(() => () => { previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
 
   const online = Boolean(health.isSuccess && health.data?.ok);
@@ -157,6 +162,9 @@ export default function AvatarFactory() {
         character_id: ensureCharacterId(),
         display_name: form.subject_name || form.character_id,
         subject_type: form.subject_type,
+        billing_policy: form.client_id.trim().toLowerCase() === 'olivier'
+          ? 'technical_costs_only'
+          : form.billing_policy,
       });
       setSelectedId(created.id);
       setNotice({ type: 'success', text: `${auxCount === 3 ? 'Production multivue' : 'Production monovue'} lancée : 3D → nettoyage → QA → validation humaine.` });
@@ -228,7 +236,8 @@ export default function AvatarFactory() {
 
           <div className={`rounded-xl px-3 py-2 text-xs border ${viewModeValid ? 'border-cyan-500/20 bg-cyan-500/5 text-cyan-700' : 'border-border bg-muted/40 text-muted-foreground'}`}>{references.front?.path ? (auxCount === 3 ? `4/4 vues · multivue · graine ${form.seed}` : auxCount === 0 ? `1/1 vue principale · monovue · graine ${form.seed}` : `${1 + auxCount}/4 vues · complète les trois vues optionnelles ou retire-les`) : '0 vue · ajoute une image principale'}</div>
           <Field label="Qualité"><select className={inputClass} value={form.preset} onChange={(event) => setForm((value) => ({ ...value, preset: event.target.value }))}><option value="diagnostic">Diagnostic 1024 — recommandé 6 Go VRAM</option><option value="production">Production 2048 — si mémoire suffisante</option></select></Field>
-          <Field label="Politique de facturation"><select className={inputClass} value={form.billing_policy} onChange={(event) => setForm((value) => ({ ...value, billing_policy: event.target.value }))}>{POLICIES.map((policy) => <option key={policy.value} value={policy.value}>{policy.label}</option>)}</select></Field>
+          <Field label="Politique de facturation"><select disabled={form.client_id.trim().toLowerCase() === 'olivier'} className={`${inputClass} disabled:opacity-60`} value={form.billing_policy} onChange={(event) => setForm((value) => ({ ...value, billing_policy: event.target.value }))}>{POLICIES.map((policy) => <option key={policy.value} value={policy.value}>{policy.label}</option>)}</select></Field>
+          {form.client_id.trim().toLowerCase() === 'olivier' && <p className="text-[11px] text-muted-foreground">Olivier : coûts techniques uniquement, ventilés par entité.</p>}
           <button disabled={!online || !uploaderOnline || !viewModeValid || Boolean(busy)} className="w-full h-11 rounded-xl gradient-primary text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-lg shadow-primary/20 disabled:opacity-50">{busy === 'create' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}Lancer la production 3D</button>
         </form>
 
