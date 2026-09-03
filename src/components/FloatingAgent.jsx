@@ -317,7 +317,7 @@ export default function FloatingAgent() {
                 <div className="elynea-title-line">
                   <strong>Elynea</strong>
                   <span className="elynea-service">
-                    <img src="/signelya-icon-512.png" alt="" />
+                    <img src="/signelya-symbol-approved-512.png" alt="" />
                     Signelya
                   </span>
                 </div>

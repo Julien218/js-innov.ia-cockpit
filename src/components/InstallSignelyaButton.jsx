@@ -54,7 +54,7 @@ export default function InstallSignelyaButton() {
     {showHelp && <div className="fixed inset-0 z-[100000] flex items-end justify-center bg-black/70 p-3 sm:items-center" role="dialog" aria-modal="true" aria-label="Installer SIGNELYA">
       <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-[#0b1022] p-5 text-white shadow-2xl">
         <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3"><img src="/signelya-icon-192.png" alt="" className="h-12 w-12 rounded-xl" /><div><p className="font-semibold">Installer SIGNELYA</p><p className="text-xs text-white/50">by JS‑Innov.IA</p></div></div>
+          <div className="flex items-center gap-3"><img src="/signelya-symbol-approved-512.png" alt="" className="h-12 w-12 rounded-xl" /><div><p className="font-semibold">Installer SIGNELYA</p><p className="text-xs text-white/50">by JS‑Innov.IA</p></div></div>
           <button type="button" onClick={() => setShowHelp(false)} className="grid h-10 w-10 place-items-center rounded-xl text-white/60 hover:bg-white/10" aria-label="Fermer"><X className="h-5 w-5" /></button>
         </div>
         {isAppleMobile() ? <div className="mt-5 space-y-3 text-sm leading-6 text-white/75">

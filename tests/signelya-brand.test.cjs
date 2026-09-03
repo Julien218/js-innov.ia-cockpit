@@ -100,6 +100,8 @@ test("desktop and mobile icon sizes use the official text-free SIGNELYA symbol",
   assert.equal(desktopIcon[0], desktopIcon[1]);
   assert.ok(desktopIcon[0] >= 512);
   assert.ok(fs.statSync(path.join(root, "electron", "icon.ico")).size > 0);
+  assert.match(elynea, /signelya-symbol-approved-512\.png/);
+  assert.doesNotMatch(indexHtml, /signelya-symbol-master\.svg/);
 });
 
 test("the public landing page offers a proper mobile app installation", () => {
