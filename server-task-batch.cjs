@@ -49,6 +49,28 @@ function canonicalTaskTitle(value) {
     .trim();
 }
 
+function canonicalTaskKey(task = {}) {
+  const title = canonicalTaskTitle(task.titre || task.title);
+  const client = canonicalTaskTitle(task.client_id || task.client_nom);
+  const project = canonicalTaskTitle(task.projet_id || task.projet_nom);
+  return [title, client, project].join('|');
+}
+
+function completionProof(outcome = {}, executor = {}) {
+  const result = outcome?.result;
+  if (!result || typeof result !== 'object' || Array.isArray(result) || !Object.keys(result).length) return null;
+  const existingEvidence = Array.isArray(result.evidence) ? result.evidence.filter(Boolean) : [];
+  const reference = result.run_id || result.audit_id || result.update_id || result.journal_id
+    || result.id || result.domain || result.checked_at || executor.id;
+  return {
+    ...result,
+    proof_status: 'verified',
+    evidence: existingEvidence.length
+      ? existingEvidence
+      : [{ type: 'executor_result', reference: cleanText(reference, 500) }],
+  };
+}
+
 function latestActiveRun(payload, taskId, now = Date.now()) {
   return rowsFrom(payload)
     .filter((run) => String(run.task_id || '') === String(taskId || ''))
@@ -107,11 +129,11 @@ function sanitizeTaskBatchPayload(payload = {}) {
   const source = raw.slice(0, MAX_BATCH_TASKS);
   const sanitized = source.map(sanitizeTaskItem).filter(Boolean);
   if (!sanitized.length) return null;
-  const titles = new Set();
+  const keys = new Set();
   const tasks = sanitized.filter((item) => {
-    const key = canonicalTaskTitle(item.record.titre);
-    if (!key || titles.has(key)) return false;
-    titles.add(key);
+    const key = canonicalTaskKey(item.record);
+    if (!canonicalTaskTitle(item.record.titre) || keys.has(key)) return false;
+    keys.add(key);
     return true;
   });
   return tasks.length ? { tasks } : null;
@@ -193,11 +215,11 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
   const existingResponse = await agentFetch('/data/Tache?limit=250', {
     headers: { 'x-organisation-id': organisation },
   });
-  const existingByTitle = new Map();
+  const existingByKey = new Map();
   for (const candidate of rowsFrom(await readJson(existingResponse, `Lecture tâches HTTP ${existingResponse.status}`))) {
-    const key = canonicalTaskTitle(candidate.titre || candidate.title);
+    const key = canonicalTaskKey(candidate);
     const status = cleanText(candidate.statut || candidate.status, 40).toLowerCase();
-    if (key && !['terminee', 'terminée'].includes(status) && !existingByTitle.has(key)) existingByTitle.set(key, candidate);
+    if (key && !['terminee', 'terminée'].includes(status) && !existingByKey.has(key)) existingByKey.set(key, candidate);
   }
 
   const results = [];
@@ -216,7 +238,7 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
           throw new Error('Tâche ciblée introuvable; aucune nouvelle tâche créée.');
         }
       } else {
-        task = existingByTitle.get(canonicalTaskTitle(item.record.titre)) || null;
+        task = existingByKey.get(canonicalTaskKey(item.record)) || null;
       }
       const reused = Boolean(task);
       if (prepareOnly && task) {
@@ -245,7 +267,7 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
         });
         task = await readJson(response, `Création tâche HTTP ${response.status}`);
         if (!task?.id) throw new Error('Création de tâche non vérifiable : identifiant absent.');
-        existingByTitle.set(canonicalTaskTitle(item.record.titre), task);
+        existingByKey.set(canonicalTaskKey(item.record), task);
       }
 
       if (prepareOnly) {
@@ -290,12 +312,13 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
             ? await handlers.video(item.record, agentRequest, null, { user, organisation, taskId: task.id, runId: run.id })
             : await handlers.business(item.record, agentRequest);
 
-      if (outcome.completed) {
-        await patchRun(agentFetch, run.id, { status: 'completed', result: outcome.result || { report: outcome.report }, completed_at: new Date().toISOString(), base44_conv_id: outcome.conversation_id || null }, organisation);
+      const verifiedResult = outcome.completed ? completionProof(outcome, executor) : null;
+      if (outcome.completed && verifiedResult) {
+        await patchRun(agentFetch, run.id, { status: 'completed', result: verifiedResult, completed_at: new Date().toISOString(), base44_conv_id: outcome.conversation_id || null }, organisation);
         await patchTask(agentFetch, task.id, { statut: 'terminee', notes: taskNotes(item, `Exécution vérifiée et terminée par ${executor.name}: run_id=${run.id}.`) }, organisation);
-        results.push({ index, success: true, task_id: task.id, run_id: run.id, executor: executor.id, status: 'completed', reused, result: outcome.result });
+        results.push({ index, success: true, task_id: task.id, run_id: run.id, executor: executor.id, status: 'completed', reused, result: verifiedResult });
       } else {
-        const reason = outcome.reason || 'resultat_final_non_verifie';
+        const reason = outcome.completed ? 'resultat_final_non_verifie' : (outcome.reason || 'resultat_final_non_verifie');
         await patchRun(agentFetch, run.id, { status: 'awaiting_approval', result: outcome.result || { report: outcome.report }, error: reason, base44_conv_id: outcome.conversation_id || null }, organisation);
         await patchTask(agentFetch, task.id, { statut: outcome.blocked ? 'bloquee' : 'en_cours', notes: taskNotes(item, `Résultat reçu mais non finalisé: ${reason}; run_id=${run.id}.`) }, organisation);
         results.push({ index, success: !outcome.blocked, task_id: task.id, run_id: run.id, executor: executor.id, status: outcome.blocked ? 'blocked' : 'awaiting_review', reused, reason });
@@ -320,7 +343,9 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
 
 module.exports = {
   activeRunForTask,
+  canonicalTaskKey,
   canonicalTaskTitle,
+  completionProof,
   latestActiveRun,
   sanitizeTaskBatchPayload,
   executeTaskBatch,

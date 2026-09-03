@@ -10,7 +10,7 @@ const serverSource = fs.readFileSync(path.join(root, 'server.cjs'), 'utf8');
 const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
 
 const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage, executionProof, directAutopilotSignal, autopilotMessage, directEntityMutationSignal, executionProhibited, directInspectionSignal, targetedInspectionSignal, idAfterLabel, scopedTaskExecutionAuthorization, scopedTaskId, scopedProjectId, scopedTaskBatchPayload } = require(path.join(root, 'server-assistant-batch.cjs'));
-const { canonicalTaskTitle, latestActiveRun, sanitizeTaskBatchPayload } = require(path.join(root, 'server-task-batch.cjs'));
+const { canonicalTaskKey, canonicalTaskTitle, completionProof, latestActiveRun, sanitizeTaskBatchPayload } = require(path.join(root, 'server-task-batch.cjs'));
 
 test('les demandes multi-tâches et d’exécution sont reconnues sans intercepter un chat banal', () => {
   assert.equal(batchSignals('Crée les 6 tâches et délègue-les aux agents spécialisés'), true);
@@ -95,12 +95,17 @@ test('un batch exige des tâches avec un titre non vide', () => {
   assert.equal(valid.tasks[0].read_only, true);
 });
 
-test('un même titre ne peut apparaître deux fois dans un lot', () => {
+test('un même objectif ne peut apparaître deux fois dans un lot, sans confondre deux clients', () => {
   const payload = sanitizeTaskBatchPayload({ tasks: [
-    { titre: 'Mettre à jour la documentation' },
-    { titre: '  Mettre à jour — la documentation ' },
+    { titre: 'Mettre à jour la documentation', client_id: 'client-a' },
+    { titre: '  Mettre à jour — la documentation ', client_id: 'client-a' },
+    { titre: 'Mettre à jour la documentation', client_id: 'client-b' },
   ] });
-  assert.equal(payload.tasks.length, 1);
+  assert.equal(payload.tasks.length, 2);
+  assert.notEqual(
+    canonicalTaskKey({ titre: 'Audit', client_id: 'client-a' }),
+    canonicalTaskKey({ titre: 'Audit', client_id: 'client-b' }),
+  );
 });
 
 test('l’assignation proposée par le modèle reste une métadonnée non fiable', () => {
@@ -129,6 +134,10 @@ test('une délégation clôt la tâche uniquement après un résultat réel', ()
   assert.ok(reportIndex >= 0);
   assert.ok(completeIndex > reportIndex);
   assert.match(taskBatchSource, /status:\s*'completed'/);
+  const proof = completionProof({ completed: true, result: { audit_id: 'audit-1' } }, { id: 'nova-audit' });
+  assert.equal(proof.proof_status, 'verified');
+  assert.deepEqual(proof.evidence, [{ type: 'executor_result', reference: 'audit-1' }]);
+  assert.equal(completionProof({ completed: true, result: {} }), null);
 });
 
 test('un échec partiel n’annule pas les branches déjà exécutées', () => {
@@ -176,6 +185,7 @@ test('les identifiants réels du lot sont rendus visibles dans la réponse', () 
 
 test('le batch rapproche les tâches existantes par titre canonique', () => {
   assert.equal(canonicalTaskTitle('  Mise à jour — Documentation  '), 'mise a jour documentation');
+  assert.equal(canonicalTaskKey({ titre: 'Audit', client_id: 'c1', projet_id: 'p1' }), 'audit|c1|p1');
   assert.match(taskBatchSource, /\/data\/Tache\?limit=250/);
   assert.match(taskBatchSource, /status: 'already_running'/);
   assert.match(taskBatchSource, /reused: true/);

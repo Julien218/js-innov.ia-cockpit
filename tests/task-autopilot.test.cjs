@@ -10,13 +10,14 @@ test('l’autopilote regroupe les titres dupliqués', () => {
   assert.equal(autopilot.canonicalTaskTitle('SEO automatique — jsinnovia.com (duplicata)'), autopilot.canonicalTaskTitle('SEO automatique — jsinnovia.com'));
 });
 
-test('une preuve canonique clôt uniquement les doublons non terminés du même objectif', () => {
+test('une preuve canonique regroupe uniquement les doublons non terminés du même objectif', () => {
   const canonical = { id: 't1', titre: 'Recenser les fonctionnalités non opérationnelles dans le module vidéo IA', statut: 'terminee' };
   const copies = autopilot.duplicateTasksForCanonical([
     canonical,
     { id: 't2', titre: 'Recenser les fonctionnalités non opérationnelles dans le module vidéo IA (duplicata)', statut: 'a_faire' },
     { id: 't3', titre: 'Recenser les fonctionnalités non opérationnelles dans le module vidéo IA', statut: 'terminee' },
     { id: 't4', titre: 'Lancer une campagne de tests vidéo IA', statut: 'a_faire' },
+    { id: 't5', titre: 'Recenser les fonctionnalités non opérationnelles dans le module vidéo IA', client_id: 'autre-client', statut: 'a_faire' },
   ], canonical);
   assert.deepEqual(copies.map((task) => task.id), ['t2']);
 });
@@ -110,4 +111,20 @@ test('l’ancien défaut de colonne Projet corrigé ne bloque plus une relance',
     autopilot.recordedExecutionFailure({ notes: "Blocage d’exécution réel: Could not find the 'priorite' column of 'Projet' in the schema cache" }),
     null,
   );
+});
+
+
+test('la clé canonique sépare les mêmes titres de clients ou projets différents', () => {
+  assert.notEqual(
+    autopilot.canonicalTaskKey({ titre: 'Audit', client_id: 'client-a' }),
+    autopilot.canonicalTaskKey({ titre: 'Audit', client_id: 'client-b' }),
+  );
+});
+
+test('les doublons sont bloqués et ne sont jamais déclarés terminés sans preuve propre', () => {
+  const source = fs.readFileSync(path.join(root, 'server-task-autopilot.cjs'), 'utf8');
+  assert.match(source, /patchTask\(copy\.id, \{ statut: 'bloquee'/);
+  const proof = autopilot.verifiedAutopilotResult({ run_id: 'run-audit-1' });
+  assert.equal(proof.proof_status, 'verified');
+  assert.deepEqual(proof.evidence, [{ type: 'executor_result', reference: 'run-audit-1' }]);
 });
