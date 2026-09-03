@@ -1,0 +1,1 @@
+Retire le mot SIGNELYA de l’intérieur de l’icône et agrandit le symbole officiel S + écran + pixels sur mobile, PWA et ordinateur.

@@ -88,6 +88,7 @@ test("desktop and mobile icon sizes use the official text-free SIGNELYA symbol",
   assert.ok(icons.has("/signelya-icon-512.png:any"));
   assert.ok(icons.has("/signelya-icon-maskable-192.png:maskable"));
   assert.ok(icons.has("/signelya-icon-maskable-512.png:maskable"));
+  assert.deepEqual(readPngDimensions("public/signelya-app-icon-approved.png"), [1254, 1254]);
   assert.deepEqual(readPngDimensions("public/signelya-favicon.png"), [64, 64]);
   assert.deepEqual(readPngDimensions("public/signelya-apple-touch-icon.png"), [180, 180]);
   assert.deepEqual(readPngDimensions("public/signelya-icon-192.png"), [192, 192]);
@@ -100,9 +101,12 @@ test("desktop and mobile icon sizes use the official text-free SIGNELYA symbol",
   assert.equal(desktopIcon[0], desktopIcon[1]);
   assert.ok(desktopIcon[0] >= 512);
   assert.ok(fs.statSync(path.join(root, "electron", "icon.ico")).size > 0);
+  assert.ok(fs.statSync(path.join(root, "electron", "icon-compact.ico")).size > 0);
+  assert.ok(fs.statSync(path.join(root, "electron", "icon-small.ico")).size > 0);
   assert.match(elynea, /signelya-symbol-approved-512\.png/);
   assert.doesNotMatch(indexHtml, /signelya-symbol-master\.svg/);
   assert.equal(fs.existsSync(path.join(root, "public", "signelya-symbol-master.svg")), false);
+  assert.match(serviceWorker, /signelya-shell-v2-symbol-only/);
 });
 
 test("the public landing page offers a proper mobile app installation", () => {

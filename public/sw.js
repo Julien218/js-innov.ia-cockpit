@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'signelya-shell-v1';
+const CACHE_VERSION = 'signelya-shell-v2-symbol-only';
 const SHELL = ['/login', '/manifest.json', '/signelya-icon-192.png', '/signelya-icon-512.png'];
 
 self.addEventListener('install', event => {
