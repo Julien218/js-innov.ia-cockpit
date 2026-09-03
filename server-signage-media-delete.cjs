@@ -1,6 +1,7 @@
 const express = require('express');
 const { requireSession } = require('./server-security.cjs');
 const { postgresRest } = require('./server-postgres.cjs');
+const { fetchWithPathRoot } = require('./server-signage-dropbox-scope.cjs');
 
 const router = express.Router();
 const DROPBOX_ACCESS_TOKEN = process.env.DROPBOX_ACCESS_TOKEN || '';
@@ -46,7 +47,7 @@ async function deleteDropboxPath(dropboxPath) {
   if (!dropboxPath) return;
   const accessToken = await getDropboxToken();
   if (!accessToken) throw new Error('Dropbox non configuré pour supprimer le fichier.');
-  const response = await fetch('https://api.dropboxapi.com/2/files/delete_v2', {
+  const response = await fetchWithPathRoot('https://api.dropboxapi.com/2/files/delete_v2', {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ path: dropboxPath })
