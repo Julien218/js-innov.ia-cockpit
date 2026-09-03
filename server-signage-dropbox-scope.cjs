@@ -1,21 +1,39 @@
 /**
  * server-signage-dropbox-scope.cjs
- * 
+ *
  * Gestion centralisée du scope Dropbox pour Digital Signage.
  * - Normalise la racine Signage (SIGNAGE_DROPBOX_ROOT_PATH avec fallbacks)
- * - Ajoute l'en-tête Dropbox-API-Path-Root avec namespace_id quand configuré
- * - NE modifie PAS l'authentification OAuth
+ * - Ajoute l'en-tête Dropbox-API-Path-Root avec namespace_id UNIQUEMENT sur api.dropboxapi.com et content.dropboxapi.com
+ * - NE modifie PAS l'authentification OAuth ni les appels externes
  */
-
-const SIGNAGE_ROOT = (process.env.SIGNAGE_DROPBOX_ROOT_PATH || process.env.DROPBOX_ROOT_PATH || '/Clients').replace(/\/$/, '');
-const SIGNAGE_NAMESPACE_ID = (process.env.SIGNAGE_DROPBOX_NAMESPACE_ID || '').trim();
 
 /**
- * Normalise un chemin Dropbox : supprime trailing slash, normalise les barres
+ * Normalise un chemin Dropbox de façon robuste
+ * - Trim
+ * - Convertit les backslashes en slashes
+ * - Remplace les slashes multiples par un seul
+ * - Ajoute préfixe `/` si absent
+ * - Supprime trailing slash sauf pour `/` uniquement
  */
 function normalizePath(path) {
-  return String(path || '').trim().replace(/\/$/, '').replace(/\\\\/g, '/');
+  let result = String(path || '').trim()
+    .replace(/\\/g, '/')
+    .replace(/\/+/g, '/');
+
+  if (!result.startsWith('/')) {
+    result = '/' + result;
+  }
+
+  if (result !== '/' && result.endsWith('/')) {
+    result = result.slice(0, -1);
+  }
+
+  return result;
 }
+
+const SIGNAGE_ROOT_PATH = process.env.SIGNAGE_DROPBOX_ROOT_PATH || process.env.DROPBOX_ROOT_PATH || '/Clients';
+const SIGNAGE_ROOT = normalizePath(SIGNAGE_ROOT_PATH);
+const SIGNAGE_NAMESPACE_ID = (process.env.SIGNAGE_DROPBOX_NAMESPACE_ID || '').trim();
 
 /**
  * Retourne la racine Signage normalisée
@@ -25,35 +43,39 @@ function getSignageRoot() {
 }
 
 /**
- * Ajoute l'en-tête Dropbox-API-Path-Root pour tous les appels fichiers,
- * SAUF les appels OAuth token.
- * 
+ * Ajoute l'en-tête Dropbox-API-Path-Root UNIQUEMENT pour api.dropboxapi.com et content.dropboxapi.com
+ * Ne l'ajoute PAS pour OAuth token ni URL externe
+ *
  * @param {Object} headers - objet headers existant
- * @param {string} endpoint - l'URL complète de l'appel (détecte /oauth2/token)
- * @returns {Object} headers modifiés
+ * @param {string} endpoint - l'URL complète de l'appel (détecte domaine et path)
+ * @returns {Object} headers modifiés ou originaux
  */
 function addPathRootHeader(headers = {}, endpoint = '') {
   const result = { ...headers };
-  
-  // Aucun en-tête Path-Root sur OAuth token
-  if (endpoint.includes('/oauth2/token')) {
+
+  // Vérifier que c'est un appel Dropbox FILES (pas OAuth, pas externe)
+  const isDropboxFilesApi =
+    (endpoint.includes('api.dropboxapi.com/') || endpoint.includes('content.dropboxapi.com/')) &&
+    !endpoint.includes('/oauth2/');
+
+  if (!isDropboxFilesApi) {
     return result;
   }
-  
-  // Ajoute Path-Root si namespace_id est défini
+
+  // Ajouter Path-Root si namespace_id est défini
   if (SIGNAGE_NAMESPACE_ID) {
     result['Dropbox-API-Path-Root'] = JSON.stringify({
       ".tag": "namespace_id",
       "namespace_id": SIGNAGE_NAMESPACE_ID
     });
   }
-  
+
   return result;
 }
 
 /**
  * Wrapper pour fetch() qui injecte l'en-tête Path-Root automatiquement
- * @param {string} url - l'URL de l'appel Dropbox
+ * @param {string} url - l'URL de l'appel
  * @param {Object} init - options fetch()
  * @returns {Promise<Response>}
  */
