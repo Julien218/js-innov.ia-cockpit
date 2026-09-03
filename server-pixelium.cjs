@@ -6,7 +6,6 @@ const { requireSession } = require('./server-security.cjs');
 
 const router = express.Router();
 const WORKER_INTERVAL_MS = 30_000;
-const LOCK_TIMEOUT_MS = 5 * 60_000;
 const DEFAULT_COMMERCIAL_CODE = 'JP';
 const QUOTE_DELAY_MINUTES = 35;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -47,6 +46,7 @@ function normalizeRequest(body = {}) {
   const offerCode = clean(body.offerCode || body.offer || 'annual', 40).toLowerCase();
   let billingMode = clean(body.billingMode, 40).toLowerCase() || null;
   const commercialCode = clean(body.commercialCode || DEFAULT_COMMERCIAL_CODE, 20).toUpperCase();
+  const externalId = clean(body.externalId || body.submissionId, 120) || crypto.randomUUID();
 
   if (!firstName || !lastName || !email || !phone) throw new Error('Coordonnées incomplètes');
   if (!EMAIL_REGEX.test(email)) throw new Error('Adresse e-mail invalide');
@@ -57,6 +57,7 @@ function normalizeRequest(body = {}) {
   if (!normalizeBoolean(body.rgpdAccepted ?? body.rgpd ?? body.privacyAccepted)) throw new Error('Consentement RGPD requis');
 
   return {
+    externalId,
     firstName,
     lastName,
     email,
@@ -154,8 +155,8 @@ function confirmationEmail(request) {
   const fullName = `${request.first_name} ${request.last_name}`.trim();
   return {
     subject: `Pixelium — demande reçue ${request.commercial_reference}`,
-    text: `Bonjour ${fullName},\n\nVotre demande Pixelium a bien été reçue sous la référence ${request.commercial_reference}. Nous préparons votre devis personnalisé.\n\nPixelium`,
-    html: `<div style="font-family:Arial,sans-serif;color:#172033;line-height:1.55"><h2>Merci ${escapeHtml(request.first_name)}.</h2><p>Votre demande <strong>Pixelium</strong> a bien été reçue.</p><p>Référence : <strong>${escapeHtml(request.commercial_reference)}</strong></p><p>Nous préparons votre devis personnalisé. Une fois la tarification configurée, l’envoi automatique est programmé 35 minutes après votre demande.</p><p>À bientôt,<br><strong>Pixelium</strong></p></div>`,
+    text: `Bonjour ${fullName},\n\nVotre demande Pixelium a bien été reçue sous la référence ${request.commercial_reference}. Votre devis personnalisé est programmé pour être transmis environ 35 minutes après votre demande.\n\nPixelium`,
+    html: `<div style="font-family:Arial,sans-serif;color:#172033;line-height:1.55"><h2>Merci ${escapeHtml(request.first_name)}.</h2><p>Votre demande <strong>Pixelium</strong> a bien été reçue.</p><p>Référence : <strong>${escapeHtml(request.commercial_reference)}</strong></p><p>Votre devis personnalisé est programmé pour être transmis environ <strong>35 minutes</strong> après votre demande.</p><p>À bientôt,<br><strong>Pixelium</strong></p></div>`,
   };
 }
 
@@ -189,6 +190,13 @@ async function createRequest(input) {
   const client = await pool.connect();
   try {
     await client.query('begin');
+
+    const duplicate = await client.query('select * from pixelium_quote_requests where external_id=$1 limit 1', [input.externalId]);
+    if (duplicate.rowCount) {
+      await client.query('commit');
+      return duplicate.rows[0];
+    }
+
     const commercialResult = await client.query(
       'select * from pixelium_commercials where code=$1 and active=true limit 1',
       [input.commercialCode]
@@ -199,10 +207,10 @@ async function createRequest(input) {
     const quoteAt = new Date(Date.now() + QUOTE_DELAY_MINUTES * 60_000);
     const inserted = await client.query(
       `insert into pixelium_quote_requests
-        (commercial_id,commercial_code,source,offer_code,billing_mode,first_name,last_name,company,email,phone,message,visual_creation,consent_at,status,commission_rate_bps,quote_send_at,metadata)
-       values($1,$2,'pixelium-espace-c',$3,$4,$5,$6,$7,$8,$9,$10,$11,now(),'received',$12,$13,$14::jsonb)
+        (external_id,commercial_id,commercial_code,source,offer_code,billing_mode,first_name,last_name,company,email,phone,message,visual_creation,consent_at,status,commission_rate_bps,quote_send_at,metadata)
+       values($1,$2,$3,'pixelium-espace-c',$4,$5,$6,$7,$8,$9,$10,$11,$12,now(),'received',$13,$14,$15::jsonb)
        returning *`,
-      [commercial.id, commercial.code, input.offerCode, input.billingMode, input.firstName, input.lastName, input.company, input.email, input.phone, input.message, input.visualCreation, commercial.commission_rate_bps, quoteAt.toISOString(), JSON.stringify(input.metadata)]
+      [input.externalId, commercial.id, commercial.code, input.offerCode, input.billingMode, input.firstName, input.lastName, input.company, input.email, input.phone, input.message, input.visualCreation, commercial.commission_rate_bps, quoteAt.toISOString(), JSON.stringify(input.metadata)]
     );
     let request = inserted.rows[0];
     const year = new Date(request.created_at).getUTCFullYear();
@@ -223,7 +231,7 @@ async function createRequest(input) {
        values($1,'confirmation','pending',now(),$2),($1,'quote','pending',$3,$4)`,
       [request.id, `pixelium-confirm-${request.id}`, quoteAt.toISOString(), `pixelium-quote-${request.id}`]
     );
-    await addEvent(client, request.id, 'request_received', { commercialCode: commercial.code, quoteSendAt: quoteAt.toISOString() });
+    await addEvent(client, request.id, 'request_received', { externalId: input.externalId, commercialCode: commercial.code, quoteSendAt: quoteAt.toISOString() });
     await client.query('commit');
     return request;
   } catch (error) {
@@ -269,8 +277,7 @@ async function claimJobs() {
 }
 
 async function markBlocked(jobId, message) {
-  const pool = getPool();
-  await pool.query("update pixelium_email_jobs set status='blocked',locked_at=null,last_error=$2,updated_at=now() where id=$1", [jobId, message]);
+  await getPool().query("update pixelium_email_jobs set status='blocked',locked_at=null,last_error=$2,updated_at=now() where id=$1", [jobId, message]);
 }
 
 async function markFailure(row, error) {
@@ -407,19 +414,20 @@ router.patch('/commercials/:code', requireSession('admin'), async (req, res) => 
   try {
     await ensureReady();
     const code = clean(req.params.code, 20).toUpperCase();
-    const rate = req.body.commissionRateBps === null || req.body.commissionRateBps === undefined ? null : Number(req.body.commissionRateBps);
-    if (rate !== null && (!Number.isInteger(rate) || rate < 0 || rate > 10000)) return res.status(400).json({ error: 'Taux de commission invalide' });
+    const rateProvided = Object.prototype.hasOwnProperty.call(req.body || {}, 'commissionRateBps');
+    const rate = !rateProvided || req.body.commissionRateBps === null ? null : Number(req.body.commissionRateBps);
+    if (rateProvided && rate !== null && (!Number.isInteger(rate) || rate < 0 || rate > 10000)) return res.status(400).json({ error: 'Taux de commission invalide' });
     const active = req.body.active === undefined ? null : Boolean(req.body.active);
     const displayName = req.body.displayName === undefined ? null : clean(req.body.displayName, 160);
-    const result = await getPool().query(
-      `update pixelium_commercials set
-         commission_rate_bps=coalesce($2,commission_rate_bps),
-         active=coalesce($3,active),
-         display_name=coalesce(nullif($4,''),display_name),
-         updated_at=now()
-       where code=$1 returning id,code,display_name,commission_rate_bps,active,metadata,updated_at`,
-      [code, rate, active, displayName]
-    );
+    const result = rateProvided
+      ? await getPool().query(
+          `update pixelium_commercials set commission_rate_bps=$2,active=coalesce($3,active),display_name=coalesce(nullif($4,''),display_name),updated_at=now() where code=$1 returning id,code,display_name,commission_rate_bps,active,metadata,updated_at`,
+          [code, rate, active, displayName]
+        )
+      : await getPool().query(
+          `update pixelium_commercials set active=coalesce($2,active),display_name=coalesce(nullif($3,''),display_name),updated_at=now() where code=$1 returning id,code,display_name,commission_rate_bps,active,metadata,updated_at`,
+          [code, active, displayName]
+        );
     if (!result.rowCount) return res.status(404).json({ error: 'Commercial introuvable' });
     res.json({ success: true, commercial: result.rows[0] });
   } catch (error) {
