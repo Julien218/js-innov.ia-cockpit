@@ -23,7 +23,7 @@ function providerFromEmail(email) {
 function normalizeNumber(raw) {
   const value = String(raw || '').replace(/\u00a0/g, ' ').trim();
   if (!value) return null;
-  const compact = value.replace(/\s/g, '');
+  const compact = value.replace(/[\s'’]/g, '');
   const comma = compact.lastIndexOf(',');
   const dot = compact.lastIndexOf('.');
   let normalized = compact;
@@ -37,9 +37,9 @@ function normalizeNumber(raw) {
 function parseMoneyAmount(text) {
   const source = String(text || '').replace(/\u00a0/g, ' ');
   const patterns = [
-    /(?:total(?:\s+ttc)?|montant(?:\s+(?:restant\s+)?[àa]\s+payer)?|amount due|balance due)[^\d$€]{0,24}(?:([$€])\s*)?(\d{1,3}(?:[ ,.']\d{3})*(?:[,.]\d{2})|\d+[,.]\d{2})(?:\s*(USD|EUR))?/i,
-    /(?:([$€])\s*)(\d{1,3}(?:[ ,.']\d{3})*(?:[,.]\d{2})|\d+[,.]\d{2})(?:\s*(USD|EUR))?/i,
-    /(\d{1,3}(?:[ ,.']\d{3})*(?:[,.]\d{2})|\d+[,.]\d{2})\s*(USD|EUR|€)/i,
+    /(?:total(?:\s+ttc)?|montant(?:\s+(?:restant\s+)?[àa]\s+payer)?|amount due|balance due)[^\d$€]{0,24}(?:([$€])\s*)?(\d{1,3}(?:[ ,.'’]\d{3})*(?:[,.]\d{2})|\d+[,.]\d{2})(?:\s*(USD|EUR))?/i,
+    /(?:([$€])\s*)(\d{1,3}(?:[ ,.'’]\d{3})*(?:[,.]\d{2})|\d+[,.]\d{2})(?:\s*(USD|EUR))?/i,
+    /(\d{1,3}(?:[ ,.'’]\d{3})*(?:[,.]\d{2})|\d+[,.]\d{2})\s*(USD|EUR|€)/i,
   ];
   for (const pattern of patterns) {
     const match = source.match(pattern);
