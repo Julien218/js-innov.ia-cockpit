@@ -22,3 +22,10 @@ test('Avatar Factory keeps generated IDs synchronized until manual override', ()
   assert.ok(page.includes('characterIdEditedRef'));
   assert.ok(page.includes("character_id: characterIdEditedRef.current ? value.character_id : slug(subjectName, '')"));
 });
+
+test('Avatar Factory enforces Olivier technical-cost-only billing', () => {
+  assert.ok(page.includes("form.client_id.trim().toLowerCase() === 'olivier'"));
+  assert.ok(page.includes("? 'technical_costs_only'"));
+  assert.ok(page.includes("disabled={form.client_id.trim().toLowerCase() === 'olivier'}"));
+  assert.ok(page.includes('Olivier : coûts techniques uniquement'));
+});
