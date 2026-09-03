@@ -51,8 +51,6 @@ async function findExistingDocument(fingerprint, organisation) {
   } catch {
     return null;
   }
-}  return null;
-  }
 }
 
 function publicDocument(document, fingerprint, duplicate = false) {
