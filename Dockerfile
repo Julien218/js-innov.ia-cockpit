@@ -27,11 +27,12 @@ COPY --from=builder /app/server.cjs ./server.cjs
 # copied separately because the wildcard intentionally targets server-*.cjs.
 COPY --from=builder /app/server-*.cjs ./
 COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/scripts ./scripts
 COPY assets ./assets
 COPY public ./public
 
 RUN npm ci --omit=dev --legacy-peer-deps
-RUN test -f /app/server-billing-template.cjs && test -f /app/server-cost-centers.cjs && echo "Server modules check OK"
+RUN test -f /app/server-billing-template.cjs && test -f /app/server-cost-centers.cjs && test -f /app/scripts/migrate-signage-dropbox-20260903.cjs && echo "Server modules and migration script check OK"
 
 RUN mkdir -p /etc/nginx/http.d && cat > /etc/nginx/http.d/default.conf << 'NGINXEOF'
 server {
