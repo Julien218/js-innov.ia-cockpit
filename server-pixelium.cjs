@@ -8,9 +8,10 @@ const router = express.Router();
 const WORKER_INTERVAL_MS = 30_000;
 const DEFAULT_COMMERCIAL_CODE = 'JP';
 const QUOTE_DELAY_MINUTES = 35;
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_REGEX = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
 const ALLOWED_OFFERS = new Set(['annual', 'festival']);
 const ALLOWED_BILLING = new Set(['monthly', 'annual', 'one_off']);
+const COMMERCIAL_CODE_REGEX = /^[A-Z0-9-]{2,20}$/;
 
 function safeHashEqual(a, b) {
   const left = crypto.createHash('sha256').update(String(a || '')).digest();
@@ -137,7 +138,7 @@ function escapeHtml(value) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+    .replace(/\"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
 
@@ -155,7 +156,7 @@ function confirmationEmail(request) {
   const fullName = `${request.first_name} ${request.last_name}`.trim();
   return {
     subject: `Pixelium — demande reçue ${request.commercial_reference}`,
-    text: `Bonjour ${fullName},\n\nVotre demande Pixelium a bien été reçue sous la référence ${request.commercial_reference}. Votre devis personnalisé est programmé pour être transmis environ 35 minutes après votre demande.\n\nPixelium`,
+    text: `Bonjour ${fullName},\\n\\nVotre demande Pixelium a bien été reçue sous la référence ${request.commercial_reference}. Votre devis personnalisé est programmé pour être transmis environ 35 minutes après votre demande.\\n\\nPixelium`,
     html: `<div style="font-family:Arial,sans-serif;color:#172033;line-height:1.55"><h2>Merci ${escapeHtml(request.first_name)}.</h2><p>Votre demande <strong>Pixelium</strong> a bien été reçue.</p><p>Référence : <strong>${escapeHtml(request.commercial_reference)}</strong></p><p>Votre devis personnalisé est programmé pour être transmis environ <strong>35 minutes</strong> après votre demande.</p><p>À bientôt,<br><strong>Pixelium</strong></p></div>`,
   };
 }
@@ -167,8 +168,8 @@ function quoteEmail(request, pricing) {
   const visual = request.visual_creation ? '<li>Création/adaptation visuelle demandée : oui</li>' : '<li>Création/adaptation visuelle demandée : non</li>';
   return {
     subject: `Votre devis Pixelium — ${request.commercial_reference}`,
-    text: `Bonjour ${fullName},\n\nVoici votre devis Pixelium.\nOffre : ${offerLabel(request)}\nMontant : ${amount} ${period} ${pricing.taxMode}\nRéférence : ${request.commercial_reference}\n\nCe devis est préparé automatiquement à partir des informations transmises. Le contrat définitif sera établi après votre accord.\n\nPixelium`,
-    html: `<div style="font-family:Arial,sans-serif;color:#172033;line-height:1.55;max-width:680px;margin:auto"><div style="padding:20px 24px;background:#111827;color:#fff;border-radius:14px 14px 0 0"><h1 style="margin:0;font-size:24px">PIXELIUM</h1><p style="margin:6px 0 0">Votre devis personnalisé</p></div><div style="padding:24px;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 14px 14px"><p>Bonjour ${escapeHtml(request.first_name)},</p><p>Votre devis est prêt.</p><table style="width:100%;border-collapse:collapse;margin:20px 0"><tr><td style="padding:10px;border-bottom:1px solid #e5e7eb">Référence</td><td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right"><strong>${escapeHtml(request.commercial_reference)}</strong></td></tr><tr><td style="padding:10px;border-bottom:1px solid #e5e7eb">Offre</td><td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right">${escapeHtml(offerLabel(request))}</td></tr><tr><td style="padding:10px">Montant</td><td style="padding:10px;text-align:right;font-size:20px"><strong>${escapeHtml(amount)} ${escapeHtml(period)} ${escapeHtml(pricing.taxMode)}</strong></td></tr></table><ul>${visual}</ul><p style="font-size:13px;color:#6b7280">Le contrat définitif Pixelium sera généré après votre accord. La référence commerciale ci-dessus est conservée sur l’ensemble du dossier.</p><p>Bien à vous,<br><strong>Pixelium</strong></p></div></div>`,
+    text: `Bonjour ${fullName},\\n\\nVoici votre devis Pixelium.\\nOffre : ${offerLabel(request)}\\nMontant : ${amount} ${period} ${pricing.taxMode}\\nRéférence : ${request.commercial_reference}\\n\\nCe devis est préparé automatiquement à partir des informations transmises. Le contrat définitif sera établi après votre accord.\\n\\nPixelium`,
+    html: `<div style="font-family:Arial,sans-serif;color:#172033;line-height:1.55;max-width:680px;margin:auto"><div style="padding:20px 24px;background:#111827;color:#fff;border-radius:14px 14px 0 0"><h1 style="margin:0;font-size:24px">PIXELIUM</h1><p style="margin:6px 0 0">Votre devis personnalisé</p></div><div style="padding:24px;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 14px 14px"><p>Bonjour ${escapeHtml(request.first_name)},</p><p>Votre devis est prêt.</p><table style="width:100%;border-collapse:collapse;margin:20px 0"><tr><td style="padding:10px;border-bottom:1px solid #e5e7eb">Référence</td><td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right"><strong>${escapeHtml(request.commercial_reference)}</strong></td></tr><tr><td style="padding:10px;border-bottom:1px solid #e5e7eb">Offre</td><td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right">${escapeHtml(offerLabel(request))}</td></tr><tr><td style="padding:10px">Montant</td><td style="padding:10px;text-align:right;font-size:20px"><strong>${escapeHtml(amount)} ${escapeHtml(period)} ${escapeHtml(pricing.taxMode)}</strong></td></tr></table><ul>${visual}</ul><p style="font-size:13px;color:#6b7280">Le contrat définitif Pixelium sera généré après votre accord. La référence commerciale ci-dessus est conservée sur l'ensemble du dossier.</p><p>Bien à vous,<br><strong>Pixelium</strong></p></div></div>`,
   };
 }
 
@@ -382,6 +383,49 @@ router.post('/request', requireBridge, async (req, res) => {
   }
 });
 
+router.post('/commercials', requireSession('admin'), async (req, res) => {
+  try {
+    await ensureReady();
+    const code = clean(req.body?.code || '', 20).toUpperCase();
+    const displayName = clean(req.body?.displayName || '', 160);
+    const commissionRateBps = req.body?.commissionRateBps !== undefined ? Number(req.body.commissionRateBps) : null;
+
+    // Validation du code
+    if (!code || !COMMERCIAL_CODE_REGEX.test(code)) {
+      return res.status(400).json({ error: 'Code commercial invalide (2-20 caractères majuscules/chiffres/tiret)' });
+    }
+
+    // Validation du displayName
+    if (!displayName) {
+      return res.status(400).json({ error: 'Nom à afficher requis' });
+    }
+
+    // Validation du taux de commission si fourni
+    if (commissionRateBps !== null && (!Number.isInteger(commissionRateBps) || commissionRateBps < 0 || commissionRateBps > 10000)) {
+      return res.status(400).json({ error: 'Taux de commission invalide' });
+    }
+
+    const pool = getPool();
+    const result = await pool.query(
+      `insert into pixelium_commercials(code,display_name,commission_rate_bps,active,metadata,created_at,updated_at)
+       values($1,$2,$3,true,$4::jsonb,now(),now())
+       on conflict(code) do update set active=pixelium_commercials.active
+       returning id,code,display_name,commission_rate_bps,active,metadata`,
+      [code, displayName, commissionRateBps || 0, JSON.stringify({ source: 'admin' })]
+    );
+
+    if (result.rowCount === 0 || result.rows[0].active === false) {
+      // Conflit : le commercial existe déjà (et n'a pas changé car c'est un update without insert)
+      return res.status(409).json({ error: 'Code commercial déjà existant' });
+    }
+
+    res.status(201).json({ success: true, commercial: result.rows[0] });
+  } catch (error) {
+    console.error('[pixelium] POST /commercials:', error.message);
+    res.status(503).json({ error: error.message });
+  }
+});
+
 router.get('/requests', requireSession('admin'), async (req, res) => {
   try {
     await ensureReady();
@@ -419,6 +463,17 @@ router.patch('/commercials/:code', requireSession('admin'), async (req, res) => 
     if (rateProvided && rate !== null && (!Number.isInteger(rate) || rate < 0 || rate > 10000)) return res.status(400).json({ error: 'Taux de commission invalide' });
     const active = req.body.active === undefined ? null : Boolean(req.body.active);
     const displayName = req.body.displayName === undefined ? null : clean(req.body.displayName, 160);
+
+    // Protection JP : empêcher la désactivation
+    if (code === 'JP' && active === false) {
+      return res.status(409).json({ error: 'Julien P. est un commercial protégé et ne peut pas être désactivé' });
+    }
+
+    // Protection JP : empêcher de changer le displayName vers autre chose que "Julien P."
+    if (code === 'JP' && displayName && displayName !== 'Julien P.') {
+      return res.status(409).json({ error: 'Le nom "Julien P." ne peut pas être modifié pour ce commercial protégé' });
+    }
+
     const result = rateProvided
       ? await getPool().query(
           `update pixelium_commercials set commission_rate_bps=$2,active=coalesce($3,active),display_name=coalesce(nullif($4,''),display_name),updated_at=now() where code=$1 returning id,code,display_name,commission_rate_bps,active,metadata,updated_at`,
@@ -456,3 +511,4 @@ router.priceConfigFor = priceConfigFor;
 router.smtpConfig = smtpConfig;
 
 module.exports = router;
+
