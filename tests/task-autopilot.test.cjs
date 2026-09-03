@@ -10,6 +10,17 @@ test('l’autopilote regroupe les titres dupliqués', () => {
   assert.equal(autopilot.canonicalTaskTitle('SEO automatique — jsinnovia.com (duplicata)'), autopilot.canonicalTaskTitle('SEO automatique — jsinnovia.com'));
 });
 
+test('le planificateur ne rouvre jamais une tâche bloquée ou terminée', () => {
+  assert.equal(autopilot.isDispatchableTask({ statut: 'a_faire' }), true);
+  assert.equal(autopilot.isDispatchableTask({ statut: 'en_cours' }), true);
+  assert.equal(autopilot.isDispatchableTask({ statut: 'bloquee' }), false);
+  assert.equal(autopilot.isDispatchableTask({ statut: 'terminee' }), false);
+
+  const source = fs.readFileSync(path.join(root, 'server-task-autopilot.cjs'), 'utf8');
+  assert.match(source, /rowsFrom\(payload\)\.filter\(isDispatchableTask\)/);
+  assert.match(source, /executableTasks\.push\(\{\s*task_id: task\.id,/);
+});
+
 test('une preuve canonique regroupe uniquement les doublons non terminés du même objectif', () => {
   const canonical = { id: 't1', titre: 'Recenser les fonctionnalités non opérationnelles dans le module vidéo IA', statut: 'terminee' };
   const copies = autopilot.duplicateTasksForCanonical([
