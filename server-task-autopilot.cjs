@@ -38,6 +38,12 @@ function taskStateRank(task = {}) {
   return 3;
 }
 
+const DISPATCHABLE_TASK_STATUSES = new Set(['a faire', 'en cours']);
+
+function isDispatchableTask(task = {}) {
+  return DISPATCHABLE_TASK_STATUSES.has(canonicalTaskTitle(task?.statut || task?.status));
+}
+
 function taskTimestamp(task = {}) {
   return Date.parse(task?.updated_at || task?.created_at || task?.created_date || '') || 0;
 }
@@ -253,7 +259,9 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
   state.last_error = null;
   try {
     const payload = await agentRequest('/data/Tache?limit=250');
-    const tasks = rowsFrom(payload).filter((task) => !['terminee', 'terminée'].includes(norm(task.statut || task.status)));
+    // Une tâche bloquée ou terminée reste fermée. Seule une reprise explicitement
+    // ciblée par l’utilisateur peut la rouvrir; le planificateur ne le fait jamais.
+    const tasks = rowsFrom(payload).filter(isDispatchableTask);
     const groups = new Map();
     for (const task of tasks) {
       const key = canonicalTaskKey(task);
@@ -303,6 +311,7 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
         continue;
       }
       executableTasks.push({
+        task_id: task.id,
         titre: task.titre || task.title,
         description: task.description,
         notes: task.notes,
@@ -416,4 +425,4 @@ function startTaskAutopilotScheduler() {
   return { started: true, interval_ms: AUTOPILOT_INTERVAL_MS };
 }
 
-module.exports = { router, canonicalTaskKey, canonicalTaskTitle, duplicateTasksForCanonical, selectCanonicalTask, classifyTask, recordedExecutionFailure, rowsFrom, summarizeBusinessData, verifiedAutopilotResult, runAutopilot, startTaskAutopilotScheduler, state };
+module.exports = { router, canonicalTaskKey, canonicalTaskTitle, duplicateTasksForCanonical, selectCanonicalTask, isDispatchableTask, classifyTask, recordedExecutionFailure, rowsFrom, summarizeBusinessData, verifiedAutopilotResult, runAutopilot, startTaskAutopilotScheduler, state };
