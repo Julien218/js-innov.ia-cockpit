@@ -20,7 +20,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
   const { role, canAccess } = usePermissions();
   const { hasModule, isLoading } = useCommerceEntitlements();
   const items = NAV_ITEMS.filter(item => canAccess(item.path) && (role !== "client" || (!isLoading && hasModule(item.module))));
-  const handleLogout = () => { logout(); navigate("/login"); };
+  const handleLogout = async () => { await logout(); navigate("/login", { replace: true }); };
 
   return <>
     {mobileOpen && <div className="fixed inset-0 z-40 bg-[#030711]/75 backdrop-blur-sm md:hidden" onClick={onCloseMobile} />}

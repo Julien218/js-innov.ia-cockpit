@@ -102,6 +102,7 @@ test("desktop and mobile icon sizes use the official text-free SIGNELYA symbol",
   assert.ok(fs.statSync(path.join(root, "electron", "icon.ico")).size > 0);
   assert.match(elynea, /signelya-symbol-approved-512\.png/);
   assert.doesNotMatch(indexHtml, /signelya-symbol-master\.svg/);
+  assert.equal(fs.existsSync(path.join(root, "public", "signelya-symbol-master.svg")), false);
 });
 
 test("the public landing page offers a proper mobile app installation", () => {
@@ -112,4 +113,18 @@ test("the public landing page offers a proper mobile app installation", () => {
   assert.match(installer, /appinstalled/);
   assert.match(main, /serviceWorker\.register\('\/sw\.js'\)/);
   assert.match(serviceWorker, /self\.addEventListener\('fetch'/);
+});
+
+test("shared links use the approved SIGNELYA social image", () => {
+  assert.match(indexHtml, /property="og:image" content="https:\/\/signelya\.jsinnovia\.com\/signelya-social-share\.jpg"/);
+  assert.match(indexHtml, /name="twitter:card" content="summary_large_image"/);
+  assert.match(indexHtml, /name="twitter:image" content="https:\/\/signelya\.jsinnovia\.com\/signelya-social-share\.jpg"/);
+  assert.ok(fs.statSync(path.join(root, "public", "signelya-social-share.jpg")).size > 0);
+});
+
+test("logout is always visible and waits for the server session to close", () => {
+  assert.match(topbar, /aria-label="Se déconnecter"/);
+  assert.match(topbar, /await logout\(\)/);
+  assert.match(sidebar, /await logout\(\)/);
+  assert.match(topbar, /navigate\("\/login", \{ replace: true \}\)/);
 });

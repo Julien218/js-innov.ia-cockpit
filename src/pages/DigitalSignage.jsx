@@ -1,6 +1,6 @@
 import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Upload, Download, ListVideo, CalendarClock, Wifi, HardDrive, Eye, ArrowUp, ArrowDown, CheckCircle2, CircleAlert, Play, Pause, Clock3, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, MonitorPlay } from "lucide-react";
+import { Upload, Download, ListVideo, CalendarClock, Wifi, HardDrive, Eye, ArrowUp, ArrowDown, CheckCircle2, CircleAlert, Play, Pause, Clock3, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, MonitorPlay, ChevronDown } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import SignelyaWordmark from "@/components/brand/SignelyaWordmark";
 
@@ -62,6 +62,11 @@ const STATUS_TONES = {
 };
 
 const StatusCard = ({ icon: Icon, label, value, detail, tone = "blue" }) => <div className={`rounded-2xl border bg-card p-4 shadow-sm ${STATUS_TONES[tone]}`}><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-current/10"><Icon className="h-5 w-5" /></div><div><p className="text-xs text-muted-foreground">{label}</p><p className="text-sm font-semibold text-foreground">{value}</p>{detail && <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>}</div></div></div>;
+
+const DisclosureSummary = ({ title, detail }) => <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-3 py-3 [&::-webkit-details-marker]:hidden">
+  <span className="min-w-0"><span className="block text-sm font-semibold">{title}</span>{detail && <span className="mt-0.5 block text-xs text-muted-foreground">{detail}</span>}</span>
+  <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
+</summary>;
 
 const MEDIA_STATUS_LABELS = {
   ready: "Prêt à diffuser",
@@ -282,6 +287,7 @@ export default function DigitalSignage() {
   const [preview, setPreview] = React.useState(null);
   const [previewError, setPreviewError] = React.useState("");
   const [previewPublicationId, setPreviewPublicationId] = React.useState("");
+  const [mediaPreviewOpen, setMediaPreviewOpen] = React.useState(false);
   const fileInput = React.useRef(null);
   const clientsQuery = useQuery({ queryKey: ["signage-managed-clients"], queryFn: () => api("/manage/clients"), enabled: isAdmin, staleTime: 60000 });
   const diagnosticsQuery = useQuery({ queryKey: ["signage-player-diagnostics"], queryFn: () => api("/manage/player-diagnostics"), enabled: isAdmin, refetchInterval: 30000 });
@@ -381,6 +387,7 @@ export default function DigitalSignage() {
     setPreviewError("");
     const result = await api(`/manage/media/${mediaItem.id}/download`, {}, managedClient);
     setPreview({ ...mediaItem, url: result.url });
+    setMediaPreviewOpen(true);
   }, "Prévisualisation chargée.");
 
   return <div className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
@@ -454,9 +461,9 @@ export default function DigitalSignage() {
       </div>
 
       <div className="space-y-4 p-4 md:p-5">
-        {scheduledPublications.length > 0 ? <div>
-          <div className="mb-2 flex items-center justify-between gap-3"><p className="text-sm font-semibold">Toutes les diffusions programmées</p><span className="text-xs text-muted-foreground">{scheduledPublications.length} programmation{scheduledPublications.length > 1 ? "s" : ""}</span></div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {scheduledPublications.length > 0 ? <details className="group rounded-2xl border bg-muted/15">
+          <DisclosureSummary title="Toutes les diffusions programmées" detail={`${scheduledPublications.length} programmation${scheduledPublications.length > 1 ? "s" : ""} · Touchez pour voir les détails`} />
+          <div className="grid gap-2 border-t p-3 sm:grid-cols-2 lg:grid-cols-3">
             {scheduledPublications.map(publication => {
               const playlist = playlists.find(item => item.id === publicationPlaylistId(publication));
               const count = publicationItems(publication, playlist).length;
@@ -476,21 +483,24 @@ export default function DigitalSignage() {
               </button>;
             })}
           </div>
-        </div> : previewPlaylist ? <div className="rounded-2xl border border-dashed bg-muted/20 p-3">
+        </details> : previewPlaylist ? <div className="rounded-2xl border border-dashed bg-muted/20 p-3">
           <p className="text-sm font-semibold">Dernier programme enregistré</p>
           <p className="mt-1 text-xs text-muted-foreground">Aucune diffusion future n’est encore programmée. Vous visualisez la dernière boucle sauvegardée.</p>
         </div> : null}
 
-        {previewPlaylist ? <>
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-700">Programme visualisé</p>
-              <p className="mt-1 break-words text-lg font-bold">{previewPlaylist.name || "Programme Signelya"}</p>
+        {previewPlaylist ? <details className="group rounded-2xl border bg-muted/15">
+          <DisclosureSummary title="Voir l’aperçu fidèle de la boucle" detail={`${previewPlaylist.name || "Programme Signelya"} · ${loopItems.length} média${loopItems.length > 1 ? "s" : ""}`} />
+          <div className="space-y-4 border-t p-3 md:p-4">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-700">Programme visualisé</p>
+                <p className="mt-1 break-words text-lg font-bold">{previewPlaylist.name || "Programme Signelya"}</p>
+              </div>
+              {previewPublication?.scheduled_at && <div className="text-left md:text-right"><p className="text-xs text-muted-foreground">Diffusion prévue</p><p className="text-sm font-semibold">{new Date(previewPublication.scheduled_at).toLocaleString("fr-BE")}</p></div>}
             </div>
-            {previewPublication?.scheduled_at && <div className="text-left md:text-right"><p className="text-xs text-muted-foreground">Diffusion prévue</p><p className="text-sm font-semibold">{new Date(previewPublication.scheduled_at).toLocaleString("fr-BE")}</p></div>}
+            <SignageLoopPreview items={loopItems} clientEmail={managedClient} resolution={player?.resolution || "1920x1080"} />
           </div>
-          <SignageLoopPreview items={loopItems} clientEmail={managedClient} resolution={player?.resolution || "1920x1080"} />
-        </> : <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed bg-muted/20 px-5 text-center">
+        </details> : <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed bg-muted/20 px-5 text-center">
           <ListVideo className="h-8 w-8 text-muted-foreground/60" />
           <p className="mt-3 text-sm font-semibold">Aucun programme à visualiser</p>
           <p className="mt-1 max-w-md text-xs text-muted-foreground">Sélectionnez vos médias puis enregistrez un programme. Son aperçu complet apparaîtra ici avant la diffusion.</p>
@@ -504,13 +514,16 @@ export default function DigitalSignage() {
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0B1633] text-sm font-bold text-[#00D4FF] ring-2 ring-[#8A2BE2]/25">1</span>
           <div><h2 className="text-base font-semibold">Ajoutez vos médias</h2><p className="mt-1 text-sm text-muted-foreground">Cochez les vidéos et images à diffuser. L’ordre choisi sera conservé.</p></div>
         </div>
-        <div className="mt-4 space-y-2">{media.map(item => { const selected = selectedMediaIds.includes(item.id); const position = selectedMediaIds.indexOf(item.id); return <div key={item.id} className={`rounded-xl border p-3 flex items-center gap-2 ${selected ? "border-[#8A2BE2]/55 bg-[#8A2BE2]/5 shadow-sm" : ""}`}><input type="checkbox" checked={selected} onChange={() => toggleMedia(item.id)} aria-label={`Sélectionner ${item.name}`}/><div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{item.name}</p><p className="text-xs text-muted-foreground">{formatBytes(Number(item.size_bytes || 0))} · {MEDIA_STATUS_LABELS[item.status] || "État inconnu"}</p></div><button onClick={() => previewMedia(item)} className="rounded-lg border p-2 hover:border-cyan-500/40 hover:text-cyan-700" aria-label={`Prévisualiser ${item.name}`}><Eye className="w-4 h-4"/></button>{selected && <><button disabled={position <= 0} onClick={() => moveMedia(item.id, -1)} className="rounded-lg border p-2 disabled:opacity-30" aria-label="Monter"><ArrowUp className="w-4 h-4"/></button><button disabled={position === selectedMediaIds.length - 1} onClick={() => moveMedia(item.id, 1)} className="rounded-lg border p-2 disabled:opacity-30" aria-label="Descendre"><ArrowDown className="w-4 h-4"/></button><span className="w-6 text-center text-xs font-semibold text-[#9A7414]">{position + 1}</span></>}</div>})}{!media.length && <div className="rounded-xl border border-dashed p-8 text-center"><p className="text-sm font-medium">Aucun média pour le moment</p><button onClick={() => fileInput.current?.click()} className="mt-3 rounded-xl bg-[#8A2BE2] px-4 py-2 text-sm font-semibold text-[#07111F]">Ajouter le premier média</button></div>}</div>
+        <details className="group mt-4 rounded-2xl border bg-muted/15">
+          <DisclosureSummary title="Voir les médias partagés" detail={`${media.length} fichier${media.length > 1 ? "s" : ""} · ${selectedMedia.length} sélectionné${selectedMedia.length > 1 ? "s" : ""}`} />
+          <div className="space-y-2 border-t p-3">{media.map(item => { const selected = selectedMediaIds.includes(item.id); const position = selectedMediaIds.indexOf(item.id); return <div key={item.id} className={`rounded-xl border p-3 flex items-center gap-2 ${selected ? "border-[#8A2BE2]/55 bg-[#8A2BE2]/5 shadow-sm" : ""}`}><input type="checkbox" checked={selected} onChange={() => toggleMedia(item.id)} aria-label={`Sélectionner ${item.name}`}/><div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{item.name}</p><p className="text-xs text-muted-foreground">{formatBytes(Number(item.size_bytes || 0))} · {MEDIA_STATUS_LABELS[item.status] || "État inconnu"}</p></div><button onClick={() => previewMedia(item)} className="rounded-lg border p-2 hover:border-cyan-500/40 hover:text-cyan-700" aria-label={`Prévisualiser ${item.name}`}><Eye className="w-4 h-4"/></button>{selected && <><button disabled={position <= 0} onClick={() => moveMedia(item.id, -1)} className="rounded-lg border p-2 disabled:opacity-30" aria-label="Monter"><ArrowUp className="w-4 h-4"/></button><button disabled={position === selectedMediaIds.length - 1} onClick={() => moveMedia(item.id, 1)} className="rounded-lg border p-2 disabled:opacity-30" aria-label="Descendre"><ArrowDown className="w-4 h-4"/></button><span className="w-6 text-center text-xs font-semibold text-[#9A7414]">{position + 1}</span></>}</div>})}{!media.length && <div className="rounded-xl border border-dashed p-8 text-center"><p className="text-sm font-medium">Aucun média pour le moment</p><button onClick={() => fileInput.current?.click()} className="mt-3 rounded-xl bg-[#8A2BE2] px-4 py-2 text-sm font-semibold text-[#07111F]">Ajouter le premier média</button></div>}</div>
+        </details>
       </section>
 
-      <section className="rounded-2xl border bg-card p-4 md:p-5">
-        <h2 className="text-base font-semibold">Aperçu</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Utilisez l’icône œil d’un média pour le vérifier.</p>
-        <div className="relative mt-4 aspect-video rounded-xl bg-black flex items-center justify-center overflow-hidden">
+      <details open={mediaPreviewOpen} onToggle={event => setMediaPreviewOpen(event.currentTarget.open)} className="group rounded-2xl border bg-card">
+        <DisclosureSummary title="Aperçu d’un média" detail={preview ? preview.name : "Utilisez l’icône œil pour vérifier un fichier"} />
+        <div className="border-t p-4 md:p-5">
+        <div className="relative aspect-video rounded-xl bg-black flex items-center justify-center overflow-hidden">
           {preview ? (String(preview.mime_type).startsWith("image/")
             ? <img src={preview.url} alt={preview.name} onLoad={() => setPreviewError("")} onError={() => setPreviewError("L’image ne peut pas être lue depuis Dropbox.")} className="h-full w-full object-contain"/>
             : <video key={preview.url} src={preview.url} controls autoPlay muted playsInline onCanPlay={() => setPreviewError("")} onError={() => setPreviewError("La vidéo ne peut pas être lue dans ce navigateur.")} className="h-full w-full object-contain"/>)
@@ -518,7 +531,8 @@ export default function DigitalSignage() {
           {previewError && <p className="absolute rounded-lg bg-black/80 px-3 py-2 text-xs text-red-300">{previewError}</p>}
         </div>
         {preview && <p className="mt-2 break-words text-xs text-muted-foreground">{preview.name}</p>}
-      </section>
+        </div>
+      </details>
     </div>
 
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -527,9 +541,10 @@ export default function DigitalSignage() {
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0B1633] text-sm font-bold text-[#00D4FF] ring-2 ring-[#8A2BE2]/25">2</span>
           <div><h2 className="text-base font-semibold">Préparez votre programme</h2><p className="mt-1 text-sm text-muted-foreground">{selectedMedia.length ? `${selectedMedia.length} média${selectedMedia.length > 1 ? "s" : ""} sélectionné${selectedMedia.length > 1 ? "s" : ""}.` : "Choisissez au moins un média à l’étape 1."}</p></div>
         </div>
-        <div className="mt-4 rounded-xl bg-muted/40 p-3 text-sm">
-          {selectedMedia.length ? selectedMedia.map((item, index) => <p key={item.id} className="flex items-start gap-2 py-1"><span className="shrink-0 font-bold text-primary">{index + 1}.</span><span className="min-w-0 break-words">{item.name}</span></p>) : <p className="text-muted-foreground">Votre programme apparaîtra ici.</p>}
-        </div>
+        <details className="group mt-4 rounded-xl bg-muted/40">
+          <DisclosureSummary title="Voir l’ordre du programme" detail={`${selectedMedia.length} média${selectedMedia.length > 1 ? "s" : ""} sélectionné${selectedMedia.length > 1 ? "s" : ""}`} />
+          <div className="border-t p-3 text-sm">{selectedMedia.length ? selectedMedia.map((item, index) => <p key={item.id} className="flex items-start gap-2 py-1"><span className="shrink-0 font-bold text-primary">{index + 1}.</span><span className="min-w-0 break-words">{item.name}</span></p>) : <p className="text-muted-foreground">Votre programme apparaîtra ici.</p>}</div>
+        </details>
         <button disabled={busy || !selectedMedia.length} onClick={createPlaylist} className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#8A2BE2]/60 px-4 py-3 text-sm font-semibold text-[#8A6812] transition-colors hover:bg-[#8A2BE2]/10 disabled:opacity-40"><ListVideo className="h-4 w-4" /> Enregistrer ce programme</button>
       </section>
 

@@ -1,0 +1,1 @@
+Optimise l’affichage mobile avec des menus repliables, ajoute l’image de partage officielle SIGNELYA et rend la déconnexion toujours accessible.

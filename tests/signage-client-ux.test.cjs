@@ -73,3 +73,12 @@ test('program media names remain fully readable on mobile', () => {
   assert.match(page, /min-w-0 break-words/);
   assert.match(page, /Touchez un média pour le visualiser immédiatement/);
 });
+
+test('long mobile lists stay collapsed until the customer asks for details', () => {
+  assert.match(page, /Voir les médias partagés/);
+  assert.match(page, /Toutes les diffusions programmées/);
+  assert.match(page, /Voir l’aperçu fidèle de la boucle/);
+  assert.match(page, /Voir l’ordre du programme/);
+  assert.match(page, /DisclosureSummary/);
+  assert.match(page, /group-open:rotate-180/);
+});
