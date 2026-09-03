@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FileCheck2, FileWarning, Loader2, X } from 'lucide-react';
 
-const NOVA_INPUT_MARKER = 'nova-document-bridge';
+const NOVA_INPUT_MARKER = 'novaDocumentBridge';
 const RECENT_MEDIA_KEY = 'nova_recent_media_v1';
 const CHAT_MESSAGES_KEY = 'agent_chat_messages';
 const CHAT_APPEND_EVENT = 'nova-chat-append';
