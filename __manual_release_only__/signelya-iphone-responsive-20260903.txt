@@ -1,0 +1,8 @@
+SIGNELYA iPhone/PWA responsive release — 2026-09-03
+
+- Correct 100dvh viewport handling on iOS.
+- Respect top/right/bottom/left safe areas in header and sidebar.
+- Prevent horizontal overflow.
+- Make mobile sidebar fit narrow iPhones.
+- Compact login spacing and prevent Safari form zoom.
+- Reduce Elynea launcher footprint on mobile.
