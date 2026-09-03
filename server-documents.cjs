@@ -553,3 +553,4 @@ module.exports.isPortfolioMedia = isPortfolioMedia;
 module.exports.normalizeDocumentClientId = normalizeDocumentClientId;
 module.exports.getAssignableClient = getAssignableClient;
 module.exports.getDropboxAccessToken = getDropboxAccessToken;
+module.exports.queryDocumentIndex = supabaseRequest;
