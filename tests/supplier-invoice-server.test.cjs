@@ -32,3 +32,15 @@ test('parses grouped US and European supplier amounts', () => {
   assert.equal(eur.total_amount, 1234.56);
   assert.equal(eur.amount_due, 234.56);
 });
+
+test('prefers tax-inclusive totals and parses localized French dates', () => {
+  const invoice = parseSupplierInvoiceText(
+    'Facture numéro BE-2026-010\nDate d’émission 31 mai 2026\nDate d’échéance 15 juin 2026\nTotal HT 100,00 EUR\nTotal TTC 121,00 EUR',
+    'facture-BE-2026-010.pdf',
+  );
+  assert.equal(invoice.issue_date, '31 mai 2026');
+  assert.equal(invoice.due_date, '15 juin 2026');
+  assert.equal(invoice.period, '2026-05');
+  assert.equal(invoice.total_amount, 121);
+  assert.equal(invoice.cost_basis_amount, 121);
+});
