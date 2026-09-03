@@ -30,6 +30,22 @@ function canonicalTaskKey(task = {}) {
   ].join('|');
 }
 
+function taskStateRank(task = {}) {
+  const status = canonicalTaskTitle(task?.statut || task?.status);
+  if (status === 'en cours') return 0;
+  if (status === 'a faire') return 1;
+  if (status === 'bloquee') return 2;
+  return 3;
+}
+
+function taskTimestamp(task = {}) {
+  return Date.parse(task?.updated_at || task?.created_at || task?.created_date || '') || 0;
+}
+
+function selectCanonicalTask(tasks = []) {
+  return [...tasks].sort((a, b) => taskStateRank(a) - taskStateRank(b) || taskTimestamp(b) - taskTimestamp(a))[0] || null;
+}
+
 function duplicateTasksForCanonical(tasks, canonicalTask) {
   const canonicalId = String(canonicalTask?.id || '');
   const key = canonicalTaskKey(canonicalTask);
@@ -251,7 +267,8 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
     const ready = [];
     const duplicates = [];
     for (const group of groups.values()) {
-      const [task, ...copies] = group;
+      const task = selectCanonicalTask(group);
+      const copies = group.filter((item) => String(item?.id || '') !== String(task?.id || ''));
       if (copies.length) duplicates.push({ canonical_task_id: task.id, duplicate_ids: copies.map((item) => item.id), count: group.length });
       const executor = resolveNovaExecutor(task);
       if (executor.kind === 'unsupported') {
@@ -399,4 +416,4 @@ function startTaskAutopilotScheduler() {
   return { started: true, interval_ms: AUTOPILOT_INTERVAL_MS };
 }
 
-module.exports = { router, canonicalTaskKey, canonicalTaskTitle, duplicateTasksForCanonical, classifyTask, recordedExecutionFailure, rowsFrom, summarizeBusinessData, verifiedAutopilotResult, runAutopilot, startTaskAutopilotScheduler, state };
+module.exports = { router, canonicalTaskKey, canonicalTaskTitle, duplicateTasksForCanonical, selectCanonicalTask, classifyTask, recordedExecutionFailure, rowsFrom, summarizeBusinessData, verifiedAutopilotResult, runAutopilot, startTaskAutopilotScheduler, state };

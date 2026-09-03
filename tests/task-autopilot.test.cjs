@@ -128,3 +128,13 @@ test('les doublons sont bloqués et ne sont jamais déclarés terminés sans pre
   assert.equal(proof.proof_status, 'verified');
   assert.deepEqual(proof.evidence, [{ type: 'executor_result', reference: 'run-audit-1' }]);
 });
+
+
+test('l’autopilote choisit la tâche en cours la plus récente comme canonique', () => {
+  const selected = autopilot.selectCanonicalTask([
+    { id: 'blocked', statut: 'bloquee', updated_at: '2026-09-03T03:00:00Z' },
+    { id: 'old', statut: 'en_cours', updated_at: '2026-09-03T01:00:00Z' },
+    { id: 'new', statut: 'en_cours', updated_at: '2026-09-03T02:00:00Z' },
+  ]);
+  assert.equal(selected.id, 'new');
+});

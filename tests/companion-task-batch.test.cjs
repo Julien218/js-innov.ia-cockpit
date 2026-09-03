@@ -10,7 +10,7 @@ const serverSource = fs.readFileSync(path.join(root, 'server.cjs'), 'utf8');
 const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
 
 const { batchSignals, explicitExecutionAuthorization, removeStaleConfirmationLanguage, executionProof, directAutopilotSignal, autopilotMessage, directEntityMutationSignal, executionProhibited, directInspectionSignal, targetedInspectionSignal, idAfterLabel, scopedTaskExecutionAuthorization, scopedTaskId, scopedProjectId, scopedTaskBatchPayload } = require(path.join(root, 'server-assistant-batch.cjs'));
-const { canonicalTaskKey, canonicalTaskTitle, completionProof, latestActiveRun, sanitizeTaskBatchPayload } = require(path.join(root, 'server-task-batch.cjs'));
+const { canonicalTaskKey, canonicalTaskTitle, completionProof, latestActiveRun, preferredCanonicalTask, sanitizeTaskBatchPayload } = require(path.join(root, 'server-task-batch.cjs'));
 
 test('les demandes multi-tâches et d’exécution sont reconnues sans intercepter un chat banal', () => {
   assert.equal(batchSignals('Crée les 6 tâches et délègue-les aux agents spécialisés'), true);
@@ -239,4 +239,13 @@ test('le rapport autopilote identifie chaque tâche, exécuteur et preuve', () =
   assert.match(message, /preuve=journal-1/);
   assert.match(message, /Audit vidéo · task_id=t2/);
   assert.match(message, /Modifier client · task_id=t3/);
+});
+
+
+test('la tâche canonique préfère le travail réellement en cours puis le plus récent', () => {
+  const blocked = { id: 'blocked', statut: 'bloquee', updated_at: '2026-09-03T02:00:00Z' };
+  const runningOld = { id: 'running-old', statut: 'en_cours', updated_at: '2026-09-03T00:00:00Z' };
+  const runningNew = { id: 'running-new', statut: 'en_cours', updated_at: '2026-09-03T01:00:00Z' };
+  assert.equal(preferredCanonicalTask(blocked, runningOld).id, 'running-old');
+  assert.equal(preferredCanonicalTask(runningOld, runningNew).id, 'running-new');
 });

@@ -56,6 +56,26 @@ function canonicalTaskKey(task = {}) {
   return [title, client, project].join('|');
 }
 
+function taskStatusRank(task = {}) {
+  const status = canonicalTaskTitle(task.statut || task.status);
+  if (status === 'en cours') return 0;
+  if (status === 'a faire') return 1;
+  if (status === 'bloquee') return 2;
+  return 3;
+}
+
+function taskTimestamp(task = {}) {
+  return Date.parse(task.updated_at || task.created_at || task.created_date || '') || 0;
+}
+
+function preferredCanonicalTask(current, candidate) {
+  if (!current) return candidate;
+  const rank = taskStatusRank(candidate) - taskStatusRank(current);
+  if (rank < 0) return candidate;
+  if (rank > 0) return current;
+  return taskTimestamp(candidate) > taskTimestamp(current) ? candidate : current;
+}
+
 function completionProof(outcome = {}, executor = {}) {
   const result = outcome?.result;
   if (!result || typeof result !== 'object' || Array.isArray(result) || !Object.keys(result).length) return null;
@@ -219,7 +239,9 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
   for (const candidate of rowsFrom(await readJson(existingResponse, `Lecture tâches HTTP ${existingResponse.status}`))) {
     const key = canonicalTaskKey(candidate);
     const status = cleanText(candidate.statut || candidate.status, 40).toLowerCase();
-    if (key && !['terminee', 'terminée'].includes(status) && !existingByKey.has(key)) existingByKey.set(key, candidate);
+    if (key && !['terminee', 'terminée'].includes(status)) {
+      existingByKey.set(key, preferredCanonicalTask(existingByKey.get(key), candidate));
+    }
   }
 
   const results = [];
@@ -347,6 +369,7 @@ module.exports = {
   canonicalTaskTitle,
   completionProof,
   latestActiveRun,
+  preferredCanonicalTask,
   sanitizeTaskBatchPayload,
   executeTaskBatch,
 };
