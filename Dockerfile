@@ -13,6 +13,15 @@ ENV VITE_AGENT_URL=$VITE_AGENT_URL
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 
+RUN test -f server-task-context.cjs \
+ && test -f server-nova-document-preload.cjs \
+ && test -f server-nova-document-upload.cjs \
+ && test -f server-supplier-invoice.cjs \
+ && node --check server-task-context.cjs \
+ && node --check server-nova-document-preload.cjs \
+ && node --check server-nova-document-upload.cjs \
+ && node --check server-supplier-invoice.cjs \
+ && node --test tests/supplier-invoice-server.test.cjs tests/email-accounting-currency.test.cjs tests/nova-document-upload.test.cjs
 RUN npm run build
 
 # ---- Serve : nginx SPA + node API ----
@@ -54,6 +63,10 @@ COPY --from=builder /app/server-miss-dour-data.cjs ./server-miss-dour-data.cjs
 COPY --from=builder /app/server-bce.cjs ./server-bce.cjs
 COPY --from=builder /app/server-hainoflow.cjs ./server-hainoflow.cjs
 COPY --from=builder /app/server-assistant.cjs ./server-assistant.cjs
+COPY --from=builder /app/server-task-context.cjs ./server-task-context.cjs
+COPY --from=builder /app/server-nova-document-preload.cjs ./server-nova-document-preload.cjs
+COPY --from=builder /app/server-nova-document-upload.cjs ./server-nova-document-upload.cjs
+COPY --from=builder /app/server-supplier-invoice.cjs ./server-supplier-invoice.cjs
 COPY --from=builder /app/server-public-elynea.cjs ./server-public-elynea.cjs
 COPY --from=builder /app/server-assistant-batch.cjs ./server-assistant-batch.cjs
 COPY --from=builder /app/server-task-batch.cjs ./server-task-batch.cjs
@@ -103,7 +116,11 @@ COPY assets ./assets
 COPY public ./public
 
 RUN npm ci --omit=dev --legacy-peer-deps
-RUN test -f /app/server-ai-cost-attribution.cjs \
+RUN test -f /app/server-task-context.cjs \
+ && test -f /app/server-nova-document-preload.cjs \
+ && test -f /app/server-nova-document-upload.cjs \
+ && test -f /app/server-supplier-invoice.cjs \
+ && test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-email-trash-core.cjs \
  && test -f /app/server-role-policy.cjs \
  && test -f /app/server-permission-policy.cjs \
@@ -145,6 +162,10 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-bce.cjs \
  && test -f /app/server-public-elynea.cjs \
  && test -f /app/lib/governance-export.cjs \
+ && node --check /app/server-task-context.cjs \
+ && node --check /app/server-nova-document-preload.cjs \
+ && node --check /app/server-nova-document-upload.cjs \
+ && node --check /app/server-supplier-invoice.cjs \
  && node --check /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-email-trash-core.cjs \
  && node --check /app/server-role-policy.cjs \

@@ -10,13 +10,25 @@ test('l’autopilote regroupe les titres dupliqués', () => {
   assert.equal(autopilot.canonicalTaskTitle('SEO automatique — jsinnovia.com (duplicata)'), autopilot.canonicalTaskTitle('SEO automatique — jsinnovia.com'));
 });
 
-test('une preuve canonique clôt uniquement les doublons non terminés du même objectif', () => {
+test('le planificateur ne rouvre jamais une tâche bloquée ou terminée', () => {
+  assert.equal(autopilot.isDispatchableTask({ statut: 'a_faire' }), true);
+  assert.equal(autopilot.isDispatchableTask({ statut: 'en_cours' }), true);
+  assert.equal(autopilot.isDispatchableTask({ statut: 'bloquee' }), false);
+  assert.equal(autopilot.isDispatchableTask({ statut: 'terminee' }), false);
+
+  const source = fs.readFileSync(path.join(root, 'server-task-autopilot.cjs'), 'utf8');
+  assert.match(source, /rowsFrom\(payload\)\.filter\(isDispatchableTask\)/);
+  assert.match(source, /executableTasks\.push\(\{\s*task_id: task\.id,/);
+});
+
+test('une preuve canonique regroupe uniquement les doublons non terminés du même objectif', () => {
   const canonical = { id: 't1', titre: 'Recenser les fonctionnalités non opérationnelles dans le module vidéo IA', statut: 'terminee' };
   const copies = autopilot.duplicateTasksForCanonical([
     canonical,
     { id: 't2', titre: 'Recenser les fonctionnalités non opérationnelles dans le module vidéo IA (duplicata)', statut: 'a_faire' },
     { id: 't3', titre: 'Recenser les fonctionnalités non opérationnelles dans le module vidéo IA', statut: 'terminee' },
     { id: 't4', titre: 'Lancer une campagne de tests vidéo IA', statut: 'a_faire' },
+    { id: 't5', titre: 'Recenser les fonctionnalités non opérationnelles dans le module vidéo IA', client_id: 'autre-client', statut: 'a_faire' },
   ], canonical);
   assert.deepEqual(copies.map((task) => task.id), ['t2']);
 });
@@ -110,4 +122,30 @@ test('l’ancien défaut de colonne Projet corrigé ne bloque plus une relance',
     autopilot.recordedExecutionFailure({ notes: "Blocage d’exécution réel: Could not find the 'priorite' column of 'Projet' in the schema cache" }),
     null,
   );
+});
+
+
+test('la clé canonique sépare les mêmes titres de clients ou projets différents', () => {
+  assert.notEqual(
+    autopilot.canonicalTaskKey({ titre: 'Audit', client_id: 'client-a' }),
+    autopilot.canonicalTaskKey({ titre: 'Audit', client_id: 'client-b' }),
+  );
+});
+
+test('les doublons sont bloqués et ne sont jamais déclarés terminés sans preuve propre', () => {
+  const source = fs.readFileSync(path.join(root, 'server-task-autopilot.cjs'), 'utf8');
+  assert.match(source, /patchTask\(copy\.id, \{ statut: 'bloquee'/);
+  const proof = autopilot.verifiedAutopilotResult({ run_id: 'run-audit-1' });
+  assert.equal(proof.proof_status, 'verified');
+  assert.deepEqual(proof.evidence, [{ type: 'executor_result', reference: 'run-audit-1' }]);
+});
+
+
+test('l’autopilote choisit la tâche en cours la plus récente comme canonique', () => {
+  const selected = autopilot.selectCanonicalTask([
+    { id: 'blocked', statut: 'bloquee', updated_at: '2026-09-03T03:00:00Z' },
+    { id: 'old', statut: 'en_cours', updated_at: '2026-09-03T01:00:00Z' },
+    { id: 'new', statut: 'en_cours', updated_at: '2026-09-03T02:00:00Z' },
+  ]);
+  assert.equal(selected.id, 'new');
 });

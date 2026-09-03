@@ -80,6 +80,9 @@ async function agentDocumentRequest(resource, options = {}) {
 
   let target = `${AGENT_URL.replace(/\/$/, '')}/data/DocumentIndex`;
   const params = new URLSearchParams(rawQuery);
+  const scopedOrganisation = params.get('organisation')?.startsWith('eq.')
+    ? params.get('organisation').slice(3)
+    : '';
   const idFilter = params.get('id');
   if (idFilter?.startsWith('eq.') && ['GET', 'PATCH', 'PUT', 'DELETE'].includes(method)) {
     target += `/${encodeURIComponent(idFilter.slice(3))}`;
@@ -109,6 +112,7 @@ async function agentDocumentRequest(resource, options = {}) {
     ...options,
     headers: {
       'x-agent-key': AGENT_KEY,
+      ...(scopedOrganisation ? { 'x-organisation-id': scopedOrganisation } : {}),
       'Content-Type': 'application/json',
       ...(options.headers || {}),
     },
@@ -553,3 +557,4 @@ module.exports.isPortfolioMedia = isPortfolioMedia;
 module.exports.normalizeDocumentClientId = normalizeDocumentClientId;
 module.exports.getAssignableClient = getAssignableClient;
 module.exports.getDropboxAccessToken = getDropboxAccessToken;
+module.exports.queryDocumentIndex = supabaseRequest;

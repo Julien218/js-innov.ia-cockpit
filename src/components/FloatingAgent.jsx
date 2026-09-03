@@ -27,6 +27,7 @@ const LOCAL_NOVA_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
 const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
 const LOCAL_AUTOPILOT_LAST_RUN_KEY = 'nova_local_autopilot_last_run_v1';
 const RECENT_MEDIA_KEY = 'nova_recent_media_v1';
+const CHAT_APPEND_EVENT = 'nova-chat-append';
 const TTS_VOICE_KEY = 'nova_tts_voice_name';
 const LOCAL_TOOL_REQUEST = /\b(?:find_local_workflows|comfyui_health|avatar_factory_status|ffmpeg_version|ffprobe_file|list_directory|http_diagnose)\b|(?:ex[eé]cut|diagnosti|contr[oô]l|v[eé]rifi|recherch).*(?:comfyui|port\s*(?:8188|8791)|workflow|minimax|avatar|ffmpeg|ffprobe|dossier\s+local)/i;
 const LOCAL_NOVA_PROMPT = `Tu es NOVA, l’unique assistant visible du Cockpit JS-Innov.IA. Tu conserves le même nom et le même rôle en mode cloud et en mode local. Vérifie les outils réellement disponibles avant toute affirmation de capacité. Ne dis jamais que tu es une simple IA textuelle ni que tu ne peux rien exécuter uniquement parce qu’Internet est coupé.`;
@@ -75,6 +76,16 @@ const FloatingAgent = () => {
   useEffect(() => {
     try { localStorage.setItem('agent_chat_messages', JSON.stringify(messages.slice(-50))); } catch {}
   }, [messages]);
+
+  // Accept invoice summaries emitted by the PDF upload bridge without losing mounted chat state.
+  useEffect(() => {
+    const appendUploadedMessages = (event) => {
+      const appended = Array.isArray(event.detail?.messages) ? event.detail.messages : [];
+      if (appended.length) setMessages((current) => [...current, ...appended].slice(-50));
+    };
+    window.addEventListener(CHAT_APPEND_EVENT, appendUploadedMessages);
+    return () => window.removeEventListener(CHAT_APPEND_EVENT, appendUploadedMessages);
+  }, []);
 
   // Persist TTS preference
   useEffect(() => {

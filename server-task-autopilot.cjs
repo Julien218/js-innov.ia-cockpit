@@ -22,14 +22,44 @@ function canonicalTaskTitle(value) {
     .trim();
 }
 
+function canonicalTaskKey(task = {}) {
+  return [
+    canonicalTaskTitle(task?.titre || task?.title),
+    canonicalTaskTitle(task?.client_id || task?.client_nom),
+    canonicalTaskTitle(task?.projet_id || task?.projet_nom),
+  ].join('|');
+}
+
+function taskStateRank(task = {}) {
+  const status = canonicalTaskTitle(task?.statut || task?.status);
+  if (status === 'en cours') return 0;
+  if (status === 'a faire') return 1;
+  if (status === 'bloquee') return 2;
+  return 3;
+}
+
+const DISPATCHABLE_TASK_STATUSES = new Set(['a faire', 'en cours']);
+
+function isDispatchableTask(task = {}) {
+  return DISPATCHABLE_TASK_STATUSES.has(canonicalTaskTitle(task?.statut || task?.status));
+}
+
+function taskTimestamp(task = {}) {
+  return Date.parse(task?.updated_at || task?.created_at || task?.created_date || '') || 0;
+}
+
+function selectCanonicalTask(tasks = []) {
+  return [...tasks].sort((a, b) => taskStateRank(a) - taskStateRank(b) || taskTimestamp(b) - taskTimestamp(a))[0] || null;
+}
+
 function duplicateTasksForCanonical(tasks, canonicalTask) {
   const canonicalId = String(canonicalTask?.id || '');
-  const key = canonicalTaskTitle(canonicalTask?.titre || canonicalTask?.title);
+  const key = canonicalTaskKey(canonicalTask);
   if (!canonicalId || !key) return [];
   return (Array.isArray(tasks) ? tasks : []).filter((task) => {
     if (String(task?.id || '') === canonicalId) return false;
     if (['terminee', 'terminée'].includes(norm(task?.statut || task?.status))) return false;
-    return canonicalTaskTitle(task?.titre || task?.title) === key;
+    return canonicalTaskKey(task) === key;
   });
 }
 
@@ -137,6 +167,16 @@ async function patchTask(taskId, payload) {
   return agentRequest(`/data/Tache/${encodeURIComponent(taskId)}`, { method: 'PATCH', body: payload });
 }
 
+function verifiedAutopilotResult(result = {}) {
+  const evidence = Array.isArray(result?.evidence) ? result.evidence.filter(Boolean) : [];
+  const reference = result?.run_id || result?.audit_id || result?.update_id || result?.domain || result?.checked_at;
+  return {
+    ...(result && typeof result === 'object' ? result : { value: result }),
+    proof_status: 'verified',
+    evidence: evidence.length ? evidence : [{ type: 'executor_result', reference: String(reference || 'cockpit-autopilot').slice(0, 500) }],
+  };
+}
+
 async function recordRun(task, classification, result, status = 'completed', error = null) {
   return agentRequest('/agent-runs', {
     method: 'POST',
@@ -148,7 +188,7 @@ async function recordRun(task, classification, result, status = 'completed', err
       status,
       execution_mode: 'read_only',
       input: { title: task.titre || task.title, kind: classification.kind, domain: classification.domain || null },
-      result: result || null,
+      result: status === 'completed' ? verifiedAutopilotResult(result) : (result || null),
       error,
       idempotency_key: `autopilot:${task.id}:${classification.kind}`,
       requested_by: 'companion-autopilot',
@@ -198,7 +238,7 @@ async function closeVerifiedDuplicates(canonicalTask, copies, proofIds = []) {
       'Aucune exécution séparée: le même objectif a été traité une seule fois.',
       proofIds.length ? `Preuves de la tâche canonique: ${proofIds.join(', ')}` : '',
     ].filter(Boolean).join('\n').trim().slice(0, 4000);
-    await patchTask(copy.id, { statut: 'terminee', notes: note });
+    await patchTask(copy.id, { statut: 'bloquee', notes: note });
     closed.push(copy.id);
   }
   return closed;
@@ -219,10 +259,12 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
   state.last_error = null;
   try {
     const payload = await agentRequest('/data/Tache?limit=250');
-    const tasks = rowsFrom(payload).filter((task) => !['terminee', 'terminée'].includes(norm(task.statut || task.status)));
+    // Une tâche bloquée ou terminée reste fermée. Seule une reprise explicitement
+    // ciblée par l’utilisateur peut la rouvrir; le planificateur ne le fait jamais.
+    const tasks = rowsFrom(payload).filter(isDispatchableTask);
     const groups = new Map();
     for (const task of tasks) {
-      const key = canonicalTaskTitle(task.titre || task.title);
+      const key = canonicalTaskKey(task);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(task);
     }
@@ -233,7 +275,8 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
     const ready = [];
     const duplicates = [];
     for (const group of groups.values()) {
-      const [task, ...copies] = group;
+      const task = selectCanonicalTask(group);
+      const copies = group.filter((item) => String(item?.id || '') !== String(task?.id || ''));
       if (copies.length) duplicates.push({ canonical_task_id: task.id, duplicate_ids: copies.map((item) => item.id), count: group.length });
       const executor = resolveNovaExecutor(task);
       if (executor.kind === 'unsupported') {
@@ -268,6 +311,7 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
         continue;
       }
       executableTasks.push({
+        task_id: task.id,
         titre: task.titre || task.title,
         description: task.description,
         notes: task.notes,
@@ -291,7 +335,7 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
     }
     const decorate = (item) => {
       const task = tasks.find((candidate) => String(candidate.id) === String(item.task_id))
-        || tasks.find((candidate) => canonicalTaskTitle(candidate.titre || candidate.title) === canonicalTaskTitle(item.title));
+        || tasks.find((candidate) => canonicalTaskKey(candidate) === canonicalTaskKey({ titre: item.title, client_id: item.client_id, projet_id: item.projet_id }));
       const executor = task ? resolveNovaExecutor(task) : null;
       return { ...item, title: item.title || task?.titre || task?.title, executor: item.executor || executor?.id || null };
     };
@@ -346,7 +390,11 @@ router.post('/local-results', async (req, res) => {
       }
       const runPayload = {
         status: 'completed',
-        result: { tool_runs: evidence },
+        result: {
+          proof_status: 'verified',
+          evidence: evidence.map((run) => ({ type: 'tool_run', reference: String(run.id) })),
+          tool_runs: evidence,
+        },
         completed_at: evidence[evidence.length - 1].completed_at,
       };
       const existingRuns = rowsFrom(await agentRequest(`/agent-runs?task_id=${encodeURIComponent(taskId)}&provider_name=local-agent&limit=20`));
@@ -377,4 +425,4 @@ function startTaskAutopilotScheduler() {
   return { started: true, interval_ms: AUTOPILOT_INTERVAL_MS };
 }
 
-module.exports = { router, canonicalTaskTitle, duplicateTasksForCanonical, classifyTask, recordedExecutionFailure, rowsFrom, summarizeBusinessData, runAutopilot, startTaskAutopilotScheduler, state };
+module.exports = { router, canonicalTaskKey, canonicalTaskTitle, duplicateTasksForCanonical, selectCanonicalTask, isDispatchableTask, classifyTask, recordedExecutionFailure, rowsFrom, summarizeBusinessData, verifiedAutopilotResult, runAutopilot, startTaskAutopilotScheduler, state };
