@@ -25,7 +25,10 @@ function resolveUploadOrganisation(user) {
     .replace(/[\\/]+/g, '-')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 100)async function findExistingDocument(fingerprint, organisation) {
+    .slice(0, 100) || 'jsinnovia';
+}
+
+async function findExistingDocument(fingerprint, organisation) {
   try {
     const scopedOrganisation = resolveUploadOrganisation({ organisation });
     const marker = `nova-pdf:${fingerprint}`;
