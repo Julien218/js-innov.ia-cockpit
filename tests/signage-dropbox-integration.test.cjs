@@ -88,7 +88,7 @@ describe('Signage Dropbox Integration', () => {
   it('scripts/migrate-signage-dropbox-20260903.cjs gère Dropbox error_summary', () => {
     const content = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'migrate-signage-dropbox-20260903.cjs'), 'utf8');
     assert(content.includes('error_summary'), 'Migration doit vérifier error_summary au lieu de l\'objet complet');
-    assert(content.includes("error_summary.includes('not_found')"), 'Migration doit détecter not_found via error_summary');
+    assert(content.includes('listFolderAll'), 'Migration doit utiliser helper listFolderAll avec gestion pagination');
   });
 
   it('.env.example contient les variables SIGNAGE_DROPBOX_*', () => {
@@ -122,7 +122,7 @@ describe('Signage Dropbox Integration', () => {
     const content = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'migrate-signage-dropbox-20260903.cjs'), 'utf8');
     assert(content.includes("entry['.tag'] === 'file'"), 'Doit vérifier .tag = file');
     assert(content.includes("entry.name === 'release.json'"), 'Doit chercher release.json par nom exact');
-    assert(content.includes("Pixelium-Player-Olivier-0\\.6\\.1-pilot\\.apk"), 'Doit chercher APK 0.6.1 par regex');
+    assert(content.includes("entry.name === 'Pixelium-Player-Olivier-0.6.1-pilot.apk'"), 'Doit chercher APK 0.6.1 par exact match');
   });
 
   it('serveur-signage-dropbox-scope.cjs fait normalisation robuste', () => {

@@ -15,16 +15,30 @@
 
 const { Pool } = require('pg');
 
+// Normalisation de chemin identique à server-signage-dropbox-scope.cjs
+function normalizePath(path) {
+  let result = String(path || '').trim()
+    .replace(/\\/g, '/')
+    .replace(/\/+/g, '/');
+  if (!result.startsWith('/')) {
+    result = '/' + result;
+  }
+  if (result !== '/' && result.endsWith('/')) {
+    result = result.slice(0, -1);
+  }
+  return result;
+}
+
 const ENABLED = process.env.SIGNAGE_DROPBOX_MIGRATION_20260903 === 'enabled';
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const DROPBOX_APP_KEY = process.env.DROPBOX_APP_KEY || '';
 const DROPBOX_APP_SECRET = process.env.DROPBOX_APP_SECRET || '';
 const DROPBOX_REFRESH_TOKEN = process.env.DROPBOX_REFRESH_TOKEN || '';
 const SIGNAGE_NAMESPACE_ID = process.env.SIGNAGE_DROPBOX_NAMESPACE_ID || '';
-const SIGNAGE_ROOT = (process.env.SIGNAGE_DROPBOX_ROOT_PATH || '').replace(/\/$/, '');
+const SIGNAGE_ROOT_PATH = process.env.SIGNAGE_DROPBOX_ROOT_PATH || '';
+const SIGNAGE_ROOT = normalizePath(SIGNAGE_ROOT_PATH);
 
 const log = (level, msg, data = null) => {
-  const ts = new Date().toISOString();
   const prefix = `[migrate-signage-dropbox][${level}]`;
   if (data) console.error(`${prefix} ${msg}`, data);
   else console.error(`${prefix} ${msg}`);
@@ -83,58 +97,30 @@ async function main() {
 
     const listPaths = [`${SIGNAGE_ROOT}/Medias`, `${SIGNAGE_ROOT}/Players/MXQ`, `${SIGNAGE_ROOT}/Videosurveillance/Enregistrements`];
     for (const dirPath of listPaths) {
-      try {
-        const listResponse = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...pathRootHeader },
-          body: JSON.stringify({ path: dirPath }),
-        });
-        const listData = await listResponse.json().catch(() => ({}));
-
-        // Vérifier si le dossier n'existe pas
-        if (!listResponse.ok) {
-          if (listData.error_summary && listData.error_summary.includes('not_found')) {
-            log('info', `${dirPath}: dossier inexistant (ok)`);
-            continue;
-          }
-          log('error', `Impossible de lister ${dirPath}`, { status: listResponse.status, error_summary: listData.error_summary });
-          process.exitCode = 1;
-          return;
+      const result = await listFolderAll(token, dirPath, pathRootHeader);
+      if (!result.ok) {
+        if (result.error && result.error.includes('not_found')) {
+          log('info', `${dirPath}: dossier inexistant (ok)`);
+          continue;
         }
-
-        const entries = listData.entries || [];
-        log('info', `${dirPath}: ${entries.length} entrées`);
-      } catch (error) {
-        log('error', `Exception en listant ${dirPath}`, { message: error.message });
+        log('error', `Impossible de lister ${dirPath}`, { error_summary: result.error });
         process.exitCode = 1;
         return;
       }
+      log('info', `${dirPath}: ${result.entries.length} entrées`);
     }
 
     // 3. Vérifier que release.json et APK 0.6.1 existent et sont de type file dans Players/MXQ
     log('info', 'Vérification release.json et APK 0.6.1...');
     let hasReleaseJson = false, hasApk061 = false;
-    try {
-      const playersListResponse = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...pathRootHeader },
-        body: JSON.stringify({ path: `${SIGNAGE_ROOT}/Players/MXQ` }),
-      });
-      const playersData = await playersListResponse.json().catch(() => ({ entries: [] }));
-
-      if (playersListResponse.ok) {
-        const entries = playersData.entries || [];
-        for (const entry of entries) {
-          if (entry['.tag'] === 'file') {
-            if (entry.name === 'release.json') hasReleaseJson = true;
-            if (entry.name && entry.name.match(/Pixelium-Player-Olivier-0\.6\.1-pilot\.apk/)) hasApk061 = true;
-          }
+    const playersResult = await listFolderAll(token, `${SIGNAGE_ROOT}/Players/MXQ`, pathRootHeader);
+    if (playersResult.ok) {
+      for (const entry of playersResult.entries) {
+        if (entry['.tag'] === 'file') {
+          if (entry.name === 'release.json') hasReleaseJson = true;
+          if (entry.name === 'Pixelium-Player-Olivier-0.6.1-pilot.apk') hasApk061 = true;
         }
       }
-    } catch (error) {
-      log('error', 'Exception en vérifiant Players/MXQ', { message: error.message });
-      process.exitCode = 1;
-      return;
     }
 
     if (!hasReleaseJson || !hasApk061) {
@@ -182,13 +168,12 @@ async function main() {
       FROM public.signage_media
       WHERE
         (dropbox_path ILIKE $1 OR dropbox_path ILIKE $2)
-        AND NOT (dropbox_path ILIKE $3 OR dropbox_path ILIKE $4)
+        AND NOT (dropbox_path ILIKE $3)
       FOR UPDATE
     `;
     const mediaParams = [
       '%/JS-Innov.IA/Cockpit/Olivier-Trevis/Medias/%',
       '%Assurance Dour Julien P&V%/Olivier-Trevis/Medias/%',
-      `${SIGNAGE_ROOT}/Medias/%`,
       `${SIGNAGE_ROOT}/Medias/%`
     ];
     const mediaRows = await client.query(mediaQuery, mediaParams);
@@ -202,7 +187,7 @@ async function main() {
 
       // Convertir bigint en Number de façon sûre
       const expectedSize = row.size_bytes == null ? null : Number(row.size_bytes);
-      if (expectedSize !== null && !Number.isSafeInteger(expectedSize)) {
+      if (expectedSize !== null && (!Number.isSafeInteger(expectedSize) || expectedSize < 0)) {
         log('error', `Taille invalide pour ${row.dropbox_path}`, { size_bytes: row.size_bytes });
         await client.query('ROLLBACK');
         process.exitCode = 1;
@@ -227,6 +212,12 @@ async function main() {
 
         // Vérifier size_bytes si présent
         const actualSize = Number(metaData.size || 0);
+        if (!Number.isSafeInteger(actualSize) || actualSize < 0) {
+          log('error', `Taille Dropbox invalide: ${newPath}`, { size: metaData.size });
+          await client.query('ROLLBACK');
+          process.exitCode = 1;
+          return;
+        }
         if (expectedSize !== null && expectedSize !== actualSize) {
           log('error', `Taille mismatch: ${newPath}`, { expected: expectedSize, actual: actualSize });
           await client.query('ROLLBACK');
@@ -257,13 +248,12 @@ async function main() {
       FROM public.camera_recordings
       WHERE
         (dropbox_path ILIKE $1 OR dropbox_path ILIKE $2)
-        AND NOT (dropbox_path ILIKE $3 OR dropbox_path ILIKE $4)
+        AND NOT (dropbox_path ILIKE $3)
       FOR UPDATE
     `;
     const cameraParams = [
       '%/JS-Innov.IA/Cockpit/Olivier-Trevis/Videosurveillance/%',
       '%Assurance Dour Julien P&V%/Olivier-Trevis/Videosurveillance/%',
-      `${SIGNAGE_ROOT}/Videosurveillance/Enregistrements/%`,
       `${SIGNAGE_ROOT}/Videosurveillance/Enregistrements/%`
     ];
     const cameraRows = await client.query(cameraQuery, cameraParams);
@@ -275,7 +265,7 @@ async function main() {
       const newPath = `${SIGNAGE_ROOT}/Videosurveillance/Enregistrements/${filename}`;
 
       const expectedSize = row.size_bytes == null ? null : Number(row.size_bytes);
-      if (expectedSize !== null && !Number.isSafeInteger(expectedSize)) {
+      if (expectedSize !== null && (!Number.isSafeInteger(expectedSize) || expectedSize < 0)) {
         log('error', `Taille invalide pour ${row.dropbox_path}`, { size_bytes: row.size_bytes });
         await client.query('ROLLBACK');
         process.exitCode = 1;
@@ -298,6 +288,12 @@ async function main() {
         }
 
         const actualSize = Number(metaData.size || 0);
+        if (!Number.isSafeInteger(actualSize) || actualSize < 0) {
+          log('error', `Taille Dropbox invalide: ${newPath}`, { size: metaData.size });
+          await client.query('ROLLBACK');
+          process.exitCode = 1;
+          return;
+        }
         if (expectedSize !== null && expectedSize !== actualSize) {
           log('error', `Taille mismatch enregistrement: ${newPath}`, { expected: expectedSize, actual: actualSize });
           await client.query('ROLLBACK');
