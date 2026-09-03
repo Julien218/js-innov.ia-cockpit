@@ -7,6 +7,7 @@ const { spawn } = require('child_process');
 const { requireSession } = require('./server-security.cjs');
 const { postgresRest, getPool } = require('./server-postgres.cjs');
 const { notifyVideosOnline } = require('./server-signelya-whatsapp.cjs');
+const { getSignageRoot, fetchWithPathRoot } = require('./server-signage-dropbox-scope.cjs');
 const router = express.Router();
 
 const SUPABASE_URL = process.env.SUPABASE_CRM_URL || process.env.SUPABASE_URL || '';
@@ -16,6 +17,7 @@ const DROPBOX_APP_KEY = process.env.DROPBOX_APP_KEY || '';
 const DROPBOX_APP_SECRET = process.env.DROPBOX_APP_SECRET || '';
 const DROPBOX_REFRESH_TOKEN = process.env.DROPBOX_REFRESH_TOKEN || '';
 const DROPBOX_ROOT_PATH = String(process.env.DROPBOX_ROOT_PATH || '/Clients').replace(/\/$/, '');
+const SIGNAGE_DROPBOX_ROOT_PATH = String(process.env.SIGNAGE_DROPBOX_ROOT_PATH || process.env.DROPBOX_ROOT_PATH || '/Clients').replace(/\/$/, '');
 const MAX_MEDIA_BYTES = 150 * 1024 * 1024;
 const MAX_CAMERA_SNAPSHOT_BYTES = 3 * 1024 * 1024;
 const MAX_CAMERA_RECORDING_BYTES = 150 * 1024 * 1024;
@@ -25,12 +27,12 @@ const hash = value => crypto.createHash('sha256').update(Buffer.isBuffer(value) 
 // enter with an Android TV remote (no ambiguous upper/lower-case characters).
 const token = () => crypto.randomBytes(12).toString('hex').toUpperCase();
 const cleanDropboxSegment = value => String(value || '').replace(/[\\/:*?"<>|]/g, '-').trim();
-const mediaRoot = req => DROPBOX_ROOT_PATH === '/Clients'
-  ? `${DROPBOX_ROOT_PATH}/${cleanDropboxSegment(owner(req))}/Digital Signage/Medias`
-  : `${DROPBOX_ROOT_PATH}/Medias`;
-const cameraRecordingRoot = ownerEmail => DROPBOX_ROOT_PATH === '/Clients'
-  ? `${DROPBOX_ROOT_PATH}/${cleanDropboxSegment(ownerEmail)}/Videosurveillance/Enregistrements`
-  : `${DROPBOX_ROOT_PATH}/Videosurveillance/Enregistrements`;
+const mediaRoot = req => SIGNAGE_DROPBOX_ROOT_PATH === '/Clients'
+  ? `${SIGNAGE_DROPBOX_ROOT_PATH}/${cleanDropboxSegment(owner(req))}/Digital Signage/Medias`
+  : `${SIGNAGE_DROPBOX_ROOT_PATH}/Medias`;
+const cameraRecordingRoot = ownerEmail => SIGNAGE_DROPBOX_ROOT_PATH === '/Clients'
+  ? `${SIGNAGE_DROPBOX_ROOT_PATH}/${cleanDropboxSegment(ownerEmail)}/Videosurveillance/Enregistrements`
+  : `${SIGNAGE_DROPBOX_ROOT_PATH}/Videosurveillance/Enregistrements`;
 
 let dropboxTokenCache = { value: DROPBOX_ACCESS_TOKEN, expiresAt: DROPBOX_ACCESS_TOKEN ? Number.MAX_SAFE_INTEGER : 0 };
 const cameraSnapshots = new Map();
@@ -125,7 +127,7 @@ async function dropboxJson(url, options, operation, maxAttempts = 2) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     let response;
     try {
-      response = await fetch(url, options);
+      response = await fetchWithPathRoot(url, options);
     } catch {
       if (attempt + 1 < maxAttempts) { await wait(300); continue; }
       throw new Error(`Dropbox est injoignable pendant ${operation}. Réessayez dans quelques secondes.`);

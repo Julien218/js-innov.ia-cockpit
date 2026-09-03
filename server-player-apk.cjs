@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { getAccessToken } = require('./server-dropbox-helper.cjs');
+const { fetchWithPathRoot } = require('./server-signage-dropbox-scope.cjs');
 
 const router = express.Router();
 const RELEASE_METADATA_PATH = path.join(__dirname, 'assets', 'pixelium-player-release.json');
@@ -81,7 +82,7 @@ async function uploadDropboxFile(dropboxPath, buffer) {
   const token = await getAccessToken();
   if (!token) throw new Error('Dropbox non configuré');
 
-  const response = await fetch('https://content.dropboxapi.com/2/files/upload', {
+  const response = await fetchWithPathRoot('https://content.dropboxapi.com/2/files/upload', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
