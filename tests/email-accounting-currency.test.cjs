@@ -26,3 +26,8 @@ test('EUR amounts remain supported', () => {
 test('generic invoice identifiers remain supported', () => {
   assert.equal(invoiceNumber('Invoice INV-2026-008'), 'INV-2026-008');
 });
+
+test('apostrophe grouping separators are normalized', () => {
+  assert.deepEqual(parseMoneyAmount("Total $1'234.56 USD"), { amount_minor: 123456, currency: 'USD' });
+  assert.deepEqual(parseMoneyAmount('Total 1’234,56 EUR'), { amount_minor: 123456, currency: 'EUR' });
+});
