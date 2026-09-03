@@ -44,6 +44,60 @@ const log = (level, msg, data = null) => {
   else console.error(`${prefix} ${msg}`);
 };
 
+/**
+ * Liste tous les fichiers d'un dossier Dropbox avec pagination complète
+ * Gère has_more/cursor automatiquement via list_folder/continue
+ * Échoue dès qu'une page échoue (pas de succès partiel)
+ *
+ * @returns {Promise<{ok: boolean, entries: Array, error?: string}>}
+ */
+async function listFolderAll(token, folderPath, pathRootHeader) {
+  const allEntries = [];
+
+  try {
+    // Première requête list_folder
+    let response = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...pathRootHeader },
+      body: JSON.stringify({ path: folderPath })
+    });
+
+    let data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      return { ok: false, entries: [], error: data.error_summary || 'list_folder failed' };
+    }
+
+    if (data.entries) {
+      allEntries.push(...data.entries);
+    }
+
+    // Continuer avec list_folder/continue tant que has_more
+    while (data.has_more && data.cursor) {
+      response = await fetch('https://api.dropboxapi.com/2/files/list_folder/continue', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...pathRootHeader },
+        body: JSON.stringify({ cursor: data.cursor })
+      });
+
+      data = await response.json().catch(() => ({}));
+
+      // Échouer immédiatement si une page échoue
+      if (!response.ok) {
+        return { ok: false, entries: [], error: data.error_summary || 'list_folder/continue failed' };
+      }
+
+      if (data.entries) {
+        allEntries.push(...data.entries);
+      }
+    }
+
+    return { ok: true, entries: allEntries };
+  } catch (error) {
+    return { ok: false, entries: [], error: error.message };
+  }
+}
+
 async function main() {
   if (!ENABLED) {
     log('info', 'Migration désactivée (SIGNAGE_DROPBOX_MIGRATION_20260903 != enabled)');
@@ -419,5 +473,11 @@ async function main() {
   }
 }
 
-main();
+// Export pour les tests
+module.exports = { listFolderAll, normalizePath };
+
+// Exécuter main() si appelé directement
+if (require.main === module) {
+  main();
+}
 
