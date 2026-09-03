@@ -3,7 +3,14 @@ const path = require('node:path');
 const MONTHS = {
   january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
   july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+  janvier: 1, fevrier: 2, mars: 3, avril: 4, mai: 5, juin: 6,
+  juillet: 7, aout: 8, septembre: 9, octobre: 10, novembre: 11, decembre: 12,
 };
+
+function monthNumber(value) {
+  const key = String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return MONTHS[key] || null;
+}
 
 function cleanText(value) {
   return String(value || '')
@@ -88,17 +95,29 @@ function dateForLabel(text, label) {
   for (const line of cleanText(text).split(/\n+/)) {
     if (!matcher.test(line)) continue;
     const remainder = line.replace(matcher, ' ').trim();
-    const match = remainder.match(/([A-Za-z]+\s+\d{1,2},\s+\d{4}|\d{1,2}[./-]\d{1,2}[./-]\d{4})/i);
+    const match = remainder.match(/([A-Za-zÀ-ÖØ-öø-ÿ]+\s+\d{1,2},?\s+\d{4}|\d{1,2}\s+[A-Za-zÀ-ÖØ-öø-ÿ]+\s+\d{4}|\d{1,2}[./-]\d{1,2}[./-]\d{4})/i);
     if (match) return match[1].trim();
   }
   return null;
 }
 
 function isoMonthFromDate(value) {
-  const match = String(value || '').match(/^([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})$/);
-  if (!match) return null;
-  const month = MONTHS[match[1].toLowerCase()];
-  return month ? `${match[3]}-${String(month).padStart(2, '0')}` : null;
+  const source = String(value || '').trim();
+  let match = source.match(/^([A-Za-zÀ-ÖØ-öø-ÿ]+)\s+\d{1,2},?\s+(\d{4})$/i);
+  if (match) {
+    const month = monthNumber(match[1]);
+    return month ? `${match[2]}-${String(month).padStart(2, '0')}` : null;
+  }
+  match = source.match(/^\d{1,2}\s+([A-Za-zÀ-ÖØ-öø-ÿ]+)\s+(\d{4})$/i);
+  if (match) {
+    const month = monthNumber(match[1]);
+    return month ? `${match[2]}-${String(month).padStart(2, '0')}` : null;
+  }
+  match = source.match(/^\d{1,2}[./-](\d{1,2})[./-](\d{4})$/);
+  const numericMonth = Number(match?.[1]);
+  return match && numericMonth >= 1 && numericMonth <= 12
+    ? `${match[2]}-${String(numericMonth).padStart(2, '0')}`
+    : null;
 }
 
 function servicePeriod(text) {
@@ -167,7 +186,8 @@ function parseSupplierInvoiceText(text, fileName = '') {
   const normalized = cleanText(text);
   const issueDate = dateForLabel(normalized, '(?:date of issue|date d[’\']émission)');
   const dueDate = dateForLabel(normalized, '(?:date due|date d[’\']échéance)');
-  const total = amountForLabel(normalized, /^total\b/i);
+  const total = amountForLabel(normalized, /^(?:total\s+ttc|grand total|total\s+taxes?\s+comprises?)\b/i)
+    ?? amountForLabel(normalized, /^total\b/i);
   const appliedBalance = amountForLabel(normalized, /^(?:applied balance|solde appliqu[eé]|avoir appliqu[eé])\b/i);
   const amountDue = amountForLabel(normalized, /^(?:amount due|montant (?:restant )?[àa] payer)\b/i);
   const currency = currencyFrom(normalized);
