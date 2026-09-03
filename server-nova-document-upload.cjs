@@ -1,6 +1,6 @@
 const crypto = require('node:crypto');
 const express = require('express');
-const { storeBuffer, isDropboxConfigured } = require('./server-documents.cjs');
+const { storeBuffer, isDropboxConfigured, queryDocumentIndex } = require('./server-documents.cjs');
 const { decodePdfBase64, parseSupplierInvoiceText, safePdfFilename } = require('./server-supplier-invoice.cjs');
 
 const MAX_PDF_BYTES = 15 * 1024 * 1024;
@@ -25,30 +25,20 @@ function resolveUploadOrganisation(user) {
     .replace(/[\\/]+/g, '-')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 100) || 'jsinnovia';
-}
-
-async function findExistingDocument(fingerprint, organisation) {
-  if (!AGENT_KEY) return null;
+    .slice(0, 100)async function findExistingDocument(fingerprint, organisation) {
   try {
     const scopedOrganisation = resolveUploadOrganisation({ organisation });
-    const query = new URLSearchParams({
-      organisation: scopedOrganisation,
-      sort: 'created_at',
-      order: 'desc',
+    const marker = `nova-pdf:${fingerprint}`;
+    const filters = new URLSearchParams({
+      select: 'id,organisation,tenant_id,filename,dropbox_path,dropbox_file_id,email_message_id,deleted_at,created_at',
+      organisation: `eq.${scopedOrganisation}`,
+      email_message_id: `eq.${marker}`,
+      deleted_at: 'is.null',
+      order: 'created_at.desc',
       limit: '1000',
     });
-    const response = await fetch(`${AGENT_URL.replace(/\/$/, '')}/data/DocumentIndex?${query.toString()}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'x-agent-key': AGENT_KEY,
-        'x-organisation-id': scopedOrganisation,
-      },
-      signal: AbortSignal.timeout(10_000),
-    });
-    const data = await response.json().catch(() => []);
-    const marker = `nova-pdf:${fingerprint}`;
-    return response.ok && Array.isArray(data)
+    const data = await queryDocumentIndex(`DocumentIndex?${filters.toString()}`);
+    return Array.isArray(data)
       ? data.find((row) => (
         String(row?.organisation || row?.tenant_id || '') === scopedOrganisation
         && String(row?.email_message_id || '') === marker
@@ -57,6 +47,8 @@ async function findExistingDocument(fingerprint, organisation) {
       : null;
   } catch {
     return null;
+  }
+}  return null;
   }
 }
 
