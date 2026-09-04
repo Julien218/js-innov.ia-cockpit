@@ -1,0 +1,4 @@
+SIGNELYA production release 2026-09-04 revision 3
+- approved horizontal lockup enforced
+- Elynea visual moved below the welcome text
+- responsive conversation panel restored
