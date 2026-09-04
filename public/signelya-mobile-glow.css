@@ -1,0 +1,103 @@
+/*
+ * SIGNELYA — animation lumineuse du lockup officiel.
+ * Le fichier du logo n’est jamais redessiné ni transformé : seule une lumière
+ * cyan → violet → magenta le traverse, y compris dans la PWA mobile.
+ */
+
+@keyframes signelya-approved-light-sweep {
+  0%, 12% {
+    background-position: -42% 50%, 50% 50%;
+    filter: brightness(.96) saturate(1.02) drop-shadow(0 0 12px rgba(0, 212, 255, .15));
+  }
+  46% {
+    background-position: 62% 50%, 50% 50%;
+    filter: brightness(1.13) saturate(1.12) drop-shadow(0 0 23px rgba(0, 212, 255, .30)) drop-shadow(0 0 16px rgba(255, 43, 214, .18));
+  }
+  72%, 100% {
+    background-position: 142% 50%, 50% 50%;
+    filter: brightness(.98) saturate(1.04) drop-shadow(0 0 14px rgba(74, 106, 255, .18));
+  }
+}
+
+@keyframes signelya-approved-image-glow {
+  0%, 100% {
+    filter: brightness(.98) saturate(1.03) drop-shadow(0 0 10px rgba(0, 212, 255, .16));
+  }
+  48% {
+    filter: brightness(1.12) saturate(1.12) drop-shadow(0 0 22px rgba(0, 212, 255, .30)) drop-shadow(0 0 15px rgba(255, 43, 214, .18));
+  }
+}
+
+/* Écran d’attente du Player : logo officiel + balayage lumineux continu. */
+.signelya-priority-zone > section:nth-child(2) .relative.aspect-video > div:first-child > div:first-child {
+  background-color: #000 !important;
+  background-image:
+    linear-gradient(105deg,
+      transparent 0%,
+      transparent 39%,
+      rgba(0, 229, 255, .05) 44%,
+      rgba(0, 229, 255, .30) 48%,
+      rgba(255, 255, 255, .46) 50%,
+      rgba(157, 78, 255, .32) 53%,
+      rgba(255, 43, 214, .16) 57%,
+      transparent 63%,
+      transparent 100%),
+    url('/signelya-lockup-approved.png?v=20260904-2') !important;
+  background-repeat: no-repeat, no-repeat !important;
+  background-size: 28% 100%, contain !important;
+  background-position: -42% 50%, 50% 50% !important;
+  animation: signelya-approved-light-sweep 4.2s ease-in-out infinite !important;
+  will-change: background-position, filter;
+}
+
+/* Visuel placé sous le message d’accueil d’Elynea. */
+.elynea-welcome::after {
+  background-color: #000 !important;
+  background-image:
+    linear-gradient(105deg,
+      transparent 0%,
+      transparent 39%,
+      rgba(0, 229, 255, .05) 44%,
+      rgba(0, 229, 255, .28) 48%,
+      rgba(255, 255, 255, .42) 50%,
+      rgba(157, 78, 255, .30) 53%,
+      rgba(255, 43, 214, .14) 57%,
+      transparent 63%,
+      transparent 100%),
+    url('/signelya-lockup-approved.png?v=20260904-2') !important;
+  background-repeat: no-repeat, no-repeat !important;
+  background-size: 28% 100%, contain !important;
+  background-position: -42% 50%, 50% 50% !important;
+  animation: signelya-approved-light-sweep 4.2s ease-in-out infinite !important;
+  will-change: background-position, filter;
+}
+
+/* Pages où le lockup est rendu directement comme image, notamment la connexion. */
+img[src*="signelya-lockup-approved.png"] {
+  animation: signelya-approved-image-glow 3.8s ease-in-out infinite !important;
+  will-change: filter;
+}
+
+/* L’animation lettre par lettre reste plus lisible dans le menu mobile. */
+@media (max-width: 640px) {
+  .signelya-wordmark-letter {
+    animation-duration: 2.45s !important;
+    text-shadow:
+      0 0 5px color-mix(in srgb, var(--signelya-letter) 66%, transparent),
+      0 0 15px color-mix(in srgb, var(--signelya-letter) 38%, transparent) !important;
+  }
+
+  .signelya-priority-zone > section:nth-child(2) .relative.aspect-video > div:first-child > div:first-child,
+  .elynea-welcome::after {
+    animation-duration: 3.7s !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signelya-priority-zone > section:nth-child(2) .relative.aspect-video > div:first-child > div:first-child,
+  .elynea-welcome::after,
+  img[src*="signelya-lockup-approved.png"] {
+    animation: none !important;
+    filter: brightness(1.04) saturate(1.06) drop-shadow(0 0 14px rgba(0, 212, 255, .20)) !important;
+  }
+}
