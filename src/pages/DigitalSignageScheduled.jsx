@@ -1,4 +1,5 @@
 import React from "react";
+import { Upload } from "lucide-react";
 import DigitalSignage from "@/pages/DigitalSignage";
 import SignageSchedulePanel from "@/components/signage/SignageSchedulePanel";
 import SignageMediaManager from "@/components/signage/SignageMediaManager";
@@ -86,6 +87,18 @@ export default function DigitalSignageScheduled() {
     (a, b) => new Date(b.last_seen_at || 0).getTime() - new Date(a.last_seen_at || 0).getTime(),
   )[0] || null;
 
+  const openUpload = React.useCallback(() => {
+    const input = document.querySelector('.signelya-legacy-dashboard input[type="file"]');
+    if (input && typeof input.click === "function") {
+      setError("");
+      input.click();
+      return;
+    }
+    setError("Le module d’envoi n’est pas encore prêt. Rechargez la page puis réessayez.");
+  }, []);
+
+  const uploadDisabled = isAdmin && !managedClient;
+
   return (
     <div className="signelya-dashboard-v2 signelya-priority-layout" data-signelya-page>
       <SignelyaPriorityPlayer
@@ -93,6 +106,31 @@ export default function DigitalSignageScheduled() {
         isAdmin={isAdmin}
         dashboardData={dashboard}
       />
+
+      <div className="mx-auto w-full max-w-[1600px] px-4 pt-4 md:px-6">
+        <section className="flex flex-col gap-4 rounded-2xl border border-fuchsia-400/30 bg-[linear-gradient(120deg,rgba(0,212,255,.08),rgba(8,125,255,.08)_38%,rgba(138,43,226,.12)_72%,rgba(255,43,214,.08))] p-4 shadow-[0_0_24px_rgba(138,43,226,.09)] sm:flex-row sm:items-center sm:justify-between md:p-5">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[linear-gradient(135deg,#00d4ff,#087dff_42%,#8a2be2_76%,#ff2bd6)] text-white shadow-[0_0_20px_rgba(0,212,255,.24)]">
+              <Upload className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-base font-bold md:text-lg">Ajouter vos vidéos</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Importez une vidéo ou une image dans la médiathèque SIGNELYA.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={openUpload}
+            disabled={uploadDisabled}
+            className="inline-flex min-h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl border border-white/20 bg-[linear-gradient(110deg,#00d4ff,#087dff_38%,#8a2be2_72%,#ff2bd6)] px-5 py-3 text-sm font-bold text-white shadow-[0_0_22px_rgba(0,212,255,.20)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+          >
+            <Upload className="h-4 w-4" />
+            Ajouter une vidéo ou une image
+          </button>
+        </section>
+      </div>
 
       <div className="signelya-legacy-dashboard">
         <DigitalSignage />
