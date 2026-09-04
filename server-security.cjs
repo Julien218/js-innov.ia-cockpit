@@ -58,15 +58,24 @@ function splitConfiguredOrigins(value) {
     .filter(Boolean);
 }
 
-function getRequestOrigin(req) {
+function getRequestOrigins(req) {
   const host = String(req.headers.host || req.headers['x-forwarded-host'] || '')
     .split(',')[0]
     .trim();
-  const protocol = String(req.headers['x-forwarded-proto'] || req.protocol || 'https')
+  if (!host) return [];
+
+  const forwardedProtocol = String(req.headers['x-forwarded-proto'] || '')
     .split(',')[0]
     .trim();
-  if (!host || !protocol) return '';
-  return normalizeOrigin(`${protocol}://${host}`);
+  const protocols = new Set([
+    forwardedProtocol,
+    String(req.protocol || '').trim(),
+    'https',
+  ].filter(Boolean));
+
+  return [...protocols]
+    .map(protocol => normalizeOrigin(`${protocol}://${host}`))
+    .filter(Boolean);
 }
 
 function requireSameOrigin(req, res, next) {
@@ -85,7 +94,7 @@ function requireSameOrigin(req, res, next) {
     normalizeOrigin(process.env.SIGNELYA_APP_URL),
     normalizeOrigin(process.env.PUBLIC_BASE_URL),
     railwayDomain,
-    getRequestOrigin(req),
+    ...getRequestOrigins(req),
     ...splitConfiguredOrigins(process.env.COCKPIT_ALLOWED_ORIGINS),
     'http://localhost:5173',
     'http://localhost:3000',
