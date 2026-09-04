@@ -1,0 +1,37 @@
+/* SIGNELYA dashboard v2 — maquette validée, sans toucher aux logos ni à la logique métier */
+.signelya-dashboard-v2{--sy-cyan:#00d4ff;--sy-blue:#087dff;--sy-violet:#8a2be2;--sy-magenta:#ff2bd6;background:radial-gradient(circle at 15% 0,rgba(0,212,255,.10),transparent 30rem),radial-gradient(circle at 88% 4%,rgba(255,43,214,.09),transparent 32rem),linear-gradient(145deg,#03050d,#060914 50%,#090719);min-height:100%;color:#f8fbff}
+.signelya-dashboard-v2>.mx-auto{display:grid!important;grid-template-columns:repeat(12,minmax(0,1fr));gap:16px!important;max-width:1500px!important}
+.signelya-dashboard-v2>.mx-auto>*,.signelya-dashboard-v2>.mx-auto>div:has(>section)>*{min-width:0}
+/* Les grilles intermédiaires deviennent transparentes afin de hiérarchiser les modules par usage. */
+.signelya-dashboard-v2>.mx-auto>div:has(>section){display:contents!important}
+/* Masquer le grand bandeau redondant : la marque reste dans la sidebar/topbar. */
+.signelya-dashboard-v2>.mx-auto>section:first-of-type{display:none!important}
+/* Upload / état écran : action n°1 */
+.signelya-dashboard-v2>.mx-auto>section:nth-of-type(2){grid-column:span 4;grid-row:1;min-height:360px;border:1px solid rgba(0,212,255,.48)!important;background:radial-gradient(circle at 18% 15%,rgba(0,212,255,.24),transparent 34%),radial-gradient(circle at 85% 82%,rgba(255,43,214,.20),transparent 38%),linear-gradient(145deg,rgba(5,31,78,.96),rgba(36,12,91,.94))!important;box-shadow:0 0 26px rgba(0,212,255,.15),0 0 42px rgba(138,43,226,.16)!important;color:#fff!important}
+.signelya-dashboard-v2>.mx-auto>section:nth-of-type(2) p{color:rgba(235,244,255,.82)!important}
+.signelya-dashboard-v2>.mx-auto>section:nth-of-type(2) button{background:linear-gradient(110deg,var(--sy-cyan),var(--sy-blue) 38%,var(--sy-violet) 72%,var(--sy-magenta))!important;color:#fff!important;border:1px solid rgba(255,255,255,.18);box-shadow:0 0 24px rgba(0,212,255,.24),0 0 32px rgba(255,43,214,.16)}
+/* Player / boucle : action n°2 */
+.signelya-dashboard-v2>.mx-auto>section:nth-of-type(3){grid-column:span 4;grid-row:1;border:1px solid rgba(0,212,255,.38)!important;background:linear-gradient(145deg,rgba(6,17,42,.96),rgba(12,10,48,.94))!important;box-shadow:0 0 28px rgba(0,212,255,.10),0 0 34px rgba(138,43,226,.12)!important}
+.signelya-dashboard-v2>.mx-auto>section:nth-of-type(3)>div:first-child{background:linear-gradient(135deg,rgba(0,212,255,.10),rgba(138,43,226,.14))!important}
+/* Diffusion : action n°3 */
+.signelya-dashboard-v2 section:has(input[type="datetime-local"]){grid-column:span 4;grid-row:1;border:1px solid rgba(138,43,226,.45)!important;background:linear-gradient(145deg,rgba(8,17,42,.96),rgba(30,8,66,.92))!important;box-shadow:0 0 28px rgba(138,43,226,.13),0 0 30px rgba(255,43,214,.08)!important}
+.signelya-dashboard-v2 section:has(input[type="datetime-local"]) button{background:linear-gradient(110deg,var(--sy-cyan),var(--sy-blue) 38%,var(--sy-violet) 72%,var(--sy-magenta))!important}
+/* Médiathèque juste après les actions principales. */
+.signelya-dashboard-v2 section:has(input[type="checkbox"]){grid-column:1/-1;grid-row:2;background:linear-gradient(145deg,rgba(7,14,32,.94),rgba(7,9,24,.90))!important;border-color:rgba(82,126,255,.28)!important}
+/* Aperçu média et préparation : secondaires, repliables visuellement. */
+.signelya-dashboard-v2 details:has(.aspect-video){grid-column:span 6}
+.signelya-dashboard-v2 section:has(button[aria-label^="Prévisualiser"]){grid-column:1/-1}
+/* Statuts système sous les contenus principaux. */
+.signelya-dashboard-v2>.mx-auto>div:not(:has(>section)):has(.rounded-2xl){grid-column:1/-1}
+.signelya-dashboard-v2 .grid.grid-cols-1.sm\:grid-cols-2.xl\:grid-cols-4{grid-column:1/-1;grid-row:3}
+.signelya-dashboard-v2 .grid.grid-cols-1.sm\:grid-cols-2.xl\:grid-cols-4>div{background:linear-gradient(145deg,rgba(7,16,35,.92),rgba(8,10,26,.88))!important;border-color:rgba(65,143,255,.30)!important;color:#eaf7ff!important;box-shadow:0 0 22px rgba(0,212,255,.06)!important}
+.signelya-dashboard-v2 .grid.grid-cols-1.sm\:grid-cols-2.xl\:grid-cols-4 p{color:#f7fbff!important}
+/* Tous les panneaux techniques restent compacts et déroulants. */
+.signelya-dashboard-v2 details{background:linear-gradient(145deg,rgba(7,14,31,.92),rgba(8,9,24,.88))!important;border-color:rgba(80,122,230,.24)!important;color:#f8fbff}
+.signelya-dashboard-v2 summary{color:#f8fbff}
+.signelya-dashboard-v2 input,.signelya-dashboard-v2 select{background:#071020!important;color:#f8fbff!important;border-color:rgba(88,126,220,.30)!important}
+.signelya-dashboard-v2 .text-muted-foreground{color:rgba(202,217,238,.68)!important}
+/* Signature de marque persistante. */
+.signelya-dashboard-v2::after{content:'By Js-Innov.IA   ·   VOS ÉCRANS PRENNENT VIE';display:block;max-width:1500px;margin:0 auto;padding:8px 24px 28px;text-align:right;font-family:'Segoe Script','Brush Script MT',cursive;letter-spacing:.04em;color:#eaf7ff;text-shadow:0 0 10px rgba(0,212,255,.28)}
+@media(max-width:1100px){.signelya-dashboard-v2>.mx-auto>section:nth-of-type(2),.signelya-dashboard-v2>.mx-auto>section:nth-of-type(3),.signelya-dashboard-v2 section:has(input[type="datetime-local"]){grid-column:span 6;grid-row:auto}.signelya-dashboard-v2 section:has(input[type="datetime-local"]){grid-column:1/-1}}
+@media(max-width:700px){.signelya-dashboard-v2>.mx-auto{display:flex!important;flex-direction:column}.signelya-dashboard-v2>.mx-auto>div:has(>section){display:contents!important}.signelya-dashboard-v2>.mx-auto>section:nth-of-type(2){order:1}.signelya-dashboard-v2>.mx-auto>section:nth-of-type(3){order:2}.signelya-dashboard-v2 section:has(input[type="datetime-local"]){order:3}.signelya-dashboard-v2 section:has(input[type="checkbox"]){order:4}.signelya-dashboard-v2 .grid.grid-cols-1.sm\:grid-cols-2.xl\:grid-cols-4{order:5}.signelya-dashboard-v2>.mx-auto>*{width:100%}.signelya-dashboard-v2::after{text-align:center;font-size:.8rem;padding-inline:14px}}
