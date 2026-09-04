@@ -1,4 +1,5 @@
 import React from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Upload } from "lucide-react";
 import DigitalSignage from "@/pages/DigitalSignage";
 import SignageSchedulePanel from "@/components/signage/SignageSchedulePanel";
@@ -30,15 +31,20 @@ export default function DigitalSignageScheduled() {
   const [managedClient, setManagedClient] = React.useState(() =>
     isAdmin ? (window.localStorage.getItem(MANAGED_CLIENT_KEY) || "") : "",
   );
-  const [dashboard, setDashboard] = React.useState(null);
-  const [error, setError] = React.useState("");
+  const [actionError, setActionError] = React.useState("");
 
   React.useEffect(() => {
     if (!isAdmin) return undefined;
+
     const sync = () => {
       const nextClient = window.localStorage.getItem(MANAGED_CLIENT_KEY) || "";
-      setManagedClient(previous => previous === nextClient ? previous : nextClient);
+      setManagedClient(previous => {
+        if (previous === nextClient) return previous;
+        setActionError("");
+        return nextClient;
+      });
     };
+
     const timer = window.setInterval(sync, 1000);
     window.addEventListener("storage", sync);
     return () => {
@@ -47,41 +53,16 @@ export default function DigitalSignageScheduled() {
     };
   }, [isAdmin]);
 
-  React.useEffect(() => {
-    let cancelled = false;
-    let timer;
+  const dashboardEnabled = !isAdmin || Boolean(managedClient);
+  const dashboardQuery = useQuery({
+    queryKey: ["signage-dashboard", managedClient || "self"],
+    queryFn: () => fetchDashboard(managedClient),
+    enabled: dashboardEnabled,
+    refetchInterval: 30000,
+    staleTime: 10000,
+  });
 
-    setDashboard(null);
-    setError("");
-
-    const load = async () => {
-      if (isAdmin && !managedClient) {
-        setDashboard(null);
-        return;
-      }
-
-      try {
-        const data = await fetchDashboard(managedClient);
-        if (!cancelled) {
-          setDashboard(data);
-          setError("");
-        }
-      } catch (fetchError) {
-        if (!cancelled) setError(fetchError.message);
-      }
-
-      if (!cancelled) {
-        timer = window.setTimeout(load, document.hidden ? 90000 : 30000);
-      }
-    };
-
-    load();
-    return () => {
-      cancelled = true;
-      if (timer) window.clearTimeout(timer);
-    };
-  }, [isAdmin, managedClient]);
-
+  const dashboard = dashboardQuery.data || null;
   const players = dashboard?.players || [];
   const player = [...players].sort(
     (a, b) => new Date(b.last_seen_at || 0).getTime() - new Date(a.last_seen_at || 0).getTime(),
@@ -90,14 +71,15 @@ export default function DigitalSignageScheduled() {
   const openUpload = React.useCallback(() => {
     const input = document.querySelector('.signelya-legacy-dashboard input[type="file"]');
     if (input && typeof input.click === "function") {
-      setError("");
+      setActionError("");
       input.click();
       return;
     }
-    setError("Le module d’envoi n’est pas encore prêt. Rechargez la page puis réessayez.");
+    setActionError("Le module d’envoi n’est pas encore prêt. Rechargez la page puis réessayez.");
   }, []);
 
   const uploadDisabled = isAdmin && !managedClient;
+  const visibleError = actionError || dashboardQuery.error?.message || "";
 
   return (
     <div className="signelya-dashboard-v2 signelya-priority-layout" data-signelya-page>
@@ -137,9 +119,9 @@ export default function DigitalSignageScheduled() {
       </div>
 
       <div className="mx-auto max-w-7xl space-y-4 px-4 pb-6 md:px-6">
-        {error && (
+        {visibleError && (
           <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
-            {error}
+            {visibleError}
           </div>
         )}
 
@@ -180,7 +162,7 @@ export default function DigitalSignageScheduled() {
           </details>
         )}
 
-        {!player && !error && (
+        {!player && !visibleError && (
           <div className="rounded-2xl border bg-card p-5 text-sm text-muted-foreground">
             {isAdmin && !managedClient
               ? "Sélectionnez un client pour accéder à ses horaires et diagnostics."

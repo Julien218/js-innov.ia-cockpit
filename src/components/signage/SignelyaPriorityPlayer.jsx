@@ -50,6 +50,7 @@ export default function SignelyaPriorityPlayer({
   const [playing, setPlaying] = React.useState(false);
   const [muted, setMuted] = React.useState(true);
   const [activeIndex, setActiveIndex] = React.useState(0);
+  const [cycle, setCycle] = React.useState(0);
   const [urls, setUrls] = React.useState({});
   const [mediaError, setMediaError] = React.useState("");
   const screenRef = React.useRef(null);
@@ -117,6 +118,7 @@ export default function SignelyaPriorityPlayer({
     setActivated(false);
     setPlaying(false);
     setActiveIndex(0);
+    setCycle(0);
   }, [programKey]);
 
   React.useEffect(() => {
@@ -162,6 +164,7 @@ export default function SignelyaPriorityPlayer({
     if (!items.length) return;
     const nextIndex = (index + items.length) % items.length;
     setActiveIndex(nextIndex);
+    setCycle(value => value + 1);
     setActivated(true);
     setPlaying(true);
     await loadCurrent(mediaIdOf(items[nextIndex]));
@@ -179,14 +182,14 @@ export default function SignelyaPriorityPlayer({
     video.muted = muted;
     if (playing) video.play().catch(() => {});
     else video.pause();
-  }, [activeIndex, currentUrl, isImage, muted, playing]);
+  }, [activeIndex, cycle, currentUrl, isImage, muted, playing]);
 
   React.useEffect(() => {
     if (!activated || !playing || !isImage || !currentUrl) return undefined;
     const seconds = Math.max(3, Number(current?.durationSeconds || current?.duration_seconds || 15));
-    const timer = window.setTimeout(() => next(), seconds * 1000);
+    const timer = window.setTimeout(() => goTo(activeIndex + 1), seconds * 1000);
     return () => window.clearTimeout(timer);
-  }, [activated, activeIndex, current?.durationSeconds, current?.duration_seconds, currentUrl, isImage, playing]);
+  }, [activated, activeIndex, cycle, current?.durationSeconds, current?.duration_seconds, currentUrl, isImage, playing]);
 
   const noClientSelected = isAdmin && !clientEmail;
   const statusTitle = noClientSelected
@@ -238,17 +241,20 @@ export default function SignelyaPriorityPlayer({
             className="relative aspect-video overflow-hidden rounded-2xl border border-cyan-400/20 bg-black shadow-[0_18px_42px_rgba(2,6,23,.34)]"
           >
             {!activated && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-[radial-gradient(circle_at_center,rgba(0,212,255,.11),transparent_42%),#000] p-5 text-center sm:gap-5 sm:p-8">
-                <img
-                  src="/signelya-lockup-approved.png"
-                  onError={event => {
-                    if (event.currentTarget.dataset.fallbackApplied) return;
-                    event.currentTarget.dataset.fallbackApplied = "true";
-                    event.currentTarget.src = "/signelya-lockup-horizontal.svg";
-                  }}
-                  alt="SIGNELYA By Js-Innov.IA — Vos écrans prennent vie"
-                  className="max-h-[43%] max-w-[82%] object-contain drop-shadow-[0_0_26px_rgba(0,212,255,.30)]"
-                />
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[radial-gradient(circle_at_center,rgba(0,212,255,.11),transparent_42%),#000] p-4 text-center sm:gap-4 sm:p-8">
+                <div className="flex max-h-[47%] w-full flex-col items-center justify-center gap-1.5">
+                  <img
+                    src="/signelya-lockup-horizontal.svg"
+                    onError={event => {
+                      if (event.currentTarget.dataset.fallbackApplied) return;
+                      event.currentTarget.dataset.fallbackApplied = "true";
+                      event.currentTarget.src = "/signelya-lockup-approved.png";
+                    }}
+                    alt="SIGNELYA — Vos écrans prennent vie"
+                    className="max-h-full max-w-[82%] object-contain drop-shadow-[0_0_26px_rgba(0,212,255,.30)]"
+                  />
+                  <p className="signelya-byline text-sm text-white/90 sm:text-base">By Js-Innov.IA</p>
+                </div>
                 <button
                   type="button"
                   onClick={activate}
@@ -258,7 +264,7 @@ export default function SignelyaPriorityPlayer({
                   <Play className="h-5 w-5 fill-current" />
                   {items.length ? "Lire l’aperçu" : "Aucun programme enregistré"}
                 </button>
-                <p className="text-xs text-white/45">Aucun média vidéo n’est chargé avant votre clic.</p>
+                <p className="text-[11px] text-white/45 sm:text-xs">Aucun média vidéo n’est chargé avant votre clic.</p>
               </div>
             )}
 
@@ -274,10 +280,10 @@ export default function SignelyaPriorityPlayer({
             )}
             {activated && currentUrl && (
               isImage ? (
-                <img src={currentUrl} alt={currentMedia.name || "Média"} className="h-full w-full object-contain" />
+                <img key={`${currentId}-${cycle}`} src={currentUrl} alt={currentMedia.name || "Média"} className="h-full w-full object-contain" />
               ) : (
                 <video
-                  key={`${currentId}-${currentUrl}`}
+                  key={`${currentId}-${currentUrl}-${cycle}`}
                   ref={videoRef}
                   src={currentUrl}
                   muted={muted}
