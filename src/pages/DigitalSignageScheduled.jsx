@@ -4,6 +4,7 @@ import SignageSchedulePanel from "@/components/signage/SignageSchedulePanel";
 import SignageMediaManager from "@/components/signage/SignageMediaManager";
 import SignageDisplayManager from "@/components/signage/SignageDisplayManager";
 import { useAuth } from "@/lib/AuthContext";
+import "./signelya-dashboard-v2.css";
 
 const MANAGED_CLIENT_KEY = "jsinnovia-managed-client";
 
@@ -57,10 +58,10 @@ export default function DigitalSignageScheduled() {
     return () => { cancelled = true; if (timer) window.clearTimeout(timer); };
   }, [isAdmin, managedClient]);
 
-  return <>
+  return <div className="signelya-dashboard-v2" data-signelya-page>
     <DigitalSignage />
     <div className="px-4 md:px-6 pb-6 max-w-7xl mx-auto space-y-4">
-      {error && <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
       {player && <details className="rounded-2xl border bg-card">
         <summary className="cursor-pointer list-none p-4 text-sm font-semibold md:p-5">Définir les horaires automatiques</summary>
         <div className="border-t p-3 md:p-4"><SignageSchedulePanel player={player} managedClient={managedClient} /></div>
@@ -79,5 +80,5 @@ export default function DigitalSignageScheduled() {
       </details>}
       {!player && <div className="rounded-2xl border bg-card p-5 text-sm text-muted-foreground">Les horaires seront disponibles dès que l’écran sera associé.</div>}
     </div>
-  </>;
+  </div>;
 }
