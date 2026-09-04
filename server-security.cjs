@@ -41,12 +41,61 @@ function requireSession(minRole = 'client') {
   };
 }
 
+function normalizeOrigin(value) {
+  const candidate = String(value || '').trim();
+  if (!candidate) return '';
+  try {
+    return new URL(candidate).origin.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function splitConfiguredOrigins(value) {
+  return String(value || '')
+    .split(',')
+    .map(normalizeOrigin)
+    .filter(Boolean);
+}
+
+function getRequestOrigin(req) {
+  const host = String(req.headers.host || req.headers['x-forwarded-host'] || '')
+    .split(',')[0]
+    .trim();
+  const protocol = String(req.headers['x-forwarded-proto'] || req.protocol || 'https')
+    .split(',')[0]
+    .trim();
+  if (!host || !protocol) return '';
+  return normalizeOrigin(`${protocol}://${host}`);
+}
+
 function requireSameOrigin(req, res, next) {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
-  const origin = req.headers.origin;
-  if (!origin) return next();
-  const expected = process.env.COCKPIT_URL || 'https://cockpit.jsinnovia.com';
-  if ([expected, 'http://localhost:5173', 'http://localhost:3000'].includes(origin)) return next();
+
+  const rawOrigin = req.headers.origin;
+  if (!rawOrigin) return next();
+
+  const origin = normalizeOrigin(rawOrigin);
+  const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN
+    ? normalizeOrigin(`https://${process.env.RAILWAY_PUBLIC_DOMAIN}`)
+    : '';
+
+  const allowedOrigins = new Set([
+    normalizeOrigin(process.env.COCKPIT_URL || 'https://cockpit.jsinnovia.com'),
+    normalizeOrigin(process.env.SIGNELYA_APP_URL),
+    normalizeOrigin(process.env.PUBLIC_BASE_URL),
+    railwayDomain,
+    getRequestOrigin(req),
+    ...splitConfiguredOrigins(process.env.COCKPIT_ALLOWED_ORIGINS),
+    'http://localhost:5173',
+    'http://localhost:3000',
+  ].filter(Boolean));
+
+  if (origin && allowedOrigins.has(origin)) return next();
+
+  console.warn(
+    `[security] blocked origin=${rawOrigin} host=${req.headers.host || '-'} method=${req.method} path=${req.originalUrl || req.url}`
+  );
   return res.status(403).json({ error: 'Origine non autorisée' });
 }
 
