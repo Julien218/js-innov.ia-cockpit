@@ -1,0 +1,485 @@
+/* SIGNELYA — lockup officiel validé le 04/09/2026.
+   Cette image remplace tout ancien lockup horizontal non conforme. */
+.signelya-priority-zone > section:nth-child(2) .relative.aspect-video > div:first-child > div:first-child {
+  width: 100% !important;
+  height: min(54%, 250px) !important;
+  max-height: none !important;
+  flex: 0 0 auto;
+  background: #000 url('/signelya-lockup-approved.png?v=20260904-2') center / contain no-repeat;
+  filter: drop-shadow(0 0 22px rgba(0, 212, 255, .18));
+}
+.signelya-priority-zone > section:nth-child(2) .relative.aspect-video > div:first-child > div:first-child > img,
+.signelya-priority-zone > section:nth-child(2) .relative.aspect-video > div:first-child > div:first-child > .signelya-byline {
+  display: none !important;
+}
+
+/* Elynea — interface conversationnelle complète et image de marque sous le message. */
+.elynea-panel {
+  position: fixed !important;
+  right: max(18px, env(safe-area-inset-right)) !important;
+  bottom: max(18px, env(safe-area-inset-bottom)) !important;
+  z-index: 99999 !important;
+  display: flex !important;
+  width: min(430px, calc(100vw - 36px)) !important;
+  height: min(640px, calc(100dvh - 96px)) !important;
+  max-height: calc(100dvh - 96px) !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  color: #f8fbff !important;
+  border: 1px solid rgba(0, 212, 255, .42) !important;
+  border-radius: 24px !important;
+  background:
+    radial-gradient(circle at 12% 0, rgba(0, 212, 255, .10), transparent 34%),
+    radial-gradient(circle at 92% 8%, rgba(255, 43, 214, .09), transparent 32%),
+    linear-gradient(180deg, rgba(4, 10, 28, .985), rgba(3, 7, 20, .99)) !important;
+  box-shadow:
+    0 28px 72px rgba(0, 0, 0, .58),
+    0 0 0 1px rgba(138, 43, 226, .10),
+    0 0 38px rgba(0, 212, 255, .12) !important;
+  font-family: 'Inter', sans-serif !important;
+}
+
+.elynea-header {
+  display: flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  min-width: 0 !important;
+  padding: 14px !important;
+  border-bottom: 1px solid rgba(83, 127, 255, .22) !important;
+  background: rgba(4, 8, 23, .92) !important;
+  backdrop-filter: blur(18px);
+}
+
+.elynea-identity {
+  display: flex !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.elynea-avatar {
+  position: relative !important;
+  width: 44px !important;
+  height: 44px !important;
+  flex: 0 0 44px !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(0, 212, 255, .48) !important;
+  border-radius: 14px !important;
+  background: #050914 !important;
+  box-shadow: 0 0 20px rgba(0, 212, 255, .16) !important;
+}
+.elynea-avatar > img {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+.elynea-avatar > span {
+  position: absolute !important;
+  right: 2px !important;
+  bottom: 2px !important;
+  width: 9px !important;
+  height: 9px !important;
+  border: 2px solid #050914 !important;
+  border-radius: 999px !important;
+  box-shadow: 0 0 9px currentColor !important;
+}
+
+.elynea-heading {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+.elynea-title-line {
+  display: flex !important;
+  min-width: 0 !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+.elynea-title-line > strong {
+  flex: 0 0 auto !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 16px !important;
+  line-height: 1.2 !important;
+  color: #fff !important;
+}
+.elynea-service {
+  display: inline-flex !important;
+  min-width: 0 !important;
+  align-items: center !important;
+  gap: 5px !important;
+  padding: 4px 7px !important;
+  overflow: hidden !important;
+  color: #bff6ff !important;
+  border: 1px solid rgba(0, 212, 255, .22) !important;
+  border-radius: 999px !important;
+  background: rgba(0, 212, 255, .07) !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
+}
+.elynea-service > img {
+  width: 16px !important;
+  height: 16px !important;
+  flex: 0 0 16px !important;
+  object-fit: contain !important;
+}
+.elynea-heading > p {
+  margin: 4px 0 0 !important;
+  overflow: hidden !important;
+  color: rgba(225, 236, 255, .72) !important;
+  font-size: 11px !important;
+  line-height: 1.25 !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
+}
+.elynea-heading > small {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  margin-top: 5px !important;
+  color: rgba(222, 235, 252, .68) !important;
+  font-size: 10px !important;
+}
+.elynea-heading > small > i {
+  display: inline-block !important;
+  width: 7px !important;
+  height: 7px !important;
+  border-radius: 999px !important;
+  box-shadow: 0 0 9px currentColor !important;
+}
+
+.elynea-actions {
+  display: flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  gap: 5px !important;
+}
+.elynea-actions > button,
+.elynea-mic,
+.elynea-send {
+  display: inline-grid !important;
+  place-items: center !important;
+  width: 36px !important;
+  height: 36px !important;
+  flex: 0 0 36px !important;
+  padding: 0 !important;
+  color: rgba(238, 246, 255, .82) !important;
+  border: 1px solid rgba(93, 132, 255, .20) !important;
+  border-radius: 11px !important;
+  background: rgba(255, 255, 255, .035) !important;
+  cursor: pointer !important;
+  transition: transform .18s ease, background .18s ease, border-color .18s ease, opacity .18s ease !important;
+}
+.elynea-actions > button:hover,
+.elynea-mic:hover,
+.elynea-send:hover {
+  transform: translateY(-1px) !important;
+  color: #fff !important;
+  border-color: rgba(0, 212, 255, .48) !important;
+  background: rgba(0, 212, 255, .10) !important;
+}
+.elynea-actions svg,
+.elynea-mic svg,
+.elynea-send svg {
+  width: 17px !important;
+  height: 17px !important;
+}
+.elynea-actions button:disabled,
+.elynea-mic:disabled,
+.elynea-send:disabled {
+  cursor: not-allowed !important;
+  opacity: .42 !important;
+}
+
+.elynea-messages {
+  display: flex !important;
+  min-height: 0 !important;
+  flex: 1 1 auto !important;
+  flex-direction: column !important;
+  gap: 11px !important;
+  padding: 14px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  scroll-behavior: smooth !important;
+}
+
+.elynea-welcome {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  padding: 14px !important;
+  color: rgba(235, 244, 255, .86) !important;
+  border: 1px solid rgba(83, 127, 255, .20) !important;
+  border-radius: 18px !important;
+  background: linear-gradient(145deg, rgba(8, 17, 43, .94), rgba(10, 8, 35, .90)) !important;
+  box-shadow: inset 0 0 22px rgba(0, 212, 255, .025) !important;
+}
+
+/* L’ancien grand avatar est retiré du flux.
+   Le lockup officiel vient APRÈS le texte, comme demandé. */
+.elynea-welcome > img {
+  display: none !important;
+}
+.elynea-welcome-title {
+  order: 1 !important;
+  margin: 0 !important;
+  color: #fff !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  line-height: 1.3 !important;
+}
+.elynea-welcome > p:not(.elynea-welcome-title) {
+  order: 2 !important;
+  margin: 0 !important;
+  color: rgba(220, 232, 250, .76) !important;
+  font-size: 13px !important;
+  line-height: 1.55 !important;
+}
+.elynea-welcome::after {
+  content: '' !important;
+  order: 3 !important;
+  display: block !important;
+  width: 100% !important;
+  aspect-ratio: 3 / 1 !important;
+  max-height: 138px !important;
+  margin-top: 2px !important;
+  border: 1px solid rgba(0, 212, 255, .22) !important;
+  border-radius: 15px !important;
+  background: #000 url('/signelya-lockup-approved.png?v=20260904-2') center / contain no-repeat !important;
+  box-shadow: 0 0 22px rgba(0, 212, 255, .075) !important;
+}
+
+.elynea-capabilities {
+  order: 4 !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 7px !important;
+  margin-top: 1px !important;
+}
+.elynea-capabilities > button {
+  min-height: 34px !important;
+  padding: 7px 10px !important;
+  color: #dff9ff !important;
+  border: 1px solid rgba(0, 212, 255, .22) !important;
+  border-radius: 999px !important;
+  background: rgba(0, 212, 255, .065) !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+}
+.elynea-capabilities > button:hover {
+  color: #fff !important;
+  border-color: rgba(255, 43, 214, .42) !important;
+  background: linear-gradient(110deg, rgba(0, 212, 255, .15), rgba(138, 43, 226, .16), rgba(255, 43, 214, .13)) !important;
+}
+
+.elynea-message {
+  max-width: 88% !important;
+  padding: 10px 12px !important;
+  color: #edf6ff !important;
+  border: 1px solid rgba(83, 127, 255, .18) !important;
+  border-radius: 15px 15px 15px 5px !important;
+  background: rgba(12, 20, 45, .90) !important;
+  font-size: 13px !important;
+  line-height: 1.55 !important;
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere !important;
+}
+.elynea-message.is-user {
+  align-self: flex-end !important;
+  color: #fff !important;
+  border-color: rgba(255, 43, 214, .26) !important;
+  border-radius: 15px 15px 5px 15px !important;
+  background: linear-gradient(130deg, rgba(8, 125, 255, .72), rgba(138, 43, 226, .74), rgba(255, 43, 214, .68)) !important;
+}
+.elynea-message.is-error {
+  color: #fecaca !important;
+  border-color: rgba(248, 113, 113, .28) !important;
+  background: rgba(127, 29, 29, .24) !important;
+}
+.elynea-message-author {
+  display: block !important;
+  margin-bottom: 3px !important;
+  color: #58e8ff !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase !important;
+}
+.elynea-thinking {
+  display: inline-flex !important;
+  align-self: flex-start !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 9px 11px !important;
+  color: rgba(221, 235, 252, .72) !important;
+  border: 1px solid rgba(0, 212, 255, .16) !important;
+  border-radius: 13px !important;
+  background: rgba(0, 212, 255, .045) !important;
+  font-size: 12px !important;
+}
+.elynea-thinking > span {
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 999px !important;
+  background: #00d4ff !important;
+  box-shadow: 0 0 12px rgba(0, 212, 255, .82) !important;
+  animation: elynea-pulse 1.2s ease-in-out infinite !important;
+}
+@keyframes elynea-pulse {
+  0%, 100% { opacity: .4; transform: scale(.78); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.elynea-composer {
+  position: relative !important;
+  display: flex !important;
+  flex: 0 0 auto !important;
+  align-items: flex-end !important;
+  gap: 8px !important;
+  padding: 11px 12px max(11px, env(safe-area-inset-bottom)) !important;
+  border-top: 1px solid rgba(83, 127, 255, .20) !important;
+  background: rgba(3, 7, 20, .96) !important;
+  backdrop-filter: blur(18px);
+}
+.elynea-composer > textarea {
+  display: block !important;
+  min-width: 0 !important;
+  min-height: 42px !important;
+  max-height: 104px !important;
+  flex: 1 1 auto !important;
+  padding: 10px 12px !important;
+  overflow-y: auto !important;
+  resize: none !important;
+  color: #f8fbff !important;
+  caret-color: #00d4ff !important;
+  border: 1px solid rgba(93, 132, 255, .28) !important;
+  border-radius: 12px !important;
+  outline: none !important;
+  background: rgba(6, 13, 31, .96) !important;
+  font: 400 16px/1.35 'Inter', sans-serif !important;
+  box-shadow: inset 0 0 15px rgba(0, 212, 255, .025) !important;
+}
+.elynea-composer > textarea::placeholder {
+  color: rgba(202, 217, 238, .48) !important;
+}
+.elynea-composer > textarea:focus {
+  border-color: rgba(0, 212, 255, .58) !important;
+  box-shadow: 0 0 0 3px rgba(0, 212, 255, .08) !important;
+}
+.elynea-mic.is-listening {
+  color: #fff !important;
+  border-color: rgba(0, 212, 255, .65) !important;
+  background: rgba(0, 212, 255, .18) !important;
+  box-shadow: 0 0 18px rgba(0, 212, 255, .24) !important;
+}
+.elynea-send {
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, .18) !important;
+  background: linear-gradient(135deg, #00d4ff, #087dff 38%, #8a2be2 72%, #ff2bd6) !important;
+  box-shadow: 0 0 18px rgba(0, 212, 255, .18) !important;
+}
+
+@media (max-width: 640px) {
+  .signelya-priority-zone > section:nth-child(2) .relative.aspect-video > div:first-child > div:first-child {
+    height: 48% !important;
+    background-size: 96% auto !important;
+  }
+
+  .elynea-panel {
+    left: max(10px, env(safe-area-inset-left)) !important;
+    right: max(10px, env(safe-area-inset-right)) !important;
+    bottom: max(10px, env(safe-area-inset-bottom)) !important;
+    width: auto !important;
+    height: min(560px, calc(100dvh - 92px)) !important;
+    max-height: calc(100dvh - 92px) !important;
+    border-radius: 20px !important;
+  }
+  .elynea-header {
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+  .elynea-avatar {
+    width: 38px !important;
+    height: 38px !important;
+    flex-basis: 38px !important;
+    border-radius: 12px !important;
+  }
+  .elynea-title-line {
+    gap: 5px !important;
+  }
+  .elynea-title-line > strong {
+    font-size: 14px !important;
+  }
+  .elynea-service {
+    max-width: 92px !important;
+    padding: 3px 6px !important;
+    font-size: 9px !important;
+  }
+  .elynea-heading > p {
+    font-size: 10px !important;
+  }
+  .elynea-heading > small {
+    margin-top: 3px !important;
+    font-size: 9px !important;
+  }
+  .elynea-actions {
+    gap: 3px !important;
+  }
+  .elynea-actions > button,
+  .elynea-mic,
+  .elynea-send {
+    width: 34px !important;
+    height: 34px !important;
+    flex-basis: 34px !important;
+    border-radius: 10px !important;
+  }
+  .elynea-messages {
+    gap: 9px !important;
+    padding: 10px !important;
+  }
+  .elynea-welcome {
+    gap: 8px !important;
+    padding: 11px !important;
+    border-radius: 15px !important;
+  }
+  .elynea-welcome-title {
+    font-size: 15px !important;
+  }
+  .elynea-welcome > p:not(.elynea-welcome-title) {
+    font-size: 12px !important;
+    line-height: 1.45 !important;
+  }
+  .elynea-welcome::after {
+    max-height: 108px !important;
+    border-radius: 12px !important;
+  }
+  .elynea-capabilities {
+    gap: 5px !important;
+  }
+  .elynea-capabilities > button {
+    min-height: 31px !important;
+    padding: 6px 8px !important;
+    font-size: 10px !important;
+  }
+  .elynea-message {
+    max-width: 92% !important;
+    padding: 9px 10px !important;
+    font-size: 12px !important;
+  }
+  .elynea-composer {
+    gap: 6px !important;
+    padding: 8px 9px max(8px, env(safe-area-inset-bottom)) !important;
+  }
+  .elynea-composer > textarea {
+    min-height: 40px !important;
+    padding: 9px 10px !important;
+    font-size: 16px !important;
+  }
+}
