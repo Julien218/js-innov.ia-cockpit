@@ -26,6 +26,28 @@ button {
   max-width: 100%;
 }
 
+/* Identité mobile visible entre le menu et les actions utilisateur. */
+.mobile-signelya-brand {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+.mobile-signelya-brand > span {
+  display: block;
+  overflow: hidden;
+  background: linear-gradient(100deg,#00e5ff,#2388ff 35%,#9c43ff 68%,#ff32cf);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: .075em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  filter: drop-shadow(0 0 7px rgba(0,212,255,.42));
+}
+
 @media (max-width: 640px) {
   html,
   body,
@@ -51,6 +73,18 @@ button {
     font-size: 16px;
   }
 
+  /* Le lockup validé reste entièrement visible dans le Player mobile. */
+  .signelya-priority-zone > section:nth-child(2) .relative.aspect-video > div:first-child > div:first-child {
+    width: calc(100% - 20px) !important;
+    height: clamp(92px, 29vw, 126px) !important;
+    max-height: none !important;
+    margin: 10px auto 2px !important;
+    flex: 0 0 auto !important;
+    background-position: center !important;
+    background-size: contain !important;
+    background-repeat: no-repeat !important;
+  }
+
   /* Elynea reste accessible sans recouvrir les gros CTA du bas. */
   .elynea-launcher {
     right: max(10px, env(safe-area-inset-right));
@@ -65,5 +99,12 @@ button {
     bottom: max(8px, env(safe-area-inset-bottom));
     width: auto;
     max-width: none;
+  }
+}
+
+@media (max-width: 390px) {
+  .mobile-signelya-brand > span {
+    font-size: 12px;
+    letter-spacing: .045em;
   }
 }
