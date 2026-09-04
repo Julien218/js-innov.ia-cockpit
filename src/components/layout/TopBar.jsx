@@ -47,6 +47,7 @@ export default function TopBar({ onOpenMobileMenu }) {
   return <header className="sticky top-0 z-20 shrink-0 border-b border-cyan-400/15 bg-[#040817]/95 pt-[env(safe-area-inset-top)] text-white shadow-[0_8px_28px_rgba(0,0,0,.18)] backdrop-blur-xl">
     <div className="flex min-h-16 min-w-0 items-center gap-3 px-[max(.75rem,env(safe-area-inset-left))] pr-[max(.75rem,env(safe-area-inset-right))] sm:px-5">
       <button onClick={onOpenMobileMenu} className="shrink-0 rounded-xl p-2 text-white/75 hover:bg-white/10 hover:text-white md:hidden" aria-label="Ouvrir le menu"><Menu className="h-6 w-6" /></button>
+      <div className="mobile-signelya-brand md:hidden" aria-label="SIGNELYA"><span>SIGNELYA</span></div>
       <div className="hidden min-w-0 flex-1 md:block">
         <p className="truncate text-lg font-bold text-white">Bienvenue {firstName ? firstName.charAt(0).toUpperCase() + firstName.slice(1) : ""} !</p>
         <p className="truncate text-xs text-slate-300">Gérez, diffusez et inspirez avec SIGNELYA.</p>
