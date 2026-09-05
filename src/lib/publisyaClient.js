@@ -71,6 +71,10 @@ export const disconnectPublisyaAccount = (accountId) => fetchPublisya(`/oauth/ac
 
 export const verifyPublisyaTargets = (accountId) => fetchPublisya(`/targets/accounts/${encodeURIComponent(accountId)}`);
 
+export const refreshPublisyaAccount = (accountId) => fetchPublisya(`/tokens/accounts/${encodeURIComponent(accountId)}/refresh`, {
+  method: 'POST',
+});
+
 export async function uploadPublisyaMedia(campaignId, file, onProgress) {
   if (!(file instanceof File)) throw new Error('Fichier média invalide.');
   onProgress?.(5);
