@@ -2,6 +2,7 @@ const express = require('express');
 const { resolveTenant } = require('./server-tenant.cjs');
 const publisyaOAuth = require('./server-publisya-oauth.cjs');
 const publisyaTargets = require('./server-publisya-targets.cjs');
+const publisyaTokenLifecycle = require('./server-publisya-token-lifecycle.cjs');
 
 const router = express.Router();
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://rzvvwcwyaddzsaattwqt.supabase.co';
@@ -12,6 +13,7 @@ const PLATFORM_SET = new Set(['facebook', 'instagram', 'tiktok', 'linkedin', 'yo
 // Ces sous-routes héritent des mêmes garde-fous session + permission que tout /api/publisya.
 router.use('/oauth', publisyaOAuth.router);
 router.use('/targets', publisyaTargets.router);
+router.use('/tokens', publisyaTokenLifecycle.router);
 
 function textField(value, maxLength) {
   return String(value || '').trim().slice(0, maxLength);
