@@ -64,7 +64,7 @@ function drawHeader(pdf,doc,type){
   pin(pdf,40,y+2); text(pdf,'Pagin Julien\nGrand Rue 52\n7370 Dour, Belgique',54,y-4,{size:7.4,lineGap:2,width:112});
   line(pdf,134,153,134,184,'#E7E2DA',.45);
   phone(pdf,153,y+1); text(pdf,'0494/11.90.90',168,y-4,{size:7.1,width:86});
-  mail(pdf,153,y+21); text(pdf,'info@jsinnovia.com',168,y+16,{size:6.8,width:90});
+  mail(pdf,153,y+21); text(pdf,'info@jsinnovia.store',168,y+16,{size:6.8,width:90});
   line(pdf,246,153,246,184,'#E7E2DA',.45);
   globe(pdf,265,y+1,5.5); text(pdf,'www.jsinnovia.com',280,y-4,{size:6.8,width:90});
   docIcon(pdf,265,y+21); text(pdf,'TVA BE 0877.926.214',280,y+16,{size:6.3,width:92});
@@ -158,7 +158,7 @@ function drawBottom(pdf,doc){
   line(pdf,105,footerY,165,footerY,C.gold2,.65);
   line(pdf,430,footerY,490,footerY,C.gold2,.65);
   text(pdf,"L’INTELLIGENCE AU SERVICE DE VOS AMBITIONS",170,footerY-5,{size:6.4,font:'Helvetica',color:C.ink,width:255,align:'center',characterSpacing:1.15});
-  text(pdf,'www.jsinnovia.com  •  info@jsinnovia.com',M,footerY+24,{size:6.2,color:C.muted,width:W,align:'center'});
+  text(pdf,'www.jsinnovia.com  •  info@jsinnovia.store',M,footerY+24,{size:6.2,color:C.muted,width:W,align:'center'});
 }
 
 function drawCancelled(pdf,doc,type){if(type!=='facture'||String(doc.statut||'').toLowerCase()!=='annulee')return;pdf.save().opacity(.14).fillColor('#B42318').font('Helvetica-Bold').fontSize(52).rotate(-24,{origin:[A4.width/2,A4.height/2]}).text('ANNULÉE',80,390,{width:A4.width-160,align:'center'}).restore();}
