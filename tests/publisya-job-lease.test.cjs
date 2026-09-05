@@ -94,9 +94,10 @@ test('lease foundation is explicitly dormant and non-publishing', () => {
   assert.doesNotMatch(serverSource, /server-publisya-job-lease\.cjs/);
 });
 
-test('Docker packages the lease client without starting it', () => {
+test('Docker packages and syntax-checks the lease client without starting it', () => {
   assert.match(dockerSource, /COPY --from=builder \/app\/server-publisya-job-lease\.cjs \.\/server-publisya-job-lease\.cjs/);
   assert.match(dockerSource, /test -f \/app\/server-publisya-job-lease\.cjs/);
   assert.match(dockerSource, /node --check \/app\/server-publisya-job-lease\.cjs/);
-  assert.doesNotMatch(dockerSource, /node .*server-publisya-job-lease\.cjs/);
+  assert.doesNotMatch(dockerSource, /(?:CMD|ENTRYPOINT)[^\n]*server-publisya-job-lease\.cjs/);
+  assert.doesNotMatch(dockerSource, /(?:^|\n)\s*node \/app\/server-publisya-job-lease\.cjs(?:\s|&|$)/m);
 });
