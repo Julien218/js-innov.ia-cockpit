@@ -1,19 +1,21 @@
 const express = require('express');
 const crypto = require('node:crypto');
+const { Transform } = require('node:stream');
 const { resolveTenant } = require('./server-tenant.cjs');
 const {
   ensureFolderTree,
-  uploadFile,
+  getAccessToken,
+  dropboxApiArg,
   isSupportedMedia,
   safeUploadFilename,
 } = require('./server-dropbox-helper.cjs');
 
 const router = express.Router();
-const rawMediaBody = express.raw({ type: 'application/octet-stream', limit: '250mb' });
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://rzvvwcwyaddzsaattwqt.supabase.co';
 const SUPABASE_SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const DROPBOX_ROOT = process.env.DROPBOX_ROOT_PATH || '/Cockpit';
+const MAX_MEDIA_BYTES = 140 * 1024 * 1024;
 
 const PROVIDERS = Object.freeze([
   { id: 'facebook', label: 'Facebook', group: 'meta', status: 'planned' },
@@ -115,9 +117,8 @@ async function listCampaignsFor(req, { limit = 100 } = {}) {
 async function getCampaignFor(req, campaignId) {
   if (!UUID_RE.test(String(campaignId || ''))) return null;
   const { tenantId, clientId } = requestContext(req);
-  const select = '*';
   const rows = await supabaseRequest(
-    `publisya_campaigns?select=${select}&id=eq.${encodeURIComponent(campaignId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&client_id=eq.${encodeURIComponent(clientId)}&limit=1`,
+    `publisya_campaigns?select=*&id=eq.${encodeURIComponent(campaignId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&client_id=eq.${encodeURIComponent(clientId)}&limit=1`,
   );
   return rows[0] || null;
 }
@@ -138,6 +139,10 @@ function publicStatus({ databaseReady = false } = {}) {
       database_ready: databaseReady,
       media_storage_ready: dropboxConfigured(),
     },
+    limits: {
+      media_upload_bytes: MAX_MEDIA_BYTES,
+      media_upload_mb: 140,
+    },
     capabilities: {
       campaigns: databaseReady,
       media_upload: mediaUploadReady,
@@ -148,6 +153,74 @@ function publicStatus({ databaseReady = false } = {}) {
       direct_publish: false,
       analytics: false,
     },
+  };
+}
+
+async function streamMediaToDropbox(req, storageKey) {
+  const token = await getAccessToken();
+  if (!token) throw new Error('Dropbox non configuré');
+
+  const declaredSize = Number(req.headers['content-length'] || 0);
+  if (declaredSize <= 0) {
+    const error = new Error('Aucun média reçu.');
+    error.status = 400;
+    throw error;
+  }
+  if (declaredSize > MAX_MEDIA_BYTES) {
+    const error = new Error('Le média dépasse la limite de 140 Mo.');
+    error.status = 413;
+    throw error;
+  }
+
+  const hash = crypto.createHash('sha256');
+  let bytes = 0;
+  const meter = new Transform({
+    transform(chunk, _encoding, callback) {
+      bytes += chunk.length;
+      if (bytes > MAX_MEDIA_BYTES) {
+        const error = new Error('Le média dépasse la limite de 140 Mo.');
+        error.status = 413;
+        callback(error);
+        return;
+      }
+      hash.update(chunk);
+      callback(null, chunk);
+    },
+  });
+
+  const response = await fetch('https://content.dropboxapi.com/2/files/upload', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/octet-stream',
+      'Dropbox-API-Arg': dropboxApiArg({
+        path: storageKey,
+        mode: 'add',
+        autorename: true,
+        mute: true,
+      }),
+    },
+    body: req.pipe(meter),
+    duplex: 'half',
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error_summary || `Dropbox ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  if (bytes === 0) {
+    const error = new Error('Aucun média reçu.');
+    error.status = 400;
+    throw error;
+  }
+
+  return {
+    path: data.path_display || storageKey,
+    id: data.id || null,
+    size: bytes,
+    sha256: hash.digest('hex'),
   };
 }
 
@@ -190,9 +263,7 @@ router.get('/dashboard', async (req, res) => {
       database_ready: true,
     });
   } catch (error) {
-    if (!schemaNotReady(error)) {
-      console.error('[publisya] dashboard:', error.message);
-    }
+    if (!schemaNotReady(error)) console.error('[publisya] dashboard:', error.message);
     res.json({
       campaigns: {
         draft: 0,
@@ -287,10 +358,12 @@ router.get('/campaigns/:campaignId', async (req, res) => {
   }
 });
 
-router.post('/campaigns/:campaignId/media', rawMediaBody, async (req, res) => {
+router.post('/campaigns/:campaignId/media', async (req, res) => {
   const campaignId = String(req.params.campaignId || '');
   if (!UUID_RE.test(campaignId)) return res.status(400).json({ error: 'Identifiant de campagne invalide.' });
-  if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: 'Aucun média reçu.' });
+  if (String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase() !== 'application/octet-stream') {
+    return res.status(415).json({ error: 'Le média doit être envoyé en flux binaire sécurisé.' });
+  }
 
   const requestedName = decodeFileName(req.headers['x-file-name']);
   const fileName = safeUploadFilename(requestedName);
@@ -305,15 +378,13 @@ router.post('/campaigns/:campaignId/media', rawMediaBody, async (req, res) => {
     if (!dropboxConfigured()) return res.status(503).json({ error: 'Le stockage média Publisya n’est pas encore configuré.' });
 
     const { tenantId, clientId, actor } = requestContext(req);
-    const sha256 = crypto.createHash('sha256').update(req.body).digest('hex');
     const folderPath = `${DROPBOX_ROOT}/Publisya/${tenantId}/${campaignId}/Sources`;
     const folder = await ensureFolderTree(folderPath);
     if (folder?.error) throw new Error(`Dropbox folder: ${folder.error}`);
 
-    const storedName = `${new Date().toISOString().replace(/[:.]/g, '-')}-${sha256.slice(0, 10)}-${fileName}`.slice(0, 220);
+    const storedName = `${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomUUID().slice(0, 8)}-${fileName}`.slice(0, 220);
     const storageKey = `${folderPath}/${storedName}`;
-    const uploaded = await uploadFile(storageKey, req.body);
-    if (uploaded?.error) throw new Error(`Dropbox upload: ${uploaded.error}`);
+    const uploaded = await streamMediaToDropbox(req, storageKey);
 
     const rows = await supabaseRequest('publisya_media_assets', {
       method: 'POST',
@@ -325,13 +396,14 @@ router.post('/campaigns/:campaignId/media', rawMediaBody, async (req, res) => {
         asset_role: 'source',
         platform: null,
         storage_provider: 'dropbox',
-        storage_key: uploaded.path || storageKey,
+        storage_key: uploaded.path,
         mime_type: mimeType,
-        file_size_bytes: req.body.length,
-        sha256,
+        file_size_bytes: uploaded.size,
+        sha256: uploaded.sha256,
         media_metadata: {
           original_filename: fileName,
-          dropbox_file_id: uploaded.id || null,
+          dropbox_file_id: uploaded.id,
+          upload_mode: 'stream',
         },
         created_by: actor,
       }),
@@ -342,15 +414,16 @@ router.post('/campaigns/:campaignId/media', rawMediaBody, async (req, res) => {
       upload: {
         file_name: fileName,
         mime_type: mimeType,
-        file_size_bytes: req.body.length,
-        sha256,
+        file_size_bytes: uploaded.size,
+        sha256: uploaded.sha256,
       },
     });
   } catch (error) {
     console.error('[publisya] media upload:', error.message);
-    res.status(schemaNotReady(error) ? 503 : 500).json({
-      error: schemaNotReady(error) ? 'Le stockage Publisya doit encore être initialisé.' : 'Impossible d’enregistrer ce média.',
-      code: schemaNotReady(error) ? 'PUBLISYA_SCHEMA_NOT_READY' : 'PUBLISYA_MEDIA_UPLOAD_FAILED',
+    const status = error.status === 400 || error.status === 413 ? error.status : (schemaNotReady(error) ? 503 : 500);
+    res.status(status).json({
+      error: schemaNotReady(error) ? 'Le stockage Publisya doit encore être initialisé.' : error.status === 413 ? 'Le média dépasse la limite de 140 Mo.' : error.status === 400 ? error.message : 'Impossible d’enregistrer ce média.',
+      code: schemaNotReady(error) ? 'PUBLISYA_SCHEMA_NOT_READY' : error.status === 413 ? 'PUBLISYA_MEDIA_TOO_LARGE' : 'PUBLISYA_MEDIA_UPLOAD_FAILED',
     });
   }
 });
@@ -366,6 +439,7 @@ module.exports = {
   router,
   PROVIDERS,
   PLATFORM_IDS,
+  MAX_MEDIA_BYTES,
   MODULE_VERSION,
   normalizePlatforms,
   schemaNotReady,
