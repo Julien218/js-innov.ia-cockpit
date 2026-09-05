@@ -1,6 +1,19 @@
 const express = require('express');
+const crypto = require('node:crypto');
+const { resolveTenant } = require('./server-tenant.cjs');
+const {
+  ensureFolderTree,
+  uploadFile,
+  isSupportedMedia,
+  safeUploadFilename,
+} = require('./server-dropbox-helper.cjs');
 
 const router = express.Router();
+const rawMediaBody = express.raw({ type: 'application/octet-stream', limit: '250mb' });
+
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://rzvvwcwyaddzsaattwqt.supabase.co';
+const SUPABASE_SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const DROPBOX_ROOT = process.env.DROPBOX_ROOT_PATH || '/Cockpit';
 
 const PROVIDERS = Object.freeze([
   { id: 'facebook', label: 'Facebook', group: 'meta', status: 'planned' },
@@ -9,15 +22,109 @@ const PROVIDERS = Object.freeze([
   { id: 'linkedin', label: 'LinkedIn', group: 'linkedin', status: 'planned' },
   { id: 'youtube', label: 'YouTube', group: 'google', status: 'planned' },
 ]);
+const PLATFORM_IDS = Object.freeze(PROVIDERS.map((provider) => provider.id));
+const PLATFORM_SET = new Set(PLATFORM_IDS);
+const MODULE_VERSION = 'lot2-campaign-media-foundation';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const MODULE_VERSION = 'lot1-foundation';
+function dropboxConfigured() {
+  return Boolean(process.env.DROPBOX_APP_KEY && process.env.DROPBOX_APP_SECRET && process.env.DROPBOX_REFRESH_TOKEN);
+}
 
 function safeOrganisation(user) {
   return String(user?.organisation || '').trim() || null;
 }
 
-router.get('/status', (req, res) => {
-  res.json({
+function requestContext(req) {
+  const tenantId = resolveTenant(req);
+  return {
+    tenantId,
+    clientId: tenantId,
+    actor: String(req.user?.id || req.user?.email || 'unknown').slice(0, 200),
+  };
+}
+
+function normalizePlatforms(input) {
+  const source = Array.isArray(input) ? input : [];
+  return [...new Set(source.map((value) => String(value || '').trim().toLowerCase()).filter((value) => PLATFORM_SET.has(value)))];
+}
+
+function textField(value, maxLength) {
+  return String(value || '').trim().slice(0, maxLength);
+}
+
+function decodeFileName(value) {
+  try {
+    return decodeURIComponent(String(value || 'media'));
+  } catch {
+    return String(value || 'media');
+  }
+}
+
+async function supabaseRequest(path, options = {}) {
+  if (!SUPABASE_SECRET) {
+    const error = new Error('Clé serveur Supabase non configurée.');
+    error.code = 'PUBLISYA_DATABASE_NOT_CONFIGURED';
+    throw error;
+  }
+
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: SUPABASE_SECRET,
+      Authorization: `Bearer ${SUPABASE_SECRET}`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    const error = new Error(`Supabase ${response.status}: ${body.slice(0, 220)}`);
+    error.status = response.status;
+    error.body = body;
+    throw error;
+  }
+  return body ? JSON.parse(body) : [];
+}
+
+function schemaNotReady(error) {
+  const text = `${error?.body || ''} ${error?.message || ''}`;
+  return error?.code === 'PUBLISYA_DATABASE_NOT_CONFIGURED'
+    || error?.status === 404
+    || /PGRST205|publisya_campaigns|relation .* does not exist/i.test(text);
+}
+
+async function dataStoreReady() {
+  try {
+    await supabaseRequest('publisya_campaigns?select=id&limit=1');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function listCampaignsFor(req, { limit = 100 } = {}) {
+  const { tenantId, clientId } = requestContext(req);
+  const safeLimit = Math.min(200, Math.max(1, Number(limit) || 100));
+  const select = 'id,title,objective,status,target_platforms,human_approval_required,scheduled_at,timezone,created_at,updated_at';
+  return supabaseRequest(
+    `publisya_campaigns?select=${select}&tenant_id=eq.${encodeURIComponent(tenantId)}&client_id=eq.${encodeURIComponent(clientId)}&order=created_at.desc&limit=${safeLimit}`,
+  );
+}
+
+async function getCampaignFor(req, campaignId) {
+  if (!UUID_RE.test(String(campaignId || ''))) return null;
+  const { tenantId, clientId } = requestContext(req);
+  const select = '*';
+  const rows = await supabaseRequest(
+    `publisya_campaigns?select=${select}&id=eq.${encodeURIComponent(campaignId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&client_id=eq.${encodeURIComponent(clientId)}&limit=1`,
+  );
+  return rows[0] || null;
+}
+
+function publicStatus({ databaseReady = false } = {}) {
+  const mediaUploadReady = databaseReady && dropboxConfigured();
+  return {
     module: 'publisya',
     product_name: 'PUBLISYA',
     signature: 'Un contenu. Chaque réseau. Le bon message.',
@@ -26,10 +133,14 @@ router.get('/status', (req, res) => {
     publishing_enabled: false,
     human_approval_required: true,
     timezone: 'Europe/Brussels',
-    organisation: safeOrganisation(req.user),
     providers: PROVIDERS,
+    infrastructure: {
+      database_ready: databaseReady,
+      media_storage_ready: dropboxConfigured(),
+    },
     capabilities: {
-      media_upload: false,
+      campaigns: databaseReady,
+      media_upload: mediaUploadReady,
       ai_analysis: false,
       network_variants: false,
       approval_workflow: false,
@@ -37,38 +148,226 @@ router.get('/status', (req, res) => {
       direct_publish: false,
       analytics: false,
     },
+  };
+}
+
+router.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  next();
+});
+
+router.get('/status', async (req, res) => {
+  const databaseReady = await dataStoreReady();
+  res.json({
+    ...publicStatus({ databaseReady }),
+    organisation: safeOrganisation(req.user),
+    tenant_id: requestContext(req).tenantId,
   });
 });
 
-router.get('/dashboard', (_req, res) => {
-  res.json({
-    campaigns: {
+router.get('/dashboard', async (req, res) => {
+  try {
+    const campaigns = await listCampaignsFor(req, { limit: 200 });
+    const counts = {
       draft: 0,
       awaiting_approval: 0,
       scheduled: 0,
       publishing: 0,
       published: 0,
       failed: 0,
-    },
-    connections: {
-      connected: 0,
-      reconnect_required: 0,
-      total_supported: PROVIDERS.length,
-    },
-    foundation_mode: true,
-  });
+    };
+    for (const campaign of campaigns) {
+      if (Object.hasOwn(counts, campaign.status)) counts[campaign.status] += 1;
+    }
+    res.json({
+      campaigns: counts,
+      connections: {
+        connected: 0,
+        reconnect_required: 0,
+        total_supported: PROVIDERS.length,
+      },
+      foundation_mode: true,
+      database_ready: true,
+    });
+  } catch (error) {
+    if (!schemaNotReady(error)) {
+      console.error('[publisya] dashboard:', error.message);
+    }
+    res.json({
+      campaigns: {
+        draft: 0,
+        awaiting_approval: 0,
+        scheduled: 0,
+        publishing: 0,
+        published: 0,
+        failed: 0,
+      },
+      connections: {
+        connected: 0,
+        reconnect_required: 0,
+        total_supported: PROVIDERS.length,
+      },
+      foundation_mode: true,
+      database_ready: false,
+    });
+  }
+});
+
+router.get('/campaigns', async (req, res) => {
+  try {
+    const campaigns = await listCampaignsFor(req, { limit: req.query.limit });
+    res.json({ campaigns });
+  } catch (error) {
+    console.error('[publisya] list campaigns:', error.message);
+    res.status(503).json({
+      error: schemaNotReady(error) ? 'Le stockage Publisya doit encore être initialisé.' : 'Les campagnes Publisya sont momentanément indisponibles.',
+      code: schemaNotReady(error) ? 'PUBLISYA_SCHEMA_NOT_READY' : 'PUBLISYA_CAMPAIGNS_UNAVAILABLE',
+    });
+  }
+});
+
+router.post('/campaigns', async (req, res) => {
+  const title = textField(req.body?.title, 120);
+  const objective = textField(req.body?.objective, 500);
+  const instructions = textField(req.body?.instructions, 2000);
+  const targetPlatforms = normalizePlatforms(req.body?.target_platforms || req.body?.targetPlatforms);
+
+  if (!title) return res.status(400).json({ error: 'Le titre de la campagne est obligatoire.' });
+  if (targetPlatforms.length === 0) return res.status(400).json({ error: 'Sélectionnez au moins un réseau.' });
+
+  const { tenantId, clientId, actor } = requestContext(req);
+  const payload = {
+    tenant_id: tenantId,
+    client_id: clientId,
+    title,
+    objective: objective || null,
+    source_language: 'fr',
+    target_platforms: targetPlatforms,
+    status: 'draft',
+    human_approval_required: true,
+    instructions: instructions || null,
+    timezone: 'Europe/Brussels',
+    created_by: actor,
+  };
+
+  try {
+    const rows = await supabaseRequest('publisya_campaigns', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify(payload),
+    });
+    res.status(201).json({ campaign: rows[0] });
+  } catch (error) {
+    console.error('[publisya] create campaign:', error.message);
+    res.status(503).json({
+      error: schemaNotReady(error) ? 'Le stockage Publisya doit encore être initialisé.' : 'Impossible de créer la campagne pour le moment.',
+      code: schemaNotReady(error) ? 'PUBLISYA_SCHEMA_NOT_READY' : 'PUBLISYA_CAMPAIGN_CREATE_FAILED',
+    });
+  }
+});
+
+router.get('/campaigns/:campaignId', async (req, res) => {
+  try {
+    const campaign = await getCampaignFor(req, req.params.campaignId);
+    if (!campaign) return res.status(404).json({ error: 'Campagne introuvable.' });
+
+    const { tenantId, clientId } = requestContext(req);
+    const media = await supabaseRequest(
+      `publisya_media_assets?select=id,asset_role,platform,storage_provider,storage_key,mime_type,file_size_bytes,width,height,duration_seconds,sha256,created_at&campaign_id=eq.${encodeURIComponent(campaign.id)}&tenant_id=eq.${encodeURIComponent(tenantId)}&client_id=eq.${encodeURIComponent(clientId)}&order=created_at.asc`,
+    );
+    const variants = await supabaseRequest(
+      `publisya_post_variants?select=id,platform,version,status,caption,title,description,hashtags,tags,call_to_action,alt_text,cover_text,created_at,updated_at&campaign_id=eq.${encodeURIComponent(campaign.id)}&tenant_id=eq.${encodeURIComponent(tenantId)}&client_id=eq.${encodeURIComponent(clientId)}&order=platform.asc,version.desc`,
+    );
+    res.json({ campaign, media, variants });
+  } catch (error) {
+    console.error('[publisya] campaign detail:', error.message);
+    res.status(schemaNotReady(error) ? 503 : 500).json({
+      error: schemaNotReady(error) ? 'Le stockage Publisya doit encore être initialisé.' : 'Impossible de charger la campagne.',
+    });
+  }
+});
+
+router.post('/campaigns/:campaignId/media', rawMediaBody, async (req, res) => {
+  const campaignId = String(req.params.campaignId || '');
+  if (!UUID_RE.test(campaignId)) return res.status(400).json({ error: 'Identifiant de campagne invalide.' });
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: 'Aucun média reçu.' });
+
+  const requestedName = decodeFileName(req.headers['x-file-name']);
+  const fileName = safeUploadFilename(requestedName);
+  const mimeType = textField(req.headers['x-file-type'] || 'application/octet-stream', 120) || 'application/octet-stream';
+  if (!isSupportedMedia(fileName, mimeType)) {
+    return res.status(415).json({ error: 'Format média non pris en charge. Utilisez une image ou une vidéo standard.' });
+  }
+
+  try {
+    const campaign = await getCampaignFor(req, campaignId);
+    if (!campaign) return res.status(404).json({ error: 'Campagne introuvable.' });
+    if (!dropboxConfigured()) return res.status(503).json({ error: 'Le stockage média Publisya n’est pas encore configuré.' });
+
+    const { tenantId, clientId, actor } = requestContext(req);
+    const sha256 = crypto.createHash('sha256').update(req.body).digest('hex');
+    const folderPath = `${DROPBOX_ROOT}/Publisya/${tenantId}/${campaignId}/Sources`;
+    const folder = await ensureFolderTree(folderPath);
+    if (folder?.error) throw new Error(`Dropbox folder: ${folder.error}`);
+
+    const storedName = `${new Date().toISOString().replace(/[:.]/g, '-')}-${sha256.slice(0, 10)}-${fileName}`.slice(0, 220);
+    const storageKey = `${folderPath}/${storedName}`;
+    const uploaded = await uploadFile(storageKey, req.body);
+    if (uploaded?.error) throw new Error(`Dropbox upload: ${uploaded.error}`);
+
+    const rows = await supabaseRequest('publisya_media_assets', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        tenant_id: tenantId,
+        client_id: clientId,
+        campaign_id: campaignId,
+        asset_role: 'source',
+        platform: null,
+        storage_provider: 'dropbox',
+        storage_key: uploaded.path || storageKey,
+        mime_type: mimeType,
+        file_size_bytes: req.body.length,
+        sha256,
+        media_metadata: {
+          original_filename: fileName,
+          dropbox_file_id: uploaded.id || null,
+        },
+        created_by: actor,
+      }),
+    });
+
+    res.status(201).json({
+      media: rows[0],
+      upload: {
+        file_name: fileName,
+        mime_type: mimeType,
+        file_size_bytes: req.body.length,
+        sha256,
+      },
+    });
+  } catch (error) {
+    console.error('[publisya] media upload:', error.message);
+    res.status(schemaNotReady(error) ? 503 : 500).json({
+      error: schemaNotReady(error) ? 'Le stockage Publisya doit encore être initialisé.' : 'Impossible d’enregistrer ce média.',
+      code: schemaNotReady(error) ? 'PUBLISYA_SCHEMA_NOT_READY' : 'PUBLISYA_MEDIA_UPLOAD_FAILED',
+    });
+  }
 });
 
 function startPublisyaScheduler() {
   return {
     started: false,
-    reason: 'Lot 1 : publication volontairement désactivée',
+    reason: 'Lot 2 : publication externe volontairement désactivée',
   };
 }
 
 module.exports = {
   router,
   PROVIDERS,
+  PLATFORM_IDS,
   MODULE_VERSION,
+  normalizePlatforms,
+  schemaNotReady,
   startPublisyaScheduler,
 };
