@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   CalendarClock,
@@ -13,7 +14,8 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
-import { getPublisyaDashboard, getPublisyaStatus } from '@/lib/publisyaClient';
+import CampaignWizard from '@/components/publisya/CampaignWizard';
+import { getPublisyaDashboard, getPublisyaStatus, listPublisyaCampaigns } from '@/lib/publisyaClient';
 
 const platformLabels = {
   facebook: 'Facebook',
@@ -21,6 +23,21 @@ const platformLabels = {
   tiktok: 'TikTok',
   linkedin: 'LinkedIn',
   youtube: 'YouTube',
+};
+
+const statusLabels = {
+  draft: 'Brouillon',
+  analyzing: 'Analyse',
+  generated: 'Généré',
+  awaiting_approval: 'À valider',
+  needs_changes: 'À corriger',
+  approved: 'Approuvé',
+  scheduled: 'Programmé',
+  publishing: 'Publication',
+  published: 'Publié',
+  partially_published: 'Partiel',
+  failed: 'Erreur',
+  canceled: 'Annulé',
 };
 
 function MetricCard({ icon: Icon, label, value, detail }) {
@@ -38,7 +55,30 @@ function MetricCard({ icon: Icon, label, value, detail }) {
   );
 }
 
+function CampaignRow({ campaign }) {
+  const networks = Array.isArray(campaign.target_platforms) ? campaign.target_platforms : [];
+  return (
+    <div className="flex flex-col gap-3 border-b border-border px-4 py-4 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="truncate text-sm font-semibold text-foreground">{campaign.title}</p>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{statusLabels[campaign.status] || campaign.status}</span>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {networks.length ? networks.map((id) => platformLabels[id] || id).join(' · ') : 'Aucun réseau'}
+        </p>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+        Validation humaine
+      </div>
+    </div>
+  );
+}
+
 export default function Publisya() {
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const queryClient = useQueryClient();
   const status = useQuery({
     queryKey: ['publisya', 'status'],
     queryFn: getPublisyaStatus,
@@ -49,22 +89,34 @@ export default function Publisya() {
     queryFn: getPublisyaDashboard,
     staleTime: 30_000,
   });
+  const campaignList = useQuery({
+    queryKey: ['publisya', 'campaigns'],
+    queryFn: listPublisyaCampaigns,
+    enabled: Boolean(status.data?.capabilities?.campaigns),
+    staleTime: 20_000,
+  });
 
   const providers = status.data?.providers || [];
-  const campaigns = dashboard.data?.campaigns || {};
+  const campaignCounts = dashboard.data?.campaigns || {};
+  const recentCampaigns = (campaignList.data?.campaigns || []).slice(0, 6);
   const connected = dashboard.data?.connections?.connected || 0;
   const isFoundationMode = status.data?.publishing_enabled === false;
+  const databaseReady = Boolean(status.data?.infrastructure?.database_ready);
+  const mediaReady = Boolean(status.data?.infrastructure?.media_storage_ready);
   const apiError = status.isError || dashboard.isError;
+
+  const handleCreated = () => {
+    queryClient.invalidateQueries({ queryKey: ['publisya', 'campaigns'] });
+    queryClient.invalidateQueries({ queryKey: ['publisya', 'dashboard'] });
+  };
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Publisya"
         subtitle="Un contenu. Chaque réseau. Le bon message."
-        search=""
-        onSearch={() => {}}
         actions={
-          <Button disabled title="Disponible au Lot 2 : import et analyse IA">
+          <Button onClick={() => setWizardOpen(true)} disabled={!databaseReady} title={databaseReady ? 'Créer une campagne Publisya' : 'Initialisation de la base Publisya requise'}>
             <UploadCloud className="mr-2 h-4 w-4" />
             Nouveau contenu
           </Button>
@@ -77,12 +129,12 @@ export default function Publisya() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">PUBLISYA · by JS‑Innov.IA</span>
               {isFoundationMode && (
-                <span className="rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700">Fondation sécurisée</span>
+                <span className="rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700">Publication externe verrouillée</span>
               )}
             </div>
             <h2 className="mt-4 text-2xl font-bold text-foreground sm:text-3xl">Votre diffusion sociale, centralisée dans le Cockpit.</h2>
             <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-base">
-              Déposez une image ou une vidéo, Publisya l’analysera puis préparera une version adaptée à chaque réseau. La publication restera soumise à validation humaine par défaut.
+              Créez une campagne et déposez une image ou une vidéo. Le média est isolé dans l’espace du client avant les futures étapes d’analyse IA et d’adaptation par réseau.
             </p>
           </div>
           <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-3xl border border-primary/15 bg-primary/10 text-primary">
@@ -101,23 +153,33 @@ export default function Publisya() {
         </div>
       )}
 
+      {!status.isLoading && !databaseReady && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p className="font-semibold">Base Publisya préparée mais non initialisée.</p>
+            <p className="mt-1 text-xs opacity-80">La migration reste volontairement non appliquée sur la production. Le bouton de création est donc bloqué proprement.</p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           icon={FileVideo2}
           label="Campagnes"
-          value={(campaigns.draft || 0) + (campaigns.awaiting_approval || 0) + (campaigns.scheduled || 0)}
+          value={(campaignCounts.draft || 0) + (campaignCounts.awaiting_approval || 0) + (campaignCounts.scheduled || 0)}
           detail="Brouillons, validations et publications programmées"
         />
         <MetricCard
           icon={ShieldCheck}
           label="À valider"
-          value={campaigns.awaiting_approval || 0}
+          value={campaignCounts.awaiting_approval || 0}
           detail="Aucune publication ne part sans autorisation"
         />
         <MetricCard
           icon={CalendarClock}
           label="Programmées"
-          value={campaigns.scheduled || 0}
+          value={campaignCounts.scheduled || 0}
           detail="Fuseau par défaut : Europe/Brussels"
         />
         <MetricCard
@@ -128,13 +190,34 @@ export default function Publisya() {
         />
       </div>
 
+      <section className="overflow-hidden rounded-2xl border border-border bg-card">
+        <div className="flex flex-col gap-2 border-b border-border p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-foreground">Campagnes récentes</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Les campagnes restent au statut brouillon tant que l’analyse et les variantes ne sont pas générées.</p>
+          </div>
+          <span className="text-xs font-medium text-muted-foreground">{databaseReady ? `${campaignList.data?.campaigns?.length || 0} campagne(s)` : 'Initialisation requise'}</span>
+        </div>
+        {databaseReady && campaignList.isLoading ? (
+          <div className="space-y-2 p-5">{Array.from({ length: 3 }).map((_, index) => <div key={index} className="h-14 animate-pulse rounded-xl bg-muted" />)}</div>
+        ) : recentCampaigns.length ? (
+          recentCampaigns.map((campaign) => <CampaignRow key={campaign.id} campaign={campaign} />)
+        ) : (
+          <div className="p-8 text-center">
+            <FileVideo2 className="mx-auto h-8 w-8 text-muted-foreground/40" />
+            <p className="mt-3 text-sm font-semibold text-foreground">Aucune campagne enregistrée</p>
+            <p className="mt-1 text-xs text-muted-foreground">Le premier contenu apparaîtra ici après création.</p>
+          </div>
+        )}
+      </section>
+
       <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-base font-semibold text-foreground">Réseaux pris en charge</h3>
             <p className="mt-1 text-sm text-muted-foreground">Chaque connecteur restera indépendant afin qu’une erreur sur un réseau ne bloque pas les autres.</p>
           </div>
-          <span className="text-xs font-medium text-muted-foreground">Publication réelle désactivée au Lot 1</span>
+          <span className="text-xs font-medium text-muted-foreground">Publication réelle désactivée au Lot 2</span>
         </div>
 
         <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
@@ -154,7 +237,7 @@ export default function Publisya() {
         <div className="rounded-2xl border border-border bg-card p-5">
           <Sparkles className="h-5 w-5 text-primary" />
           <h3 className="mt-3 text-sm font-semibold text-foreground">1. Analyse IA</h3>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">Analyse du média, de l’ADN de marque, du message et des contraintes techniques.</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">Prochaine couche : analyse du média, de l’ADN de marque, du message et des contraintes techniques.</p>
         </div>
         <div className="rounded-2xl border border-border bg-card p-5">
           <ShieldCheck className="h-5 w-5 text-primary" />
@@ -169,9 +252,16 @@ export default function Publisya() {
       </section>
 
       <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-emerald-800">
-        <p className="font-semibold">Lot 1 sécurisé</p>
-        <p className="mt-1 text-xs leading-5 opacity-80">Le module est préparé pour le Cockpit, mais les uploads, l’IA, la programmation et les publications externes restent volontairement désactivés tant que leurs couches de sécurité et de validation ne sont pas terminées.</p>
+        <p className="font-semibold">Lot 2 en construction sécurisée</p>
+        <p className="mt-1 text-xs leading-5 opacity-80">Campagnes et dépôt média sont prêts côté code. Analyse IA, programmation et publications externes restent verrouillées. Stockage média : {mediaReady ? 'prêt' : 'à initialiser'}.</p>
       </div>
+
+      <CampaignWizard
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onCreated={handleCreated}
+        status={status.data}
+      />
     </div>
   );
 }
