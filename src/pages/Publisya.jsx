@@ -17,7 +17,15 @@ import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import CampaignWizard from '@/components/publisya/CampaignWizard';
 import CampaignReview from '@/components/publisya/CampaignReview';
-import { getPublisyaDashboard, getPublisyaStatus, listPublisyaCampaigns } from '@/lib/publisyaClient';
+import PublisyaConnections from '@/components/publisya/PublisyaConnections';
+import {
+  connectPublisyaProvider,
+  disconnectPublisyaAccount,
+  getPublisyaConnections,
+  getPublisyaDashboard,
+  getPublisyaStatus,
+  listPublisyaCampaigns,
+} from '@/lib/publisyaClient';
 
 const platformLabels = {
   facebook: 'Facebook',
@@ -85,6 +93,7 @@ function CampaignRow({ campaign, onOpen }) {
 export default function Publisya() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [selectedCampaignId, setSelectedCampaignId] = useState(null);
+  const [disconnectingId, setDisconnectingId] = useState(null);
   const queryClient = useQueryClient();
   const status = useQuery({
     queryKey: ['publisya', 'status'],
@@ -95,6 +104,11 @@ export default function Publisya() {
     queryKey: ['publisya', 'dashboard'],
     queryFn: getPublisyaDashboard,
     staleTime: 30_000,
+  });
+  const connections = useQuery({
+    queryKey: ['publisya', 'connections'],
+    queryFn: getPublisyaConnections,
+    staleTime: 15_000,
   });
   const campaignList = useQuery({
     queryKey: ['publisya', 'campaigns'],
@@ -107,7 +121,8 @@ export default function Publisya() {
   const campaignCounts = dashboard.data?.campaigns || {};
   const campaigns = campaignList.data?.campaigns || [];
   const recentCampaigns = campaigns.slice(0, 8);
-  const connected = dashboard.data?.connections?.connected || 0;
+  const activeConnections = (connections.data?.accounts || []).filter((account) => account.connection_status === 'connected');
+  const connected = activeConnections.reduce((total, account) => total + (account.provider === 'meta' ? 2 : 1), 0);
   const isFoundationMode = status.data?.publishing_enabled === false;
   const databaseReady = Boolean(status.data?.infrastructure?.database_ready);
   const mediaReady = Boolean(status.data?.infrastructure?.media_storage_ready);
@@ -122,6 +137,16 @@ export default function Publisya() {
   const handleCreated = (campaign) => {
     refreshOverview();
     if (campaign?.id) setSelectedCampaignId(campaign.id);
+  };
+
+  const handleDisconnect = async (accountId) => {
+    setDisconnectingId(accountId);
+    try {
+      await disconnectPublisyaAccount(accountId);
+      await queryClient.invalidateQueries({ queryKey: ['publisya', 'connections'] });
+    } finally {
+      setDisconnectingId(null);
+    }
   };
 
   return (
@@ -194,15 +219,24 @@ export default function Publisya() {
           icon={CalendarClock}
           label="Programmées"
           value={campaignCounts.scheduled || 0}
-          detail="La programmation sera activée après les connecteurs"
+          detail="La programmation restera verrouillée jusqu’au scheduler contrôlé"
         />
         <MetricCard
           icon={CheckCircle2}
-          label="Comptes connectés"
+          label="Réseaux autorisés"
           value={`${connected}/${providers.length || 5}`}
-          detail="Connexions OAuth officielles prévues au Lot 3"
+          detail="Meta couvre Facebook et Instagram avec une seule autorisation"
         />
       </div>
+
+      <PublisyaConnections
+        data={connections.data}
+        isLoading={connections.isLoading}
+        isError={connections.isError}
+        onConnect={connectPublisyaProvider}
+        onDisconnect={handleDisconnect}
+        disconnectingId={disconnectingId}
+      />
 
       <section className="overflow-hidden rounded-2xl border border-border bg-card">
         <div className="flex flex-col gap-2 border-b border-border p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -229,9 +263,9 @@ export default function Publisya() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-base font-semibold text-foreground">Réseaux pris en charge</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Chaque connecteur restera indépendant afin qu’une erreur sur un réseau ne bloque pas les autres.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Chaque connecteur reste indépendant afin qu’une erreur sur un réseau ne bloque pas les autres.</p>
           </div>
-          <span className="text-xs font-medium text-muted-foreground">Publication réelle désactivée au Lot 2</span>
+          <span className="text-xs font-medium text-muted-foreground">Publication réelle toujours désactivée</span>
         </div>
 
         <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
@@ -241,7 +275,7 @@ export default function Publisya() {
                 <span className="text-sm font-semibold text-foreground">{platformLabels[provider.id] || provider.label || provider.id}</span>
                 <CircleDot className="h-4 w-4 text-amber-500" />
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">Connexion à préparer</p>
+              <p className="mt-2 text-xs text-muted-foreground">Variante de contenu indépendante</p>
             </div>
           ))}
         </div>
@@ -261,13 +295,13 @@ export default function Publisya() {
         <div className="rounded-2xl border border-border bg-card p-5">
           <Send className="h-5 w-5 text-primary" />
           <h3 className="mt-3 text-sm font-semibold text-foreground">3. Publication contrôlée</h3>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">Toujours verrouillée : aucune approbation actuelle ne déclenche de publication sur un réseau externe.</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">Toujours verrouillée : les connexions OAuth et l’approbation ne créent aucun job de publication.</p>
         </div>
       </section>
 
       <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-emerald-800">
-        <p className="font-semibold">Lot 2 sécurisé</p>
-        <p className="mt-1 text-xs leading-5 opacity-80">Campagnes, dépôt média streamé, analyse IA structurée et validation réseau par réseau sont préparés côté code. Stockage média : {mediaReady ? 'prêt' : 'à initialiser'} · IA : {aiReady ? 'prête' : 'à configurer'} · publication externe : verrouillée.</p>
+        <p className="font-semibold">Lot 3 — connexions sécurisées préparées</p>
+        <p className="mt-1 text-xs leading-5 opacity-80">Campagnes, média, analyse IA, validation et couche OAuth sont préparés côté code. Stockage média : {mediaReady ? 'prêt' : 'à initialiser'} · IA : {aiReady ? 'prête' : 'à configurer'} · coffre OAuth : {connections.data?.vault_configured ? 'prêt' : 'à configurer'} · publication externe : verrouillée.</p>
       </div>
 
       <CampaignWizard
