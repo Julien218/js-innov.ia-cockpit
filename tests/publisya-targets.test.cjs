@@ -47,6 +47,16 @@ test('TikTok and YouTube identity verification uses read-only official profile e
   assert.match(targetsSource, /String\(channel\.id\) !== String\(account\.provider_account_id\)/);
 });
 
+test('LinkedIn token is revalidated against the stored member identity before organization discovery', () => {
+  assert.match(targetsSource, /async function verifyLinkedInIdentity/);
+  assert.match(targetsSource, /https:\/\/api\.linkedin\.com\/v2\/userinfo/);
+  assert.match(targetsSource, /https:\/\/api\.linkedin\.com\/v2\/me/);
+  assert.match(targetsSource, /if \(!identity\.id \|\| identity\.id !== String\(account\.provider_account_id\)\)/);
+  const validationIndex = targetsSource.indexOf('const identity = await verifyLinkedInIdentity');
+  const validIndex = targetsSource.indexOf('result.token_valid = true', validationIndex);
+  assert.ok(validationIndex >= 0 && validIndex > validationIndex, 'LinkedIn must validate identity before marking the token valid');
+});
+
 test('LinkedIn organization discovery is version-gated and never equated with publish permission', () => {
   assert.equal(LINKEDIN_VERSION_RE.test('202609'), true);
   assert.equal(LINKEDIN_VERSION_RE.test('v202609'), false);
