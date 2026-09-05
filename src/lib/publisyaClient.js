@@ -31,6 +31,7 @@ function jsonAction(path, method, payload = {}) {
 
 export const getPublisyaStatus = () => fetchPublisya('/status');
 export const getPublisyaDashboard = () => fetchPublisya('/dashboard');
+export const getPublisyaConnections = () => fetchPublisya('/oauth/status');
 export const listPublisyaCampaigns = () => fetchPublisya('/campaigns');
 export const getPublisyaCampaign = (campaignId) => fetchPublisya(`/campaigns/${encodeURIComponent(campaignId)}`);
 
@@ -57,6 +58,16 @@ export const requestPublisyaChanges = (campaignId, comment = '') => jsonAction(
   'POST',
   { comment },
 );
+
+export function connectPublisyaProvider(providerId) {
+  const provider = String(providerId || '').trim().toLowerCase();
+  if (!['meta', 'tiktok', 'linkedin', 'youtube'].includes(provider)) throw new Error('Connecteur Publisya invalide.');
+  window.location.assign(`/api/publisya/oauth/start/${encodeURIComponent(provider)}`);
+}
+
+export const disconnectPublisyaAccount = (accountId) => fetchPublisya(`/oauth/accounts/${encodeURIComponent(accountId)}`, {
+  method: 'DELETE',
+});
 
 export async function uploadPublisyaMedia(campaignId, file, onProgress) {
   if (!(file instanceof File)) throw new Error('Fichier média invalide.');
