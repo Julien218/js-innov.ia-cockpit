@@ -8,11 +8,20 @@ const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL |
 const SUPABASE_SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const INGEST_KEY = process.env.AI_COST_INGEST_KEY || '';
 
+// Provider text-token rates in USD per 1M tokens. AI_COST_PRICING_JSON may
+// override these defaults without changing application code.
 const DEFAULT_PRICING = {
-  'gpt-5.6': { label: 'GPT-5.6 Sol', input: 5, cachedInput: 0.5, output: 30 },
-  'gpt-5.6-sol': { label: 'GPT-5.6 Sol', input: 5, cachedInput: 0.5, output: 30 },
-  'gpt-5.6-terra': { label: 'GPT-5.6 Terra', input: 2.5, cachedInput: 0.25, output: 15 },
-  'gpt-5.6-luna': { label: 'GPT-5.6 Luna', input: 1, cachedInput: 0.1, output: 6 },
+  'gpt-5.6': { label: 'GPT-5.6 Sol', input: 4, cachedInput: 0.4, output: 20 },
+  'gpt-5.6-sol': { label: 'GPT-5.6 Sol', input: 4, cachedInput: 0.4, output: 20 },
+  'gpt-5.6-terra': { label: 'GPT-5.6 Terra', input: 2, cachedInput: 0.2, output: 12 },
+  'gpt-5.6-luna': { label: 'GPT-5.6 Luna', input: 0.2, cachedInput: 0.02, output: 1.2 },
+  'gpt-5.4': { label: 'GPT-5.4', input: 2.5, cachedInput: 0.25, output: 15 },
+  'gpt-5.4-mini': { label: 'GPT-5.4 Mini', input: 0.75, cachedInput: 0.075, output: 4.5 },
+  'gpt-4.1': { label: 'GPT-4.1', input: 2, cachedInput: 0.5, output: 8 },
+  'gpt-4.1-mini': { label: 'GPT-4.1 Mini', input: 0.4, cachedInput: 0.1, output: 1.6 },
+  'gpt-4.1-nano': { label: 'GPT-4.1 Nano', input: 0.1, cachedInput: 0.025, output: 0.4 },
+  'gpt-4o': { label: 'GPT-4o', input: 2.5, cachedInput: 1.25, output: 10 },
+  'gpt-4o-mini': { label: 'GPT-4o Mini', input: 0.15, cachedInput: 0.075, output: 0.6 },
 };
 
 const DEFAULT_ROUTING = {
