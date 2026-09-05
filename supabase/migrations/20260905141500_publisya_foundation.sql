@@ -1,12 +1,13 @@
 -- PUBLISYA — fondation multi-tenant
 -- Migration additive. Elle prépare les données sans activer aucune publication externe.
+-- Les tables restent dans public avec préfixe publisya_ afin de réutiliser le PostgREST
+-- déjà employé par le Cockpit, sans exposer un schéma Supabase supplémentaire.
 
 BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE SCHEMA IF NOT EXISTS publisya;
 
-CREATE OR REPLACE FUNCTION publisya.set_updated_at()
+CREATE OR REPLACE FUNCTION public.publisya_set_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
@@ -16,7 +17,7 @@ BEGIN
 END;
 $$;
 
-CREATE TABLE IF NOT EXISTS publisya.social_accounts (
+CREATE TABLE IF NOT EXISTS public.publisya_social_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id TEXT NOT NULL,
   client_id TEXT NOT NULL,
@@ -40,7 +41,7 @@ CREATE TABLE IF NOT EXISTS publisya.social_accounts (
   UNIQUE (tenant_id, client_id, provider, provider_account_id)
 );
 
-CREATE TABLE IF NOT EXISTS publisya.campaigns (
+CREATE TABLE IF NOT EXISTS public.publisya_campaigns (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id TEXT NOT NULL,
   client_id TEXT NOT NULL,
@@ -68,12 +69,12 @@ CREATE TABLE IF NOT EXISTS publisya.campaigns (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS publisya.media_assets (
+CREATE TABLE IF NOT EXISTS public.publisya_media_assets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id TEXT NOT NULL,
   client_id TEXT NOT NULL,
-  campaign_id UUID NOT NULL REFERENCES publisya.campaigns(id) ON DELETE CASCADE,
-  parent_asset_id UUID REFERENCES publisya.media_assets(id) ON DELETE SET NULL,
+  campaign_id UUID NOT NULL REFERENCES public.publisya_campaigns(id) ON DELETE CASCADE,
+  parent_asset_id UUID REFERENCES public.publisya_media_assets(id) ON DELETE SET NULL,
   asset_role TEXT NOT NULL DEFAULT 'source'
     CHECK (asset_role IN ('source', 'master', 'variant', 'thumbnail', 'subtitle', 'cover')),
   platform TEXT,
@@ -92,12 +93,12 @@ CREATE TABLE IF NOT EXISTS publisya.media_assets (
   UNIQUE (tenant_id, storage_provider, storage_key)
 );
 
-CREATE TABLE IF NOT EXISTS publisya.post_variants (
+CREATE TABLE IF NOT EXISTS public.publisya_post_variants (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id TEXT NOT NULL,
   client_id TEXT NOT NULL,
-  campaign_id UUID NOT NULL REFERENCES publisya.campaigns(id) ON DELETE CASCADE,
-  social_account_id UUID REFERENCES publisya.social_accounts(id) ON DELETE SET NULL,
+  campaign_id UUID NOT NULL REFERENCES public.publisya_campaigns(id) ON DELETE CASCADE,
+  social_account_id UUID REFERENCES public.publisya_social_accounts(id) ON DELETE SET NULL,
   platform TEXT NOT NULL CHECK (platform IN ('facebook', 'instagram', 'tiktok', 'linkedin', 'youtube')),
   version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
   status TEXT NOT NULL DEFAULT 'draft'
@@ -127,12 +128,12 @@ CREATE TABLE IF NOT EXISTS publisya.post_variants (
   UNIQUE (campaign_id, platform, version)
 );
 
-CREATE TABLE IF NOT EXISTS publisya.approvals (
+CREATE TABLE IF NOT EXISTS public.publisya_approvals (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id TEXT NOT NULL,
   client_id TEXT NOT NULL,
-  campaign_id UUID NOT NULL REFERENCES publisya.campaigns(id) ON DELETE CASCADE,
-  post_variant_id UUID REFERENCES publisya.post_variants(id) ON DELETE CASCADE,
+  campaign_id UUID NOT NULL REFERENCES public.publisya_campaigns(id) ON DELETE CASCADE,
+  post_variant_id UUID REFERENCES public.publisya_post_variants(id) ON DELETE CASCADE,
   action TEXT NOT NULL CHECK (action IN ('approved', 'rejected', 'changes_requested', 'approval_revoked')),
   comment TEXT,
   variant_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -140,13 +141,13 @@ CREATE TABLE IF NOT EXISTS publisya.approvals (
   acted_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS publisya.publication_jobs (
+CREATE TABLE IF NOT EXISTS public.publisya_publication_jobs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id TEXT NOT NULL,
   client_id TEXT NOT NULL,
-  campaign_id UUID NOT NULL REFERENCES publisya.campaigns(id) ON DELETE CASCADE,
-  post_variant_id UUID NOT NULL REFERENCES publisya.post_variants(id) ON DELETE CASCADE,
-  social_account_id UUID NOT NULL REFERENCES publisya.social_accounts(id) ON DELETE RESTRICT,
+  campaign_id UUID NOT NULL REFERENCES public.publisya_campaigns(id) ON DELETE CASCADE,
+  post_variant_id UUID NOT NULL REFERENCES public.publisya_post_variants(id) ON DELETE CASCADE,
+  social_account_id UUID NOT NULL REFERENCES public.publisya_social_accounts(id) ON DELETE RESTRICT,
   provider TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'queued'
     CHECK (status IN ('queued', 'locked', 'publishing', 'processing', 'published', 'retry_wait', 'failed', 'canceled')),
@@ -168,11 +169,11 @@ CREATE TABLE IF NOT EXISTS publisya.publication_jobs (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS publisya.publication_attempts (
+CREATE TABLE IF NOT EXISTS public.publisya_publication_attempts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id TEXT NOT NULL,
   client_id TEXT NOT NULL,
-  publication_job_id UUID NOT NULL REFERENCES publisya.publication_jobs(id) ON DELETE CASCADE,
+  publication_job_id UUID NOT NULL REFERENCES public.publisya_publication_jobs(id) ON DELETE CASCADE,
   attempt_number INTEGER NOT NULL CHECK (attempt_number > 0),
   started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   completed_at TIMESTAMPTZ,
@@ -186,11 +187,11 @@ CREATE TABLE IF NOT EXISTS publisya.publication_attempts (
   UNIQUE (publication_job_id, attempt_number)
 );
 
-CREATE TABLE IF NOT EXISTS publisya.metrics_daily (
+CREATE TABLE IF NOT EXISTS public.publisya_metrics_daily (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id TEXT NOT NULL,
   client_id TEXT NOT NULL,
-  post_variant_id UUID NOT NULL REFERENCES publisya.post_variants(id) ON DELETE CASCADE,
+  post_variant_id UUID NOT NULL REFERENCES public.publisya_post_variants(id) ON DELETE CASCADE,
   metric_date DATE NOT NULL,
   impressions BIGINT,
   reach BIGINT,
@@ -207,53 +208,63 @@ CREATE TABLE IF NOT EXISTS publisya.metrics_daily (
 );
 
 CREATE INDEX IF NOT EXISTS publisya_campaigns_tenant_client_status_idx
-  ON publisya.campaigns (tenant_id, client_id, status, created_at DESC);
+  ON public.publisya_campaigns (tenant_id, client_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS publisya_variants_campaign_platform_idx
-  ON publisya.post_variants (campaign_id, platform, version DESC);
+  ON public.publisya_post_variants (campaign_id, platform, version DESC);
 CREATE INDEX IF NOT EXISTS publisya_jobs_due_idx
-  ON publisya.publication_jobs (status, scheduled_at, next_attempt_at)
+  ON public.publisya_publication_jobs (status, scheduled_at, next_attempt_at)
   WHERE status IN ('queued', 'retry_wait');
 CREATE INDEX IF NOT EXISTS publisya_attempts_job_idx
-  ON publisya.publication_attempts (publication_job_id, attempt_number DESC);
+  ON public.publisya_publication_attempts (publication_job_id, attempt_number DESC);
 
-DROP TRIGGER IF EXISTS publisya_social_accounts_updated_at ON publisya.social_accounts;
-CREATE TRIGGER publisya_social_accounts_updated_at BEFORE UPDATE ON publisya.social_accounts
-FOR EACH ROW EXECUTE FUNCTION publisya.set_updated_at();
+DROP TRIGGER IF EXISTS publisya_social_accounts_updated_at ON public.publisya_social_accounts;
+CREATE TRIGGER publisya_social_accounts_updated_at BEFORE UPDATE ON public.publisya_social_accounts
+FOR EACH ROW EXECUTE FUNCTION public.publisya_set_updated_at();
 
-DROP TRIGGER IF EXISTS publisya_campaigns_updated_at ON publisya.campaigns;
-CREATE TRIGGER publisya_campaigns_updated_at BEFORE UPDATE ON publisya.campaigns
-FOR EACH ROW EXECUTE FUNCTION publisya.set_updated_at();
+DROP TRIGGER IF EXISTS publisya_campaigns_updated_at ON public.publisya_campaigns;
+CREATE TRIGGER publisya_campaigns_updated_at BEFORE UPDATE ON public.publisya_campaigns
+FOR EACH ROW EXECUTE FUNCTION public.publisya_set_updated_at();
 
-DROP TRIGGER IF EXISTS publisya_media_assets_updated_at ON publisya.media_assets;
-CREATE TRIGGER publisya_media_assets_updated_at BEFORE UPDATE ON publisya.media_assets
-FOR EACH ROW EXECUTE FUNCTION publisya.set_updated_at();
+DROP TRIGGER IF EXISTS publisya_media_assets_updated_at ON public.publisya_media_assets;
+CREATE TRIGGER publisya_media_assets_updated_at BEFORE UPDATE ON public.publisya_media_assets
+FOR EACH ROW EXECUTE FUNCTION public.publisya_set_updated_at();
 
-DROP TRIGGER IF EXISTS publisya_post_variants_updated_at ON publisya.post_variants;
-CREATE TRIGGER publisya_post_variants_updated_at BEFORE UPDATE ON publisya.post_variants
-FOR EACH ROW EXECUTE FUNCTION publisya.set_updated_at();
+DROP TRIGGER IF EXISTS publisya_post_variants_updated_at ON public.publisya_post_variants;
+CREATE TRIGGER publisya_post_variants_updated_at BEFORE UPDATE ON public.publisya_post_variants
+FOR EACH ROW EXECUTE FUNCTION public.publisya_set_updated_at();
 
-DROP TRIGGER IF EXISTS publisya_publication_jobs_updated_at ON publisya.publication_jobs;
-CREATE TRIGGER publisya_publication_jobs_updated_at BEFORE UPDATE ON publisya.publication_jobs
-FOR EACH ROW EXECUTE FUNCTION publisya.set_updated_at();
+DROP TRIGGER IF EXISTS publisya_publication_jobs_updated_at ON public.publisya_publication_jobs;
+CREATE TRIGGER publisya_publication_jobs_updated_at BEFORE UPDATE ON public.publisya_publication_jobs
+FOR EACH ROW EXECUTE FUNCTION public.publisya_set_updated_at();
 
-ALTER TABLE publisya.social_accounts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE publisya.campaigns ENABLE ROW LEVEL SECURITY;
-ALTER TABLE publisya.media_assets ENABLE ROW LEVEL SECURITY;
-ALTER TABLE publisya.post_variants ENABLE ROW LEVEL SECURITY;
-ALTER TABLE publisya.approvals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE publisya.publication_jobs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE publisya.publication_attempts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE publisya.metrics_daily ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.publisya_social_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.publisya_campaigns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.publisya_media_assets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.publisya_post_variants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.publisya_approvals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.publisya_publication_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.publisya_publication_attempts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.publisya_metrics_daily ENABLE ROW LEVEL SECURITY;
 
 -- Le navigateur n'accède jamais directement aux tables Publisya.
-REVOKE ALL ON SCHEMA publisya FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON ALL TABLES IN SCHEMA publisya FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA publisya FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA publisya FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.publisya_social_accounts FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.publisya_campaigns FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.publisya_media_assets FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.publisya_post_variants FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.publisya_approvals FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.publisya_publication_jobs FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.publisya_publication_attempts FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.publisya_metrics_daily FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.publisya_set_updated_at() FROM PUBLIC, anon, authenticated;
 
-GRANT USAGE ON SCHEMA publisya TO service_role;
-GRANT ALL ON ALL TABLES IN SCHEMA publisya TO service_role;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA publisya TO service_role;
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA publisya TO service_role;
+GRANT ALL ON TABLE public.publisya_social_accounts TO service_role;
+GRANT ALL ON TABLE public.publisya_campaigns TO service_role;
+GRANT ALL ON TABLE public.publisya_media_assets TO service_role;
+GRANT ALL ON TABLE public.publisya_post_variants TO service_role;
+GRANT ALL ON TABLE public.publisya_approvals TO service_role;
+GRANT ALL ON TABLE public.publisya_publication_jobs TO service_role;
+GRANT ALL ON TABLE public.publisya_publication_attempts TO service_role;
+GRANT ALL ON TABLE public.publisya_metrics_daily TO service_role;
+GRANT EXECUTE ON FUNCTION public.publisya_set_updated_at() TO service_role;
 
 COMMIT;
