@@ -13,7 +13,7 @@ const NETWORKS = [
   { id: 'youtube', label: 'YouTube' },
 ];
 
-const MAX_FILE_BYTES = 250 * 1024 * 1024;
+const MAX_FILE_BYTES = 140 * 1024 * 1024;
 
 export default function CampaignWizard({ open, onClose, onCreated, status }) {
   const [title, setTitle] = useState('');
@@ -44,7 +44,7 @@ export default function CampaignWizard({ open, onClose, onCreated, status }) {
     setError('');
     if (next && next.size > MAX_FILE_BYTES) {
       setFile(null);
-      setError('Le média dépasse 250 Mo.');
+      setError('Le média dépasse 140 Mo.');
       return;
     }
     if (next && !/^(image|video)\//i.test(next.type || '')) {
@@ -167,7 +167,7 @@ export default function CampaignWizard({ open, onClose, onCreated, status }) {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-foreground">{fileSummary || (mediaReady ? 'Choisir un média' : 'Stockage média non initialisé')}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">Image ou vidéo · maximum 250 Mo</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">Image ou vidéo · maximum 140 Mo</p>
               </div>
               <input type="file" accept="image/*,video/*" onChange={chooseFile} disabled={!mediaReady || busy} className="hidden" />
             </label>
