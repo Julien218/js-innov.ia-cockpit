@@ -10,6 +10,7 @@ const {
   safeUploadFilename,
 } = require('./server-dropbox-helper.cjs');
 const { isConfigured: aiConfigured, analyzeCampaignMedia } = require('./server-publisya-ai.cjs');
+const reviewRouter = require('./server-publisya-review.cjs');
 
 const router = express.Router();
 
@@ -307,6 +308,9 @@ router.use((req, res, next) => {
   next();
 });
 
+// Les corrections/validations sont séparées du moteur d'analyse et ne publient rien.
+router.use(reviewRouter);
+
 router.get('/status', async (req, res) => {
   const databaseReady = await dataStoreReady();
   res.json({
@@ -398,10 +402,10 @@ router.get('/campaigns/:campaignId', async (req, res) => {
 
     const { tenantId, clientId } = requestContext(req);
     const media = await supabaseRequest(
-      `publisya_media_assets?select=id,asset_role,platform,storage_provider,storage_key,mime_type,file_size_bytes,width,height,duration_seconds,sha256,created_at&campaign_id=eq.${encodeURIComponent(campaign.id)}&tenant_id=eq.${encodeURIComponent(tenantId)}&client_id=eq.${encodeURIComponent(clientId)}&order=created_at.asc`,
+      `publisya_media_assets?select=id,asset_role,platform,storage_provider,storage_key,mime_type,file_size_bytes,width,height,duration_seconds,sha256,media_metadata,created_at&campaign_id=eq.${encodeURIComponent(campaign.id)}&tenant_id=eq.${encodeURIComponent(tenantId)}&client_id=eq.${encodeURIComponent(clientId)}&order=created_at.asc`,
     );
     const variants = await supabaseRequest(
-      `publisya_post_variants?select=id,platform,version,status,caption,title,description,hashtags,tags,call_to_action,alt_text,cover_text,provider_options,created_at,updated_at&campaign_id=eq.${encodeURIComponent(campaign.id)}&tenant_id=eq.${encodeURIComponent(tenantId)}&client_id=eq.${encodeURIComponent(clientId)}&order=platform.asc,version.desc`,
+      `publisya_post_variants?select=id,platform,version,status,caption,title,description,hashtags,tags,call_to_action,alt_text,cover_text,provider_options,generated_by,approved_at,approved_by,created_at,updated_at&campaign_id=eq.${encodeURIComponent(campaign.id)}&tenant_id=eq.${encodeURIComponent(tenantId)}&client_id=eq.${encodeURIComponent(clientId)}&order=platform.asc,version.desc`,
     );
     res.json({ campaign, media, variants });
   } catch (error) {
