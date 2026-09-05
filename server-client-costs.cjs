@@ -315,6 +315,22 @@ async function createCostEvent({
   return row;
 }
 
+function sourceTypeForMapping(serviceType) {
+  if (serviceType === 'openai_project') return 'llm_api';
+  if (['railway_project', 'railway_service'].includes(serviceType)) return 'railway';
+  if (['github_user', 'github_org', 'github_repo'].includes(serviceType)) return 'github';
+  return ({
+    twilio_account: 'twilio',
+    supabase_project: 'supabase',
+    dropbox_account: 'dropbox',
+    storage_account: 'storage',
+    media_provider: 'media_ai',
+    communications_provider: 'communications',
+    api_provider: 'api',
+    other_provider: 'other',
+  })[serviceType] || 'other';
+}
+
 async function collectMapping(mapping, window) {
   if (mapping.service_type === 'openai_project') return importOpenAICharges(mapping, window.year, window.monthNumber);
   if (['railway_project', 'railway_service'].includes(mapping.service_type)) return importRailwayCharges(mapping, window.year, window.monthNumber);
@@ -342,6 +358,7 @@ async function importCostCenter(center, window) {
     if (mappingConflict(mapping, allMappings)) throw new Error('Rattachements fournisseurs qui se chevauchent : import bloqué');
     const result = await collectMapping(mapping, window);
     let created = 0;
+    const mappingSourceType = sourceTypeForMapping(mapping.service_type);
     for (const line of result.lines || []) {
       if (minor(line.total_minor) <= 0) continue;
       const sourceType = ({
@@ -373,11 +390,45 @@ async function importCostCenter(center, window) {
       });
       created += 1;
     }
+
+    let coverageRecorded = false;
+    if (!result.error) {
+      const coverageRef = `coverage:${mappingSourceType}:${mapping.id || mapping.external_id}:${window.month}`;
+      const coverage = await crmSelect(`client_cost_events?select=id&source_type=eq.${encodeURIComponent(mappingSourceType)}&external_ref=eq.${encodeURIComponent(coverageRef)}&limit=1`).catch(() => []);
+      if (!coverage?.length) {
+        await createCostEvent({
+          clientId: center.client_id,
+          projectId,
+          costCenterId: center.id,
+          sourceType: mappingSourceType,
+          provider: mappingSourceType === 'llm_api' ? 'openai' : mappingSourceType,
+          description: `Contrôle fournisseur ${mapping.external_label || mapping.external_id} — ${window.month}`,
+          actualCostMinor: 0,
+          externalRef: coverageRef,
+          incurredAt: window.start.toISOString(),
+          evidenceStatus: 'actual',
+          verificationRef: `provider-sync:${mapping.service_type}:${mapping.external_id}:${window.month}`,
+          metadata: {
+            coverage_marker: true,
+            billable: false,
+            mapping_id: mapping.id,
+            service_type: mapping.service_type,
+            external_id: mapping.external_id,
+            canonical_project_id: projectId,
+            period: window.month,
+            provider_sync_status: 'completed',
+          },
+        });
+        coverageRecorded = true;
+      }
+    }
+
     results.push({
       mapping_id: mapping.id,
       service_type: mapping.service_type,
       external_label: mapping.external_label || mapping.external_id,
       created,
+      coverage_recorded: coverageRecorded,
       status: result.error ? 'blocked' : 'completed',
       error: result.error || null,
     });
@@ -408,7 +459,10 @@ function summarize(events) {
     actual_cost_minor: accounting.actual_cost_minor,
     manual_verified_minor: accounting.manual_verified_minor,
     verified_cost_minor: accounting.verified_cost_minor,
+    supported_cost_minor: accounting.supported_cost_minor,
+    recorded_cost_minor: accounting.recorded_cost_minor,
     estimated_cost_minor: accounting.estimated_cost_minor,
+    unverified_cost_minor: accounting.unverified_cost_minor,
     billable_minor: accounting.billable_minor,
     margin_minor: Math.max(0, accounting.billable_minor - internalCost),
     unverified_events: accounting.unverified_events,
@@ -431,7 +485,7 @@ async function nextCoreInvoiceNumber(year) {
 function buildInvoiceLines(events) {
   const groups = new Map();
   for (const event of events) {
-    if (evidenceStatus(event) === 'unverified' || !event.billable || minor(event.billable_minor) <= 0) continue;
+    if (event.metadata?.coverage_marker === true || evidenceStatus(event) === 'unverified' || !event.billable || minor(event.billable_minor) <= 0) continue;
     const key = event.source_type || 'other';
     const current = groups.get(key) || { description: key, total: 0, count: 0 };
     current.total += minor(event.billable_minor);
@@ -488,7 +542,7 @@ router.get('/accounting/overview', async (req, res) => {
         actual: 'Montant fournisseur reçu par API avec une référence vérifiable.',
         manual_verified: 'Montant saisi manuellement avec référence de facture ou justificatif.',
         estimated: 'Calcul interne documenté, séparé des dépenses fournisseur réelles.',
-        unverified: 'Exclu des totaux et de la facturation tant qu’une preuve manque.',
+        unverified: 'Inclus dans le total des dépenses enregistrées, mais exclu du total vérifié et de la facturation tant qu’une preuve manque.',
       },
     });
   } catch (error) {
@@ -642,6 +696,7 @@ router.post('/accounting/sync', async (req, res) => {
       month: window.month,
       centers: results.length,
       imported_events: flat.reduce((sum, item) => sum + Number(item.created || 0), 0),
+      coverage_checks_recorded: flat.filter((item) => item.coverage_recorded).length,
       completed_sources: flat.filter((item) => item.status === 'completed').length,
       blocked_sources: flat.filter((item) => item.status === 'blocked').length,
       results,
@@ -888,7 +943,7 @@ router.post('/clients/:clientId/generate-draft', async (req, res) => {
     const client = await getClient(req.params.clientId);
     const window = monthWindow(req.body?.month || req.query?.month);
     const events = await listCostEvents(client.id, window, true);
-    const eligibleEvents = (events || []).filter((event) => evidenceStatus(event) !== 'unverified');
+    const eligibleEvents = (events || []).filter((event) => event.metadata?.coverage_marker !== true && evidenceStatus(event) !== 'unverified');
     const lines = buildInvoiceLines(eligibleEvents);
     if (!lines.length) return res.status(409).json({ error: 'Aucun coût refacturable non facturé pour cette période' });
 
@@ -927,7 +982,7 @@ router.post('/clients/:clientId/generate-draft', async (req, res) => {
       );
     }
 
-    return res.status(201).json({ success: true, client_id: client.id, month: window.month, invoice, source_events: eligibleEvents.length, excluded_unverified: (events || []).length - eligibleEvents.length });
+    return res.status(201).json({ success: true, client_id: client.id, month: window.month, invoice, source_events: eligibleEvents.length, excluded_unverified: (events || []).filter((event) => event.metadata?.coverage_marker !== true).length - eligibleEvents.length });
   } catch (error) {
     return res.status(503).json({ error: error.message });
   }
