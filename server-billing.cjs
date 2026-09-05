@@ -7,6 +7,7 @@ const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const { generateInvoicePDF, money } = require('./server-billing-template.cjs');
 const { storeBuffer, getDocumentBufferForUser } = require('./server-documents.cjs');
+const { createBillingReviewRouter } = require('./server-monthly-billing.cjs');
 
 const router = express.Router();
 
@@ -330,6 +331,11 @@ async function sendPDF(req, res, type) {
       nombre_envois: Number(doc.nombre_envois || 0) + 1,
       dernier_destinataire: to,
       dernier_message_id: info.messageId,
+      ...(doc.auto_generation ? {
+        billing_review_status: 'sent',
+        billing_send_error: null,
+        billing_send_attempt_key: null,
+      } : {}),
       historique_documents: appendEvent(doc, auditEvent(req, 'envoi', {
         destinataire: to,
         message_id: info.messageId,
@@ -412,6 +418,14 @@ router.post('/clients/:id/request-information', async (req, res) => {
   }
 });
 
+router.use(createBillingReviewRouter({
+  fetchDocument,
+  updateDocument,
+  sendPDF,
+  getSmtpTransport,
+  tenantForRequest,
+}));
+
 for (const type of ['devis', 'facture']) {
   const route = type === 'facture' ? 'factures' : 'devis';
   router.post(`/${route}/:id/pdf`, async (req, res) => {
@@ -422,10 +436,22 @@ for (const type of ['devis', 'facture']) {
     }
   });
   router.post(`/${route}/:id/send`, async (req, res) => {
-    try { await sendPDF(req, res, type); }
-    catch (error) {
+    try {
+      if (type === 'facture') {
+        const tenant = tenantForRequest(req);
+        const doc = await fetchDocument(type, req.params.id, tenant);
+        if (doc.auto_generation) {
+          return res.status(409).json({
+            success: false,
+            code: 'AUTO_BILLING_REQUIRES_APPROVAL',
+            error: 'Cette facture mensuelle doit être vérifiée puis envoyée via « Valider & envoyer ».',
+          });
+        }
+      }
+      await sendPDF(req, res, type);
+    } catch (error) {
       console.error(`[BILLING] Send ${type} error:`, error.message);
-      res.status(500).json({ success: false, error: error.message });
+      sendBillingError(res, error);
     }
   });
 }

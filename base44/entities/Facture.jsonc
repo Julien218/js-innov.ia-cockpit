@@ -2,207 +2,112 @@
   "name": "Facture",
   "type": "object",
   "properties": {
-    "numero": {
-      "type": "string",
-      "description": "Numéro de facture"
-    },
-    "client_id": {
-      "type": "string"
-    },
-    "client_nom": {
-      "type": "string"
-    },
-    "devis_id": {
-      "type": "string"
-    },
-    "objet": {
-      "type": "string"
-    },
+    "numero": { "type": "string", "description": "Numéro de facture" },
+    "client_id": { "type": "string" },
+    "client_nom": { "type": "string" },
+    "devis_id": { "type": "string" },
+    "objet": { "type": "string" },
     "lignes": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
-          "description": {
-            "type": "string"
-          },
-          "quantite": {
-            "type": "number"
-          },
-          "prix_unitaire": {
-            "type": "number"
-          },
-          "total": {
-            "type": "number"
-          }
+          "description": { "type": "string" },
+          "quantite": { "type": "number" },
+          "prix_unitaire": { "type": "number" },
+          "total": { "type": "number" }
         }
       }
     },
-    "montant_ht": {
-      "type": "number"
-    },
-    "tva": {
-      "type": "number",
-      "default": 20
-    },
-    "montant_ttc": {
-      "type": "number"
-    },
+    "montant_ht": { "type": "number" },
+    "tva": { "type": "number", "default": 21 },
+    "montant_tva": { "type": "number" },
+    "montant_ttc": { "type": "number" },
     "statut": {
       "type": "string",
-      "enum": [
-        "brouillon",
-        "envoyee",
-        "payee",
-        "en_retard",
-        "annulee"
-      ],
+      "enum": ["brouillon", "envoyee", "payee", "en_retard", "annulee"],
       "default": "brouillon"
     },
-    "date_echeance": {
-      "type": "string",
-      "format": "date"
-    },
-    "date_paiement": {
-      "type": "string",
-      "format": "date"
-    },
+    "date_echeance": { "type": "string", "format": "date" },
+    "date_paiement": { "type": "string", "format": "date" },
     "mode_paiement": {
       "type": "string",
-      "enum": [
-        "virement",
-        "cheque",
-        "carte",
-        "especes",
-        "prelevement"
-      ],
+      "enum": ["virement", "cheque", "carte", "especes", "prelevement"],
       "default": "virement"
     },
-    "client_email": {
-      "type": "string"
-    },
-    "date_emission": {
+    "client_email": { "type": "string" },
+    "date_emission": { "type": "string", "format": "date" },
+    "periode": { "type": "string", "description": "Période comptable mensuelle YYYY-MM" },
+    "notes": { "type": "string" },
+    "auto_generation": { "type": "boolean", "default": false },
+    "billing_fingerprint": { "type": "string" },
+    "billing_review_status": {
       "type": "string",
-      "format": "date"
+      "enum": ["pending", "blocked", "approved", "send_failed", "sent"]
     },
-    "pdf_document_id": {
-      "type": "string",
-      "description": "Identifiant du PDF immuable dans DocumentIndex"
+    "billing_generated_at": { "type": "string", "format": "date-time" },
+    "billing_validated_at": { "type": "string", "format": "date-time" },
+    "billing_validated_by": { "type": "string" },
+    "billing_source_event_ids": { "type": "array", "items": { "type": "string" } },
+    "billing_monthly_fee_centers": { "type": "array", "items": { "type": "string" } },
+    "billing_blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "event_id": { "type": "string" },
+          "source_type": { "type": "string" }
+        }
+      }
     },
-    "pdf_dropbox_path": {
-      "type": "string",
-      "description": "Chemin Dropbox du PDF archivé"
-    },
-    "pdf_dropbox_file_id": {
-      "type": "string",
-      "description": "Identifiant Dropbox stable"
-    },
-    "pdf_sha256": {
-      "type": "string",
-      "description": "Empreinte SHA-256 du PDF archivé"
-    },
-    "pdf_version": {
-      "type": "string",
-      "description": "Version du modèle PDF"
-    },
-    "pdf_genere_at": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "pdf_genere_par": {
-      "type": "string"
-    },
-    "date_premier_envoi": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "date_dernier_envoi": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "nombre_envois": {
-      "type": "number",
-      "default": 0
-    },
-    "dernier_destinataire": {
-      "type": "string"
-    },
-    "dernier_message_id": {
-      "type": "string"
-    },
-    "date_dernier_telechargement": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "nombre_telechargements": {
-      "type": "number",
-      "default": 0
-    },
+    "billing_send_attempt_at": { "type": "string", "format": "date-time" },
+    "billing_send_attempt_key": { "type": "string" },
+    "billing_send_error": { "type": "string" },
+    "pdf_document_id": { "type": "string", "description": "Identifiant du PDF immuable dans DocumentIndex" },
+    "pdf_dropbox_path": { "type": "string", "description": "Chemin Dropbox du PDF archivé" },
+    "pdf_dropbox_file_id": { "type": "string", "description": "Identifiant Dropbox stable" },
+    "pdf_sha256": { "type": "string", "description": "Empreinte SHA-256 du PDF archivé" },
+    "pdf_version": { "type": "string", "description": "Version du modèle PDF" },
+    "pdf_genere_at": { "type": "string", "format": "date-time" },
+    "pdf_genere_par": { "type": "string" },
+    "pdf_conformite_statut": { "type": "string" },
+    "date_premier_envoi": { "type": "string", "format": "date-time" },
+    "date_dernier_envoi": { "type": "string", "format": "date-time" },
+    "nombre_envois": { "type": "number", "default": 0 },
+    "dernier_destinataire": { "type": "string" },
+    "dernier_message_id": { "type": "string" },
+    "date_dernier_telechargement": { "type": "string", "format": "date-time" },
+    "nombre_telechargements": { "type": "number", "default": 0 },
     "historique_documents": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
-          "type": {
-            "type": "string"
-          },
-          "date": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "utilisateur": {
-            "type": "string"
-          },
-          "destinataire": {
-            "type": "string"
-          },
-          "message_id": {
-            "type": "string"
-          },
-          "document_id": {
-            "type": "string"
-          },
-          "version": {
-            "type": "string"
-          }
+          "type": { "type": "string" },
+          "date": { "type": "string", "format": "date-time" },
+          "utilisateur": { "type": "string" },
+          "destinataire": { "type": "string" },
+          "message_id": { "type": "string" },
+          "document_id": { "type": "string" },
+          "version": { "type": "string" },
+          "replaced_document_id": { "type": "string" }
         }
       }
     }
   },
-  "required": [
-    "numero",
-    "objet"
-  ],
+  "required": ["numero", "objet"],
   "rls": {
-    "create": {
-      "user_condition": {
-        "role": "admin"
-      }
-    },
+    "create": { "user_condition": { "role": "admin" } },
     "read": {
       "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "data.client_id": "{{user.data.client_id}}"
-        },
-        {
-          "created_by_id": "{{user.id}}"
-        }
+        { "user_condition": { "role": "admin" } },
+        { "data.client_id": "{{user.data.client_id}}" },
+        { "created_by_id": "{{user.id}}" }
       ]
     },
-    "update": {
-      "user_condition": {
-        "role": "admin"
-      }
-    },
-    "delete": {
-      "user_condition": {
-        "role": "admin"
-      }
-    }
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
   }
 }
