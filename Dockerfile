@@ -53,6 +53,7 @@ COPY --from=builder /app/server-project-data.cjs ./server-project-data.cjs
 COPY --from=builder /app/server-miss-dour-data.cjs ./server-miss-dour-data.cjs
 COPY --from=builder /app/server-bce.cjs ./server-bce.cjs
 COPY --from=builder /app/server-hainoflow.cjs ./server-hainoflow.cjs
+COPY --from=builder /app/server-publisya.cjs ./server-publisya.cjs
 COPY --from=builder /app/server-assistant.cjs ./server-assistant.cjs
 COPY --from=builder /app/server-public-elynea.cjs ./server-public-elynea.cjs
 COPY --from=builder /app/server-assistant-batch.cjs ./server-assistant-batch.cjs
@@ -131,6 +132,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-ionos-dns.cjs \
  && test -f /app/server-settings.cjs \
  && test -f /app/server-signage.cjs \
+ && test -f /app/server-publisya.cjs \
  && test -f /app/server-villeconnect.cjs \
  && test -f /app/server-video-provenance-core.cjs \
  && test -f /app/server-video-provenance.cjs \
@@ -173,6 +175,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-ionos-dns.cjs \
  && node --check /app/server-settings.cjs \
  && node --check /app/server-signage.cjs \
+ && node --check /app/server-publisya.cjs \
  && node --check /app/server-villeconnect.cjs \
  && node --check /app/server-video-provenance-core.cjs \
  && node --check /app/server-video-provenance.cjs \
