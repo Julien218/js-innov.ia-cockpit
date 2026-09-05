@@ -153,14 +153,42 @@ function linkedInOrganizationUrn(element) {
   return String(element?.organizationTarget || element?.organization || '').trim();
 }
 
+async function verifyLinkedInIdentity(account, accessToken) {
+  const source = String(account.metadata?.identity_source || '');
+  if (source === 'v2_me') {
+    const body = await bearerJson(
+      'https://api.linkedin.com/v2/me',
+      accessToken,
+      { 'X-Restli-Protocol-Version': '2.0.0' },
+    );
+    return {
+      id: String(body?.id || ''),
+      name: String(`${body?.localizedFirstName || ''} ${body?.localizedLastName || ''}`.trim() || account.account_name || 'Compte LinkedIn'),
+      source: 'v2_me',
+    };
+  }
+  const body = await bearerJson('https://api.linkedin.com/v2/userinfo', accessToken);
+  return {
+    id: String(body?.sub || ''),
+    name: String(body?.name || account.account_name || 'Compte LinkedIn'),
+    source: 'oidc_userinfo',
+  };
+}
+
 async function verifyLinkedIn(account, accessToken) {
   const result = baseResult(account);
+  const identity = await verifyLinkedInIdentity(account, accessToken);
+  if (!identity.id || identity.id !== String(account.provider_account_id)) {
+    result.notes.push('L’identité LinkedIn retournée ne correspond pas au compte enregistré.');
+    return result;
+  }
+
   result.verified = true;
   result.token_valid = true;
   result.targets.push({
-    target_id: String(account.provider_account_id),
+    target_id: identity.id,
     target_type: 'member_identity',
-    display_name: String(account.account_name || 'Compte LinkedIn'),
+    display_name: identity.name,
     identity_verified: true,
     permission_verified: false,
   });
@@ -169,11 +197,11 @@ async function verifyLinkedIn(account, accessToken) {
   const canReadOrganizations = scopes.has('r_organization_admin') || scopes.has('rw_organization_admin');
   const version = env('PUBLISYA_LINKEDIN_VERSION');
   if (!canReadOrganizations) {
-    result.notes.push('Aucun scope d’administration d’organisation n’est présent : seules les informations du membre sont affichées.');
+    result.notes.push('Membre LinkedIn relu avec succès. Aucun scope d’administration d’organisation n’est présent.');
     return result;
   }
   if (!LINKEDIN_VERSION_RE.test(version)) {
-    result.notes.push('PUBLISYA_LINKEDIN_VERSION doit être configurée au format YYYYMM avant de relire les organisations.');
+    result.notes.push('Membre LinkedIn relu avec succès. PUBLISYA_LINKEDIN_VERSION doit être configurée au format YYYYMM avant de relire les organisations.');
     return result;
   }
 
@@ -207,7 +235,6 @@ async function verifyLinkedIn(account, accessToken) {
 
 async function verifyMeta(account) {
   const result = baseResult(account);
-  result.verified = true;
   result.notes.push('Connexion Meta enregistrée. La sélection Page Facebook / compte Instagram professionnel reste volontairement verrouillée tant que le contrat de découverte Meta n’est pas validé.');
   return result;
 }
@@ -273,5 +300,6 @@ module.exports = {
   LINKEDIN_VERSION_RE,
   tokenAlreadyExpired,
   linkedInOrganizationUrn,
+  verifyLinkedInIdentity,
   verifyAccount,
 };
