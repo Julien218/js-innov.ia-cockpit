@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, LockKeyhole, PlugZap, RefreshCw, Unplug } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, KeyRound, LockKeyhole, PlugZap, RefreshCw, Unplug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { verifyPublisyaTargets } from '@/lib/publisyaClient';
+import { refreshPublisyaAccount, verifyPublisyaTargets } from '@/lib/publisyaClient';
 
 const coverage = {
   meta: 'Facebook + Instagram',
@@ -66,12 +66,25 @@ function VerificationSummary({ verification }) {
   );
 }
 
+function RefreshSummary({ result, error }) {
+  if (error) return <p className="mt-2 text-[10px] leading-4 text-red-700">{error}</p>;
+  if (!result) return null;
+  return (
+    <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-2 text-[10px] leading-4 text-emerald-800">
+      Accès renouvelé et identité revalidée. Le renouvellement automatique reste désactivé.
+    </div>
+  );
+}
+
 export default function PublisyaConnections({ data, isLoading, isError, onConnect, onDisconnect, disconnectingId }) {
   const providers = data?.providers || [];
   const accounts = data?.accounts || [];
   const [verifyingId, setVerifyingId] = useState(null);
   const [verificationByAccount, setVerificationByAccount] = useState({});
   const [verificationErrorByAccount, setVerificationErrorByAccount] = useState({});
+  const [refreshingId, setRefreshingId] = useState(null);
+  const [refreshResultByAccount, setRefreshResultByAccount] = useState({});
+  const [refreshErrorByAccount, setRefreshErrorByAccount] = useState({});
   const [oauthNotice] = useState(() => safeOAuthNotice());
 
   useEffect(() => {
@@ -91,6 +104,24 @@ export default function PublisyaConnections({ data, isLoading, isError, onConnec
       }));
     } finally {
       setVerifyingId(null);
+    }
+  };
+
+  const refreshAccess = async (account) => {
+    setRefreshingId(account.id);
+    setRefreshErrorByAccount((current) => ({ ...current, [account.id]: null }));
+    setRefreshResultByAccount((current) => ({ ...current, [account.id]: null }));
+    try {
+      const response = await refreshPublisyaAccount(account.id);
+      setRefreshResultByAccount((current) => ({ ...current, [account.id]: response.account || true }));
+      setVerificationByAccount((current) => ({ ...current, [account.id]: null }));
+    } catch (error) {
+      setRefreshErrorByAccount((current) => ({
+        ...current,
+        [account.id]: error?.message || 'Renouvellement impossible.',
+      }));
+    } finally {
+      setRefreshingId(null);
     }
   };
 
@@ -146,6 +177,9 @@ export default function PublisyaConnections({ data, isLoading, isError, onConnec
           const ready = Boolean(provider.ready && data?.database_ready && data?.vault_configured);
           const verification = account ? verificationByAccount[account.id] : null;
           const verificationError = account ? verificationErrorByAccount[account.id] : null;
+          const refreshResult = account ? refreshResultByAccount[account.id] : null;
+          const refreshError = account ? refreshErrorByAccount[account.id] : null;
+          const canRefresh = Boolean(account && account.provider !== 'meta' && account.metadata?.refresh_token_present);
           return (
             <div key={provider.id} className="flex min-h-36 flex-col rounded-2xl border border-border bg-muted/25 p-4">
               <div className="flex items-center justify-between gap-2">
@@ -159,22 +193,36 @@ export default function PublisyaConnections({ data, isLoading, isError, onConnec
                   <p className="mt-1 text-[11px] text-muted-foreground">Connexion active · publication encore désactivée</p>
                   <VerificationSummary verification={verification} />
                   {verificationError && <p className="mt-2 text-[10px] leading-4 text-red-700">{verificationError}</p>}
+                  <RefreshSummary result={refreshResult} error={refreshError} />
                   <div className="mt-auto grid grid-cols-1 gap-2 pt-3">
                     <Button
                       type="button"
                       variant="secondary"
                       size="sm"
-                      disabled={verifyingId === account.id}
+                      disabled={verifyingId === account.id || refreshingId === account.id}
                       onClick={() => verifyTargets(account)}
                     >
                       <RefreshCw className={`mr-2 h-3.5 w-3.5 ${verifyingId === account.id ? 'animate-spin' : ''}`} />
                       Vérifier les cibles
                     </Button>
+                    {canRefresh && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={refreshingId === account.id || verifyingId === account.id}
+                        onClick={() => refreshAccess(account)}
+                        title="Renouvellement manuel. Aucun cron ni rafraîchissement automatique."
+                      >
+                        <KeyRound className="mr-2 h-3.5 w-3.5" />
+                        {refreshingId === account.id ? 'Renouvellement…' : 'Renouveler l’accès'}
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={disconnectingId === account.id}
+                      disabled={disconnectingId === account.id || refreshingId === account.id}
                       onClick={() => onDisconnect(account.id)}
                     >
                       <Unplug className="mr-2 h-3.5 w-3.5" />
