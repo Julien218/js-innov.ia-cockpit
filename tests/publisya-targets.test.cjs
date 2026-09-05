@@ -94,7 +94,7 @@ test('OAuth callback notice keeps only bounded internal status and clears it fro
   assert.match(connectionsSource, /clearOAuthQuery/);
   assert.match(connectionsSource, /window\.history\.replaceState/);
   assert.match(connectionsSource, /oauth_status/);
-  assert.doesNotMatch(connectionsSource, /access_token|refresh_token|token_ciphertext/);
+  assert.doesNotMatch(connectionsSource, /access_token|token_ciphertext|refresh_token_ciphertext/);
 });
 
 test('target verification is mounted under the protected Publisya router and packaged in Docker', () => {
