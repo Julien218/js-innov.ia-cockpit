@@ -320,7 +320,7 @@ async function refreshAccount(req, accountId) {
   try {
     tokenBody = await providerTokenRequest(config, refreshToken);
   } catch (error) {
-    if (error.code === 'PUBLISYA_REFRESH_PROVIDER_REJECTED' && ['invalid_grant', 'invalid_request'].includes(error.providerCode)) {
+    if (error.code === 'PUBLISYA_REFRESH_PROVIDER_REJECTED' && error.providerCode === 'invalid_grant') {
       await markReconnectRequired(account, error.providerCode);
     }
     throw error;
