@@ -69,6 +69,7 @@ jobs:
           node --check server-publisya-oauth.cjs
           node --check server-publisya-token-vault.cjs
           node --check server-publisya-targets.cjs
+          node --check server-publisya-token-lifecycle.cjs
 
       - name: Run Publisya safety tests
         run: node --require ./tests/node-test-globals.cjs --test tests/publisya*.test.cjs
@@ -80,10 +81,15 @@ jobs:
           grep -q "direct_publish: false" server-publisya.cjs
           grep -q "publishing_enabled: false" server-publisya-oauth.cjs
           grep -q "publishing_enabled: false" server-publisya-targets.cjs
+          grep -q "publishing_enabled: false" server-publisya-token-lifecycle.cjs
+          grep -q "automatic_refresh_enabled: false" server-publisya-token-lifecycle.cjs
           ! grep -q "publisya_publication_jobs" server-publisya-oauth.cjs
           ! grep -q "publisya_publication_jobs" server-publisya-targets.cjs
+          ! grep -q "publisya_publication_jobs" server-publisya-token-lifecycle.cjs
           ! grep -Eq "router\.(post|put|patch|delete)\(" server-publisya-targets.cjs
+          ! grep -Eq "setInterval|cron|scheduleJob" server-publisya-token-lifecycle.cjs
           grep -q "server-publisya-review.cjs" Dockerfile
           grep -q "server-publisya-oauth.cjs" Dockerfile
           grep -q "server-publisya-token-vault.cjs" Dockerfile
           grep -q "server-publisya-targets.cjs" Dockerfile
+          grep -q "server-publisya-token-lifecycle.cjs" Dockerfile
