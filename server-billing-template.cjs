@@ -39,9 +39,13 @@ function drawHeader(pdf,doc,type){
   pdf.fillColor('#F1F1F0').polygon([A4.width-30,151],[A4.width,111],[A4.width,209],[A4.width-96,209]).fill();
   pdf.fillColor('#F2B43A').polygon([A4.width-55,0],[A4.width,0],[A4.width,55]).fill().restore();
   pdf.image(LOGO,34,29,{fit:[84,84],align:'center',valign:'center'});
-  text(pdf,'JS-Innov.',141,40,{size:29,font:'Times-Roman',color:C.ink,width:144});
-  text(pdf,'IA',278,40,{size:29,font:'Times-Roman',color:C.gold2,width:40});
-  text(pdf,'®',318,39,{size:7,font:'Helvetica-Bold',color:C.ink});
+
+  const brandX=141, brandY=40;
+  pdf.font('Times-Roman').fontSize(29).fillColor(C.ink).text('JS-Innov.',brandX,brandY,{continued:true});
+  pdf.fillColor(C.gold2).text('IA',{continued:false});
+  const brandWidth=pdf.font('Times-Roman').fontSize(29).widthOfString('JS-Innov.IA');
+  text(pdf,'®',brandX+brandWidth+3,39,{size:7,font:'Helvetica-Bold',color:C.ink});
+
   text(pdf,'Julien Pagin',188,75,{size:12,font:'Helvetica-Oblique',color:C.gold2,width:106,align:'center'});
   text(pdf,"AUTOMATISATION INTELLIGENTE, AMPLIFIÉE PAR L’HUMAIN",136,103,{size:6.1,font:'Helvetica',color:C.text,width:198,align:'center'});
   line(pdf,198,120,270,120,C.gold2,.55); line(pdf,233,118,235,122,C.gold2,.8);
@@ -152,8 +156,6 @@ function drawBottom(pdf,doc){
   text(pdf,"TVA calculée conformément au règlement 967/2012 du Conseil de l’Union européenne.",M,legalY+8,{size:6.1,width:W,align:'center'});
   text(pdf,'En cas de retard de paiement, des intérêts de 1% par mois seront appliqués sur le montant dû.',M,legalY+19,{size:6.1,width:W,align:'center'});
 
-  // Footer volontairement épuré : aucune icône de service ni bloc noir.
-  // Cette zone reste fixe pour garantir le même rendu à chaque génération.
   const footerY=770;
   line(pdf,105,footerY,165,footerY,C.gold2,.65);
   line(pdf,430,footerY,490,footerY,C.gold2,.65);
