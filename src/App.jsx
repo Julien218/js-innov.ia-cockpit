@@ -4,6 +4,7 @@ import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
+import { usePermissions } from '@/lib/usePermissions';
 
 // Routes publiques
 import Login from "@/pages/Login";
@@ -34,6 +35,7 @@ import Commercants from "@/pages/Commercants";
 import Devis from "@/pages/Devis";
 import Factures from "@/pages/Factures";
 import HainoFlow from "@/pages/HainoFlow";
+import Publisya from "@/pages/Publisya";
 import Commissions from "@/pages/Commissions";
 import Validations from "@/pages/Validations";
 import Logs from "@/pages/Logs";
@@ -71,6 +73,7 @@ const PageBoundary = ({ children }) => <AppErrorBoundary>{children}</AppErrorBou
 
 const AppRoutes = () => {
   const { user, isAuthenticated, isLoadingAuth, authChecked } = useAuth();
+  const { canAccess } = usePermissions();
   const isClient = user?.role === 'client';
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
 
@@ -107,6 +110,7 @@ const AppRoutes = () => {
           <Route path="/mes-devis" element={<PageBoundary><ClientRecords kind="quotes" /></PageBoundary>} />
           <Route path="/factures" element={<PageBoundary><Factures /></PageBoundary>} />
           <Route path="/hainoflow" element={<PageBoundary><HainoFlow /></PageBoundary>} />
+          <Route path="/publisya" element={canAccess('/publisya') ? <PageBoundary><Publisya /></PageBoundary> : <Navigate to="/" replace />} />
           <Route path="/mes-factures" element={<PageBoundary><ClientRecords kind="invoices" /></PageBoundary>} />
           <Route path="/commissions" element={<PageBoundary><Commissions /></PageBoundary>} />
 

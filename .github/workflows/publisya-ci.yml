@@ -1,0 +1,102 @@
+name: Publisya CI
+
+on:
+  push:
+    branches:
+      - 'feature/publisya-*'
+    paths:
+      - 'server-publisya*.cjs'
+      - 'src/pages/Publisya.jsx'
+      - 'src/components/publisya/**'
+      - 'src/lib/publisyaClient.js'
+      - 'src/App.jsx'
+      - 'src/lib/roles.js'
+      - 'src/components/layout/Sidebar.jsx'
+      - 'permission-catalog.json'
+      - 'supabase/migrations/*publisya*.sql'
+      - 'tests/publisya*.test.cjs'
+      - 'Dockerfile'
+      - '.github/workflows/publisya-ci.yml'
+  pull_request:
+    paths:
+      - 'server-publisya*.cjs'
+      - 'src/pages/Publisya.jsx'
+      - 'src/components/publisya/**'
+      - 'src/lib/publisyaClient.js'
+      - 'src/App.jsx'
+      - 'src/lib/roles.js'
+      - 'src/components/layout/Sidebar.jsx'
+      - 'permission-catalog.json'
+      - 'supabase/migrations/*publisya*.sql'
+      - 'tests/publisya*.test.cjs'
+      - 'Dockerfile'
+      - '.github/workflows/publisya-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publisya-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Build & safety contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Build Cockpit
+        run: npm run build
+
+      - name: Check Publisya server syntax
+        run: |
+          node --check server-publisya.cjs
+          node --check server-publisya-ai.cjs
+          node --check server-publisya-review.cjs
+          node --check server-publisya-oauth.cjs
+          node --check server-publisya-token-vault.cjs
+          node --check server-publisya-targets.cjs
+          node --check server-publisya-token-lifecycle.cjs
+          node --check server-publisya-job-lease.cjs
+
+      - name: Run Publisya safety tests
+        run: node --require ./tests/node-test-globals.cjs --test tests/publisya*.test.cjs
+
+      - name: Assert no external publisher is enabled
+        run: |
+          ! grep -q "startPublisyaScheduler.*started: true" server-publisya.cjs
+          grep -q "publishing_enabled: false" server-publisya.cjs
+          grep -q "direct_publish: false" server-publisya.cjs
+          grep -q "publishing_enabled: false" server-publisya-oauth.cjs
+          grep -q "publishing_enabled: false" server-publisya-targets.cjs
+          grep -q "publishing_enabled: false" server-publisya-token-lifecycle.cjs
+          grep -q "automatic_refresh_enabled: false" server-publisya-token-lifecycle.cjs
+          grep -q "publishing_enabled: false" server-publisya-job-lease.cjs
+          grep -q "scheduler_enabled: false" server-publisya-job-lease.cjs
+          grep -q "automatic_claiming: false" server-publisya-job-lease.cjs
+          ! grep -q "publisya_publication_jobs" server-publisya-oauth.cjs
+          ! grep -q "publisya_publication_jobs" server-publisya-targets.cjs
+          ! grep -q "publisya_publication_jobs" server-publisya-token-lifecycle.cjs
+          ! grep -Eq "router\.(post|put|patch|delete)\(" server-publisya-targets.cjs
+          ! grep -Eq "setInterval|cron|scheduleJob" server-publisya-token-lifecycle.cjs
+          ! grep -Eq "setInterval|setTimeout|node-cron|scheduleJob" server-publisya-job-lease.cjs
+          ! grep -q "server-publisya-job-lease.cjs" server.cjs
+          grep -q "server-publisya-review.cjs" Dockerfile
+          grep -q "server-publisya-oauth.cjs" Dockerfile
+          grep -q "server-publisya-token-vault.cjs" Dockerfile
+          grep -q "server-publisya-targets.cjs" Dockerfile
+          grep -q "server-publisya-token-lifecycle.cjs" Dockerfile
+          grep -q "server-publisya-job-lease.cjs" Dockerfile

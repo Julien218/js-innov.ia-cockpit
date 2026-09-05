@@ -1,0 +1,257 @@
+import { useEffect, useState } from 'react';
+import { AlertTriangle, CheckCircle2, KeyRound, LockKeyhole, PlugZap, RefreshCw, Unplug } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { refreshPublisyaAccount, verifyPublisyaTargets } from '@/lib/publisyaClient';
+
+const coverage = {
+  meta: 'Facebook + Instagram',
+  tiktok: 'TikTok',
+  linkedin: 'LinkedIn',
+  youtube: 'YouTube',
+};
+
+function connectedAccount(accounts, providerId) {
+  return (accounts || []).find((account) => account.provider === providerId && account.connection_status === 'connected') || null;
+}
+
+function safeOAuthNotice() {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  const provider = String(params.get('oauth') || '').toLowerCase();
+  const status = String(params.get('oauth_status') || '').toLowerCase();
+  if (!['meta', 'tiktok', 'linkedin', 'youtube'].includes(provider) || !['connected', 'error'].includes(status)) return null;
+  const rawCode = String(params.get('oauth_code') || '');
+  const code = /^[A-Z0-9_]{1,80}$/.test(rawCode) ? rawCode : null;
+  return {
+    provider,
+    label: coverage[provider] || provider,
+    status,
+    code,
+  };
+}
+
+function clearOAuthQuery() {
+  if (typeof window === 'undefined') return;
+  const url = new URL(window.location.href);
+  let changed = false;
+  for (const key of ['oauth', 'oauth_status', 'oauth_code']) {
+    if (url.searchParams.has(key)) {
+      url.searchParams.delete(key);
+      changed = true;
+    }
+  }
+  if (changed) window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
+function VerificationSummary({ verification }) {
+  if (!verification) return null;
+  const targets = Array.isArray(verification.targets) ? verification.targets : [];
+  const notes = Array.isArray(verification.notes) ? verification.notes : [];
+  return (
+    <div className="mt-3 rounded-xl border border-border bg-background/60 p-3">
+      <div className="flex items-center gap-2 text-[11px] font-semibold text-foreground">
+        {verification.token_valid ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />}
+        {targets.length ? `${targets.length} cible(s) relue(s)` : 'Aucune cible publiable déclarée'}
+      </div>
+      {targets.slice(0, 4).map((target) => (
+        <p key={`${target.target_type}-${target.target_id}`} className="mt-1 truncate text-[11px] text-muted-foreground">
+          {target.display_name || target.target_id} · {target.target_type}
+        </p>
+      ))}
+      {notes.slice(0, 2).map((note) => (
+        <p key={note} className="mt-1 text-[10px] leading-4 text-muted-foreground">{note}</p>
+      ))}
+      <p className="mt-2 text-[10px] font-medium text-amber-700">Publication : toujours verrouillée</p>
+    </div>
+  );
+}
+
+function RefreshSummary({ result, error }) {
+  if (error) return <p className="mt-2 text-[10px] leading-4 text-red-700">{error}</p>;
+  if (!result) return null;
+  return (
+    <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-2 text-[10px] leading-4 text-emerald-800">
+      Accès renouvelé et identité revalidée. Le renouvellement automatique reste désactivé.
+    </div>
+  );
+}
+
+export default function PublisyaConnections({ data, isLoading, isError, onConnect, onDisconnect, disconnectingId }) {
+  const providers = data?.providers || [];
+  const accounts = data?.accounts || [];
+  const [verifyingId, setVerifyingId] = useState(null);
+  const [verificationByAccount, setVerificationByAccount] = useState({});
+  const [verificationErrorByAccount, setVerificationErrorByAccount] = useState({});
+  const [refreshingId, setRefreshingId] = useState(null);
+  const [refreshResultByAccount, setRefreshResultByAccount] = useState({});
+  const [refreshErrorByAccount, setRefreshErrorByAccount] = useState({});
+  const [oauthNotice] = useState(() => safeOAuthNotice());
+
+  useEffect(() => {
+    if (oauthNotice) clearOAuthQuery();
+  }, [oauthNotice]);
+
+  const verifyTargets = async (account) => {
+    setVerifyingId(account.id);
+    setVerificationErrorByAccount((current) => ({ ...current, [account.id]: null }));
+    try {
+      const response = await verifyPublisyaTargets(account.id);
+      setVerificationByAccount((current) => ({ ...current, [account.id]: response.verification || null }));
+    } catch (error) {
+      setVerificationErrorByAccount((current) => ({
+        ...current,
+        [account.id]: error?.message || 'Vérification impossible.',
+      }));
+    } finally {
+      setVerifyingId(null);
+    }
+  };
+
+  const refreshAccess = async (account) => {
+    setRefreshingId(account.id);
+    setRefreshErrorByAccount((current) => ({ ...current, [account.id]: null }));
+    setRefreshResultByAccount((current) => ({ ...current, [account.id]: null }));
+    try {
+      const response = await refreshPublisyaAccount(account.id);
+      setRefreshResultByAccount((current) => ({ ...current, [account.id]: response.account || true }));
+      setVerificationByAccount((current) => ({ ...current, [account.id]: null }));
+    } catch (error) {
+      setRefreshErrorByAccount((current) => ({
+        ...current,
+        [account.id]: error?.message || 'Renouvellement impossible.',
+      }));
+    } finally {
+      setRefreshingId(null);
+    }
+  };
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-foreground">Connexions officielles</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Les autorisations passent par OAuth. Aucun mot de passe social n’est demandé ou stocké par Publisya.</p>
+        </div>
+        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+          <LockKeyhole className="h-4 w-4 text-primary" />
+          Jetons chiffrés côté serveur
+        </div>
+      </div>
+
+      {oauthNotice?.status === 'connected' && (
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-emerald-800">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+          {oauthNotice.label} est connecté au Cockpit. La publication reste désactivée jusqu’à validation des cibles et des permissions.
+        </div>
+      )}
+
+      {oauthNotice?.status === 'error' && (
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          La connexion {oauthNotice.label} n’a pas été finalisée{oauthNotice.code ? ` (${oauthNotice.code})` : ''}. Aucun jeton n’a été exposé dans cette page.
+        </div>
+      )}
+
+      {isError && (
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          Les connexions OAuth ne peuvent pas être lues pour le moment. La publication reste verrouillée.
+        </div>
+      )}
+
+      {!isLoading && data && (!data.database_ready || !data.vault_configured) && (
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          {!data.database_ready ? 'La table OAuth Publisya doit encore être initialisée. ' : ''}
+          {!data.vault_configured ? 'La clé PUBLISYA_TOKEN_ENCRYPTION_KEY doit encore être configurée côté serveur.' : ''}
+        </div>
+      )}
+
+      <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {isLoading && Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="h-36 animate-pulse rounded-2xl bg-muted" />
+        ))}
+
+        {!isLoading && providers.map((provider) => {
+          const account = connectedAccount(accounts, provider.id);
+          const ready = Boolean(provider.ready && data?.database_ready && data?.vault_configured);
+          const verification = account ? verificationByAccount[account.id] : null;
+          const verificationError = account ? verificationErrorByAccount[account.id] : null;
+          const refreshResult = account ? refreshResultByAccount[account.id] : null;
+          const refreshError = account ? refreshErrorByAccount[account.id] : null;
+          const canRefresh = Boolean(account && account.provider !== 'meta' && account.metadata?.refresh_token_present);
+          return (
+            <div key={provider.id} className="flex min-h-36 flex-col rounded-2xl border border-border bg-muted/25 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold text-foreground">{coverage[provider.id] || provider.label}</span>
+                {account ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <PlugZap className="h-4 w-4 text-muted-foreground" />}
+              </div>
+
+              {account ? (
+                <>
+                  <p className="mt-2 truncate text-xs font-medium text-foreground">{account.account_name || 'Compte connecté'}</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">Connexion active · publication encore désactivée</p>
+                  <VerificationSummary verification={verification} />
+                  {verificationError && <p className="mt-2 text-[10px] leading-4 text-red-700">{verificationError}</p>}
+                  <RefreshSummary result={refreshResult} error={refreshError} />
+                  <div className="mt-auto grid grid-cols-1 gap-2 pt-3">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={verifyingId === account.id || refreshingId === account.id}
+                      onClick={() => verifyTargets(account)}
+                    >
+                      <RefreshCw className={`mr-2 h-3.5 w-3.5 ${verifyingId === account.id ? 'animate-spin' : ''}`} />
+                      Vérifier les cibles
+                    </Button>
+                    {canRefresh && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={refreshingId === account.id || verifyingId === account.id}
+                        onClick={() => refreshAccess(account)}
+                        title="Renouvellement manuel. Aucun cron ni rafraîchissement automatique."
+                      >
+                        <KeyRound className="mr-2 h-3.5 w-3.5" />
+                        {refreshingId === account.id ? 'Renouvellement…' : 'Renouveler l’accès'}
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={disconnectingId === account.id || refreshingId === account.id}
+                      onClick={() => onDisconnect(account.id)}
+                    >
+                      <Unplug className="mr-2 h-3.5 w-3.5" />
+                      Retirer du Cockpit
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="mt-2 text-xs text-muted-foreground">{ready ? 'Prêt pour une autorisation officielle.' : 'Configuration développeur requise.'}</p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="mt-auto"
+                    disabled={!ready}
+                    onClick={() => onConnect(provider.id)}
+                    title={ready ? `Connecter ${provider.label}` : 'Credentials, scopes, redirect URI et coffre requis'}
+                  >
+                    <PlugZap className="mr-2 h-3.5 w-3.5" />
+                    {ready ? 'Connecter' : 'À configurer'}
+                  </Button>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+export { safeOAuthNotice, clearOAuthQuery };

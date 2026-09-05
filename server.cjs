@@ -181,6 +181,16 @@ try {
   console.warn('⚠️ Route HainoFlow indisponible:', e.message);
 }
 
+// ── Publisya : fondation du module social multiréseaux ─────
+try {
+  const publisya = require('./server-publisya.cjs');
+  app.use('/api/publisya', requireSession('client'), requirePermission('publisya', 'client'), publisya.router);
+  const worker = publisya.startPublisyaScheduler?.() || { started: false, reason: 'scheduler absent' };
+  console.log(`✅ Application produit Publisya activée (${worker.started ? 'worker actif' : worker.reason})`);
+} catch (e) {
+  console.warn('⚠️ Publisya indisponible:', e.message);
+}
+
 // ── AI Cost Control ─────────────────────────────────────────
 try {
   const { router: aiCostRouter } = require('./server-ai-cost.cjs');
