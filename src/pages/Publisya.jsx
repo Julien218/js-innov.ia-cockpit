@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  ArrowRight,
   CalendarClock,
   CheckCircle2,
   CircleDot,
@@ -15,6 +16,7 @@ import {
 import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import CampaignWizard from '@/components/publisya/CampaignWizard';
+import CampaignReview from '@/components/publisya/CampaignReview';
 import { getPublisyaDashboard, getPublisyaStatus, listPublisyaCampaigns } from '@/lib/publisyaClient';
 
 const platformLabels = {
@@ -55,10 +57,14 @@ function MetricCard({ icon: Icon, label, value, detail }) {
   );
 }
 
-function CampaignRow({ campaign }) {
+function CampaignRow({ campaign, onOpen }) {
   const networks = Array.isArray(campaign.target_platforms) ? campaign.target_platforms : [];
   return (
-    <div className="flex flex-col gap-3 border-b border-border px-4 py-4 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+    <button
+      type="button"
+      onClick={() => onOpen(campaign.id)}
+      className="flex w-full flex-col gap-3 border-b border-border px-4 py-4 text-left transition hover:bg-muted/35 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:px-5"
+    >
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <p className="truncate text-sm font-semibold text-foreground">{campaign.title}</p>
@@ -68,16 +74,17 @@ function CampaignRow({ campaign }) {
           {networks.length ? networks.map((id) => platformLabels[id] || id).join(' · ') : 'Aucun réseau'}
         </p>
       </div>
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-        Validation humaine
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5 text-emerald-600" /> Validation humaine</span>
+        <ArrowRight className="h-4 w-4" />
       </div>
-    </div>
+    </button>
   );
 }
 
 export default function Publisya() {
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [selectedCampaignId, setSelectedCampaignId] = useState(null);
   const queryClient = useQueryClient();
   const status = useQuery({
     queryKey: ['publisya', 'status'],
@@ -98,16 +105,23 @@ export default function Publisya() {
 
   const providers = status.data?.providers || [];
   const campaignCounts = dashboard.data?.campaigns || {};
-  const recentCampaigns = (campaignList.data?.campaigns || []).slice(0, 6);
+  const campaigns = campaignList.data?.campaigns || [];
+  const recentCampaigns = campaigns.slice(0, 8);
   const connected = dashboard.data?.connections?.connected || 0;
   const isFoundationMode = status.data?.publishing_enabled === false;
   const databaseReady = Boolean(status.data?.infrastructure?.database_ready);
   const mediaReady = Boolean(status.data?.infrastructure?.media_storage_ready);
+  const aiReady = Boolean(status.data?.infrastructure?.ai_ready);
   const apiError = status.isError || dashboard.isError;
 
-  const handleCreated = () => {
+  const refreshOverview = () => {
     queryClient.invalidateQueries({ queryKey: ['publisya', 'campaigns'] });
     queryClient.invalidateQueries({ queryKey: ['publisya', 'dashboard'] });
+  };
+
+  const handleCreated = (campaign) => {
+    refreshOverview();
+    if (campaign?.id) setSelectedCampaignId(campaign.id);
   };
 
   return (
@@ -134,7 +148,7 @@ export default function Publisya() {
             </div>
             <h2 className="mt-4 text-2xl font-bold text-foreground sm:text-3xl">Votre diffusion sociale, centralisée dans le Cockpit.</h2>
             <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-base">
-              Créez une campagne et déposez une image ou une vidéo. Le média est isolé dans l’espace du client avant les futures étapes d’analyse IA et d’adaptation par réseau.
+              Créez une campagne, déposez une image ou une vidéo, lancez l’analyse puis corrigez séparément chaque proposition avant de l’approuver.
             </p>
           </div>
           <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-3xl border border-primary/15 bg-primary/10 text-primary">
@@ -167,8 +181,8 @@ export default function Publisya() {
         <MetricCard
           icon={FileVideo2}
           label="Campagnes"
-          value={(campaignCounts.draft || 0) + (campaignCounts.awaiting_approval || 0) + (campaignCounts.scheduled || 0)}
-          detail="Brouillons, validations et publications programmées"
+          value={campaigns.length}
+          detail="Campagnes visibles uniquement dans cet espace client"
         />
         <MetricCard
           icon={ShieldCheck}
@@ -180,7 +194,7 @@ export default function Publisya() {
           icon={CalendarClock}
           label="Programmées"
           value={campaignCounts.scheduled || 0}
-          detail="Fuseau par défaut : Europe/Brussels"
+          detail="La programmation sera activée après les connecteurs"
         />
         <MetricCard
           icon={CheckCircle2}
@@ -194,14 +208,14 @@ export default function Publisya() {
         <div className="flex flex-col gap-2 border-b border-border p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-base font-semibold text-foreground">Campagnes récentes</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Les campagnes restent au statut brouillon tant que l’analyse et les variantes ne sont pas générées.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Ouvrez une campagne pour lancer l’analyse, relire chaque réseau et approuver les propositions.</p>
           </div>
-          <span className="text-xs font-medium text-muted-foreground">{databaseReady ? `${campaignList.data?.campaigns?.length || 0} campagne(s)` : 'Initialisation requise'}</span>
+          <span className="text-xs font-medium text-muted-foreground">{databaseReady ? `${campaigns.length} campagne(s)` : 'Initialisation requise'}</span>
         </div>
         {databaseReady && campaignList.isLoading ? (
           <div className="space-y-2 p-5">{Array.from({ length: 3 }).map((_, index) => <div key={index} className="h-14 animate-pulse rounded-xl bg-muted" />)}</div>
         ) : recentCampaigns.length ? (
-          recentCampaigns.map((campaign) => <CampaignRow key={campaign.id} campaign={campaign} />)
+          recentCampaigns.map((campaign) => <CampaignRow key={campaign.id} campaign={campaign} onOpen={setSelectedCampaignId} />)
         ) : (
           <div className="p-8 text-center">
             <FileVideo2 className="mx-auto h-8 w-8 text-muted-foreground/40" />
@@ -221,7 +235,7 @@ export default function Publisya() {
         </div>
 
         <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-          {(providers.length ? providers : Object.keys(platformLabels).map(id => ({ id, status: 'planned' }))).map(provider => (
+          {(providers.length ? providers : Object.keys(platformLabels).map((id) => ({ id, status: 'planned' }))).map((provider) => (
             <div key={provider.id} className="rounded-2xl border border-border bg-muted/30 p-4">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-semibold text-foreground">{platformLabels[provider.id] || provider.label || provider.id}</span>
@@ -237,23 +251,23 @@ export default function Publisya() {
         <div className="rounded-2xl border border-border bg-card p-5">
           <Sparkles className="h-5 w-5 text-primary" />
           <h3 className="mt-3 text-sm font-semibold text-foreground">1. Analyse IA</h3>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">Prochaine couche : analyse du média, de l’ADN de marque, du message et des contraintes techniques.</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">Images-clés, transcription audio et contexte de campagne sont transformés en propositions structurées. Moteur : {aiReady ? 'prêt' : 'à configurer'}.</p>
         </div>
         <div className="rounded-2xl border border-border bg-card p-5">
           <ShieldCheck className="h-5 w-5 text-primary" />
           <h3 className="mt-3 text-sm font-semibold text-foreground">2. Validation humaine</h3>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">Aperçu et correction séparés pour Facebook, Instagram, TikTok, LinkedIn et YouTube.</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">Facebook, Instagram, TikTok, LinkedIn et YouTube sont modifiables séparément avant approbation.</p>
         </div>
         <div className="rounded-2xl border border-border bg-card p-5">
           <Send className="h-5 w-5 text-primary" />
           <h3 className="mt-3 text-sm font-semibold text-foreground">3. Publication contrôlée</h3>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">Programmation et publication avec historique, idempotence et suivi des erreurs par réseau.</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">Toujours verrouillée : aucune approbation actuelle ne déclenche de publication sur un réseau externe.</p>
         </div>
       </section>
 
       <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-emerald-800">
-        <p className="font-semibold">Lot 2 en construction sécurisée</p>
-        <p className="mt-1 text-xs leading-5 opacity-80">Campagnes et dépôt média sont prêts côté code. Analyse IA, programmation et publications externes restent verrouillées. Stockage média : {mediaReady ? 'prêt' : 'à initialiser'}.</p>
+        <p className="font-semibold">Lot 2 sécurisé</p>
+        <p className="mt-1 text-xs leading-5 opacity-80">Campagnes, dépôt média streamé, analyse IA structurée et validation réseau par réseau sont préparés côté code. Stockage média : {mediaReady ? 'prêt' : 'à initialiser'} · IA : {aiReady ? 'prête' : 'à configurer'} · publication externe : verrouillée.</p>
       </div>
 
       <CampaignWizard
@@ -261,6 +275,13 @@ export default function Publisya() {
         onClose={() => setWizardOpen(false)}
         onCreated={handleCreated}
         status={status.data}
+      />
+
+      <CampaignReview
+        campaignId={selectedCampaignId}
+        status={status.data}
+        onClose={() => setSelectedCampaignId(null)}
+        onChanged={refreshOverview}
       />
     </div>
   );
