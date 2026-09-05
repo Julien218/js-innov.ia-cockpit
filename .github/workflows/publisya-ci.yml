@@ -14,7 +14,7 @@ on:
       - 'src/components/layout/Sidebar.jsx'
       - 'permission-catalog.json'
       - 'supabase/migrations/*publisya*.sql'
-      - 'tests/publisya-module.test.cjs'
+      - 'tests/publisya*.test.cjs'
       - 'Dockerfile'
       - '.github/workflows/publisya-ci.yml'
   pull_request:
@@ -28,7 +28,7 @@ on:
       - 'src/components/layout/Sidebar.jsx'
       - 'permission-catalog.json'
       - 'supabase/migrations/*publisya*.sql'
-      - 'tests/publisya-module.test.cjs'
+      - 'tests/publisya*.test.cjs'
       - 'Dockerfile'
       - '.github/workflows/publisya-ci.yml'
 
@@ -68,9 +68,10 @@ jobs:
           node --check server-publisya-review.cjs
           node --check server-publisya-oauth.cjs
           node --check server-publisya-token-vault.cjs
+          node --check server-publisya-targets.cjs
 
       - name: Run Publisya safety tests
-        run: node --require ./tests/node-test-globals.cjs --test tests/publisya-module.test.cjs
+        run: node --require ./tests/node-test-globals.cjs --test tests/publisya*.test.cjs
 
       - name: Assert no external publisher is enabled
         run: |
@@ -78,7 +79,11 @@ jobs:
           grep -q "publishing_enabled: false" server-publisya.cjs
           grep -q "direct_publish: false" server-publisya.cjs
           grep -q "publishing_enabled: false" server-publisya-oauth.cjs
+          grep -q "publishing_enabled: false" server-publisya-targets.cjs
           ! grep -q "publisya_publication_jobs" server-publisya-oauth.cjs
+          ! grep -q "publisya_publication_jobs" server-publisya-targets.cjs
+          ! grep -Eq "router\.(post|put|patch|delete)\(" server-publisya-targets.cjs
           grep -q "server-publisya-review.cjs" Dockerfile
           grep -q "server-publisya-oauth.cjs" Dockerfile
           grep -q "server-publisya-token-vault.cjs" Dockerfile
+          grep -q "server-publisya-targets.cjs" Dockerfile
