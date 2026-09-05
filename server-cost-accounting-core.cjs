@@ -180,13 +180,18 @@ function buildSourceCoverage(env = {}, mappings = [], events = []) {
     const state = configured(env, source, mappings);
     const supportedEvents = amounts.actual_events + amounts.manual_verified_events + amounts.estimated_events;
     const documented = supportedEvents > 0;
-    const synchronized = amounts.coverage_events > 0;
+    const synchronized = state.mappings > 0
+      ? amounts.coverage_events >= state.mappings
+      : amounts.coverage_events > 0;
     const hasUnverified = amounts.unverified_events > 0;
     const applicable = amounts.events > 0 || state.mappings > 0 || state.credentials_present;
-    const covered = applicable && !hasUnverified && (documented || synchronized || (source.mode === 'calculation' && state.ready));
+    const requiresSync = ['api', 'adapter'].includes(source.mode) && state.mappings > 0;
+    const coveredByEvidence = documented || synchronized || (source.mode === 'calculation' && state.ready);
+    const covered = applicable && !hasUnverified && (requiresSync ? synchronized : coveredByEvidence);
     let accountingState = state.accounting_state;
     if (!applicable) accountingState = 'not_applicable';
     else if (hasUnverified) accountingState = 'evidence_required';
+    else if (requiresSync && !synchronized) accountingState = state.ready ? 'sync_required' : state.accounting_state;
     else if (documented) accountingState = 'documented';
     else if (synchronized) accountingState = 'synchronized';
     return {
@@ -195,6 +200,7 @@ function buildSourceCoverage(env = {}, mappings = [], events = []) {
       documented,
       synchronized,
       applicable,
+      requires_sync: requiresSync,
       covered,
       has_unverified: hasUnverified,
       accounting_state: accountingState,
