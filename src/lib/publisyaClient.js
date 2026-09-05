@@ -21,16 +21,42 @@ async function fetchPublisya(path, options = {}) {
   return data;
 }
 
+function jsonAction(path, method, payload = {}) {
+  return fetchPublisya(path, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
 export const getPublisyaStatus = () => fetchPublisya('/status');
 export const getPublisyaDashboard = () => fetchPublisya('/dashboard');
 export const listPublisyaCampaigns = () => fetchPublisya('/campaigns');
 export const getPublisyaCampaign = (campaignId) => fetchPublisya(`/campaigns/${encodeURIComponent(campaignId)}`);
 
-export const createPublisyaCampaign = (payload) => fetchPublisya('/campaigns', {
+export const createPublisyaCampaign = (payload) => jsonAction('/campaigns', 'POST', payload);
+
+export const analyzePublisyaCampaign = (campaignId) => fetchPublisya(`/campaigns/${encodeURIComponent(campaignId)}/analyze`, {
   method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(payload),
 });
+
+export const updatePublisyaVariant = (campaignId, variantId, payload) => jsonAction(
+  `/campaigns/${encodeURIComponent(campaignId)}/variants/${encodeURIComponent(variantId)}`,
+  'PATCH',
+  payload,
+);
+
+export const approvePublisyaCampaign = (campaignId, comment = '') => jsonAction(
+  `/campaigns/${encodeURIComponent(campaignId)}/approve`,
+  'POST',
+  { comment },
+);
+
+export const requestPublisyaChanges = (campaignId, comment = '') => jsonAction(
+  `/campaigns/${encodeURIComponent(campaignId)}/request-changes`,
+  'POST',
+  { comment },
+);
 
 export async function uploadPublisyaMedia(campaignId, file, onProgress) {
   if (!(file instanceof File)) throw new Error('Fichier média invalide.');
