@@ -9,6 +9,7 @@ const {
   isSupportedMedia,
   safeUploadFilename,
 } = require('./server-dropbox-helper.cjs');
+const { isConfigured: aiConfigured, analyzeCampaignMedia } = require('./server-publisya-ai.cjs');
 
 const router = express.Router();
 
@@ -26,7 +27,7 @@ const PROVIDERS = Object.freeze([
 ]);
 const PLATFORM_IDS = Object.freeze(PROVIDERS.map((provider) => provider.id));
 const PLATFORM_SET = new Set(PLATFORM_IDS);
-const MODULE_VERSION = 'lot2-campaign-media-foundation';
+const MODULE_VERSION = 'lot2-ai-validation-foundation';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function dropboxConfigured() {
@@ -123,8 +124,94 @@ async function getCampaignFor(req, campaignId) {
   return rows[0] || null;
 }
 
+async function updateCampaignFor(req, campaignId, patch) {
+  const { tenantId, clientId } = requestContext(req);
+  const rows = await supabaseRequest(
+    `publisya_campaigns?id=eq.${encodeURIComponent(campaignId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&client_id=eq.${encodeURIComponent(clientId)}`,
+    {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify(patch),
+    },
+  );
+  return rows[0] || null;
+}
+
+async function sourceMediaFor(req, campaignId) {
+  const { tenantId, clientId } = requestContext(req);
+  const rows = await supabaseRequest(
+    `publisya_media_assets?select=*&campaign_id=eq.${encodeURIComponent(campaignId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&client_id=eq.${encodeURIComponent(clientId)}&asset_role=eq.source&order=created_at.desc&limit=1`,
+  );
+  return rows[0] || null;
+}
+
+async function variantVersionsFor(req, campaignId) {
+  const { tenantId, clientId } = requestContext(req);
+  return supabaseRequest(
+    `publisya_post_variants?select=platform,version&campaign_id=eq.${encodeURIComponent(campaignId)}&tenant_id=eq.${encodeURIComponent(tenantId)}&client_id=eq.${encodeURIComponent(clientId)}`,
+  );
+}
+
+function nextVersions(rows) {
+  const versions = Object.fromEntries(PLATFORM_IDS.map((platform) => [platform, 1]));
+  for (const row of rows || []) {
+    if (!PLATFORM_SET.has(row.platform)) continue;
+    versions[row.platform] = Math.max(versions[row.platform], Number(row.version || 0) + 1);
+  }
+  return versions;
+}
+
+function generatedVariantRow({ campaign, platform, variant, version, media, tenantId, clientId, actor, model }) {
+  const base = {
+    tenant_id: tenantId,
+    client_id: clientId,
+    campaign_id: campaign.id,
+    social_account_id: null,
+    platform,
+    version,
+    status: 'generated',
+    caption: null,
+    title: null,
+    description: null,
+    hashtags: [],
+    tags: [],
+    call_to_action: null,
+    destination_url: null,
+    alt_text: null,
+    cover_text: null,
+    chapters: [],
+    provider_options: {},
+    media_asset_ids: media?.id ? [media.id] : [],
+    generated_by: `openai:${model}`,
+    generated_at: new Date().toISOString(),
+    last_edited_by: actor,
+  };
+
+  if (platform === 'youtube') {
+    return {
+      ...base,
+      title: textField(variant?.title, 200),
+      description: textField(variant?.description, 5000),
+      tags: Array.isArray(variant?.tags) ? variant.tags.map((item) => textField(item, 80)).filter(Boolean).slice(0, 20) : [],
+      cover_text: textField(variant?.thumbnail_text, 120),
+    };
+  }
+
+  const providerOptions = platform === 'tiktok' && variant?.hook ? { hook: textField(variant.hook, 240) } : {};
+  return {
+    ...base,
+    caption: textField(variant?.caption, 5000),
+    hashtags: Array.isArray(variant?.hashtags) ? variant.hashtags.map((item) => textField(item, 100)).filter(Boolean).slice(0, 20) : [],
+    call_to_action: textField(variant?.cta, 500),
+    alt_text: textField(variant?.alt_text, 1000),
+    cover_text: textField(variant?.cover_text, 240),
+    provider_options: providerOptions,
+  };
+}
+
 function publicStatus({ databaseReady = false } = {}) {
   const mediaUploadReady = databaseReady && dropboxConfigured();
+  const aiReady = mediaUploadReady && aiConfigured();
   return {
     module: 'publisya',
     product_name: 'PUBLISYA',
@@ -138,6 +225,7 @@ function publicStatus({ databaseReady = false } = {}) {
     infrastructure: {
       database_ready: databaseReady,
       media_storage_ready: dropboxConfigured(),
+      ai_ready: aiConfigured(),
     },
     limits: {
       media_upload_bytes: MAX_MEDIA_BYTES,
@@ -146,9 +234,9 @@ function publicStatus({ databaseReady = false } = {}) {
     capabilities: {
       campaigns: databaseReady,
       media_upload: mediaUploadReady,
-      ai_analysis: false,
-      network_variants: false,
-      approval_workflow: false,
+      ai_analysis: aiReady,
+      network_variants: aiReady,
+      approval_workflow: databaseReady,
       scheduling: false,
       direct_publish: false,
       analytics: false,
@@ -193,12 +281,7 @@ async function streamMediaToDropbox(req, storageKey) {
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/octet-stream',
-      'Dropbox-API-Arg': dropboxApiArg({
-        path: storageKey,
-        mode: 'add',
-        autorename: true,
-        mute: true,
-      }),
+      'Dropbox-API-Arg': dropboxApiArg({ path: storageKey, mode: 'add', autorename: true, mute: true }),
     },
     body: req.pipe(meter),
     duplex: 'half',
@@ -216,12 +299,7 @@ async function streamMediaToDropbox(req, storageKey) {
     throw error;
   }
 
-  return {
-    path: data.path_display || storageKey,
-    id: data.id || null,
-    size: bytes,
-    sha256: hash.digest('hex'),
-  };
+  return { path: data.path_display || storageKey, id: data.id || null, size: bytes, sha256: hash.digest('hex') };
 }
 
 router.use((req, res, next) => {
@@ -241,43 +319,19 @@ router.get('/status', async (req, res) => {
 router.get('/dashboard', async (req, res) => {
   try {
     const campaigns = await listCampaignsFor(req, { limit: 200 });
-    const counts = {
-      draft: 0,
-      awaiting_approval: 0,
-      scheduled: 0,
-      publishing: 0,
-      published: 0,
-      failed: 0,
-    };
-    for (const campaign of campaigns) {
-      if (Object.hasOwn(counts, campaign.status)) counts[campaign.status] += 1;
-    }
+    const counts = { draft: 0, awaiting_approval: 0, scheduled: 0, publishing: 0, published: 0, failed: 0 };
+    for (const campaign of campaigns) if (Object.hasOwn(counts, campaign.status)) counts[campaign.status] += 1;
     res.json({
       campaigns: counts,
-      connections: {
-        connected: 0,
-        reconnect_required: 0,
-        total_supported: PROVIDERS.length,
-      },
+      connections: { connected: 0, reconnect_required: 0, total_supported: PROVIDERS.length },
       foundation_mode: true,
       database_ready: true,
     });
   } catch (error) {
     if (!schemaNotReady(error)) console.error('[publisya] dashboard:', error.message);
     res.json({
-      campaigns: {
-        draft: 0,
-        awaiting_approval: 0,
-        scheduled: 0,
-        publishing: 0,
-        published: 0,
-        failed: 0,
-      },
-      connections: {
-        connected: 0,
-        reconnect_required: 0,
-        total_supported: PROVIDERS.length,
-      },
+      campaigns: { draft: 0, awaiting_approval: 0, scheduled: 0, publishing: 0, published: 0, failed: 0 },
+      connections: { connected: 0, reconnect_required: 0, total_supported: PROVIDERS.length },
       foundation_mode: true,
       database_ready: false,
     });
@@ -347,7 +401,7 @@ router.get('/campaigns/:campaignId', async (req, res) => {
       `publisya_media_assets?select=id,asset_role,platform,storage_provider,storage_key,mime_type,file_size_bytes,width,height,duration_seconds,sha256,created_at&campaign_id=eq.${encodeURIComponent(campaign.id)}&tenant_id=eq.${encodeURIComponent(tenantId)}&client_id=eq.${encodeURIComponent(clientId)}&order=created_at.asc`,
     );
     const variants = await supabaseRequest(
-      `publisya_post_variants?select=id,platform,version,status,caption,title,description,hashtags,tags,call_to_action,alt_text,cover_text,created_at,updated_at&campaign_id=eq.${encodeURIComponent(campaign.id)}&tenant_id=eq.${encodeURIComponent(tenantId)}&client_id=eq.${encodeURIComponent(clientId)}&order=platform.asc,version.desc`,
+      `publisya_post_variants?select=id,platform,version,status,caption,title,description,hashtags,tags,call_to_action,alt_text,cover_text,provider_options,created_at,updated_at&campaign_id=eq.${encodeURIComponent(campaign.id)}&tenant_id=eq.${encodeURIComponent(tenantId)}&client_id=eq.${encodeURIComponent(clientId)}&order=platform.asc,version.desc`,
     );
     res.json({ campaign, media, variants });
   } catch (error) {
@@ -400,23 +454,14 @@ router.post('/campaigns/:campaignId/media', async (req, res) => {
         mime_type: mimeType,
         file_size_bytes: uploaded.size,
         sha256: uploaded.sha256,
-        media_metadata: {
-          original_filename: fileName,
-          dropbox_file_id: uploaded.id,
-          upload_mode: 'stream',
-        },
+        media_metadata: { original_filename: fileName, dropbox_file_id: uploaded.id, upload_mode: 'stream' },
         created_by: actor,
       }),
     });
 
     res.status(201).json({
       media: rows[0],
-      upload: {
-        file_name: fileName,
-        mime_type: mimeType,
-        file_size_bytes: uploaded.size,
-        sha256: uploaded.sha256,
-      },
+      upload: { file_name: fileName, mime_type: mimeType, file_size_bytes: uploaded.size, sha256: uploaded.sha256 },
     });
   } catch (error) {
     console.error('[publisya] media upload:', error.message);
@@ -428,11 +473,73 @@ router.post('/campaigns/:campaignId/media', async (req, res) => {
   }
 });
 
+router.post('/campaigns/:campaignId/analyze', async (req, res) => {
+  const campaignId = String(req.params.campaignId || '');
+  if (!UUID_RE.test(campaignId)) return res.status(400).json({ error: 'Identifiant de campagne invalide.' });
+  if (!aiConfigured()) return res.status(503).json({ error: 'Le moteur IA Publisya n’est pas encore configuré.' });
+
+  let campaign;
+  try {
+    campaign = await getCampaignFor(req, campaignId);
+    if (!campaign) return res.status(404).json({ error: 'Campagne introuvable.' });
+    const media = await sourceMediaFor(req, campaignId);
+    if (!media) return res.status(400).json({ error: 'Ajoutez une image ou une vidéo avant de lancer l’analyse.' });
+    if (['scheduled', 'publishing', 'published'].includes(campaign.status)) {
+      return res.status(409).json({ error: 'Cette campagne ne peut plus être réanalysée dans son état actuel.' });
+    }
+
+    await updateCampaignFor(req, campaignId, { status: 'analyzing' });
+    const { tenantId, clientId, actor } = requestContext(req);
+    const result = await analyzeCampaignMedia({ campaign, media, tenantId, actor });
+    const versions = nextVersions(await variantVersionsFor(req, campaignId));
+    const selectedPlatforms = normalizePlatforms(campaign.target_platforms);
+    const variantRows = selectedPlatforms.map((platform) => generatedVariantRow({
+      campaign,
+      platform,
+      variant: result.variants?.[platform],
+      version: versions[platform],
+      media,
+      tenantId,
+      clientId,
+      actor,
+      model: result.model,
+    }));
+
+    const createdVariants = variantRows.length
+      ? await supabaseRequest('publisya_post_variants', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(variantRows),
+      })
+      : [];
+
+    const analysis = {
+      ...(result.analysis || {}),
+      transcript: result.transcript || '',
+      generation_model: result.model,
+      request_id: result.request_id || null,
+      generated_at: new Date().toISOString(),
+    };
+    const updatedCampaign = await updateCampaignFor(req, campaignId, {
+      status: 'awaiting_approval',
+      analysis,
+      risk_flags: Array.isArray(result.analysis?.risk_flags) ? result.analysis.risk_flags.slice(0, 30) : [],
+    });
+
+    res.json({ campaign: updatedCampaign, analysis, variants: createdVariants });
+  } catch (error) {
+    console.error('[publisya] analyze:', error.message);
+    if (campaign?.id) await updateCampaignFor(req, campaign.id, { status: 'draft' }).catch(() => {});
+    const status = error.status === 402 ? 402 : (schemaNotReady(error) ? 503 : 500);
+    res.status(status).json({
+      error: error.status === 402 ? error.message : schemaNotReady(error) ? 'Le stockage Publisya doit encore être initialisé.' : 'L’analyse Publisya n’a pas pu être terminée.',
+      code: error.status === 402 ? 'PUBLISYA_AI_BUDGET_BLOCKED' : schemaNotReady(error) ? 'PUBLISYA_SCHEMA_NOT_READY' : 'PUBLISYA_AI_ANALYSIS_FAILED',
+    });
+  }
+});
+
 function startPublisyaScheduler() {
-  return {
-    started: false,
-    reason: 'Lot 2 : publication externe volontairement désactivée',
-  };
+  return { started: false, reason: 'Lot 2 : publication externe volontairement désactivée' };
 }
 
 module.exports = {
@@ -442,6 +549,7 @@ module.exports = {
   MAX_MEDIA_BYTES,
   MODULE_VERSION,
   normalizePlatforms,
+  nextVersions,
   schemaNotReady,
   startPublisyaScheduler,
 };
