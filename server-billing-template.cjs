@@ -7,7 +7,6 @@ const W = A4.width - M * 2;
 const ASSETS = path.join(__dirname, 'assets', 'billing');
 const LOGO = path.join(ASSETS, 'logo-phoenix-officiel.png');
 const SIGNATURE = path.join(ASSETS, 'signature-julien.png');
-const SERVICE_ICONS = ['001','002','003','004','005'].map(x => path.join(ASSETS, `service-${x}.png`));
 
 const C = {
   ink:'#071424', gold:'#D18400', gold2:'#E79A00', text:'#111820', muted:'#4D535B',
@@ -131,19 +130,35 @@ function drawTotals(pdf,doc,type){
 
 function drawBottom(pdf,doc){
   const y=632;
-  box(pdf,M,y,196,64,2,C.line,.6);pdf.save().strokeColor(C.gold2).lineWidth(1).circle(M+15,y+16,8).stroke().restore();text(pdf,'i',M+12.5,y+10.5,{size:8,font:'Helvetica-Bold',color:C.gold2});
-  text(pdf,'NOTE',M+28,y+10,{size:7,font:'Helvetica-Bold'});text(pdf,'Nous vous remercions pour votre confiance.\nPour toute question, n’hésitez pas à nous contacter.',M+28,y+25,{size:6.5,lineGap:2,width:155});
-  const bankX=241;bank(pdf,bankX+9,y+14);text(pdf,'COORDONNÉES BANCAIRES',bankX+26,y+7,{size:6.8,font:'Helvetica-Bold',width:145});text(pdf,'Bénéficiaire : Pagin Julien (JS-Innov.IA®)\nIBAN BE52 6528 4346 5909\nIBAN BE20 6508 1271 7456\nBIC : JVBABE22',bankX+26,y+21,{size:6.2,font:'Helvetica-Bold',lineGap:1.5,width:150});text(pdf,`Communication : ${String(doc.numero||'—').toUpperCase()}`,bankX+26,y+58,{size:6.2,font:'Helvetica-Bold',width:150});
-  line(pdf,421,y,421,y+64,C.line,.6);text(pdf,'Julien Pagin',435,y+2,{size:7.3,font:'Helvetica-Bold',width:128,align:'center'});pdf.image(SIGNATURE,451,y+18,{fit:[95,30],align:'center',valign:'center'});text(pdf,'Fondateur - JS-Innov.IA®',435,y+51,{size:6.5,font:'Helvetica-Bold',width:128,align:'center'});
-  const legalY=712;line(pdf,M,legalY,A4.width-M,legalY,C.line,.5);text(pdf,"TVA calculée conformément au règlement 967/2012 du Conseil de l’Union européenne.",M,legalY+7,{size:6.1,width:W,align:'center'});text(pdf,'En cas de retard de paiement, des intérêts de 1% par mois seront appliqués sur le montant dû.',M,legalY+18,{size:6.1,width:W,align:'center'});
-  const fy=747,slot=W/5;
-  for(let i=0;i<5;i++){
-    const cx=M+(i+.5)*slot; pdf.image(SERVICE_ICONS[i],cx-25,fy,{fit:[50,39],align:'center',valign:'center'});
-    if(i<4) line(pdf,M+(i+1)*slot,fy+2,M+(i+1)*slot,fy+51,'#E2B86C',.45);
-  }
-  const labels=['AUTOMATISATION\nINTELLIGENTE','IA & INTELLIGENCE\nARTIFICIELLE','CRÉATIVITÉ\n& INNOVATION','DÉVELOPPEMENT WEB\n& APPLICATIONS','SÉCURITÉ\n& PERFORMANCE'];
-  labels.forEach((lab,i)=>{const cx=M+(i+.5)*slot;text(pdf,lab,cx-47,fy+41,{size:5.5,font:'Helvetica-Bold',color:C.ink,width:94,align:'center',lineGap:1.2});line(pdf,cx-10,fy+62,cx+10,fy+62,C.gold2,.6);});
-  line(pdf,111,826,145,826,C.gold2,.6); line(pdf,451,826,485,826,C.gold2,.6);text(pdf,"L’INTELLIGENCE AU SERVICE DE VOS AMBITIONS",166,821,{size:6.3,font:'Helvetica',color:C.ink,width:264,align:'center',characterSpacing:1.15});
+  box(pdf,M,y,196,64,2,C.line,.6);
+  pdf.save().strokeColor(C.gold2).lineWidth(1).circle(M+15,y+16,8).stroke().restore();
+  text(pdf,'i',M+12.5,y+10.5,{size:8,font:'Helvetica-Bold',color:C.gold2});
+  text(pdf,'NOTE',M+28,y+10,{size:7,font:'Helvetica-Bold'});
+  text(pdf,'Nous vous remercions pour votre confiance.\nPour toute question, n’hésitez pas à nous contacter.',M+28,y+25,{size:6.5,lineGap:2,width:155});
+
+  const bankX=241;
+  bank(pdf,bankX+9,y+14);
+  text(pdf,'COORDONNÉES BANCAIRES',bankX+26,y+7,{size:6.8,font:'Helvetica-Bold',width:145});
+  text(pdf,'Bénéficiaire : Pagin Julien (JS-Innov.IA®)\nIBAN BE52 6528 4346 5909\nIBAN BE20 6508 1271 7456\nBIC : JVBABE22',bankX+26,y+21,{size:6.2,font:'Helvetica-Bold',lineGap:1.5,width:150});
+  text(pdf,`Communication : ${String(doc.numero||'—').toUpperCase()}`,bankX+26,y+58,{size:6.2,font:'Helvetica-Bold',width:150});
+
+  line(pdf,421,y,421,y+64,C.line,.6);
+  text(pdf,'Julien Pagin',435,y+2,{size:7.3,font:'Helvetica-Bold',width:128,align:'center'});
+  pdf.image(SIGNATURE,451,y+18,{fit:[95,30],align:'center',valign:'center'});
+  text(pdf,'Fondateur - JS-Innov.IA®',435,y+51,{size:6.5,font:'Helvetica-Bold',width:128,align:'center'});
+
+  const legalY=712;
+  line(pdf,M,legalY,A4.width-M,legalY,C.line,.5);
+  text(pdf,"TVA calculée conformément au règlement 967/2012 du Conseil de l’Union européenne.",M,legalY+8,{size:6.1,width:W,align:'center'});
+  text(pdf,'En cas de retard de paiement, des intérêts de 1% par mois seront appliqués sur le montant dû.',M,legalY+19,{size:6.1,width:W,align:'center'});
+
+  // Footer volontairement épuré : aucune icône de service ni bloc noir.
+  // Cette zone reste fixe pour garantir le même rendu à chaque génération.
+  const footerY=770;
+  line(pdf,105,footerY,165,footerY,C.gold2,.65);
+  line(pdf,430,footerY,490,footerY,C.gold2,.65);
+  text(pdf,"L’INTELLIGENCE AU SERVICE DE VOS AMBITIONS",170,footerY-5,{size:6.4,font:'Helvetica',color:C.ink,width:255,align:'center',characterSpacing:1.15});
+  text(pdf,'www.jsinnovia.com  •  info@jsinnovia.com',M,footerY+24,{size:6.2,color:C.muted,width:W,align:'center'});
 }
 
 function drawCancelled(pdf,doc,type){if(type!=='facture'||String(doc.statut||'').toLowerCase()!=='annulee')return;pdf.save().opacity(.14).fillColor('#B42318').font('Helvetica-Bold').fontSize(52).rotate(-24,{origin:[A4.width/2,A4.height/2]}).text('ANNULÉE',80,390,{width:A4.width-160,align:'center'}).restore();}
