@@ -61,11 +61,13 @@ function summarizeAccounting(events = []) {
     manual_verified_events: 0,
     estimated_events: 0,
     unverified_events: 0,
+    coverage_events: 0,
   };
   const bySource = new Map();
 
   for (const event of events || []) {
     const source = String(event.source_type || 'other');
+    const metadata = event.metadata && typeof event.metadata === 'object' ? event.metadata : {};
     const status = evidenceStatus(event);
     const amount = minor(event.actual_cost_minor);
     const row = bySource.get(source) || {
@@ -76,22 +78,36 @@ function summarizeAccounting(events = []) {
       unverified_cost_minor: 0,
       billable_minor: 0,
       events: 0,
+      actual_events: 0,
+      manual_verified_events: 0,
+      estimated_events: 0,
       unverified_events: 0,
+      coverage_events: 0,
     };
     row.events += 1;
+
+    if (metadata.coverage_marker === true) {
+      totals.coverage_events += 1;
+      row.coverage_events += 1;
+      bySource.set(source, row);
+      continue;
+    }
 
     if (status === 'actual') {
       totals.actual_cost_minor += amount;
       totals.actual_events += 1;
       row.actual_cost_minor += amount;
+      row.actual_events += 1;
     } else if (status === 'manual_verified') {
       totals.manual_verified_minor += amount;
       totals.manual_verified_events += 1;
       row.manual_verified_minor += amount;
+      row.manual_verified_events += 1;
     } else if (status === 'estimated') {
       totals.estimated_cost_minor += amount;
       totals.estimated_events += 1;
       row.estimated_cost_minor += amount;
+      row.estimated_events += 1;
     } else {
       totals.unverified_events += 1;
       row.unverified_events += 1;
@@ -108,9 +124,14 @@ function summarizeAccounting(events = []) {
     bySource.set(source, row);
   }
 
+  const supportedCost = totals.actual_cost_minor + totals.manual_verified_minor + totals.estimated_cost_minor;
+  const recordedCost = supportedCost + totals.unverified_cost_minor;
   return {
     ...totals,
     verified_cost_minor: totals.actual_cost_minor + totals.manual_verified_minor,
+    supported_cost_minor: supportedCost,
+    recorded_cost_minor: recordedCost,
+    total_recorded_cost_minor: recordedCost,
     by_source: [...bySource.values()].sort((a, b) => (b.actual_cost_minor + b.manual_verified_minor + b.estimated_cost_minor + b.unverified_cost_minor) - (a.actual_cost_minor + a.manual_verified_minor + a.estimated_cost_minor + a.unverified_cost_minor)),
   };
 }
@@ -120,6 +141,8 @@ function configured(env, source, mappings = []) {
   const envAny = source.envAny || [];
   const missingAll = envAll.filter((key) => !String(env[key] || '').trim());
   const anyOk = !envAny.length || envAny.some((key) => String(env[key] || '').trim());
+  const envKeys = [...envAll, ...envAny];
+  const credentialsPresent = envKeys.some((key) => String(env[key] || '').trim());
   const relevantMappings = mappings.filter((mapping) => source.mappingTypes.includes(mapping.service_type) && mapping.is_active !== false);
   const mappingRequired = source.mappingTypes.length > 0;
   const missing = [...missingAll];
@@ -129,6 +152,8 @@ function configured(env, source, mappings = []) {
   return {
     ...source,
     ready,
+    connected: ready,
+    credentials_present: credentialsPresent,
     mappings: relevantMappings.length,
     missing_configuration: missing,
     accounting_state: ready ? 'connected' : source.mode === 'invoice' ? 'invoice_required' : 'configuration_required',
@@ -146,29 +171,57 @@ function buildSourceCoverage(env = {}, mappings = [], events = []) {
       unverified_cost_minor: 0,
       billable_minor: 0,
       events: 0,
+      actual_events: 0,
+      manual_verified_events: 0,
+      estimated_events: 0,
       unverified_events: 0,
+      coverage_events: 0,
     };
     const state = configured(env, source, mappings);
-    const documented = amounts.actual_cost_minor > 0 || amounts.manual_verified_minor > 0 || amounts.estimated_cost_minor > 0;
+    const supportedEvents = amounts.actual_events + amounts.manual_verified_events + amounts.estimated_events;
+    const documented = supportedEvents > 0;
+    const synchronized = amounts.coverage_events > 0;
+    const hasUnverified = amounts.unverified_events > 0;
+    const applicable = amounts.events > 0 || state.mappings > 0 || state.credentials_present;
+    const covered = applicable && !hasUnverified && (documented || synchronized || (source.mode === 'calculation' && state.ready));
+    let accountingState = state.accounting_state;
+    if (!applicable) accountingState = 'not_applicable';
+    else if (hasUnverified) accountingState = 'evidence_required';
+    else if (documented) accountingState = 'documented';
+    else if (synchronized) accountingState = 'synchronized';
     return {
       ...state,
       ...amounts,
       documented,
-      accounting_state: documented ? 'documented' : state.accounting_state,
-      ready: documented || state.ready,
+      synchronized,
+      applicable,
+      covered,
+      has_unverified: hasUnverified,
+      accounting_state: accountingState,
     };
   });
 }
 
 function accountingCompleteness(sources = []) {
-  const gaps = (sources || [])
-    .filter((source) => !source.documented)
-    .map((source) => ({ id: source.id, label: source.label, state: source.accounting_state, missing: source.missing_configuration || [] }));
+  const applicable = (sources || []).filter((source) => source.applicable !== false);
+  const gaps = applicable
+    .filter((source) => !source.covered)
+    .map((source) => ({
+      id: source.id,
+      label: source.label,
+      state: source.accounting_state,
+      missing: source.missing_configuration || [],
+      unverified_events: source.unverified_events || 0,
+      unverified_cost_minor: source.unverified_cost_minor || 0,
+    }));
   return {
     complete: gaps.length === 0,
-    scope: 'operational_cost_ledger',
+    scope: 'registered_operational_cost_ledger',
+    total_sources: (sources || []).length,
+    applicable_sources: applicable.length,
+    covered_sources: applicable.length - gaps.length,
     warning: gaps.length
-      ? 'AI Cost Control ne constitue pas encore un total comptable complet. Les sources absentes, non connectées ou sans justificatif restent exclues.'
+      ? 'Le total des dépenses enregistrées reste visible, mais certaines sources actives ne sont pas encore synchronisées ou certaines dépenses attendent un justificatif. Elles restent hors total vérifié et hors facturation.'
       : null,
     gaps,
   };
