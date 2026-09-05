@@ -1,11 +1,15 @@
 const express = require('express');
 const { resolveTenant } = require('./server-tenant.cjs');
+const publisyaOAuth = require('./server-publisya-oauth.cjs');
 
 const router = express.Router();
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://rzvvwcwyaddzsaattwqt.supabase.co';
 const SUPABASE_SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PLATFORM_SET = new Set(['facebook', 'instagram', 'tiktok', 'linkedin', 'youtube']);
+
+// Les routes OAuth héritent des mêmes garde-fous session + permission que tout /api/publisya.
+router.use('/oauth', publisyaOAuth.router);
 
 function textField(value, maxLength) {
   return String(value || '').trim().slice(0, maxLength);
