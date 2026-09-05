@@ -42,9 +42,11 @@ test('Publisya foundation keeps external publishing disabled', () => {
 });
 
 test('Publisya schema requires tenant ownership and idempotent publication jobs', () => {
+  assert.match(migrationSource, /public\.publisya_campaigns/);
   assert.match(migrationSource, /tenant_id TEXT NOT NULL/);
   assert.match(migrationSource, /client_id TEXT NOT NULL/);
   assert.match(migrationSource, /human_approval_required BOOLEAN NOT NULL DEFAULT true/);
   assert.match(migrationSource, /idempotency_key TEXT NOT NULL UNIQUE/);
-  assert.match(migrationSource, /REVOKE ALL ON SCHEMA publisya FROM PUBLIC, anon, authenticated/);
+  assert.match(migrationSource, /REVOKE ALL ON TABLE public\.publisya_campaigns FROM PUBLIC, anon, authenticated/);
+  assert.doesNotMatch(migrationSource, /CREATE SCHEMA IF NOT EXISTS publisya/);
 });
