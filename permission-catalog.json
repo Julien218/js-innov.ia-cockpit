@@ -1,6 +1,7 @@
 [
   { "code": "dashboard", "label": "Accueil", "group": "Pilotage", "roles": ["client", "collaborateur", "admin"], "routes": ["/"] },
   { "code": "hainoflow", "label": "HainoFlow", "description": "Gestion commerciale et administrative", "group": "Services souscrits", "roles": ["client", "collaborateur", "admin"], "routes": ["/hainoflow"] },
+  { "code": "publisya", "label": "Publisya", "description": "Création, validation, programmation et publication multiréseaux", "group": "Services souscrits", "roles": ["client", "collaborateur", "admin"], "routes": ["/publisya"] },
   { "code": "insurance", "label": "Assurances-Dour", "group": "Pilotage", "roles": ["admin"], "routes": ["/assurances"] },
   { "code": "clients", "label": "Clients", "group": "CRM", "roles": ["collaborateur", "admin"], "routes": ["/clients"] },
   { "code": "leads", "label": "Leads", "group": "CRM", "roles": ["collaborateur", "admin"], "routes": ["/leads"] },
