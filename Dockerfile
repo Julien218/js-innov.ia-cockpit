@@ -55,6 +55,7 @@ COPY --from=builder /app/server-bce.cjs ./server-bce.cjs
 COPY --from=builder /app/server-hainoflow.cjs ./server-hainoflow.cjs
 COPY --from=builder /app/server-publisya.cjs ./server-publisya.cjs
 COPY --from=builder /app/server-publisya-ai.cjs ./server-publisya-ai.cjs
+COPY --from=builder /app/server-publisya-review.cjs ./server-publisya-review.cjs
 COPY --from=builder /app/server-assistant.cjs ./server-assistant.cjs
 COPY --from=builder /app/server-public-elynea.cjs ./server-public-elynea.cjs
 COPY --from=builder /app/server-assistant-batch.cjs ./server-assistant-batch.cjs
@@ -135,6 +136,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-signage.cjs \
  && test -f /app/server-publisya.cjs \
  && test -f /app/server-publisya-ai.cjs \
+ && test -f /app/server-publisya-review.cjs \
  && test -f /app/server-villeconnect.cjs \
  && test -f /app/server-video-provenance-core.cjs \
  && test -f /app/server-video-provenance.cjs \
@@ -179,6 +181,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-signage.cjs \
  && node --check /app/server-publisya.cjs \
  && node --check /app/server-publisya-ai.cjs \
+ && node --check /app/server-publisya-review.cjs \
  && node --check /app/server-villeconnect.cjs \
  && node --check /app/server-video-provenance-core.cjs \
  && node --check /app/server-video-provenance.cjs \
