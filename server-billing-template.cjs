@@ -13,6 +13,53 @@ const C = {
   line:'#E8BD6A', grid:'#E7E7E7', soft:'#FAFAF9', white:'#FFFFFF'
 };
 
+const PROMO_FEED_URL = process.env.JSINNOVIA_COMMERCIAL_FEED_URL || 'https://www.jsinnovia.com/commercial-highlight.json';
+const PROMO_CACHE_MS = 10 * 60 * 1000;
+let promoCache = { expiresAt: 0, value: null };
+
+function cleanPromo(value, max) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+async function resolveCommercialHighlight() {
+  const now = Date.now();
+  if (promoCache.expiresAt > now) return promoCache.value;
+
+  let value = null;
+  try {
+    const response = await fetch(PROMO_FEED_URL, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(1500),
+    });
+    if (response.ok) {
+      const payload = await response.json();
+      const highlights = Array.isArray(payload?.highlights) ? payload.highlights : [];
+      const selected = highlights
+        .filter((item) => item?.active === true)
+        .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0))[0];
+
+      if (selected) {
+        const url = /^https:\/\//i.test(String(selected.url || '')) ? String(selected.url) : '';
+        value = {
+          id: cleanPromo(selected.id, 64),
+          name: cleanPromo(selected.name, 50),
+          eyebrow: cleanPromo(selected.eyebrow || 'NOUVEAUTÉ JS-Innov.IA', 55),
+          title: cleanPromo(selected.title || 'Découvrez notre nouvelle APP', 70),
+          description: cleanPromo(selected.description, 180),
+          cta: cleanPromo(selected.cta || 'Découvrir', 45),
+          url,
+          publishedAt: selected.publishedAt || null,
+        };
+      }
+    }
+  } catch (error) {
+    console.warn(`[BILLING] Nouveauté commerciale indisponible: ${error.message}`);
+  }
+
+  promoCache = { expiresAt: now + PROMO_CACHE_MS, value };
+  return value;
+}
+
 function money(v){return new Intl.NumberFormat('fr-BE',{style:'currency',currency:'EUR',minimumFractionDigits:2}).format(Number(v||0));}
 function date(v){if(!v)return '—';const d=new Date(v);return Number.isNaN(d.valueOf())?String(v):d.toLocaleDateString('fr-BE',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'UTC'});}
 const ONES=['','un','deux','trois','quatre','cinq','six','sept','huit','neuf','dix','onze','douze','treize','quatorze','quinze','seize','dix-sept','dix-huit','dix-neuf'];
@@ -132,6 +179,22 @@ function drawTotals(pdf,doc,type){
   pdf.save().fillColor(C.gold).rect(bx,y+44,bw,23).fill().restore();text(pdf,'TOTAL TTC',bx+13,y+50,{size:8.5,font:'Helvetica',color:C.white,width:90});text(pdf,money(doc.montant_ttc),bx+110,y+47,{size:12.2,font:'Helvetica-Bold',color:C.white,width:92,align:'right'});
 }
 
+function drawLaunchFooter(pdf, promo) {
+  const y = 750;
+  const h = 64;
+  pdf.save().fillColor('#FBF8F1').roundedRect(M,y,W,h,5).fill().restore();
+  box(pdf,M,y,W,h,5,C.line,.6);
+  line(pdf,411,y+9,411,y+h-9,C.line,.55);
+
+  text(pdf,promo.eyebrow || 'NOUVEAUTÉ JS-Innov.IA',M+16,y+9,{size:6.2,font:'Helvetica-Bold',color:C.gold2,width:350});
+  text(pdf,promo.title || 'Découvrez notre nouvelle APP',M+16,y+22,{size:10.2,font:'Helvetica-Bold',color:C.ink,width:355,height:15,ellipsis:true});
+  text(pdf,promo.description || '',M+16,y+38,{size:6.8,color:C.muted,width:355,height:20,lineGap:1.2,ellipsis:true});
+
+  text(pdf,promo.cta || 'Découvrir',424,y+17,{size:7.1,font:'Helvetica-Bold',color:C.gold,width:124,align:'center'});
+  const displayUrl = String(promo.url || '').replace(/^https?:\/\//i,'').replace(/\/$/,'');
+  text(pdf,displayUrl || 'www.jsinnovia.com',424,y+33,{size:6.2,font:'Helvetica-Bold',color:C.ink,width:124,align:'center',height:16,ellipsis:true});
+}
+
 function drawBottom(pdf,doc){
   const y=632;
   box(pdf,M,y,196,64,2,C.line,.6);
@@ -156,16 +219,22 @@ function drawBottom(pdf,doc){
   text(pdf,"TVA calculée conformément au règlement 967/2012 du Conseil de l’Union européenne.",M,legalY+8,{size:6.1,width:W,align:'center'});
   text(pdf,'En cas de retard de paiement, des intérêts de 1% par mois seront appliqués sur le montant dû.',M,legalY+19,{size:6.1,width:W,align:'center'});
 
-  const footerY=770;
-  line(pdf,105,footerY,165,footerY,C.gold2,.65);
-  line(pdf,430,footerY,490,footerY,C.gold2,.65);
-  text(pdf,"L’INTELLIGENCE AU SERVICE DE VOS AMBITIONS",170,footerY-5,{size:6.4,font:'Helvetica',color:C.ink,width:255,align:'center',characterSpacing:1.15});
-  text(pdf,'www.jsinnovia.com  •  info@jsinnovia.store',M,footerY+24,{size:6.2,color:C.muted,width:W,align:'center'});
+  if (doc.commercial_highlight) {
+    drawLaunchFooter(pdf, doc.commercial_highlight);
+  } else {
+    const footerY=770;
+    line(pdf,105,footerY,165,footerY,C.gold2,.65);
+    line(pdf,430,footerY,490,footerY,C.gold2,.65);
+    text(pdf,"L’INTELLIGENCE AU SERVICE DE VOS AMBITIONS",170,footerY-5,{size:6.4,font:'Helvetica',color:C.ink,width:255,align:'center',characterSpacing:1.15});
+    text(pdf,'www.jsinnovia.com  •  info@jsinnovia.store',M,footerY+24,{size:6.2,color:C.muted,width:W,align:'center'});
+  }
 }
 
 function drawCancelled(pdf,doc,type){if(type!=='facture'||String(doc.statut||'').toLowerCase()!=='annulee')return;pdf.save().opacity(.14).fillColor('#B42318').font('Helvetica-Bold').fontSize(52).rotate(-24,{origin:[A4.width/2,A4.height/2]}).text('ANNULÉE',80,390,{width:A4.width-160,align:'center'}).restore();}
 
-function generateInvoicePDF(doc,type='facture'){
-  return new Promise((resolve,reject)=>{const chunks=[],pdf=new PDFDocument({size:'A4',margin:0,autoFirstPage:true,bufferPages:true});pdf.on('data',c=>chunks.push(c));pdf.on('error',reject);pdf.on('end',()=>resolve(Buffer.concat(chunks)));try{drawHeader(pdf,doc,type);drawClient(pdf,doc,type);drawTable(pdf,doc);drawTotals(pdf,doc,type);drawBottom(pdf,doc);drawCancelled(pdf,doc,type);if(pdf.bufferedPageRange().count!==1)throw new Error('Le PDF officiel doit tenir sur une seule page A4.');pdf.end();}catch(e){reject(e);}});
+async function generateInvoicePDF(doc,type='facture'){
+  const commercialHighlight = doc?.commercial_highlight || await resolveCommercialHighlight();
+  const renderedDoc = { ...doc, commercial_highlight: commercialHighlight };
+  return new Promise((resolve,reject)=>{const chunks=[],pdf=new PDFDocument({size:'A4',margin:0,autoFirstPage:true,bufferPages:true});pdf.on('data',c=>chunks.push(c));pdf.on('error',reject);pdf.on('end',()=>resolve(Buffer.concat(chunks)));try{drawHeader(pdf,renderedDoc,type);drawClient(pdf,renderedDoc,type);drawTable(pdf,renderedDoc);drawTotals(pdf,renderedDoc,type);drawBottom(pdf,renderedDoc);drawCancelled(pdf,renderedDoc,type);if(pdf.bufferedPageRange().count!==1)throw new Error('Le PDF officiel doit tenir sur une seule page A4.');pdf.end();}catch(e){reject(e);}});
 }
-module.exports={generateInvoicePDF,money,words};
+module.exports={generateInvoicePDF,money,words,resolveCommercialHighlight};
