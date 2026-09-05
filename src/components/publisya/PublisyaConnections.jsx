@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, LockKeyhole, PlugZap, RefreshCw, Unplug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { verifyPublisyaTargets } from '@/lib/publisyaClient';
@@ -12,6 +12,35 @@ const coverage = {
 
 function connectedAccount(accounts, providerId) {
   return (accounts || []).find((account) => account.provider === providerId && account.connection_status === 'connected') || null;
+}
+
+function safeOAuthNotice() {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  const provider = String(params.get('oauth') || '').toLowerCase();
+  const status = String(params.get('oauth_status') || '').toLowerCase();
+  if (!['meta', 'tiktok', 'linkedin', 'youtube'].includes(provider) || !['connected', 'error'].includes(status)) return null;
+  const rawCode = String(params.get('oauth_code') || '');
+  const code = /^[A-Z0-9_]{1,80}$/.test(rawCode) ? rawCode : null;
+  return {
+    provider,
+    label: coverage[provider] || provider,
+    status,
+    code,
+  };
+}
+
+function clearOAuthQuery() {
+  if (typeof window === 'undefined') return;
+  const url = new URL(window.location.href);
+  let changed = false;
+  for (const key of ['oauth', 'oauth_status', 'oauth_code']) {
+    if (url.searchParams.has(key)) {
+      url.searchParams.delete(key);
+      changed = true;
+    }
+  }
+  if (changed) window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
 }
 
 function VerificationSummary({ verification }) {
@@ -43,6 +72,11 @@ export default function PublisyaConnections({ data, isLoading, isError, onConnec
   const [verifyingId, setVerifyingId] = useState(null);
   const [verificationByAccount, setVerificationByAccount] = useState({});
   const [verificationErrorByAccount, setVerificationErrorByAccount] = useState({});
+  const [oauthNotice] = useState(() => safeOAuthNotice());
+
+  useEffect(() => {
+    if (oauthNotice) clearOAuthQuery();
+  }, [oauthNotice]);
 
   const verifyTargets = async (account) => {
     setVerifyingId(account.id);
@@ -72,6 +106,20 @@ export default function PublisyaConnections({ data, isLoading, isError, onConnec
           Jetons chiffrés côté serveur
         </div>
       </div>
+
+      {oauthNotice?.status === 'connected' && (
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-emerald-800">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+          {oauthNotice.label} est connecté au Cockpit. La publication reste désactivée jusqu’à validation des cibles et des permissions.
+        </div>
+      )}
+
+      {oauthNotice?.status === 'error' && (
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          La connexion {oauthNotice.label} n’a pas été finalisée{oauthNotice.code ? ` (${oauthNotice.code})` : ''}. Aucun jeton n’a été exposé dans cette page.
+        </div>
+      )}
 
       {isError && (
         <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-800">
@@ -157,3 +205,5 @@ export default function PublisyaConnections({ data, isLoading, isError, onConnec
     </section>
   );
 }
+
+export { safeOAuthNotice, clearOAuthQuery };
