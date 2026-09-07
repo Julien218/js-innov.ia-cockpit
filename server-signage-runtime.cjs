@@ -34,6 +34,13 @@ function recent(timestamp, windowMs = PLAYBACK_ONLINE_WINDOW_MS) {
   return Number.isFinite(parsed) && Date.now() - parsed < windowMs;
 }
 
+async function authenticatedPlayer(req) {
+  const bearer = bearerToken(req);
+  if (!bearer) return null;
+  const rows = await db(`signage_players?select=id,owner_email,last_seen_at,current_publication_id,app_version,status&token_hash=eq.${hash(bearer)}&limit=1`);
+  return rows?.[0] || null;
+}
+
 router.post('/player/runtime-heartbeat', async (req, res) => {
   try {
     const bearer = bearerToken(req);
@@ -72,6 +79,30 @@ router.post('/player/runtime-heartbeat', async (req, res) => {
   } catch (error) {
     const status = /trop volumineux/i.test(error.message) ? 413 : 503;
     res.status(status).json({ error: error.message });
+  }
+});
+
+// Player 0.6.1 already polls a remote-command channel. The server remains in
+// observe-only mode until a persistent, audited command queue is introduced.
+// Returning an explicit empty command keeps the Player/server contract healthy
+// and avoids a useless 404 every heartbeat cycle.
+router.post('/player/commands/next', async (req, res) => {
+  try {
+    const player = await authenticatedPlayer(req);
+    if (!player) return res.status(401).json({ error: 'Player non autorisé' });
+    res.json({ command: null, controlCapability: 'observe_only', nextPollSeconds: 30 });
+  } catch (error) {
+    res.status(503).json({ error: error.message });
+  }
+});
+
+router.post('/player/commands/:id/ack', async (req, res) => {
+  try {
+    const player = await authenticatedPlayer(req);
+    if (!player) return res.status(401).json({ error: 'Player non autorisé' });
+    res.json({ accepted: true, commandId: cleanText(req.params.id, 80), controlCapability: 'observe_only' });
+  } catch (error) {
+    res.status(503).json({ error: error.message });
   }
 });
 
