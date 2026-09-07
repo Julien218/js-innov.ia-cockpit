@@ -15,6 +15,8 @@ const DROPBOX_APP_SECRET = process.env.DROPBOX_APP_SECRET || '';
 const DROPBOX_REFRESH_TOKEN = process.env.DROPBOX_REFRESH_TOKEN || '';
 const FFMPEG_PROFILE = { video_codec: 'h264', pixel_format: 'yuv420p', audio_codec: 'aac', container: 'mp4', faststart: true };
 const repairLocks = new Set();
+let pendingSweepPromise = null;
+let lastPendingSweepAt = 0;
 let dropboxTokenCache = { value: DROPBOX_ACCESS_TOKEN, expiresAt: DROPBOX_ACCESS_TOKEN ? Number.MAX_SAFE_INTEGER : 0 };
 
 const cleanEmail = value => String(value || '').trim().toLowerCase();
@@ -235,12 +237,64 @@ function manifestContainsMedia(publication, mediaId) {
   return Array.isArray(items) && items.some(item => String(item?.media?.id || item?.mediaId || '') === mediaId);
 }
 
+async function sweepBrokenPendingPublications() {
+  if (pendingSweepPromise) return pendingSweepPromise;
+  if (Date.now() - lastPendingSweepAt < 20000) return;
+  pendingSweepPromise = (async () => {
+    const publications = await db('signage_publications?select=id,owner_email,status,manifest,created_at&status=eq.pending&order=created_at.asc&limit=250');
+    let repaired = 0;
+    for (const publication of publications || []) {
+      const items = Array.isArray(publication?.manifest?.items) ? publication.manifest.items : [];
+      const mediaIds = [...new Set(items.map(item => String(item?.mediaId || item?.media_id || item?.media?.id || '')).filter(Boolean))];
+      let invalidReason = '';
+      for (const mediaId of mediaIds) {
+        const rows = await db(`signage_media?select=id,status,rendition&owner_email=eq.${encode(publication.owner_email)}&id=eq.${encode(mediaId)}&limit=1`);
+        const media = rows?.[0];
+        if (!media) {
+          invalidReason = `média ${mediaId} introuvable`;
+          break;
+        }
+        if (media.status === 'failed' || media.rendition?.state === 'failed') {
+          invalidReason = `média ${mediaId} invalide`;
+          break;
+        }
+      }
+      if (!invalidReason) continue;
+      await db(`signage_publications?id=eq.${encode(publication.id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: 'failed',
+          error: `Publication neutralisée automatiquement : ${invalidReason}.`,
+          updated_at: new Date().toISOString()
+        })
+      });
+      repaired += 1;
+      console.warn(`[signage][publication-repair] ${publication.id}: ${invalidReason}`);
+    }
+    lastPendingSweepAt = Date.now();
+    if (repaired) console.log(`[signage][publication-repair] ${repaired} publication(s) pending obsolète(s) neutralisée(s)`);
+  })().finally(() => { pendingSweepPromise = null; });
+  return pendingSweepPromise;
+}
+
+// Self-heal stale historical publications before the real Player heartbeat route.
+// This prevents one deleted legacy media from returning HTTP 503 forever.
+router.use('/player/heartbeat', async (_req, _res, next) => {
+  try {
+    await sweepBrokenPendingPublications();
+  } catch (error) {
+    console.error('[signage][publication-repair]', error.message);
+  }
+  next();
+});
+
 // Compatibility/self-healing pass: old upload-session clients could leave a row
 // in uploaded/processing. Before returning the dashboard, validate those files
 // with the exact Player profile so only ready media can be programmed.
 router.use('/manage/dashboard', requireSession('client'), async (req, _res, next) => {
   try {
     await repairPendingMediaForOwner(managedOwner(req), cleanEmail(req.user?.email) || 'system');
+    await sweepBrokenPendingPublications();
   } catch (error) {
     console.error('[signage][media-auto-validate]', error.message);
   }
@@ -262,7 +316,10 @@ router.delete('/manage/media/:id', requireSession('client'), rejectCommercial, a
       db(`signage_playlists?select=id,name,items,revision&owner_email=eq.${encode(ownerEmail)}&order=created_at.desc&limit=500`)
     ]);
 
-    const currentPublicationIds = new Set((players || []).map(player => String(player.current_publication_id || '')).filter(Boolean));
+    const currentPublicationIds = new Set((players || [])
+      .filter(player => player.status !== 'retired')
+      .map(player => String(player.current_publication_id || ''))
+      .filter(Boolean));
     const currentPublication = (publications || []).find(publication =>
       currentPublicationIds.has(String(publication.id)) && manifestContainsMedia(publication, mediaId)
     );
