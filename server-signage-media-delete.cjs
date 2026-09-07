@@ -69,6 +69,22 @@ async function deleteDropboxPath(dropboxPath) {
   throw new Error(summary || 'Dropbox a refusé la suppression du fichier.');
 }
 
+async function dropboxPathExists(dropboxPath) {
+  if (!dropboxPath) return false;
+  const accessToken = await getDropboxToken();
+  if (!accessToken) throw new Error('Dropbox non configuré pour vérifier le média.');
+  const response = await fetchWithPathRoot('https://api.dropboxapi.com/2/files/get_metadata', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: dropboxPath, include_media_info: false, include_deleted: false })
+  });
+  if (response.ok) return true;
+  const data = await response.json().catch(() => ({}));
+  const summary = String(data.error_summary || '');
+  if (summary.startsWith('path/not_found') || summary.startsWith('path_lookup/not_found')) return false;
+  throw new Error(summary || `Vérification Dropbox impossible (HTTP ${response.status}).`);
+}
+
 async function downloadDropboxPath(dropboxPath) {
   const accessToken = await getDropboxToken();
   if (!accessToken) throw new Error('Dropbox non configuré pour valider le média.');
@@ -255,7 +271,7 @@ async function sweepBrokenPendingPublications({ playerId = '', ownerEmail = '' }
       const mediaIds = [...new Set(items.map(item => String(item?.mediaId || item?.media_id || item?.media?.id || '')).filter(Boolean))];
       let invalidReason = '';
       for (const mediaId of mediaIds) {
-        const rows = await db(`signage_media?select=id,status,rendition&owner_email=eq.${encode(publication.owner_email)}&id=eq.${encode(mediaId)}&limit=1`);
+        const rows = await db(`signage_media?select=id,status,rendition,dropbox_path&owner_email=eq.${encode(publication.owner_email)}&id=eq.${encode(mediaId)}&limit=1`);
         const media = rows?.[0];
         if (!media) {
           invalidReason = `média ${mediaId} introuvable`;
@@ -263,6 +279,14 @@ async function sweepBrokenPendingPublications({ playerId = '', ownerEmail = '' }
         }
         if (media.status === 'failed' || media.rendition?.state === 'failed') {
           invalidReason = `média ${mediaId} invalide`;
+          break;
+        }
+        if (!await dropboxPathExists(media.dropbox_path)) {
+          invalidReason = `fichier Dropbox du média ${mediaId} introuvable`;
+          await db(`signage_media?id=eq.${encode(mediaId)}&owner_email=eq.${encode(publication.owner_email)}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: 'failed', rendition: { ...(media.rendition || {}), state: 'failed', error: 'Fichier Dropbox introuvable' }, updated_at: new Date().toISOString() })
+          }).catch(() => {});
           break;
         }
       }
@@ -290,7 +314,12 @@ async function sweepBrokenPendingPublications({ playerId = '', ownerEmail = '' }
 
 // Self-heal stale publications only for an authenticated Player token, then let
 // the canonical heartbeat route in server-signage.cjs continue normally.
-router.use('/player/heartbeat', async (req, _res, next) => {
+router.use('/player/heartbeat', async (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = body => {
+    if (res.statusCode >= 500) console.error('[signage][player-heartbeat-response]', String(body?.error || 'Erreur heartbeat inconnue').slice(0, 800));
+    return originalJson(body);
+  };
   const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   if (!bearer) return next();
   try {
