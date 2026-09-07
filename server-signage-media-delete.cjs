@@ -15,8 +15,7 @@ const DROPBOX_APP_SECRET = process.env.DROPBOX_APP_SECRET || '';
 const DROPBOX_REFRESH_TOKEN = process.env.DROPBOX_REFRESH_TOKEN || '';
 const FFMPEG_PROFILE = { video_codec: 'h264', pixel_format: 'yuv420p', audio_codec: 'aac', container: 'mp4', faststart: true };
 const repairLocks = new Set();
-let pendingSweepPromise = null;
-let lastPendingSweepAt = 0;
+const pendingSweepStates = new Map();
 let dropboxTokenCache = { value: DROPBOX_ACCESS_TOKEN, expiresAt: DROPBOX_ACCESS_TOKEN ? Number.MAX_SAFE_INTEGER : 0 };
 
 const cleanEmail = value => String(value || '').trim().toLowerCase();
@@ -237,11 +236,19 @@ function manifestContainsMedia(publication, mediaId) {
   return Array.isArray(items) && items.some(item => String(item?.media?.id || item?.mediaId || '') === mediaId);
 }
 
-async function sweepBrokenPendingPublications() {
-  if (pendingSweepPromise) return pendingSweepPromise;
-  if (Date.now() - lastPendingSweepAt < 20000) return;
-  pendingSweepPromise = (async () => {
-    const publications = await db('signage_publications?select=id,owner_email,status,manifest,created_at&status=eq.pending&order=created_at.asc&limit=250');
+async function sweepBrokenPendingPublications({ playerId = '', ownerEmail = '' } = {}) {
+  const scopeKey = playerId ? `player:${playerId}` : ownerEmail ? `owner:${ownerEmail}` : '';
+  if (!scopeKey) return;
+  const currentState = pendingSweepStates.get(scopeKey) || { lastAt: 0, promise: null };
+  if (currentState.promise) return currentState.promise;
+  if (Date.now() - currentState.lastAt < 20000) return;
+
+  const promise = (async () => {
+    let resource = 'signage_publications?select=id,owner_email,status,manifest,created_at&status=eq.pending';
+    if (playerId) resource += `&player_id=eq.${encode(playerId)}`;
+    if (ownerEmail) resource += `&owner_email=eq.${encode(ownerEmail)}`;
+    resource += '&order=created_at.asc&limit=250';
+    const publications = await db(resource);
     let repaired = 0;
     for (const publication of publications || []) {
       const items = Array.isArray(publication?.manifest?.items) ? publication.manifest.items : [];
@@ -271,17 +278,25 @@ async function sweepBrokenPendingPublications() {
       repaired += 1;
       console.warn(`[signage][publication-repair] ${publication.id}: ${invalidReason}`);
     }
-    lastPendingSweepAt = Date.now();
-    if (repaired) console.log(`[signage][publication-repair] ${repaired} publication(s) pending obsolète(s) neutralisée(s)`);
-  })().finally(() => { pendingSweepPromise = null; });
-  return pendingSweepPromise;
+    pendingSweepStates.set(scopeKey, { lastAt: Date.now(), promise: null });
+    if (repaired) console.log(`[signage][publication-repair] ${scopeKey}: ${repaired} publication(s) pending obsolète(s) neutralisée(s)`);
+  })().finally(() => {
+    const state = pendingSweepStates.get(scopeKey) || { lastAt: Date.now(), promise: null };
+    pendingSweepStates.set(scopeKey, { ...state, promise: null });
+  });
+  pendingSweepStates.set(scopeKey, { lastAt: currentState.lastAt, promise });
+  return promise;
 }
 
-// Self-heal stale historical publications before the real Player heartbeat route.
-// This prevents one deleted legacy media from returning HTTP 503 forever.
-router.use('/player/heartbeat', async (_req, _res, next) => {
+// Self-heal stale publications only for an authenticated Player token, then let
+// the canonical heartbeat route in server-signage.cjs continue normally.
+router.use('/player/heartbeat', async (req, _res, next) => {
+  const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  if (!bearer) return next();
   try {
-    await sweepBrokenPendingPublications();
+    const players = await db(`signage_players?select=id,owner_email&token_hash=eq.${hash(bearer)}&limit=1`);
+    const player = players?.[0];
+    if (player) await sweepBrokenPendingPublications({ playerId: player.id, ownerEmail: player.owner_email });
   } catch (error) {
     console.error('[signage][publication-repair]', error.message);
   }
@@ -293,8 +308,9 @@ router.use('/player/heartbeat', async (_req, _res, next) => {
 // with the exact Player profile so only ready media can be programmed.
 router.use('/manage/dashboard', requireSession('client'), async (req, _res, next) => {
   try {
-    await repairPendingMediaForOwner(managedOwner(req), cleanEmail(req.user?.email) || 'system');
-    await sweepBrokenPendingPublications();
+    const ownerEmail = managedOwner(req);
+    await repairPendingMediaForOwner(ownerEmail, cleanEmail(req.user?.email) || 'system');
+    await sweepBrokenPendingPublications({ ownerEmail });
   } catch (error) {
     console.error('[signage][media-auto-validate]', error.message);
   }
