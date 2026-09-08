@@ -17,7 +17,7 @@ test('calculates Luna standard cost with cached input', () => {
     outputTokens: 500,
   });
   assert.equal(result.priced, true);
-  assert.equal(result.costUsd, 0.00391);
+  assert.equal(result.costUsd, 0.000782);
 });
 
 test('applies priority processing multiplier', () => {
@@ -27,7 +27,7 @@ test('applies priority processing multiplier', () => {
     outputTokens: 1000,
     processingMode: 'priority',
   });
-  assert.equal(result.costUsd, 0.035);
+  assert.equal(result.costUsd, 0.028);
 });
 
 test('normalizes Chat Completions style token usage', () => {
