@@ -16,7 +16,7 @@ async function fetchCameraDashboard(clientEmail = "") {
   return body;
 }
 
-const isRecent = (value, windowMs = 90_000) => {
+const isRecent = (value, windowMs = 130_000) => {
   if (!value) return false;
   const timestamp = new Date(value).getTime();
   return Number.isFinite(timestamp) && Date.now() - timestamp < windowMs;
@@ -27,8 +27,8 @@ const cameraScore = camera => {
   let score = 0;
   if (/écran|ecran|screen|led|affichage|display/.test(name)) score += 100;
   if (camera?.status === "online") score += 30;
-  if (isRecent(camera?.snapshot_at, 30_000)) score += 20;
-  if (isRecent(camera?.last_seen_at, 90_000)) score += 10;
+  if (isRecent(camera?.snapshot_at, 130_000)) score += 20;
+  if (isRecent(camera?.last_seen_at, 120_000)) score += 10;
   return score;
 };
 
@@ -41,7 +41,7 @@ export default function ScreenCameraProof({ managedClient = "", enabled = true, 
     queryKey: ["signelya-screen-camera", managedClient || "self"],
     queryFn: () => fetchCameraDashboard(managedClient),
     enabled,
-    refetchInterval: 15_000,
+    refetchInterval: 60_000,
     retry: false,
   });
 
@@ -72,7 +72,7 @@ export default function ScreenCameraProof({ managedClient = "", enabled = true, 
           headers: managedClient ? { "X-Client-Email": managedClient } : {},
           cache: "no-store",
         });
-        if (!response.ok) throw new Error("Snapshot indisponible");
+        if (!response.ok) throw new Error("Image indisponible");
         const blob = await response.blob();
         const nextUrl = URL.createObjectURL(blob);
         if (!active) {
@@ -85,12 +85,12 @@ export default function ScreenCameraProof({ managedClient = "", enabled = true, 
         setSnapshotReceivedAt(Date.now());
         setSnapshotError("");
       } catch {
-        if (active) setSnapshotError("En attente d’un snapshot de la passerelle locale");
+        if (active) setSnapshotError("En attente du contrôle caméra 60 s");
       }
     };
 
     load();
-    const timer = window.setInterval(load, 5_000);
+    const timer = window.setInterval(load, 60_000);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -100,10 +100,10 @@ export default function ScreenCameraProof({ managedClient = "", enabled = true, 
 
   if (query.error?.status === 403) return null;
 
-  const cameraOnline = Boolean(camera && camera.status === "online" && isRecent(camera.last_seen_at));
-  const proofLive = Boolean(cameraOnline && snapshotUrl && Date.now() - snapshotReceivedAt < 20_000);
+  const cameraOnline = Boolean(camera && camera.status === "online" && isRecent(camera.last_seen_at, 120_000));
+  const proofLive = Boolean(cameraOnline && snapshotUrl && Date.now() - snapshotReceivedAt < 75_000 && isRecent(camera?.snapshot_at, 130_000));
   const stateLabel = proofLive
-    ? "Preuve visuelle reçue"
+    ? "Preuve visuelle récente"
     : cameraOnline
       ? "Caméra connectée · image en attente"
       : camera
@@ -120,7 +120,7 @@ export default function ScreenCameraProof({ managedClient = "", enabled = true, 
           <div>
             <p className="text-sm font-bold">Preuve visuelle de l’écran</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              La caméra placée face à la dalle complète le retour TVBOX / Display avec une vérification visuelle réelle.
+              Contrôle économique : une capture toutes les 60 secondes. Le contrôle accéléré ne s’active que lorsque vous lancez une analyse des annonces.
             </p>
           </div>
         </div>
@@ -139,7 +139,7 @@ export default function ScreenCameraProof({ managedClient = "", enabled = true, 
               <div className="flex h-full items-center justify-center text-white/45"><Camera className="h-10 w-10" /></div>
             )}
             <div className="absolute bottom-2 left-2 rounded-lg bg-black/70 px-2.5 py-1.5 text-[11px] text-white">
-              {snapshotError || (proofLive ? "Snapshot sécurisé actualisé automatiquement" : "Connexion caméra en cours")}
+              {snapshotError || (proofLive ? "Dernier contrôle visuel sécurisé" : "Connexion caméra en cours")}
             </div>
           </div>
 
@@ -156,13 +156,13 @@ export default function ScreenCameraProof({ managedClient = "", enabled = true, 
             </div>
             <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[0.05] p-3 text-xs text-muted-foreground">
               <p className="flex items-center gap-2 font-semibold text-foreground"><ShieldCheck className="h-4 w-4" /> Contrôle respectueux de la vie privée</p>
-              <p className="mt-1">Aucune reconnaissance faciale n’est nécessaire. Pour l’analyse automatique, nous limiterons la zone analysée à la dalle LED.</p>
+              <p className="mt-1">Aucune reconnaissance faciale n’est nécessaire. L’analyse concerne la présence visuelle des annonces à l’écran.</p>
             </div>
           </div>
         </div>
       ) : (
         <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-          <div className="flex items-start gap-2"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" /><p>La caméra est installée physiquement, mais Signelya ne reçoit encore aucun flux de passerelle. Dès qu’elle est enregistrée dans Vidéosurveillance et associée à sa clé locale, ce panneau affichera automatiquement son snapshot.</p></div>
+          <div className="flex items-start gap-2"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" /><p>La caméra est installée physiquement, mais Signelya ne reçoit encore aucun flux de passerelle. Dès qu’elle est enregistrée dans Vidéosurveillance et associée à sa clé locale, ce panneau affichera automatiquement son contrôle visuel.</p></div>
           {isAdmin && <a href="/videosurveillance" className="mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold"><Eye className="h-4 w-4" /> Ouvrir Vidéosurveillance</a>}
         </div>
       )}
