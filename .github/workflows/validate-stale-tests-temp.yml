@@ -1,0 +1,32 @@
+name: Validate stale test alignment temp
+on:
+  push:
+    branches: [fix/align-stale-tests-20260908]
+    paths: ['.github/workflows/validate-stale-tests-temp.yml']
+permissions:
+  contents: write
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/align-stale-tests-20260908
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Targeted tests
+        run: node --require ./tests/node-test-globals.cjs --test tests/ai-cost-control.test.cjs tests/local-cost-telemetry.test.cjs
+      - name: Full tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Remove temporary workflow
+        run: |
+          git config user.name 'JS-Innov.IA Automation'
+          git config user.email 'info@jsinnovia.store'
+          git rm .github/workflows/validate-stale-tests-temp.yml
+          git commit -m 'chore: retirer le workflow temporaire de validation'
+          git push origin fix/align-stale-tests-20260908
