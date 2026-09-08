@@ -34,7 +34,7 @@ $settings = [ordered]@{
   cockpitUrl = $CockpitUrl.TrimEnd('/')
   cameraKey = $CameraKey
   recordingEnabled = [bool]$EnableRecording
-  snapshotIntervalSeconds = 5
+  snapshotIntervalSeconds = 60
   heartbeatIntervalSeconds = 30
   recordingDurationSeconds = 60
   recordingIntervalSeconds = 300
@@ -67,4 +67,6 @@ Start-ScheduledTask -TaskName $taskName
 
 Write-Host 'Passerelle Pixelium installée et démarrée.' -ForegroundColor Green
 Write-Host "Dossier local : $installRoot"
+Write-Host "Contrôle visuel normal : 1 capture toutes les 60 secondes."
+Write-Host "L’analyse rapide des annonces ne s’active que sur demande depuis SIGNELYA."
 Write-Host "Vérifiez le statut En ligne dans le cockpit dans moins d’une minute."
