@@ -109,14 +109,14 @@ export default function SignageDisplayManager({ player, managedClient = "", dash
   const fallbackHealth = !playerOnline
     ? { state: "PLAYER_OFFLINE", label: "TVBOX / PLAYER HORS LIGNE" }
     : display.connected === false
-      ? { state: "DISPLAY_ERROR", label: "PLAYER ONLINE / HDMI NON DÉTECTÉ" }
+      ? { state: "DISPLAY_ERROR", label: "PLAYER ONLINE / DISPLAY ANDROID NON DÉTECTÉ" }
       : playback.scheduleBlocked === true
         ? { state: "OUT_OF_SCHEDULE", label: "PLAYER ONLINE / DIFFUSION SUSPENDUE PAR LE PLANNING" }
         : playback.contentPlaying === true
-          ? { state: "HEALTHY", label: "HDMI OK / CONTENU EN LECTURE" }
+          ? { state: "HEALTHY", label: "DISPLAY ACTIF / CONTENU EN LECTURE" }
           : display.connected === true
-            ? { state: "CONTENT_UNCONFIRMED", label: "HDMI DÉTECTÉ / LECTURE À CONFIRMER" }
-            : { state: "UNKNOWN", label: "PLAYER ONLINE / RETOUR HDMI INCOMPLET" };
+            ? { state: "CONTENT_UNCONFIRMED", label: "DISPLAY ACTIF / LECTURE À CONFIRMER" }
+            : { state: "UNKNOWN", label: "PLAYER ONLINE / RETOUR DISPLAY INCOMPLET" };
   const health = data.health || fallbackHealth;
 
   const [mode, setMode] = React.useState("AUTO");
@@ -134,7 +134,7 @@ export default function SignageDisplayManager({ player, managedClient = "", dash
   }, [data.profile]);
 
   const currentMode = display.width && display.height ? `${display.width} × ${display.height} · ${hz(display.refreshRate)}` : "Mode vidéo non remonté";
-  const displayConnected = display.connected === true ? "Signal détecté" : display.connected === false ? "Signal non détecté" : "À confirmer";
+  const displayConnected = display.connected === true ? "Display Android actif" : display.connected === false ? "Display Android non détecté" : "À confirmer";
   const scheduleLabel = data.schedule?.ads_allowed === false ? `Bloqué · ${data.schedule.reason || "planning"}` : data.schedule?.ads_allowed === true ? "Autorisé" : playback.scheduleBlocked === true ? "Suspendu par le planning" : "Autorisé / non bloqué";
   const publicationLabel = publication ? `${publication.status}${publication.acknowledged_at ? " · ACK" : ""}` : "Aucune";
   const homeMode = runtime.defaultHome === true ? "Pixelium est l’accueil" : runtime.defaultHome === false ? `À configurer${runtime.homePackage ? ` · ${runtime.homePackage}` : ""}` : "Inconnu";
@@ -146,7 +146,7 @@ export default function SignageDisplayManager({ player, managedClient = "", dash
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-bold">Retour écran en direct</p>
-          <p className="mt-1 text-xs text-muted-foreground">Chaîne contrôlée : TVBOX → Player → HDMI → signal vidéo → contenu.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Chaîne contrôlée : TVBOX → Player → Display Android → mode vidéo → contenu.</p>
         </div>
         <p className={`text-sm font-bold ${health.state === "HEALTHY" ? "text-emerald-600" : health.state?.includes("ERROR") || health.state === "PLAYER_OFFLINE" ? "text-red-600" : "text-amber-600"}`}>{health.label || "État à confirmer"}</p>
       </div>
@@ -154,13 +154,13 @@ export default function SignageDisplayManager({ player, managedClient = "", dash
 
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <ChainCard icon={Radio} label="TVBOX / Player" value={playerOnline ? "Connecté" : "Hors ligne"} detail={observedPlayer.last_seen_at ? `Dernier contact ${dateTime(observedPlayer.last_seen_at)}` : "Aucun heartbeat reçu"} status={checks.player} />
-      <ChainCard icon={Monitor} label="HDMI / Display" value={displayConnected} detail={display.name || "Retour Android Display"} status={checks.hdmi} />
+      <ChainCard icon={Monitor} label="Display Android / HDMI" value={displayConnected} detail={display.name ? `${display.name} · HDMI physique à confirmer` : "HDMI physique à confirmer"} status={checks.hdmi} />
       <ChainCard icon={Activity} label="Mode vidéo" value={currentMode} detail={display.hdr === true ? "HDR actif" : display.hdr === false ? "HDR désactivé" : "Résolution/fréquence remontées par Android"} status={checks.displayMode} />
       <ChainCard icon={ShieldCheck} label="Contenu" value={contentValue} detail={contentDetail} status={checks.content} />
     </div>
 
     <p className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[11px] text-muted-foreground">
-      Le retour HDMI confirme que le TVBOX voit une sortie Display valide. Il ne prouve pas encore à lui seul que les LED de la dalle émettent physiquement ; cette dernière preuve nécessitera un retour Colorlight ou un capteur de contrôle.
+      La télémétrie actuelle confirme que le TVBOX voit un Display Android valide et son mode vidéo. L’API Android utilisée ne permet pas d’identifier physiquement le connecteur HDMI ni de prouver que les LED de la dalle émettent ; cette dernière preuve nécessitera un retour Colorlight ou un capteur de contrôle.
     </p>
     {isAdmin && query.error && <p className="text-xs text-amber-700">Le diagnostic avancé est momentanément indisponible : {query.error.message}. Les états ci-dessus utilisent la télémétrie du heartbeat.</p>}
   </div>;
@@ -194,7 +194,7 @@ export default function SignageDisplayManager({ player, managedClient = "", dash
     {summary}
 
     <Section icon={Activity} title="Diagnostic global">
-      <Metric label="TVBOX RUNTIME" value={checks.runtime} status={checks.runtime}/><Metric label="PLAYER APP" value={checks.player} status={checks.player}/><Metric label="NETWORK" value={checks.network} status={checks.network}/><Metric label="SCHEDULE" value={checks.schedule} status={checks.schedule}/><Metric label="PUBLICATION" value={checks.publication} status={checks.publication}/><Metric label="HDMI" value={checks.hdmi} status={checks.hdmi}/><Metric label="CONTENT" value={checks.content} status={checks.content}/>
+      <Metric label="TVBOX RUNTIME" value={checks.runtime} status={checks.runtime}/><Metric label="PLAYER APP" value={checks.player} status={checks.player}/><Metric label="NETWORK" value={checks.network} status={checks.network}/><Metric label="SCHEDULE" value={checks.schedule} status={checks.schedule}/><Metric label="PUBLICATION" value={checks.publication} status={checks.publication}/><Metric label="DISPLAY" value={checks.hdmi} status={checks.hdmi}/><Metric label="CONTENT" value={checks.content} status={checks.content}/>
     </Section>
 
     <Section icon={Cpu} title="Device">
@@ -202,7 +202,7 @@ export default function SignageDisplayManager({ player, managedClient = "", dash
     </Section>
 
     <Section icon={Monitor} title="Display">
-      <Metric label="HDMI / Display" value={displayConnected} status={checks.hdmi}/><Metric label="Mode actif" value={currentMode} status={checks.displayMode}/><Metric label="HDR" value={display.hdr === true ? "ON" : display.hdr === false ? "OFF" : "Inconnu"}/><Metric label="EDID" value={display.edidAvailable === true ? "Disponible" : display.edidStatus === "unavailable_public_sdk" ? "Indisponible via API Android" : "Inconnu"}/><Metric label="Nom Android" value={display.name}/><Metric label="Modes annoncés" value={supportedModes.length || "Inconnu"}/>
+      <Metric label="Android Display" value={displayConnected} status={checks.hdmi}/><Metric label="Mode actif" value={currentMode} status={checks.displayMode}/><Metric label="HDR" value={display.hdr === true ? "ON" : display.hdr === false ? "OFF" : "Inconnu"}/><Metric label="EDID" value={display.edidAvailable === true ? "Disponible" : display.edidStatus === "unavailable_public_sdk" ? "Indisponible via API Android" : "Inconnu"}/><Metric label="Nom Android" value={display.name}/><Metric label="Modes annoncés" value={supportedModes.length || "Inconnu"}/>
     </Section>
 
     <Section icon={Radio} title="Signage">
