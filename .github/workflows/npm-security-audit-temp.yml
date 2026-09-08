@@ -18,10 +18,10 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - name: Apply only non-breaking audit fixes to lockfile
-        run: npm audit fix --package-lock-only --ignore-scripts
+        run: npm audit fix --package-lock-only --ignore-scripts || true
       - name: Reinstall exact fixed lockfile
         run: npm ci --ignore-scripts
-      - name: Verify production audit
+      - name: Verify production audit has no high or critical vulnerabilities
         run: npm audit --omit=dev --audit-level=high
       - name: Full audit report
         run: npm audit --json || true
