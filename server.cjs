@@ -95,12 +95,14 @@ try {
   const signageRuntimeRouter = require('./server-signage-runtime.cjs');
   const signageScheduleCompat = require('./server-signage-schedule-compat.cjs');
   const signageScheduleRouter = require('./server-signage-schedule-router.cjs');
+  const signageScreenAnalysisRouter = require('./server-signage-screen-analysis.cjs');
   const signageRouter = require('./server-signage.cjs');
   app.use('/api/signage', signageMediaDeleteRouter);
   app.use('/api/signage', signageDisplayRouter);
   app.use('/api/signage', signageRuntimeRouter);
   app.use('/api/signage', signageScheduleCompat);
   app.use('/api/signage', signageScheduleRouter);
+  app.use('/api/signage', signageScreenAnalysisRouter);
   app.use('/api/signage', signageRouter);
   console.log('Digital Signage runtime active');
   console.log('Digital Signage TVBOX runtime heartbeat active');
@@ -108,6 +110,7 @@ try {
   console.log('Digital Signage display manager active');
   console.log('Digital Signage scheduling active');
   console.log('Digital Signage legacy schedule compatibility active');
+  console.log('Digital Signage visual ad analysis active');
 } catch (e) {
   console.warn('Signage runtime unavailable:', e.message);
 }
