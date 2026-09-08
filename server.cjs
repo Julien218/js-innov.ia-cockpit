@@ -95,6 +95,7 @@ try {
   const signageRuntimeRouter = require('./server-signage-runtime.cjs');
   const signageScheduleCompat = require('./server-signage-schedule-compat.cjs');
   const signageScheduleRouter = require('./server-signage-schedule-router.cjs');
+  const signageProgram = require('./server-signage-program.cjs');
   const signageScreenAnalysisRouter = require('./server-signage-screen-analysis.cjs');
   const signageRouter = require('./server-signage.cjs');
   app.use('/api/signage', signageMediaDeleteRouter);
@@ -102,14 +103,17 @@ try {
   app.use('/api/signage', signageRuntimeRouter);
   app.use('/api/signage', signageScheduleCompat);
   app.use('/api/signage', signageScheduleRouter);
+  app.use('/api/signage', signageProgram.router);
   app.use('/api/signage', signageScreenAnalysisRouter);
   app.use('/api/signage', signageRouter);
+  signageProgram.reconcileLegacyPrograms().catch(error => console.error('[signage][program-policy]', error.message));
   console.log('Digital Signage runtime active');
   console.log('Digital Signage TVBOX runtime heartbeat active');
   console.log('Digital Signage media deletion active');
   console.log('Digital Signage display manager active');
   console.log('Digital Signage scheduling active');
   console.log('Digital Signage legacy schedule compatibility active');
+  console.log('Digital Signage single-current-program policy active');
   console.log('Digital Signage visual ad analysis active');
 } catch (e) {
   console.warn('Signage runtime unavailable:', e.message);
@@ -202,8 +206,10 @@ try {
 
 try {
   const assistantRouter = require('./server-assistant.cjs');
-  app.use('/api/assistant', requireSession('collaborateur'), assistantRouter);
+  const signelyaElyneaPolicy = require('./server-signelya-elynea-policy.cjs');
+  app.use('/api/assistant', requireSession('collaborateur'), signelyaElyneaPolicy, assistantRouter);
   console.log('Assistant personnel sécurisé activé');
+  console.log('Elynea Signelya single-program context active');
 } catch (e) {
   console.warn('Route assistant indisponible:', e.message);
 }
