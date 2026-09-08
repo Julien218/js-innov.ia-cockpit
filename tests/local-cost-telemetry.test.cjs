@@ -3,59 +3,70 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const ROOT = path.join(__dirname, '..');
-const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
-
-const {
-  summarizeSamples,
-  normalizeTelemetrySample,
-  estimatePower,
-} = require('../local-agent/server.js');
+const root = path.resolve(__dirname, '..');
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
+const { normalizeLocalTelemetry, normalizedLocalRates } = require('../server-client-costs.cjs');
 
 test('les tarifs locaux ont des valeurs de départ réalistes et modifiables', () => {
-  const source = read('local-agent/server.js');
-  assert.match(source, /LOCAL_ELECTRICITY_EUR_KWH/);
-  assert.match(source, /LOCAL_MACHINE_EUR_HOUR/);
-  assert.match(source, /LOCAL_MACHINE_AMORTIZATION_EUR_HOUR/);
-  assert.match(source, /LOCAL_INFRA_EUR_HOUR/);
+  const defaults = normalizedLocalRates({});
+  assert.equal(defaults.power_watts, 180);
+  assert.equal(defaults.energy_eur_kwh, 0.30);
+  assert.equal(defaults.machine_eur_hour, 0.20);
+  const custom = normalizedLocalRates({ power_watts: 210, energy_eur_kwh: 0.33, machine_eur_hour: 0.25 }, 'cockpit');
+  assert.deepEqual(custom, { power_watts: 210, energy_eur_kwh: 0.33, machine_eur_hour: 0.25, source: 'cockpit' });
 });
 
 test('le serveur accepte une synthèse locale bornée et conserve son statut estimé', () => {
-  const source = read('server-client-costs.cjs');
-  assert.match(source, /local_agent_telemetry_machine_plus_energy/);
-  assert.match(source, /estimated/);
-  assert.match(source, /energy_kwh/);
+  const telemetry = normalizeLocalTelemetry({
+    summary_id: 'local-telemetry:test:1',
+    session_id: 'session-test',
+    started_at: '2026-08-25T20:00:00.000Z',
+    completed_at: '2026-08-25T21:00:00.000Z',
+    runtime_seconds: 3600,
+    sample_count: 720,
+    sampling_interval_seconds: 5,
+    cpu: { model: 'Test CPU', logical_cores: 16, average_utilization_percent: 40 },
+    memory: { total_bytes: 32 * 1024 ** 3, average_utilization_percent: 55 },
+    gpu: { names: ['Test GPU'], average_utilization_percent: 80, average_power_draw_watts: 120, power_sensor: 'nvidia_smi_instantaneous' },
+    power: { average_estimated_system_watts: 180, configured_ceiling_watts: 180, methods: ['gpu_sensor_plus_cpu_system_estimate'] },
+  }, 3600);
+  assert.equal(telemetry.sample_count, 720);
+  assert.equal(telemetry.power.average_estimated_system_watts, 180);
+  assert.equal(telemetry.energy_wh_estimated, 180);
+  assert.equal(telemetry.gpu.power_sensor, 'nvidia_smi_instantaneous');
+  assert.equal(telemetry.evidence_status, 'estimated');
+  assert.equal(normalizeLocalTelemetry({ sample_count: 0, power: { average_estimated_system_watts: 180 } }, 60), null);
 });
 
-test('l’agent Windows agrège CPU, GPU, mémoire et puissance sans prétendre mesurer le PC entier', () => {
+test('l’agent Windows agrège CPU, GPU, mémoire et puissance sans prétendre mesurer le PC entier', async () => {
   const previous = process.env.LOCAL_AGENT_NO_LISTEN;
   process.env.LOCAL_AGENT_NO_LISTEN = '1';
   try {
-    const sample = normalizeTelemetrySample({
-      timestamp: '2026-08-27T12:00:00.000Z',
-      cpu: { percent: 50 },
-      memory: { used_bytes: 16 * 1024 ** 3, total_bytes: 64 * 1024 ** 3 },
-      gpu: { utilization_percent: 80, memory_used_mb: 4000, memory_total_mb: 6144, power_watts: 70 },
-      process: { cpu_percent: 12, memory_rss_bytes: 500 * 1024 ** 2 },
-    });
-    assert.equal(sample.cpu.percent, 50);
-    assert.equal(sample.gpu.utilization_percent, 80);
-    assert.equal(sample.memory.total_bytes, 64 * 1024 ** 3);
-
-    const summary = summarizeSamples([
-      sample,
-      normalizeTelemetrySample({
-        ...sample,
-        timestamp: '2026-08-27T12:01:00.000Z',
-        cpu: { percent: 60 },
-        gpu: { ...sample.gpu, utilization_percent: 90, power_watts: 75 },
-      }),
-    ]);
-    assert.equal(summary.samples, 2);
-    assert.ok(summary.average.cpu_percent > 0);
-    assert.ok(summary.average.gpu_percent > 0);
-
-    const power = estimatePower(sample);
+    const localAgent = await import(`../local-agent/server.js?telemetry-test=${Date.now()}`);
+    const samples = [
+      {
+        captured_at: '2026-08-25T20:00:00.000Z',
+        cpu: { model: 'CPU', logical_cores: 16, utilization_percent: 20 },
+        memory: { total_bytes: 1000, utilization_percent: 50 },
+        gpu: { devices: [{ name: 'GPU', utilization_percent: 60, power_draw_watts: 100, power_sensor: 'nvidia_smi_instantaneous' }] },
+        power: { estimated_system_watts: 150, configured_ceiling_watts: 180, method: 'gpu_sensor_plus_cpu_system_estimate' },
+      },
+      {
+        captured_at: '2026-08-25T20:00:05.000Z',
+        cpu: { model: 'CPU', logical_cores: 16, utilization_percent: 40 },
+        memory: { total_bytes: 1000, utilization_percent: 70 },
+        gpu: { devices: [{ name: 'GPU', utilization_percent: 80, power_draw_watts: 120, power_sensor: 'nvidia_smi_instantaneous' }] },
+        power: { estimated_system_watts: 170, configured_ceiling_watts: 180, method: 'gpu_sensor_plus_cpu_system_estimate' },
+      },
+    ];
+    const summary = localAgent.summarizeTelemetrySamples(samples, { runtimeSeconds: 10 });
+    assert.equal(summary.sample_count, 2);
+    assert.equal(summary.cpu.average_utilization_percent, 30);
+    assert.equal(summary.gpu.average_power_draw_watts, 110);
+    assert.equal(summary.power.average_estimated_system_watts, 160);
+    assert.equal(summary.runtime_seconds, 10);
+    assert.equal(summary.evidence_status, 'estimated');
+    const power = localAgent.estimateSystemPower({ cpuPercent: 50, gpuDevices: [{ power_draw_watts: 100, utilization_percent: 80 }] });
     assert.equal(power.method, 'gpu_sensor_plus_cpu_system_estimate');
     assert.ok(power.watts > 100);
   } finally {
