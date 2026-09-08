@@ -1,0 +1,37 @@
+name: Materialize billing v4 source
+
+on:
+  push:
+    branches: [test/billing-v4-smoke-20260908]
+    paths: ['.github/workflows/materialize-billing-v4.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/billing-v4-smoke-20260908
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply canonical v4 source
+        run: |
+          node scripts/apply-billing-v4.cjs
+          node -c server-billing.cjs
+          node -c server-billing-template.cjs
+      - name: Remove temporary billing workflows
+        run: |
+          rm -f .github/workflows/finalize-billing-dynamic.yml
+          rm -f .github/workflows/billing-v4-smoke.yml
+          rm -f .github/workflows/materialize-billing-v4.yml
+      - name: Commit canonical billing source
+        run: |
+          git config user.name 'JS-Innov.IA Automation'
+          git config user.email 'info@jsinnovia.store'
+          git add server-billing.cjs scripts/apply-billing-v4.cjs tests/billing-template.test.cjs tests/billing-archive.test.cjs .github/workflows
+          git commit -m 'fix: canoniser la facturation dynamique v4'
+          git push origin test/billing-v4-smoke-20260908
