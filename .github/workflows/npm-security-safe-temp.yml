@@ -1,0 +1,39 @@
+name: NPM security safe fix temp
+on:
+  push:
+    branches: [fix/npm-security-safe-20260908]
+    paths: ['.github/workflows/npm-security-safe-temp.yml']
+permissions:
+  contents: write
+jobs:
+  fix-test-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/npm-security-safe-20260908
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Apply compatible lockfile fixes only
+        run: npm audit fix --package-lock-only --ignore-scripts || true
+      - name: Reinstall exact fixed lockfile
+        run: npm ci --ignore-scripts
+      - name: Require zero high or critical production vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
+      - name: Record remaining audit findings
+        run: npm audit --json || true
+      - name: Full tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+      - name: Commit only package-lock.json and remove temporary workflow
+        run: |
+          git config user.name 'JS-Innov.IA Automation'
+          git config user.email 'info@jsinnovia.store'
+          git rm .github/workflows/npm-security-safe-temp.yml
+          git add package-lock.json
+          git commit -m 'fix: appliquer les correctifs npm compatibles'
+          git push origin fix/npm-security-safe-20260908
