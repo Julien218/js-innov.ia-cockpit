@@ -77,6 +77,7 @@ jobs:
               console.log(type,'OK',b.length,'bytes',parsed.numpages,'page');
             }
             const fallback={...base}; delete fallback.commercial_highlight;
+            process.env.JSINNOVIA_COMMERCIAL_FEED_URL='http://127.0.0.1:9/unavailable';
             const fb=await generateInvoicePDF(fallback,'facture'); fs.writeFileSync('SMOKE-FACTURE-FALLBACK.pdf',fb);
             const parsed=await pdfParse(fb); assert.equal(parsed.numpages,1); assert.doesNotMatch(parsed.text,/Découvrez notre nouvelle APP/); assert.match(parsed.text,/L.INTELLIGENCE AU SERVICE DE VOS AMBITIONS/); assert.match(parsed.text,/info@jsinnovia\.store/);
             console.log('fallback OK',fb.length,'bytes');
