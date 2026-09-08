@@ -1,0 +1,25 @@
+name: NPM security audit temp
+on:
+  push:
+    branches: [audit/npm-security-20260908]
+    paths: ['.github/workflows/npm-security-audit-temp.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/npm-security-20260908
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Full dependency audit
+        run: npm audit --json || true
+      - name: Production dependency audit
+        run: npm audit --omit=dev --json || true
+      - name: Top-level outdated packages
+        run: npm outdated || true
