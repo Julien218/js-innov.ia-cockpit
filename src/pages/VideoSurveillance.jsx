@@ -27,20 +27,20 @@ function CameraSnapshot({ camera, clientEmail, large = false }) {
     let currentUrl = "";
     const load = async () => {
       try {
-        const response = await fetch(`/api/signage/manage/cameras/${camera.id}/snapshot`, { credentials: "same-origin", headers: clientEmail ? { "X-Client-Email": clientEmail } : {} });
+        const response = await fetch(`/api/signage/manage/cameras/${camera.id}/snapshot`, { credentials: "same-origin", headers: clientEmail ? { "X-Client-Email": clientEmail } : {}, cache: "no-store" });
         if (!response.ok) throw new Error("Image indisponible");
         const next = URL.createObjectURL(await response.blob());
         if (!active) return URL.revokeObjectURL(next);
         if (currentUrl) URL.revokeObjectURL(currentUrl);
         currentUrl = next;
         setUrl(next);
-        setState("Direct sécurisé");
+        setState(large ? "Vue rapprochée · contrôle 5 s" : "Contrôle normal · 60 s");
       } catch { if (active) setState("En attente de la passerelle"); }
     };
     load();
-    const timer = setInterval(load, 5000);
+    const timer = setInterval(load, large ? 5000 : 60000);
     return () => { active = false; clearInterval(timer); if (currentUrl) URL.revokeObjectURL(currentUrl); };
-  }, [camera.id, clientEmail]);
+  }, [camera.id, clientEmail, large]);
   return <div className={`relative bg-black flex items-center justify-center ${large ? "min-h-[60vh]" : "aspect-video"}`}>
     {url ? <img src={url} alt={`Vue de ${camera.name}`} className="h-full w-full object-contain" /> : <Camera className="w-10 h-10 text-white/40" />}
     <span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-2 py-1 text-[11px] text-white">{state}</span>
@@ -61,7 +61,7 @@ export default function VideoSurveillance() {
   const managedClients = clientsQuery.data?.clients || [];
   React.useEffect(() => { if (isAdmin && !managedClient && managedClients.length) setManagedClient(preferredManagedClient(managedClients)); }, [isAdmin, managedClient, managedClients]);
   const enabled = !isAdmin || Boolean(managedClient);
-  const { data = { gateways: [], cameras: [], recordings: [] }, error, isLoading } = useQuery({ queryKey: ["camera-dashboard", managedClient || "self"], queryFn: () => api("/manage/camera-dashboard", {}, managedClient), enabled, refetchInterval: 15000 });
+  const { data = { gateways: [], cameras: [], recordings: [] }, error, isLoading } = useQuery({ queryKey: ["camera-dashboard", managedClient || "self"], queryFn: () => api("/manage/camera-dashboard", {}, managedClient), enabled, refetchInterval: 60000 });
   const gateways = data.gateways || [], cameras = data.cameras || [], recordings = data.recordings || [];
   const gateway = gateways[0];
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["camera-dashboard", managedClient || "self"] });
@@ -92,5 +92,3 @@ export default function VideoSurveillance() {
     {selectedCamera && <div className="fixed inset-0 z-50 bg-black/90 p-4 flex flex-col"><div className="flex items-center justify-between text-white pb-3"><p className="font-semibold">{selectedCamera.name}</p><button onClick={() => setSelectedCamera(null)} className="rounded-lg border border-white/20 p-2"><X className="w-5 h-5"/></button></div><CameraSnapshot camera={selectedCamera} clientEmail={managedClient} large/></div>}
   </div>;
 }
-
-
