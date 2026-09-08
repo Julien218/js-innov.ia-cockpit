@@ -57,14 +57,25 @@ function mediaIdOf(item) {
 
 function durationOf(item, media) {
   const rendition = parseJson(media?.rendition);
-  const explicit = Number(
-    item?.durationSeconds ||
-    item?.duration_seconds ||
-    rendition?.durationSeconds ||
-    rendition?.duration_seconds ||
-    0
-  );
-  if (Number.isFinite(explicit) && explicit > 0) return { seconds: Math.max(1, explicit), estimated: false };
+  const mimeType = String(media?.mime_type || item?.media?.mime_type || '');
+  const isVideo = mimeType.startsWith('video/');
+  const candidates = isVideo
+    ? [
+        media?.duration_seconds,
+        rendition?.durationSeconds,
+        rendition?.duration_seconds,
+      ]
+    : [
+        item?.durationSeconds,
+        item?.duration_seconds,
+        media?.duration_seconds,
+        rendition?.durationSeconds,
+        rendition?.duration_seconds,
+      ];
+  for (const candidate of candidates) {
+    const seconds = Number(candidate || 0);
+    if (Number.isFinite(seconds) && seconds > 0) return { seconds: Math.max(1, seconds), estimated: false };
+  }
   return { seconds: 8, estimated: true };
 }
 
@@ -106,7 +117,7 @@ async function buildProgram(ownerEmail) {
     const mediaId = mediaIdOf(item);
     let media = null;
     if (mediaId) {
-      const rows = await query('select id,name,mime_type,rendition from signage_media where id=$1 and lower(owner_email)=lower($2) limit 1', [mediaId, ownerEmail]);
+      const rows = await query('select id,name,mime_type,duration_seconds,rendition from signage_media where id=$1 and lower(owner_email)=lower($2) limit 1', [mediaId, ownerEmail]);
       media = rows[0] || null;
     }
     const duration = durationOf(item, media);
