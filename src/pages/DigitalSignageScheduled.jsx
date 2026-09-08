@@ -5,6 +5,7 @@ import DigitalSignage from "@/pages/DigitalSignage";
 import SignageSchedulePanel from "@/components/signage/SignageSchedulePanel";
 import SignageMediaManager from "@/components/signage/SignageMediaManager";
 import SignageDisplayManager from "@/components/signage/SignageDisplayManager";
+import ScreenCameraProof from "@/components/signage/ScreenCameraProof";
 import SignelyaPriorityPlayer from "@/components/signage/SignelyaPriorityPlayer";
 import { useAuth } from "@/lib/AuthContext";
 import "./signelya-dashboard-v2.css";
@@ -123,6 +124,14 @@ export default function DigitalSignageScheduled() {
             />
           </section>
         )}
+
+        <div className="mt-4">
+          <ScreenCameraProof
+            managedClient={managedClient}
+            enabled={dashboardEnabled}
+            isAdmin={isAdmin}
+          />
+        </div>
       </div>
 
       <div className="signelya-legacy-dashboard">
