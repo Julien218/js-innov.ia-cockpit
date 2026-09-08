@@ -1,0 +1,101 @@
+name: Billing v4 smoke
+
+on:
+  push:
+    branches: [test/billing-v4-smoke-20260908]
+    paths: ['.github/workflows/billing-v4-smoke.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Apply production billing v4 transform
+        run: node scripts/apply-billing-v4.cjs
+      - name: Syntax checks
+        run: |
+          node -c server-billing.cjs
+          node -c server-billing-template.cjs
+      - name: Verify v4 archive contract
+        run: |
+          node <<'NODE'
+          const fs=require('fs'); const assert=require('assert');
+          const s=fs.readFileSync('server-billing.cjs','utf8');
+          assert.match(s,/BILLING_PDF_VERSION = 'official-v4-dynamic'/);
+          assert.match(s,/doc\.pdf_version === BILLING_PDF_VERSION/);
+          assert.match(s,/getDocumentBufferForUser/);
+          assert.match(s,/storeBuffer/);
+          assert.match(s,/pdf_version: BILLING_PDF_VERSION/);
+          assert.match(s,/pdf_conformite_statut: 'conforme'/);
+          assert.match(s,/crypto\.createHash\('sha256'\)/);
+          console.log('Archive contract v4 OK');
+          NODE
+      - name: Verify live commercial highlight
+        run: |
+          curl -fsSL --max-time 10 https://www.jsinnovia.com/commercial-highlight.json -o /tmp/highlight.json
+          node <<'NODE'
+          const fs=require('fs'), assert=require('assert');
+          const p=JSON.parse(fs.readFileSync('/tmp/highlight.json','utf8'));
+          const active=(p.highlights||[]).filter(x=>x.active===true).sort((a,b)=>Date.parse(b.publishedAt||0)-Date.parse(a.publishedAt||0))[0];
+          assert(active,'no active highlight');
+          assert.equal(active.name,'Signelya');
+          assert.match(active.title,/nouvelle APP/i);
+          assert.match(active.url,/^https:\/\/signelya\.jsinnovia\.com\//);
+          console.log('Live highlight OK:', active.name, '-', active.title);
+          NODE
+      - name: Generate invoice, quote and fallback PDFs
+        run: |
+          node <<'NODE'
+          const fs=require('fs'), assert=require('assert');
+          const pdfParse=require('pdf-parse');
+          const {generateInvoicePDF}=require('./server-billing-template.cjs');
+          const base={
+            numero:'TEST-2026-0000',date_emission:'2026-09-08',date_echeance:'2026-10-08',date_validite:'2026-10-08',periode:'Septembre 2026',
+            client_nom:'CLIENT TEST NON COMPTABLE',client_adresse:'Rue du Test 1',client_ville:'7370 Dour, Belgique',client_tva:'BE 0000.000.000',
+            objet:'Validation smoke test',mode_paiement:'Virement bancaire',conditions_paiement:'Document de test',montant_ht:100,montant_tva:21,montant_ttc:121,tva:21,
+            items:[{description:'Prestation de validation',url:'www.jsinnovia.com',note:'Document technique de test sans valeur comptable.',periode:'09/2026',unit_price_ht:100,tva:21,total_ttc:121}],
+            commercial_highlight:{id:'signelya-launch',eyebrow:'NOUVEAUTÉ JS-Innov.IA',title:'Découvrez notre nouvelle APP',description:'Signelya — conçue pour vous simplifier la vie et rendre votre communication plus fluide au quotidien.',cta:'Découvrir Signelya',url:'https://signelya.jsinnovia.com/'}
+          };
+          (async()=>{
+            for (const [type,file] of [['facture','SMOKE-FACTURE-V4.pdf'],['devis','SMOKE-DEVIS-V4.pdf']]) {
+              const b=await generateInvoicePDF({...base},type); fs.writeFileSync(file,b);
+              assert.equal(b.subarray(0,5).toString(),'%PDF-');
+              const parsed=await pdfParse(b); assert.equal(parsed.numpages,1);
+              assert.match(parsed.text,type==='facture'?/FACTURE/:/DEVIS/);
+              assert.match(parsed.text,/NOUVEAUTÉ JS-Innov\.IA/);
+              assert.match(parsed.text,/Découvrez notre nouvelle APP/);
+              assert.match(parsed.text,/Signelya/);
+              assert.match(parsed.text,/info@jsinnovia\.store/);
+              console.log(type,'OK',b.length,'bytes',parsed.numpages,'page');
+            }
+            const fallback={...base}; delete fallback.commercial_highlight;
+            const fb=await generateInvoicePDF(fallback,'facture'); fs.writeFileSync('SMOKE-FACTURE-FALLBACK.pdf',fb);
+            const parsed=await pdfParse(fb); assert.equal(parsed.numpages,1); assert.doesNotMatch(parsed.text,/Découvrez notre nouvelle APP/); assert.match(parsed.text,/L.INTELLIGENCE AU SERVICE DE VOS AMBITIONS/); assert.match(parsed.text,/info@jsinnovia\.store/);
+            console.log('fallback OK',fb.length,'bytes');
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+      - name: Existing billing template tests
+        run: node --test tests/billing-template.test.cjs
+      - name: Cockpit production reachability
+        run: |
+          code=$(curl -sS -o /tmp/cockpit.html -w '%{http_code}' --max-time 15 https://cockpit.jsinnovia.com/)
+          test "$code" = "200" || test "$code" = "302"
+          echo "cockpit.jsinnovia.com HTTP $code"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: billing-v4-smoke-pdfs
+          path: |
+            SMOKE-FACTURE-V4.pdf
+            SMOKE-DEVIS-V4.pdf
+            SMOKE-FACTURE-FALLBACK.pdf
+          retention-days: 2
+          if-no-files-found: warn
