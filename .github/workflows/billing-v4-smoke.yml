@@ -54,9 +54,7 @@ jobs:
       - name: Generate invoice and quote PDFs with promo
         run: |
           node <<'NODE'
-          const fs=require('fs'), assert=require('assert');
-          const pdfParse=require('pdf-parse');
-          const {generateInvoicePDF}=require('./server-billing-template.cjs');
+          const fs=require('fs'), assert=require('assert'); const pdfParse=require('pdf-parse'); const {generateInvoicePDF}=require('./server-billing-template.cjs');
           const base={numero:'TEST-2026-0000',date_emission:'2026-09-08',date_echeance:'2026-10-08',date_validite:'2026-10-08',periode:'Septembre 2026',client_nom:'CLIENT TEST NON COMPTABLE',client_adresse:'Rue du Test 1',client_ville:'7370 Dour, Belgique',client_tva:'BE 0000.000.000',objet:'Validation smoke test',mode_paiement:'Virement bancaire',conditions_paiement:'Document de test',montant_ht:100,montant_tva:21,montant_ttc:121,tva:21,items:[{description:'Prestation de validation',url:'www.jsinnovia.com',note:'Document technique de test sans valeur comptable.',periode:'09/2026',unit_price_ht:100,tva:21,total_ttc:121}],commercial_highlight:{id:'signelya-launch',eyebrow:'NOUVEAUTÉ JS-Innov.IA',title:'Découvrez notre nouvelle APP',description:'Signelya — conçue pour vous simplifier la vie et rendre votre communication plus fluide au quotidien.',cta:'Découvrir Signelya',url:'https://signelya.jsinnovia.com/'}};
           (async()=>{for(const [type,file] of [['facture','SMOKE-FACTURE-V4.pdf'],['devis','SMOKE-DEVIS-V4.pdf']]){const b=await generateInvoicePDF({...base},type);fs.writeFileSync(file,b);assert.equal(b.subarray(0,5).toString(),'%PDF-');const parsed=await pdfParse(b);assert.equal(parsed.numpages,1);assert.match(parsed.text,type==='facture'?/FACTURE/:/DEVIS/);assert.match(parsed.text,/NOUVEAUTÉ JS-Innov\.IA/);assert.match(parsed.text,/Découvrez notre nouvelle APP/);assert.match(parsed.text,/Signelya/);assert.match(parsed.text,/info@jsinnovia\.store/);console.log(type,'OK',b.length,'bytes',parsed.numpages,'page');}})().catch(e=>{console.error(e);process.exit(1)});
           NODE
