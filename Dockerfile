@@ -57,6 +57,7 @@ COPY --from=builder /app/server-assistant.cjs ./server-assistant.cjs
 COPY --from=builder /app/server-public-elynea.cjs ./server-public-elynea.cjs
 COPY --from=builder /app/server-assistant-batch.cjs ./server-assistant-batch.cjs
 COPY --from=builder /app/server-task-batch.cjs ./server-task-batch.cjs
+COPY --from=builder /app/server-task-context.cjs ./server-task-context.cjs
 COPY --from=builder /app/server-nova-executors.cjs ./server-nova-executors.cjs
 COPY --from=builder /app/server-nova-video-direct.cjs ./server-nova-video-direct.cjs
 COPY --from=builder /app/server-immediate-execution-policy.cjs ./server-immediate-execution-policy.cjs
@@ -138,6 +139,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-video-generation.cjs \
  && test -f /app/server-assistant-batch.cjs \
  && test -f /app/server-task-batch.cjs \
+ && test -f /app/server-task-context.cjs \
  && test -f /app/server-nova-executors.cjs \
  && test -f /app/server-nova-video-direct.cjs \
  && test -f /app/server-immediate-execution-policy.cjs \
@@ -180,6 +182,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-video-generation.cjs \
  && node --check /app/server-assistant-batch.cjs \
  && node --check /app/server-task-batch.cjs \
+ && node --check /app/server-task-context.cjs \
  && node --check /app/server-nova-executors.cjs \
  && node --check /app/server-nova-video-direct.cjs \
  && node --check /app/server-immediate-execution-policy.cjs \
@@ -188,6 +191,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-public-elynea.cjs \
  && node --check /app/lib/governance-export.cjs \
  && node -e "require('/app/server-led-ad-director.cjs'); require('/app/server-agent-registry.cjs'); require('/app/server-nova-routing.cjs')" \
+ && node -e "require('/app/server-task-context.cjs'); require('/app/server-assistant-batch.cjs'); require('/app/server-specialist-tasks.cjs')" \
  && echo "Required runtime modules check OK"
 
 RUN mkdir -p /etc/nginx/http.d && cat > /etc/nginx/http.d/default.conf << 'NGINXEOF'
