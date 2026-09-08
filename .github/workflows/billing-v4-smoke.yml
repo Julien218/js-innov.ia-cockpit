@@ -51,37 +51,23 @@ jobs:
           assert.match(active.url,/^https:\/\/signelya\.jsinnovia\.com\//);
           console.log('Live highlight OK:', active.name, '-', active.title);
           NODE
-      - name: Generate invoice, quote and fallback PDFs
+      - name: Generate invoice and quote PDFs with promo
         run: |
           node <<'NODE'
           const fs=require('fs'), assert=require('assert');
           const pdfParse=require('pdf-parse');
           const {generateInvoicePDF}=require('./server-billing-template.cjs');
-          const base={
-            numero:'TEST-2026-0000',date_emission:'2026-09-08',date_echeance:'2026-10-08',date_validite:'2026-10-08',periode:'Septembre 2026',
-            client_nom:'CLIENT TEST NON COMPTABLE',client_adresse:'Rue du Test 1',client_ville:'7370 Dour, Belgique',client_tva:'BE 0000.000.000',
-            objet:'Validation smoke test',mode_paiement:'Virement bancaire',conditions_paiement:'Document de test',montant_ht:100,montant_tva:21,montant_ttc:121,tva:21,
-            items:[{description:'Prestation de validation',url:'www.jsinnovia.com',note:'Document technique de test sans valeur comptable.',periode:'09/2026',unit_price_ht:100,tva:21,total_ttc:121}],
-            commercial_highlight:{id:'signelya-launch',eyebrow:'NOUVEAUTÉ JS-Innov.IA',title:'Découvrez notre nouvelle APP',description:'Signelya — conçue pour vous simplifier la vie et rendre votre communication plus fluide au quotidien.',cta:'Découvrir Signelya',url:'https://signelya.jsinnovia.com/'}
-          };
-          (async()=>{
-            for (const [type,file] of [['facture','SMOKE-FACTURE-V4.pdf'],['devis','SMOKE-DEVIS-V4.pdf']]) {
-              const b=await generateInvoicePDF({...base},type); fs.writeFileSync(file,b);
-              assert.equal(b.subarray(0,5).toString(),'%PDF-');
-              const parsed=await pdfParse(b); assert.equal(parsed.numpages,1);
-              assert.match(parsed.text,type==='facture'?/FACTURE/:/DEVIS/);
-              assert.match(parsed.text,/NOUVEAUTÉ JS-Innov\.IA/);
-              assert.match(parsed.text,/Découvrez notre nouvelle APP/);
-              assert.match(parsed.text,/Signelya/);
-              assert.match(parsed.text,/info@jsinnovia\.store/);
-              console.log(type,'OK',b.length,'bytes',parsed.numpages,'page');
-            }
-            const fallback={...base}; delete fallback.commercial_highlight;
-            process.env.JSINNOVIA_COMMERCIAL_FEED_URL='http://127.0.0.1:9/unavailable';
-            const fb=await generateInvoicePDF(fallback,'facture'); fs.writeFileSync('SMOKE-FACTURE-FALLBACK.pdf',fb);
-            const parsed=await pdfParse(fb); assert.equal(parsed.numpages,1); assert.doesNotMatch(parsed.text,/Découvrez notre nouvelle APP/); assert.match(parsed.text,/L.INTELLIGENCE AU SERVICE DE VOS AMBITIONS/); assert.match(parsed.text,/info@jsinnovia\.store/);
-            console.log('fallback OK',fb.length,'bytes');
-          })().catch(e=>{console.error(e);process.exit(1)});
+          const base={numero:'TEST-2026-0000',date_emission:'2026-09-08',date_echeance:'2026-10-08',date_validite:'2026-10-08',periode:'Septembre 2026',client_nom:'CLIENT TEST NON COMPTABLE',client_adresse:'Rue du Test 1',client_ville:'7370 Dour, Belgique',client_tva:'BE 0000.000.000',objet:'Validation smoke test',mode_paiement:'Virement bancaire',conditions_paiement:'Document de test',montant_ht:100,montant_tva:21,montant_ttc:121,tva:21,items:[{description:'Prestation de validation',url:'www.jsinnovia.com',note:'Document technique de test sans valeur comptable.',periode:'09/2026',unit_price_ht:100,tva:21,total_ttc:121}],commercial_highlight:{id:'signelya-launch',eyebrow:'NOUVEAUTÉ JS-Innov.IA',title:'Découvrez notre nouvelle APP',description:'Signelya — conçue pour vous simplifier la vie et rendre votre communication plus fluide au quotidien.',cta:'Découvrir Signelya',url:'https://signelya.jsinnovia.com/'}};
+          (async()=>{for(const [type,file] of [['facture','SMOKE-FACTURE-V4.pdf'],['devis','SMOKE-DEVIS-V4.pdf']]){const b=await generateInvoicePDF({...base},type);fs.writeFileSync(file,b);assert.equal(b.subarray(0,5).toString(),'%PDF-');const parsed=await pdfParse(b);assert.equal(parsed.numpages,1);assert.match(parsed.text,type==='facture'?/FACTURE/:/DEVIS/);assert.match(parsed.text,/NOUVEAUTÉ JS-Innov\.IA/);assert.match(parsed.text,/Découvrez notre nouvelle APP/);assert.match(parsed.text,/Signelya/);assert.match(parsed.text,/info@jsinnovia\.store/);console.log(type,'OK',b.length,'bytes',parsed.numpages,'page');}})().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+      - name: Generate fallback PDF without commercial feed
+        env:
+          JSINNOVIA_COMMERCIAL_FEED_URL: http://127.0.0.1:9/unavailable
+        run: |
+          node <<'NODE'
+          const fs=require('fs'), assert=require('assert'); const pdfParse=require('pdf-parse'); const {generateInvoicePDF}=require('./server-billing-template.cjs');
+          const doc={numero:'TEST-FALLBACK',date_emission:'2026-09-08',date_echeance:'2026-10-08',periode:'Septembre 2026',client_nom:'CLIENT TEST NON COMPTABLE',client_adresse:'Rue du Test 1',client_ville:'7370 Dour, Belgique',client_tva:'BE 0000.000.000',objet:'Fallback smoke test',montant_ht:100,montant_tva:21,montant_ttc:121,tva:21,items:[{description:'Prestation test',periode:'09/2026',unit_price_ht:100,tva:21,total_ttc:121}]};
+          (async()=>{const b=await generateInvoicePDF(doc,'facture');fs.writeFileSync('SMOKE-FACTURE-FALLBACK.pdf',b);const parsed=await pdfParse(b);assert.equal(parsed.numpages,1);assert.doesNotMatch(parsed.text,/Découvrez notre nouvelle APP/);assert.match(parsed.text,/L.INTELLIGENCE AU SERVICE DE VOS AMBITIONS/);assert.match(parsed.text,/info@jsinnovia\.store/);console.log('fallback OK',b.length,'bytes');})().catch(e=>{console.error(e);process.exit(1)});
           NODE
       - name: Existing billing template tests
         run: node --test tests/billing-template.test.cjs
