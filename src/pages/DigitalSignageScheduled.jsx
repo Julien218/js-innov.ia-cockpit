@@ -112,6 +112,17 @@ export default function DigitalSignageScheduled() {
             Ajouter une vidéo ou une image
           </button>
         </section>
+
+        {player && (
+          <section className="mt-4 rounded-2xl border border-cyan-500/20 bg-card p-3 shadow-sm md:p-4">
+            <SignageDisplayManager
+              player={player}
+              managedClient={managedClient}
+              dashboardData={dashboard}
+              summaryOnly
+            />
+          </section>
+        )}
       </div>
 
       <div className="signelya-legacy-dashboard">
@@ -157,7 +168,7 @@ export default function DigitalSignageScheduled() {
               Diagnostic avancé de l’écran
             </summary>
             <div className="border-t p-3 md:p-4">
-              <SignageDisplayManager player={player} managedClient={managedClient} />
+              <SignageDisplayManager player={player} managedClient={managedClient} dashboardData={dashboard} />
             </div>
           </details>
         )}
