@@ -1,12 +1,12 @@
-name: NPM security audit temp
+name: NPM security safe-fix temp
 on:
   push:
     branches: [audit/npm-security-20260908]
     paths: ['.github/workflows/npm-security-audit-temp.yml']
 permissions:
-  contents: read
+  contents: write
 jobs:
-  audit:
+  fix-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,9 +17,24 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Full dependency audit
+      - name: Apply only non-breaking audit fixes to lockfile
+        run: npm audit fix --package-lock-only --ignore-scripts
+      - name: Reinstall exact fixed lockfile
+        run: npm ci --ignore-scripts
+      - name: Verify production audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: Full audit report
         run: npm audit --json || true
-      - name: Production dependency audit
-        run: npm audit --omit=dev --json || true
-      - name: Top-level outdated packages
-        run: npm outdated || true
+      - name: Run full test suite
+        run: npm test
+      - name: Build application
+        run: npm run build
+      - name: Commit only safe lockfile update
+        run: |
+          git config user.name 'JS-Innov.IA Automation'
+          git config user.email 'info@jsinnovia.store'
+          git rm .github/workflows/npm-security-audit-temp.yml
+          git add package-lock.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'fix: appliquer les correctifs npm compatibles'
+          git push origin audit/npm-security-20260908
