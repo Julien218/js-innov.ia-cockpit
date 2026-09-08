@@ -14,19 +14,19 @@ async function fetchCommercialHighlight() {
   if (commercialHighlightCache.expiresAt > now) return commercialHighlightCache.value;
   try {
     const response = await fetch(COMMERCIAL_HIGHLIGHT_URL, { signal: AbortSignal.timeout(2500), headers: { Accept: 'application/json' } });
-    if (!response.ok) throw new Error(\`highlight \${response.status}\`);
+    if (!response.ok) throw new Error(`highlight ${response.status}`);
     const payload = await response.json();
     const highlights = Array.isArray(payload.highlights) ? payload.highlights : [];
     const active = highlights.filter((item) => item && item.active === true && (!item.publishedAt || Date.parse(item.publishedAt) <= now)).sort((a,b) => Date.parse(b.publishedAt || 0) - Date.parse(a.publishedAt || 0))[0] || null;
     const value = active ? {
       id: String(active.id || '').slice(0,80), eyebrow: String(active.eyebrow || 'NOUVEAUTÉ JS-Innov.IA').slice(0,80),
       title: String(active.title || '').slice(0,100), description: String(active.description || '').slice(0,240),
-      cta: String(active.cta || 'Découvrir').slice(0,60), url: /^https:\\/\\//i.test(String(active.url || '')) ? String(active.url).slice(0,240) : '', publishedAt: active.publishedAt || null,
+      cta: String(active.cta || 'Découvrir').slice(0,60), url: /^https:\/\//i.test(String(active.url || '')) ? String(active.url).slice(0,240) : '', publishedAt: active.publishedAt || null,
     } : null;
     commercialHighlightCache = { expiresAt: now + 600000, value };
     return value;
   } catch (error) {
-    console.warn(\`[BILLING] Nouveauté commerciale indisponible: \${error.message}\`);
+    console.warn(`[BILLING] Nouveauté commerciale indisponible: ${error.message}`);
     commercialHighlightCache = { expiresAt: now + 60000, value: null };
     return null;
   }
@@ -51,7 +51,12 @@ async function fetchCommercialHighlight() {
 function patchTemplate() {
   const path = 'server-billing-template.cjs';
   let s = fs.readFileSync(path, 'utf8');
+
+  // Le modèle actuel sait déjà résoudre et afficher la nouveauté commerciale.
+  // Dans ce cas, aucune transformation supplémentaire n'est nécessaire.
+  if (s.includes('resolveCommercialHighlight') && s.includes('drawLaunchFooter') && s.includes('commercial_highlight')) return;
   if (s.includes('const promo=doc.commercial_highlight;')) return;
+
   const old = `  const footerY=770;
   line(pdf,105,footerY,165,footerY,C.gold2,.65);
   line(pdf,430,footerY,490,footerY,C.gold2,.65);
@@ -67,7 +72,7 @@ function patchTemplate() {
     text(pdf,promo.title,M+12,footerY+18,{size:8.2,font:'Helvetica-Bold',color:C.ink,width:185,height:12,ellipsis:true});
     text(pdf,promo.description||'',M+205,footerY+9,{size:6.1,color:C.text,width:235,height:28,ellipsis:true,lineGap:1.2});
     text(pdf,promo.cta||'Découvrir',M+449,footerY+12,{size:6.2,font:'Helvetica-Bold',color:C.gold2,width:82,align:'right'});
-    if(promo.url) text(pdf,promo.url.replace(/^https?:\\/\\//,'').replace(/\\/$/,''),M+410,footerY+27,{size:5.5,color:C.muted,width:121,align:'right',height:10,ellipsis:true});
+    if(promo.url) text(pdf,promo.url.replace(/^https?:\/\//,'').replace(/\/$/,''),M+410,footerY+27,{size:5.5,color:C.muted,width:121,align:'right',height:10,ellipsis:true});
   } else {
     line(pdf,105,footerY+18,165,footerY+18,C.gold2,.65); line(pdf,430,footerY+18,490,footerY+18,C.gold2,.65);
     text(pdf,"L’INTELLIGENCE AU SERVICE DE VOS AMBITIONS",170,footerY+13,{size:6.4,font:'Helvetica',color:C.ink,width:255,align:'center',characterSpacing:1.15});
