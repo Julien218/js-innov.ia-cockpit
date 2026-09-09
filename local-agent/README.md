@@ -30,3 +30,22 @@ Les seuls outils exécutables sont `ffmpeg_version`, `ffprobe_file` et `list_dir
 ## Production locale
 
 La version Electron 1.0.19 embarque et démarre ce composant automatiquement. Si un ancien agent occupe déjà 8787, le moteur embarqué démarre sur 8788 et NOVA le privilégie. Il ne doit pas être déployé sur Railway : Ollama et les outils restent sur le PC.
+
+
+## Analyse musicale — Elynea Music Motion Studio
+
+Le point POST /api/music-motion/analyze reçoit une chanson encodée localement, la transcrit avec faster-whisper et transmet uniquement le texte et les timecodes à Ollama pour construire un plan de réalisation. Le fichier audio temporaire est supprimé après l’analyse.
+
+Installation optionnelle sous Windows :
+
+    python -m pip install -r .\requirements-music-motion.txt
+
+Variables utiles dans .env :
+
+- MUSIC_MOTION_PYTHON : interpréteur Python à utiliser ;
+- MUSIC_MOTION_WHISPER_MODEL : modèle, par défaut small ;
+- MUSIC_MOTION_WHISPER_DEVICE : cuda ou cpu ;
+- MUSIC_MOTION_WHISPER_COMPUTE_TYPE : par défaut int8 ;
+- MUSIC_MOTION_WHISPER_LANGUAGE : par défaut fr.
+
+Si Whisper ou librosa n’est pas installé, l’interface signale précisément le service manquant et conserve une timeline modifiable de secours.
