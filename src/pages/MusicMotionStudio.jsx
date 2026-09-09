@@ -55,7 +55,7 @@ const DEFAULT_BRIEF = [
   'Univers premium futuriste JS‑Innov.IA, bleu nuit, or, cyan et violet.',
   'Conserver strictement l’identité visuelle d’Elynea : visage, mèche, casque, micro, ailes et proportions.',
   'Aucun changement de personnage entre les plans. Mouvements propres, lisibles et réutilisables.',
-].join('\\n');
+].join('\n');
 
 function formatTime(value) {
   const seconds = Math.max(0, Number(value) || 0);
