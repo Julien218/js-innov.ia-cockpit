@@ -13,7 +13,7 @@ const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
 const VERSION = '1.5.0';
-const MAX_BODY = 20 * 1024 * 1024;
+const MAX_BODY = 5 * 1024 * 1024;
 const approvals = new Map();
 const runs = new Map();
 const execOptions = { windowsHide: true, timeout: 30_000, maxBuffer: 1024 * 1024 };
@@ -83,12 +83,12 @@ function send(req, res, status, payload) {
   res.end(JSON.stringify(payload));
 }
 
-async function readJson(req) {
+async function readJson(req, maxBody = MAX_BODY) {
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > MAX_BODY) throw Object.assign(new Error('payload_too_large'), { status: 413 });
+    if (size > maxBody) throw Object.assign(new Error('payload_too_large'), { status: 413 });
     chunks.push(chunk);
   }
   return chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {};
@@ -840,7 +840,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/api/agent/models') return send(req, res, 200, { models: (await health()).services.ollama.models });
     if (req.method === 'GET' && url.pathname === '/api/tools') return send(req, res, 200, await health());
     if (req.method === 'POST' && url.pathname === '/api/music-motion/analyze') {
-      const body = await readJson(req);
+      const body = await readJson(req, 20 * 1024 * 1024);
       return send(req, res, 200, await analyzeMusicMotion(body));
     }
     if (req.method === 'GET' && url.pathname.startsWith('/api/tools/runs/')) {
