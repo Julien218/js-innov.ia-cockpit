@@ -1,0 +1,6 @@
+# Dépendances optionnelles pour l’analyse musicale locale.
+# faster-whisper fournit les paroles et les timecodes mot par mot.
+# librosa/soundfile fournissent BPM et indicateurs d’énergie.
+faster-whisper>=1.1.0
+librosa>=0.10.2
+soundfile>=0.12.1

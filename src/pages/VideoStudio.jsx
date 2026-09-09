@@ -105,6 +105,47 @@ export default function VideoStudio() {
   const initNew = (missingRequestedProject = false) => {
     const search = new URLSearchParams(window.location.search);
     const projectId = search.get("project");
+    const musicMotion = search.get("music_motion");
+    if (musicMotion === "1" && !projectId) {
+      try {
+        const rawDraft = window.localStorage.getItem("jsinnovia.music-motion.draft");
+        const draft = rawDraft ? JSON.parse(rawDraft) : null;
+        const draftScenes = Array.isArray(draft?.scenes) ? draft.scenes : [];
+        if (!draft || draftScenes.length === 0) {
+          throw new Error("Le storyboard musical est vide.");
+        }
+        const clips = draftScenes.map((scene, index) => ({
+          id: String(scene.id || "music_scene_" + (index + 1)),
+          url: "",
+          name: String(scene.label || "Scène " + (index + 1)),
+          type: "image",
+          duration: Math.max(1, Number(scene.end || 0) - Number(scene.start || 0)),
+          transition: "fade",
+          prompt: String(scene.prompt || ""),
+          motion: String(scene.motion || ""),
+          start: Number(scene.start || 0),
+          end: Number(scene.end || 0),
+          dance: Boolean(scene.dance),
+        }));
+        setSourceProject(null);
+        setTracks(null);
+        setVp(createVideoProject({
+          title: draft.title || "Nouveau clip musical",
+          audio_url: draft.audio?.preview_url || "",
+          audio_name: draft.audio?.name || "",
+          audio_duration: draft.audio?.duration_seconds || null,
+          clips,
+          ai_prompt: draftScenes.map((scene) => String(scene.prompt || "")).filter(Boolean).join("\n\n"),
+          music_motion_plan: draft,
+        }));
+        window.localStorage.removeItem("jsinnovia.music-motion.draft");
+        setLoading(false);
+        return;
+      } catch (error) {
+        setStudioError("Storyboard musical non chargé : " + getErrorMessage(error, "format invalide"));
+      }
+    }
+
     if (projectId) {
       base44.entities.Project.filter({ id: projectId }).then(([p]) => {
         setSourceProject(p || null);

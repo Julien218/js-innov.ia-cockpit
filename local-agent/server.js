@@ -1,7 +1,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
-import { appendFile, readFile, readdir, stat } from 'node:fs/promises';
+import { appendFile, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -83,12 +83,12 @@ function send(req, res, status, payload) {
   res.end(JSON.stringify(payload));
 }
 
-async function readJson(req) {
+async function readJson(req, maxBody = MAX_BODY) {
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > MAX_BODY) throw Object.assign(new Error('payload_too_large'), { status: 413 });
+    if (size > maxBody) throw Object.assign(new Error('payload_too_large'), { status: 413 });
     chunks.push(chunk);
   }
   return chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {};
@@ -372,6 +372,158 @@ async function ollama(prompt, model = DEFAULT_MODEL) {
   const payload = await response.json();
   if (!response.ok) throw new Error(payload?.error || `Ollama ${response.status}`);
   return String(payload.response || '').trim();
+}
+
+
+function audioExtension(mimeType) {
+  const normalized = String(mimeType || '').toLowerCase();
+  if (normalized.includes('wav')) return 'wav';
+  if (normalized.includes('mpeg') || normalized.includes('mp3')) return 'mp3';
+  if (normalized.includes('ogg')) return 'ogg';
+  if (normalized.includes('webm')) return 'webm';
+  return 'm4a';
+}
+
+function parseJsonDocument(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  const candidates = [
+    text.replace(/^\x60{3}(?:json)?\s*/i, '').replace(/\s*\x60{3}$/i, '').trim(),
+    text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1),
+  ];
+  for (const candidate of candidates) {
+    if (!candidate || !candidate.startsWith('{')) continue;
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  return null;
+}
+
+function normalizeMusicMotionPlan(plan, body = {}) {
+  if (!plan || typeof plan !== 'object') return null;
+  const sections = Array.isArray(plan.sections) ? plan.sections : [];
+  return {
+    visual_theme: String(plan.visual_theme || body.visual_theme || 'premium cinematic JS-Innov.IA'),
+    dance_decision: ['required', 'optional', 'none'].includes(plan.dance_decision)
+      ? plan.dance_decision
+      : (body.dance_allowed === false ? 'none' : 'optional'),
+    master_choreography: plan.master_choreography && typeof plan.master_choreography === 'object'
+      ? {
+          enabled: Boolean(plan.master_choreography.enabled),
+          gestures: Array.isArray(plan.master_choreography.gestures)
+            ? plan.master_choreography.gestures.map((item) => String(item).slice(0, 280)).slice(0, 6)
+            : [],
+          rule: String(plan.master_choreography.rule || '').slice(0, 1000),
+        }
+      : { enabled: false, gestures: [], rule: '' },
+    sections: sections.slice(0, 40).map((section, index) => ({
+      id: String(section.id || 'local-scene-' + (index + 1)),
+      type: String(section.type || 'scene').slice(0, 40),
+      label: String(section.label || 'Scène ' + (index + 1)).slice(0, 160),
+      start: Math.max(0, Number(section.start) || 0),
+      end: Math.max(0, Number(section.end) || 0),
+      dance: Boolean(section.dance),
+      motion: String(section.motion || '').slice(0, 1200),
+      prompt: String(section.prompt || '').slice(0, 4000),
+    })),
+  };
+}
+
+async function analyzeMusicMotion(body = {}) {
+  const rawDataUrl = String(body.audio_data_url || '');
+  const match = rawDataUrl.match(/^data:([^;,]+);base64,([\s\S]+)$/i);
+  if (!match) throw Object.assign(new Error('audio_data_url_invalid'), { status: 400 });
+
+  const mimeType = match[1].toLowerCase();
+  const audioBuffer = Buffer.from(match[2], 'base64');
+  const maxAudioBytes = 14 * 1024 * 1024;
+  if (!audioBuffer.length) throw Object.assign(new Error('audio_empty'), { status: 400 });
+  if (audioBuffer.length > maxAudioBytes) throw Object.assign(new Error('audio_too_large'), { status: 413 });
+
+  const workDir = path.join(os.tmpdir(), 'JS-InnovIA', 'MusicMotion');
+  mkdirSync(workDir, { recursive: true });
+  const audioPath = path.join(workDir, crypto.randomUUID() + '.' + audioExtension(mimeType));
+  await writeFile(audioPath, audioBuffer);
+
+  try {
+    const python = process.env.MUSIC_MOTION_PYTHON || process.env.PYTHON || 'python';
+    const script = path.join(path.dirname(process.argv[1] || '.'), 'music_motion_analyzer.py');
+    let lowLevel;
+    try {
+      const result = await execFileAsync(
+        python,
+        [script, audioPath],
+        { windowsHide: true, timeout: 20 * 60 * 1000, maxBuffer: 8 * 1024 * 1024 },
+      );
+      lowLevel = parseJsonDocument(result.stdout) || {
+        ok: false,
+        error_code: 'analyzer_invalid_json',
+        warnings: ['Le script audio local n’a pas renvoyé de JSON exploitable.'],
+      };
+    } catch (error) {
+      throw Object.assign(new Error('local_audio_analyzer_unavailable'), {
+        status: 503,
+        details: String(error.stderr || error.message || '').slice(0, 1200),
+      });
+    }
+
+    const warnings = Array.isArray(lowLevel.warnings) ? [...lowLevel.warnings] : [];
+    let plan = null;
+    let llm = { available: false, model: DEFAULT_MODEL };
+
+    if (lowLevel.transcript) {
+      const analysisPrompt = [
+        'Tu es le directeur artistique local de JS-Innov.IA.',
+        'Retourne uniquement un objet JSON valide, sans markdown.',
+        'Analyse le transcript et les timecodes fournis pour proposer une mise en scène synchronisée.',
+        'Le mode peut être auto, dance, cinematic, advertising ou custom.',
+        'Si dance_allowed=false, dance_decision doit être none.',
+        'En mode auto, active la danse seulement si le refrain et la demande le justifient.',
+        'Si la danse est activée, invente au maximum trois gestes simples et répète exactement cette séquence à chaque refrain.',
+        'Ne transforme jamais le personnage de référence et ne change pas son identité.',
+        'Schéma obligatoire: {"visual_theme":"string","dance_decision":"required|optional|none","master_choreography":{"enabled":true,"gestures":["..."],"rule":"..."},"sections":[{"id":"...","type":"intro|couplet|refrain|pont|outro|scene","label":"...","start":0,"end":1,"dance":false,"motion":"...","prompt":"..."}]}',
+        'Projet: ' + JSON.stringify({
+          mode: body.mode || 'auto',
+          dance_allowed: body.dance_allowed !== false,
+          duration_seconds: body.duration_seconds || null,
+          brief: String(body.brief || '').slice(0, 5000),
+          visual_theme: body.visual_theme || null,
+        }),
+        'Transcript: ' + String(lowLevel.transcript).slice(0, 18000),
+        'Segments Whisper: ' + JSON.stringify(lowLevel.segments || []).slice(0, 18000),
+      ].join('\n\n');
+
+      try {
+        const rawPlan = await ollama(analysisPrompt, body.model || DEFAULT_MODEL);
+        plan = normalizeMusicMotionPlan(parseJsonDocument(rawPlan), body);
+        llm = { available: Boolean(plan), model: body.model || DEFAULT_MODEL };
+        if (!plan) warnings.push('Ollama a répondu, mais son JSON de réalisation n’était pas exploitable.');
+      } catch (error) {
+        warnings.push('Ollama n’a pas pu produire le plan créatif : ' + String(error.message || error).slice(0, 300));
+      }
+    } else {
+      warnings.push('Aucun transcript exploitable : la timeline générique reste à valider manuellement.');
+    }
+
+    return {
+      ok: true,
+      source: 'local-agent',
+      audio: {
+        name: String(body.audio_name || '').slice(0, 240),
+        mime_type: mimeType,
+        bytes: audioBuffer.length,
+        duration_seconds: Number(body.duration_seconds) || lowLevel.duration_seconds || null,
+      },
+      transcription: lowLevel,
+      creative_plan: plan,
+      llm,
+      warnings,
+    };
+  } finally {
+    await unlink(audioPath).catch(() => {});
+  }
 }
 
 function requestedTools(message) {
@@ -687,6 +839,10 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && url.pathname === '/api/agent/models') return send(req, res, 200, { models: (await health()).services.ollama.models });
     if (req.method === 'GET' && url.pathname === '/api/tools') return send(req, res, 200, await health());
+    if (req.method === 'POST' && url.pathname === '/api/music-motion/analyze') {
+      const body = await readJson(req, 20 * 1024 * 1024);
+      return send(req, res, 200, await analyzeMusicMotion(body));
+    }
     if (req.method === 'GET' && url.pathname.startsWith('/api/tools/runs/')) {
       const run = runs.get(url.pathname.split('/').pop());
       return run ? send(req, res, 200, { ok: true, run }) : send(req, res, 404, { ok: false, error: 'run_not_found' });

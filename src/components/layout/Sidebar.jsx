@@ -6,7 +6,7 @@ import {
   CheckSquare, MessageSquare, Shield,
   Network, Smartphone, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
-  PlayCircle, GalleryHorizontalEnd, Send, Gauge, Workflow, Factory, MonitorPlay, Building2, Database,
+  PlayCircle, GalleryHorizontalEnd, Send, Gauge, Workflow, Factory, MonitorPlay, Building2, Database, Music2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -129,6 +129,7 @@ const allNavGroups = [
       { label: "Production", icon: Clapperboard, path: "/production", minRole: "admin" },
       { label: "Avatar Factory", icon: Factory, path: "/avatar-factory", minRole: "admin" },
       { label: "Portfolio", icon: GalleryHorizontalEnd, path: "/portfolio", minRole: "admin" },
+      { label: "Elynea Motion Studio", icon: Music2, path: "/music-motion", minRole: "admin" },
     ]
   },
   {
