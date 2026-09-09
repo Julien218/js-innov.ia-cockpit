@@ -4,10 +4,16 @@ import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
+
+// Routes publiques
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
+
+// Layout & guard
 import AppLayout from "@/components/layout/AppLayout";
 import ProtectedRoute from "@/components/ProtectedRoute";
+
+// Pages
 import Dashboard from "@/pages/Dashboard";
 import ClientDashboard from "@/pages/ClientDashboard";
 import ClientRecords from "@/pages/ClientRecords";
@@ -36,6 +42,8 @@ import AICostControl from "@/pages/AICostControl";
 import Invitations from "@/pages/Invitations";
 import Gouvernance from "@/pages/Gouvernance";
 import RoleAwareFloatingAgent from "@/components/RoleAwareFloatingAgent";
+
+// ── Studio Vidéo
 import VideoStudio from "@/pages/VideoStudio";
 import AIVideoReportGenerator from "@/pages/AIVideoReportGenerator";
 import ThumbnailGenerator from "@/pages/ThumbnailGenerator";
@@ -85,20 +93,24 @@ const AppRoutes = () => {
           <Route path="/" element={<PageBoundary>{isClient ? <ClientDashboard /> : <Dashboard />}</PageBoundary>} />
           <Route path="/assurances" element={<PageBoundary><Assurances /></PageBoundary>} />
           <Route path="/documents" element={<PageBoundary><Documents /></PageBoundary>} />
+
           <Route path="/clients" element={<PageBoundary><Clients /></PageBoundary>} />
           <Route path="/leads" element={<PageBoundary><Leads /></PageBoundary>} />
+
           <Route path="/projets" element={<PageBoundary><Projets /></PageBoundary>} />
           <Route path="/donnees-projets" element={<PageBoundary><ProjectData /></PageBoundary>} />
           <Route path="/villeconnect" element={isAdmin ? <PageBoundary><VilleConnect /></PageBoundary> : <Navigate to="/" replace />} />
           <Route path="/mes-projets" element={<PageBoundary><ClientRecords kind="projects" /></PageBoundary>} />
           <Route path="/taches" element={<PageBoundary><Taches /></PageBoundary>} />
           <Route path="/demandes" element={<PageBoundary><Demandes /></PageBoundary>} />
+
           <Route path="/devis" element={<PageBoundary><Devis /></PageBoundary>} />
-          <Route path="/mes-devis" element={<ClientRecords kind="quotes" />} />
+          <Route path="/mes-devis" element={<PageBoundary><ClientRecords kind="quotes" /></PageBoundary>} />
           <Route path="/factures" element={<PageBoundary><Factures /></PageBoundary>} />
           <Route path="/hainoflow" element={<PageBoundary><HainoFlow /></PageBoundary>} />
-          <Route path="/mes-factures" element={<ClientRecords kind="invoices" />} />
+          <Route path="/mes-factures" element={<PageBoundary><ClientRecords kind="invoices" /></PageBoundary>} />
           <Route path="/commissions" element={<PageBoundary><Commissions /></PageBoundary>} />
+
           <Route path="/agent" element={<Navigate to="/" replace />} />
           <Route path="/agents-ia" element={isClient ? <Navigate to="/" replace /> : <PageBoundary><AgentsIA /></PageBoundary>} />
           <Route path="/mobile-hub" element={<PageBoundary><MobileHub /></PageBoundary>} />
@@ -126,11 +138,13 @@ const AppRoutes = () => {
 
           <Route path="/portfolio" element={<PageBoundary><Portfolio /></PageBoundary>} />
           <Route path="/automations" element={<PageBoundary><Automations /></PageBoundary>} />
+
           <Route path="/emails" element={<PageBoundary><Emails /></PageBoundary>} />
           <Route path="/emails-core" element={<PageBoundary><EmailCore /></PageBoundary>} />
           <Route path="/email-accounting" element={isAdmin ? <PageBoundary><EmailAccounting /></PageBoundary> : <Navigate to="/" replace />} />
           <Route path="/twilio" element={<PageBoundary><Twilio /></PageBoundary>} />
           <Route path="/amails" element={<Navigate to="/emails?folder=sent" replace />} />
+
           <Route path="/parametres" element={<PageBoundary><Parametres /></PageBoundary>} />
           <Route path="/apps-agents" element={<PageBoundary><AppsAgents /></PageBoundary>} />
           <Route path="/production" element={<PageBoundary><Production /></PageBoundary>} />
@@ -141,6 +155,7 @@ const AppRoutes = () => {
           <Route path="/rangement" element={<PageBoundary><Rangement /></PageBoundary>} />
         </Route>
       </Route>
+
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
