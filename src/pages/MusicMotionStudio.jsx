@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   AudioLines,
   CheckCircle2,
@@ -9,7 +8,6 @@ import {
   ImagePlus,
   Loader2,
   Music2,
-  Play,
   Save,
   Sparkles,
   WandSparkles,
@@ -195,7 +193,6 @@ function normalizeAnalyzedScenes(analysis, fallback) {
 }
 
 export default function MusicMotionStudio() {
-  const navigate = useNavigate();
   const [audioFile, setAudioFile] = useState(null);
   const [audioUrl, setAudioUrl] = useState('');
   const [duration, setDuration] = useState(0);
@@ -351,11 +348,6 @@ export default function MusicMotionStudio() {
   const saveDraft = () => {
     localStorage.setItem('jsinnovia.music-motion.draft', JSON.stringify(projectPayload));
     setNotice({ type: 'success', text: 'Projet enregistré sur ce poste. Les fichiers restent locaux.' });
-  };
-
-  const sendToVideoStudio = () => {
-    localStorage.setItem('jsinnovia.music-motion.draft', JSON.stringify(projectPayload));
-    navigate('/video-studio/new?music_motion=1');
   };
 
   return (
@@ -616,8 +608,8 @@ export default function MusicMotionStudio() {
           <button type="button" onClick={() => downloadJson(projectPayload, 'music-motion-project.json')} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm hover:border-primary/50">
             <Download size={15} /> Exporter le storyboard
           </button>
-          <button type="button" onClick={sendToVideoStudio} className="btn-gold inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm">
-            <Play size={15} /> Préparer dans le Studio vidéo
+          <button type="button" onClick={() => setNotice({ type: 'success', text: 'Storyboard validé et prêt à être exporté.' })} className="btn-gold inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm">
+            <CheckCircle2 size={15} /> Valider le storyboard
           </button>
         </div>
       </section>
