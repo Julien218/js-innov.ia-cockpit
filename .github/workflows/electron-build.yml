@@ -14,6 +14,9 @@ on:
       - "src/lib/mediaReference.js"
       - "src/lib/videoProvenance.js"
       - "server-video-provenance-core.cjs"
+      - "tests/electron-global-auto-update.test.cjs"
+      - "tests/electron-local-agent-watchdog.test.cjs"
+      - "tests/local-cost-telemetry.test.cjs"
       - ".github/workflows/electron-build.yml"
   workflow_dispatch:
 
