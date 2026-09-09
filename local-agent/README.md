@@ -38,6 +38,10 @@ Le point POST /api/music-motion/analyze reçoit une chanson encodée localement,
 
 Installation optionnelle sous Windows :
 
+    powershell -ExecutionPolicy Bypass -File .\install-music-motion-windows.ps1
+
+ou, manuellement :
+
     python -m pip install -r .\requirements-music-motion.txt
 
 Variables utiles dans .env :
