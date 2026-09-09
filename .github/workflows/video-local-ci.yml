@@ -67,6 +67,7 @@ jobs:
           node --check server-video-generation.cjs
           node --check server-nova-executors.cjs
           node --check server-video-provenance-core.cjs
+          node --test tests/electron-comfy-error.test.cjs
           node --check server-video-provenance.cjs
 
       - name: Verify NOVA video autostart

@@ -7,6 +7,7 @@ const https = require("https");
 const { execFile } = require("child_process");
 const crypto = require("crypto");
 const { createWebAssistant } = require("./web-assistant.cjs");
+const { formatComfyErrorBody } = require("./comfy-error.cjs");
 
 let mainWindow = null;
 let tray = null;
@@ -74,7 +75,7 @@ function comfyRequest(pathname, { method = "GET", json, body, headers = {}, time
         let parsed = raw;
         try { parsed = raw ? JSON.parse(raw) : {}; } catch (_) { /* texte brut */ }
         if (res.statusCode >= 200 && res.statusCode < 300) return resolve(parsed);
-        const detail = typeof parsed === "object" ? parsed?.error || parsed?.message || JSON.stringify(parsed) : parsed;
+        const detail = formatComfyErrorBody(parsed);
         reject(new Error(`ComfyUI HTTP ${res.statusCode}: ${detail || "erreur inconnue"}`));
       });
     });
