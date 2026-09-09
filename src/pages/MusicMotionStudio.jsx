@@ -331,6 +331,7 @@ export default function MusicMotionStudio() {
     title: audioFile?.name?.replace(/\.[^/.]+$/, '') || 'Nouveau projet musical',
     audio: {
       name: audioFile?.name || '',
+      preview_url: audioUrl || '',
       duration_seconds: duration || null,
     },
     direction: {
@@ -345,7 +346,7 @@ export default function MusicMotionStudio() {
     scenes,
     analysis: analysisMeta,
     created_at: new Date().toISOString(),
-  }), [audioFile, duration, mode, currentMode, danceAllowed, brief, formats, references, scenes, analysisMeta]);
+  }), [audioFile, audioUrl, duration, mode, currentMode, danceAllowed, brief, formats, references, scenes, analysisMeta]);
 
   const saveDraft = () => {
     localStorage.setItem('jsinnovia.music-motion.draft', JSON.stringify(projectPayload));
