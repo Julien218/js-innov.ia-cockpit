@@ -169,6 +169,31 @@ function downloadJson(payload, filename) {
   URL.revokeObjectURL(url);
 }
 
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Lecture du fichier audio impossible.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function normalizeAnalyzedScenes(analysis, fallback) {
+  const sections = analysis?.creative_plan?.sections;
+  if (!Array.isArray(sections) || sections.length === 0) return fallback;
+  return sections.map((scene, index) => ({
+    id: String(scene.id || 'local-scene-' + (index + 1)),
+    type: String(scene.type || 'scene'),
+    label: String(scene.label || 'Scène ' + (index + 1)),
+    start: Math.max(0, Number(scene.start) || 0),
+    end: Math.max(0, Number(scene.end) || 0),
+    dance: Boolean(scene.dance),
+    motion: String(scene.motion || ''),
+    prompt: String(scene.prompt || ''),
+  }));
+}
+
 export default function MusicMotionStudio() {
   const navigate = useNavigate();
   const [audioFile, setAudioFile] = useState(null);
@@ -183,6 +208,7 @@ export default function MusicMotionStudio() {
   const [formats, setFormats] = useState(['vertical', 'square', 'landscape']);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [analysisMeta, setAnalysisMeta] = useState(null);
 
   const selected = scenes[selectedScene] || null;
   const currentMode = useMemo(() => MODE_OPTIONS.find((item) => item.id === mode), [mode]);
@@ -222,23 +248,70 @@ export default function MusicMotionStudio() {
     setReferences((current) => current.filter((item) => item.id !== reference.id));
   };
 
-  const analyze = () => {
+  const analyze = async () => {
     if (!audioFile) {
       setNotice({ type: 'error', text: 'Importez d’abord une chanson.' });
       return;
     }
     setIsAnalyzing(true);
     setNotice(null);
-    window.setTimeout(() => {
-      const nextScenes = buildTimeline(duration || 234, mode, danceAllowed && mode !== 'cinematic');
+    setAnalysisMeta(null);
+    const fallback = buildTimeline(duration || 234, mode, danceAllowed && mode !== 'cinematic');
+
+    try {
+      const audioDataUrl = await fileToDataUrl(audioFile);
+      const response = await fetch('http://127.0.0.1:8787/api/music-motion/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          audio_data_url: audioDataUrl,
+          audio_name: audioFile.name,
+          duration_seconds: duration || null,
+          mode,
+          dance_allowed: danceAllowed,
+          brief,
+          references: references.map((item) => item.name),
+        }),
+        signal: AbortSignal.timeout(20 * 60 * 1000),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.details || result.error || 'Le service local a refusé l’analyse.');
+      }
+
+      const nextScenes = normalizeAnalyzedScenes(result, fallback);
       setScenes(nextScenes);
       setSelectedScene(0);
-      setIsAnalyzing(false);
+      setAnalysisMeta({
+        source: result.source || 'local-agent',
+        transcription_ok: Boolean(result.transcription?.ok),
+        llm_ok: Boolean(result.llm?.available),
+        model: result.transcription?.model || result.llm?.model || null,
+        warnings: Array.isArray(result.warnings) ? result.warnings : [],
+      });
       setNotice({
         type: 'success',
-        text: 'Plan de réalisation préparé. Chaque scène reste modifiable avant le lancement local.',
+        text: result.transcription?.ok
+          ? 'Analyse locale terminée : timecodes Whisper et proposition créative reçus.'
+          : 'Agent local joignable, mais la transcription doit encore être installée ou vérifiée.',
       });
-    }, 700);
+    } catch (error) {
+      setScenes(fallback);
+      setSelectedScene(0);
+      setAnalysisMeta({
+        source: 'fallback',
+        transcription_ok: false,
+        llm_ok: false,
+        model: null,
+        warnings: ['Analyse locale indisponible : ' + error.message],
+      });
+      setNotice({
+        type: 'error',
+        text: 'Le plan de secours est prêt, mais l’analyse Whisper locale n’a pas répondu : ' + error.message,
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const updateScene = (patch) => {
@@ -270,8 +343,9 @@ export default function MusicMotionStudio() {
     },
     references: references.map((item) => ({ name: item.name })),
     scenes,
+    analysis: analysisMeta,
     created_at: new Date().toISOString(),
-  }), [audioFile, duration, mode, currentMode, danceAllowed, brief, formats, references, scenes]);
+  }), [audioFile, duration, mode, currentMode, danceAllowed, brief, formats, references, scenes, analysisMeta]);
 
   const saveDraft = () => {
     localStorage.setItem('jsinnovia.music-motion.draft', JSON.stringify(projectPayload));
@@ -436,6 +510,23 @@ export default function MusicMotionStudio() {
           {isAnalyzing ? 'Préparation en cours…' : 'Analyser et préparer la timeline'}
         </button>
       </section>
+
+      {analysisMeta && (
+        <div className="rounded-xl border border-border bg-background/60 px-4 py-3 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className={analysisMeta.transcription_ok ? 'text-emerald-600' : 'text-amber-600'}>
+              {analysisMeta.transcription_ok ? '✓ Whisper local actif' : '⚠ Whisper local à vérifier'}
+            </span>
+            <span className={analysisMeta.llm_ok ? 'text-emerald-600' : 'text-amber-600'}>
+              {analysisMeta.llm_ok ? '✓ Plan Ollama reçu' : '⚠ Plan créatif de secours'}
+            </span>
+            {analysisMeta.model ? <span>Modèle : {analysisMeta.model}</span> : null}
+          </div>
+          {analysisMeta.warnings?.length > 0 && (
+            <p className="mt-2">{analysisMeta.warnings.slice(0, 2).join(' · ')}</p>
+          )}
+        </div>
+      )}
 
       {scenes.length > 0 && (
         <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
