@@ -48,15 +48,6 @@ const unwrapSupabase = async (operation, { label = 'Opération Supabase', fallba
   return data ?? fallback;
 };
 
-// ─── Upload fichier vers Supabase Storage ─────────────────────────────────
-export async function uploadToStorage(file, bucket = 'videos', path = null) {
-  const filePath = path || `${Date.now()}_${file.name}`;
-  const { error } = await supabase.storage.from(bucket).upload(filePath, file, { upsert: true });
-  if (error) throw error;
-  const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(filePath);
-  return publicUrl;
-}
-
 // ─── Compatibilité base44 SDK (shim pour les composants existants) ─────────
 const VIDEO_API_BASE = '/api/video-studio';
 const videoExportSubscribers = new Set();
