@@ -236,6 +236,7 @@ export default function VideoStudio() {
   };
 
   const handleUploadDrive = async () => {
+    setActivePanel("drive");
     const currentProject = createVideoProject(vp);
     if (!currentProject.ai_prompt) {
       setStudioError("Générez d’abord le prompt IA avant l’envoi vers Drive.");
