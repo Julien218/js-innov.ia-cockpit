@@ -1,5 +1,3 @@
-const crypto = require('node:crypto');
-
 const {
   executeBusinessTask,
   executeProjectTask,
@@ -10,18 +8,7 @@ const {
 const { isCanonicalUuid, isInternalClientReference } = require('./server-video-generation-core.cjs');
 
 const PRIORITIES = new Set(['basse', 'moyenne', 'haute', 'urgente']);
-// Les runs en attente d'une validation ou d'une revue restent actifs. Les considérer
-// comme terminés recrée le même dispatch à chaque passage de l'autopilote.
-const ACTIVE_STATUSES = new Set([
-  'pending',
-  'queued',
-  'dispatching',
-  'dispatched',
-  'running',
-  'awaiting_approval',
-  'awaiting_review',
-]);
-const STALE_RUNNING_MS = 30 * 60 * 1000;
+const ACTIVE_STATUSES = new Set(['pending', 'queued', 'dispatching', 'dispatched', 'running', 'awaiting_approval', 'awaiting_review']);
 const MAX_BATCH_TASKS = 250;
 
 function cleanText(value, max = 1000) {
@@ -46,19 +33,47 @@ function canonicalTaskTitle(value) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/\b(delegation automatique|duplicata|copie)\b/g, '')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
 
-function latestActiveRun(payload, taskId, now = Date.now()) {
+function canonicalTaskKey(task = {}) {
+  return [canonicalTaskTitle(task.titre || task.title) || `id:${task.id || ''}`,
+    String(task.organisation_id || task.organisation || ''),
+    String(task.client_id || task.client_nom || ''), String(task.projet_id || task.projet_nom || '')].join('|');
+}
+
+function operationalStatus(outcome = {}) {
+  if (outcome.in_progress) return 'RUNNING';
+  if (outcome.retrying) return 'RETRYING';
+  if (outcome.requires_authorization) return 'WAITING_AUTHORIZATION';
+  if (outcome.completed) return 'DONE';
+  if (outcome.technical_error) return 'TECHNICAL_ERROR';
+  if (/executeur|developpement_non_execute|correction_repertoire_interne_a_executer/.test(outcome.reason || '')) return 'NO_EXECUTOR';
+  if (outcome.result?.missing_fields?.length || /absent|manquant|ambigu|incomplete|cible_site/.test(outcome.reason || '')) return 'WAITING_INPUT';
+  return 'FAILED';
+}
+
+function completionResult(outcome, executor) {
+  const result = outcome?.result;
+  if (!result || typeof result !== 'object' || Array.isArray(result) || !Object.keys(result).length) {
+    throw new Error('preuve_finale_structuree_absente');
+  }
+  return { ...result, operational_status: 'DONE', proof_status: 'verified',
+    verified_at: new Date().toISOString(),
+    evidence: [{ type: 'executor_result', executor_id: executor.id, result }],
+  };
+}
+
+function latestActiveRun(payload, taskId) {
   return rowsFrom(payload)
     .filter((run) => String(run.task_id || '') === String(taskId || ''))
     .filter((run) => {
       const status = cleanText(run.status, 40).toLowerCase();
       if (!ACTIVE_STATUSES.has(status)) return false;
-      if (status !== 'running') return true;
-      const changed = Date.parse(run.updated_at || run.started_at || run.created_at || '');
-      return Number.isFinite(changed) && now - changed <= STALE_RUNNING_MS;
+      // Age alone never proves a worker has stopped. Keep the backend claim.
+      return true;
     })
     .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')))[0] || null;
 }
@@ -73,7 +88,8 @@ async function activeRunForTask(agentFetch, taskId, organisation) {
   const response = await agentFetch(`/agent-runs?task_id=${encodeURIComponent(taskId)}&limit=20`, {
     headers: { 'x-organisation-id': organisation },
   });
-  return latestActiveRun(await readJson(response, `Lecture runs HTTP ${response.status}`), taskId);
+  const data = await readJson(response, `Lecture runs HTTP ${response.status}`);
+  return latestActiveRun(data, taskId) || rowsFrom(data).find(run => String(run.task_id) === String(taskId) && run.status === 'completed' && run.completed_at && run.result?.proof_status === 'verified' && run.result?.evidence?.length) || null;
 }
 
 function sanitizeTaskItem(item = {}) {
@@ -92,7 +108,7 @@ function sanitizeTaskItem(item = {}) {
   return {
     record: {
       titre,
-      description: cleanText(item.description, 5000) || null,
+      description: [cleanText(item.description, 5000), ...['source_document_id', 'start_source_document_id', 'end_source_document_id'].filter(key => /^[A-Za-z0-9_-]{8,180}$/.test(item[key] || '')).map(key => `${key}: ${item[key]}`), ...(Array.isArray(item.reference_document_ids) ? item.reference_document_ids.filter(id => /^[A-Za-z0-9_-]{8,180}$/.test(id)).slice(0, 7).map(id => `document source: ${id}`) : [])].filter(Boolean).join('\n') || null,
       statut: 'a_faire',
       priorite: priority,
       date_echeance: cleanText(item.date_echeance, 20) || null,
@@ -120,7 +136,7 @@ function sanitizeTaskBatchPayload(payload = {}) {
   if (!sanitized.length) return null;
   const titles = new Set();
   const tasks = sanitized.filter((item) => {
-    const key = canonicalTaskTitle(item.record.titre);
+    const key = item.existing_task_id || canonicalTaskKey(item.record);
     if (!key || titles.has(key)) return false;
     titles.add(key);
     return true;
@@ -138,16 +154,27 @@ async function patchTask(agentFetch, taskId, payload, organisation) {
 }
 
 async function patchRun(agentFetch, runId, payload, organisation) {
-  const response = await agentFetch(`/agent-runs/${encodeURIComponent(runId)}`, {
-    method: 'PATCH',
-    headers: { 'x-organisation-id': organisation },
-    body: JSON.stringify(payload),
-  });
-  return readJson(response, `Mise à jour run HTTP ${response.status}`);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response = await agentFetch(`/agent-runs/${encodeURIComponent(runId)}`, {
+        method: 'PATCH', headers: { 'x-organisation-id': organisation }, body: JSON.stringify(payload),
+      });
+      if ([502, 503, 504, 429].includes(response.status) && attempt < 2) {
+        await response.text().catch(() => '');
+        await new Promise(resolve => setTimeout(resolve, 100 * (2 ** attempt)));
+        continue;
+      }
+      return await readJson(response, `Mise à jour run HTTP ${response.status}`);
+    } catch (error) {
+      if (attempt < 2 && (error instanceof TypeError || ['TimeoutError', 'AbortError'].includes(error.name))) continue;
+      error.run_persistence_error = true;
+      throw error;
+    }
+  }
 }
 
 function taskNotes(item, message) {
-  return [item.record.notes, message].filter(Boolean).join('\n').slice(0, 4000);
+  return [item.record.notes, message].filter(Boolean).join('\n');
 }
 
 function runInput(item, executor) {
@@ -174,7 +201,7 @@ async function createRun(agentFetch, task, item, executor, token, index, organis
       status,
       execution_mode: executor.execution_mode || 'autonomous',
       input: runInput(item, executor),
-      idempotency_key: `${token}:run:${index}:${crypto.randomUUID()}`,
+      idempotency_key: `${token}:run:${index}:${task.id}`,
       requested_by: requestedBy,
       base44_agent_id: executor.provider === 'base44' ? executor.provider_agent_id : null,
     }),
@@ -206,17 +233,17 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
   });
   const existingByTitle = new Map();
   for (const candidate of rowsFrom(await readJson(existingResponse, `Lecture tâches HTTP ${existingResponse.status}`))) {
-    const key = canonicalTaskTitle(candidate.titre || candidate.title);
-    const status = cleanText(candidate.statut || candidate.status, 40).toLowerCase();
-    if (key && !['terminee', 'terminée'].includes(status) && !existingByTitle.has(key)) existingByTitle.set(key, candidate);
+    const key = canonicalTaskKey({ ...candidate, organisation_id: organisation });
+    if (key && !existingByTitle.has(key)) existingByTitle.set(key, candidate);
   }
 
   const results = [];
   for (let index = 0; index < payload.tasks.length; index += 1) {
-    const item = payload.tasks[index];
-    const executor = resolveExecutor ? resolveExecutor(item.record) : resolveNovaExecutor(item.existing_task_id ? { titre: item.record.titre } : item.record);
+    const item = { ...payload.tasks[index], record: { ...payload.tasks[index].record } };
+    let executor = resolveNovaExecutor(item.record);
     let task = null;
     let run = null;
+    let outcomePersisted = false;
     try {
       if (item.existing_task_id) {
         const exactResponse = await agentFetch(`/data/Tache/${encodeURIComponent(item.existing_task_id)}`, {
@@ -227,24 +254,32 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
           throw new Error('Tâche ciblée introuvable; aucune nouvelle tâche créée.');
         }
       } else {
-        task = existingByTitle.get(canonicalTaskTitle(item.record.titre)) || null;
+        task = existingByTitle.get(canonicalTaskKey({ ...item.record, organisation_id: organisation })) || null;
       }
+      if (task) {
+        const incoming = Object.fromEntries(Object.entries(item.record).filter(([key, value]) => value !== null && value !== '' && !['statut', 'notes'].includes(key)));
+        item.record = { ...task, ...incoming, notes: [task.notes, item.record.notes && item.record.notes !== task.notes && !String(task.notes || '').startsWith(item.record.notes) ? item.record.notes : null].filter(Boolean).join('\n') };
+      }
+      executor = resolveExecutor ? resolveExecutor(item.record) : resolveNovaExecutor(item.record);
       const reused = Boolean(task);
       if (prepareOnly && task) {
         results.push({ index, success: true, task_id: task.id, run_id: String(task.notes || '').match(/run_id=([a-zA-Z0-9-]+)/)?.[1] || null, executor: null, status: 'existing', reused: true, reason: 'tache_existante_conservee_sans_relance' });
         continue;
       }
+      if (task && ['termine', 'terminee', 'terminée', 'completed', 'done'].includes(String(task.statut || task.status).toLowerCase())) {
+        results.push({ index, success: true, task_id: task.id, executor: executor.id, status: 'existing', reused: true, reason: 'tache_historique_terminee_conservee_sans_relance' });
+        continue;
+      }
       if (task) {
         const active = await activeRunForTask(agentFetch, task.id, organisation);
         if (active?.id) {
-          if (item.existing_task_id && String(active.agent_id || '') !== String(executor.id)) {
-            await patchRun(agentFetch, active.id, {
-              status: 'failed',
-              error: `Exécuteur incorrect remplacé: ${active.agent_id || 'inconnu'} -> ${executor.id}`,
-              completed_at: new Date().toISOString(),
-            }, organisation);
-          } else {
-            results.push({ index, success: true, task_id: task.id, run_id: active.id, executor: executor.id, status: 'already_running', reused: true });
+          if (active.status === 'completed') {
+            await patchTask(agentFetch, task.id, { statut: 'terminee', notes: taskNotes(item, `Preuve finale existante conservée: run_id=${active.id}.`) }, organisation);
+            results.push({ index, success: true, task_id: task.id, run_id: active.id, executor: active.agent_id || executor.id, status: 'completed', operational_status: 'DONE', reused: true });
+            continue;
+          }
+          {
+            results.push({ index, success: true, task_id: task.id, run_id: active.id, executor: active.agent_id || executor.id, status: 'already_running', operational_status: active.result?.operational_status || (active.status === 'awaiting_approval' ? 'WAITING_AUTHORIZATION' : active.status === 'awaiting_review' ? 'WAITING_INPUT' : 'RUNNING'), reused: true });
             continue;
           }
         }
@@ -256,7 +291,7 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
         });
         task = await readJson(response, `Création tâche HTTP ${response.status}`);
         if (!task?.id) throw new Error('Création de tâche non vérifiable : identifiant absent.');
-        existingByTitle.set(canonicalTaskTitle(item.record.titre), task);
+        existingByTitle.set(canonicalTaskKey({ ...item.record, organisation_id: organisation }), task);
       }
 
       if (prepareOnly) {
@@ -268,10 +303,15 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
       }
 
       if (executor.kind === 'unsupported') {
-        run = await createRun(agentFetch, task, item, executor, token, index, organisation, requestedBy, 'failed');
-        await patchRun(agentFetch, run.id, { status: 'failed', error: executor.reason, completed_at: new Date().toISOString() }, organisation);
+        const op = executor.operational_status || operationalStatus({ reason: executor.reason });
+        run = await createRun(agentFetch, task, item, executor, token, index, organisation, requestedBy, 'pending');
+        if (run.reused) {
+          results.push({ index, success: true, task_id: task.id, run_id: run.id, executor: run.agent_id || executor.id, status: 'already_running', operational_status: run.result?.operational_status || 'RUNNING', reused: true });
+          continue;
+        }
+        await patchRun(agentFetch, run.id, { status: 'failed', result: { operational_status: op }, error: executor.reason, completed_at: new Date().toISOString() }, organisation);
         await patchTask(agentFetch, task.id, { statut: 'bloquee', notes: taskNotes(item, `Blocage NOVA: ${executor.reason}.`) }, organisation);
-        results.push({ index, success: false, task_id: task.id, run_id: run.id, executor: executor.id, status: 'blocked', error: executor.reason });
+        results.push({ index, success: false, task_id: task.id, run_id: run.id, executor: executor.id, status: 'blocked', operational_status: op, error: executor.reason });
         continue;
       }
 
@@ -283,6 +323,11 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
       }
 
       run = await createRun(agentFetch, task, item, executor, token, index, organisation, requestedBy, 'running');
+      if (!run?.id) throw new Error('Identifiant du run absent');
+      if (run.reused) {
+        results.push({ index, success: true, task_id: task.id, run_id: run.id, executor: run.agent_id || executor.id, status: 'already_running', operational_status: run.result?.operational_status || 'RUNNING', reused: true });
+        continue;
+      }
       await patchTask(agentFetch, task.id, { statut: 'en_cours', notes: taskNotes(item, `Exécution réelle démarrée par ${executor.name}: run_id=${run.id}.`) }, organisation);
 
       const agentRequest = async (path, options = {}) => {
@@ -302,19 +347,22 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
             : await handlers.business(item.record, agentRequest);
 
       if (outcome.completed) {
-        await patchRun(agentFetch, run.id, { status: 'completed', result: outcome.result || { report: outcome.report }, completed_at: new Date().toISOString(), base44_conv_id: outcome.conversation_id || null }, organisation);
+        await patchRun(agentFetch, run.id, { status: 'completed', result: completionResult(outcome, executor), completed_at: new Date().toISOString(), base44_conv_id: outcome.conversation_id || null }, organisation);
+        outcomePersisted = true;
         await patchTask(agentFetch, task.id, { statut: 'terminee', notes: taskNotes(item, `Exécution vérifiée et terminée par ${executor.name}: run_id=${run.id}.`) }, organisation);
-        results.push({ index, success: true, task_id: task.id, run_id: run.id, executor: executor.id, status: 'completed', reused, result: outcome.result });
+        results.push({ index, success: true, task_id: task.id, run_id: run.id, executor: executor.id, status: 'completed', operational_status: 'DONE', reused, result: outcome.result });
       } else {
         const reason = outcome.reason || 'resultat_final_non_verifie';
-        await patchRun(agentFetch, run.id, { status: 'awaiting_approval', result: outcome.result || { report: outcome.report }, error: reason, base44_conv_id: outcome.conversation_id || null }, organisation);
-        await patchTask(agentFetch, task.id, { statut: outcome.blocked ? 'bloquee' : 'en_cours', notes: taskNotes(item, `Résultat reçu mais non finalisé: ${reason}; run_id=${run.id}.`) }, organisation);
-        results.push({ index, success: !outcome.blocked, task_id: task.id, run_id: run.id, executor: executor.id, status: outcome.blocked ? 'blocked' : 'awaiting_review', reused, reason });
+        const op = operationalStatus(outcome);
+        const status = ['RUNNING', 'RETRYING'].includes(op) ? 'running' : op === 'WAITING_AUTHORIZATION' ? 'awaiting_approval' : op === 'WAITING_INPUT' ? 'awaiting_review' : 'failed';
+        await patchRun(agentFetch, run.id, { status, result: { ...(outcome.result || { report: outcome.report }), operational_status: op }, error: reason, base44_conv_id: outcome.conversation_id || null }, organisation);
+        await patchTask(agentFetch, task.id, { statut: ['RUNNING', 'RETRYING'].includes(op) ? 'en_cours' : 'bloquee', notes: taskNotes(item, `Résultat reçu mais non finalisé: ${reason}; run_id=${run.id}.`) }, organisation);
+        results.push({ index, success: status !== 'failed', task_id: task.id, run_id: run.id, executor: executor.id, status: outcome.blocked ? 'blocked' : 'awaiting_review', operational_status: op, reused, reason });
       }
     } catch (error) {
-      if (run?.id) await patchRun(agentFetch, run.id, { status: 'failed', error: cleanText(error.message, 500), completed_at: new Date().toISOString() }, organisation).catch(() => null);
-      if (task?.id) await patchTask(agentFetch, task.id, { statut: 'bloquee', notes: taskNotes(item, `Blocage d’exécution réel: ${cleanText(error.message, 600)}`) }, organisation).catch(() => null);
-      results.push({ index, success: false, task_id: task?.id || null, run_id: run?.id || null, executor: executor.id, status: 'failed', error: cleanText(error.message, 600) });
+      if (run?.id && !run.reused && !outcomePersisted && !error.run_persistence_error) await patchRun(agentFetch, run.id, { status: 'failed', result: { operational_status: 'TECHNICAL_ERROR' }, error: cleanText(error.message, 500), completed_at: new Date().toISOString() }, organisation).catch(() => null);
+      if (task?.id && !outcomePersisted) await patchTask(agentFetch, task.id, { statut: 'bloquee', notes: taskNotes(item, `Blocage d’exécution réel: ${cleanText(error.message, 600)}`) }, organisation).catch(() => null);
+      results.push({ index, success: false, task_id: task?.id || null, run_id: run?.id || null, executor: executor.id, status: 'failed', operational_status: 'TECHNICAL_ERROR', error: cleanText(error.message, 600) });
     }
   }
 
@@ -331,7 +379,11 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
 
 module.exports = {
   activeRunForTask,
+  patchRun,
   canonicalTaskTitle,
+  canonicalTaskKey,
+  completionResult,
+  operationalStatus,
   latestActiveRun,
   sanitizeTaskBatchPayload,
   executeTaskBatch,

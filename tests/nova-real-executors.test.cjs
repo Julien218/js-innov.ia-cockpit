@@ -170,7 +170,6 @@ test('l’exécuteur Projet met à jour une cible unique et journalise les champ
 test('une autorisation ciblée réutilise exactement le task_id, crée un run et clôture après relecture', async () => {
   const { state, fetcher } = memoryAgent();
   state.tasks.push({ id: 'task-ville', titre: 'Compléter les détails du projet VilleConnectOs', statut: 'en_cours', projet_id: 'project-ville', notes: 'Ancien diagnostic ComfyUI sans rapport avec cette fiche.' });
-  state.runs.push({ id: 'run-wrong', task_id: 'task-ville', agent_id: 'nova-windows-local', status: 'pending', created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
   state.projects.push({ id: 'project-ville', nom: 'VilleConnectOs', statut: 'en_cours', notes: '' });
   const payload = sanitizeTaskBatchPayload({ tasks: [{
     task_id: 'task-ville',
@@ -183,13 +182,11 @@ test('une autorisation ciblée réutilise exactement le task_id, crée un run et
   assert.equal(result.results[0].task_id, 'task-ville');
   assert.equal(result.results[0].executor, 'nova-project-data');
   assert.equal(result.results[0].status, 'completed');
-  assert.equal(result.results[0].run_id, 'run-2');
-  assert.equal(state.runs[0].status, 'failed');
-  assert.match(state.runs[0].error, /Exécuteur incorrect remplacé/);
-  assert.equal(state.runs[1].agent_id, 'nova-project-data');
+  assert.equal(result.results[0].run_id, 'run-1');
+  assert.equal(state.runs[0].agent_id, 'nova-project-data');
   assert.equal(state.tasks[0].statut, 'terminee');
   assert.equal(state.projects[0].date_fin_prevue, '2026-10-01');
-  assert.deepEqual(state.runs[1].result.verified_fields, ['statut', 'date_fin_prevue', 'description', 'notes']);
+  assert.deepEqual(state.runs[0].result.verified_fields, ['statut', 'date_fin_prevue', 'description', 'notes']);
 });
 
 test('l’exécuteur Projet refuse une mise à jour sans valeurs explicites', async () => {

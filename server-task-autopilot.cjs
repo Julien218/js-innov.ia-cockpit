@@ -1,8 +1,8 @@
 const express = require('express');
 const crypto = require('node:crypto');
 const { analyzeDomain, MANAGED_DOMAINS } = require('./server-domain-ops.cjs');
-const { executeTaskBatch, sanitizeTaskBatchPayload } = require('./server-task-batch.cjs');
-const { resolveNovaExecutor } = require('./server-nova-executors.cjs');
+const { executeTaskBatch, sanitizeTaskBatchPayload, canonicalTaskKey, completionResult, operationalStatus } = require('./server-task-batch.cjs');
+const { resolveNovaExecutor, isReadOnlySiteTask } = require('./server-nova-executors.cjs');
 
 const router = express.Router();
 const AGENT_URL = String(process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app').replace(/\/$/, '');
@@ -24,12 +24,12 @@ function canonicalTaskTitle(value) {
 
 function duplicateTasksForCanonical(tasks, canonicalTask) {
   const canonicalId = String(canonicalTask?.id || '');
-  const key = canonicalTaskTitle(canonicalTask?.titre || canonicalTask?.title);
+  const key = canonicalTaskKey(canonicalTask);
   if (!canonicalId || !key) return [];
   return (Array.isArray(tasks) ? tasks : []).filter((task) => {
     if (String(task?.id || '') === canonicalId) return false;
     if (['terminee', 'terminée'].includes(norm(task?.statut || task?.status))) return false;
-    return canonicalTaskTitle(task?.titre || task?.title) === key;
+    return canonicalTaskKey(task) === key;
   });
 }
 
@@ -148,7 +148,7 @@ async function recordRun(task, classification, result, status = 'completed', err
       status,
       execution_mode: 'read_only',
       input: { title: task.titre || task.title, kind: classification.kind, domain: classification.domain || null },
-      result: result || null,
+      result: status === 'completed' ? completionResult({ result }, { id: 'cockpit-task-autopilot' }) : result || null,
       error,
       idempotency_key: `autopilot:${task.id}:${classification.kind}`,
       requested_by: 'companion-autopilot',
@@ -192,13 +192,14 @@ async function executeExistingTask(task, classification) {
 async function closeVerifiedDuplicates(canonicalTask, copies, proofIds = []) {
   const closed = [];
   for (const copy of copies) {
+    if (String(copy.notes || '').includes(`Doublon regroupé avec la tâche ${canonicalTask.id}.`)) { closed.push(copy.id); continue; }
     const note = [
       copy.notes || '',
       `Doublon regroupé avec la tâche ${canonicalTask.id}.`,
       'Aucune exécution séparée: le même objectif a été traité une seule fois.',
       proofIds.length ? `Preuves de la tâche canonique: ${proofIds.join(', ')}` : '',
-    ].filter(Boolean).join('\n').trim().slice(0, 4000);
-    await patchTask(copy.id, { statut: 'terminee', notes: note });
+    ].filter(Boolean).join('\n').trim();
+    if (copy.notes !== note) await patchTask(copy.id, { notes: note });
     closed.push(copy.id);
   }
   return closed;
@@ -208,7 +209,7 @@ function safeScheduledTask(task, executor) {
   const text = norm(taskText(task));
   if (executor.kind === 'local') return true;
   if (executor.kind === 'business') return /(analys|audit|verifi|control)/.test(text);
-  if (executor.kind === 'site') return /(verifi|control|analys|audit|diagnosti)/.test(text) && !/(reparation|corrig|modifier|seo automatique|deploi|publier)/.test(text);
+  if (executor.kind === 'site') return isReadOnlySiteTask(task);
   return false;
 }
 
@@ -219,25 +220,38 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
   state.last_error = null;
   try {
     const payload = await agentRequest('/data/Tache?limit=250');
-    const tasks = rowsFrom(payload).filter((task) => !['terminee', 'terminée'].includes(norm(task.statut || task.status)));
+    const tasks = rowsFrom(payload);
+    const completed = task => ['termine', 'terminee', 'completed', 'done'].includes(norm(task.statut || task.status));
     const groups = new Map();
     for (const task of tasks) {
-      const key = canonicalTaskTitle(task.titre || task.title);
+      const key = canonicalTaskKey(task);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(task);
     }
 
+    const activeRuns = (await taskRunSummaries()).filter(run => ['pending', 'queued', 'dispatching', 'dispatched', 'running', 'awaiting_approval', 'awaiting_review'].includes(run.status));
+    const existingExecutions = [];
     const executableTasks = [];
     const blocked = [];
     const awaitingAuthorization = [];
     const ready = [];
     const duplicates = [];
     for (const group of groups.values()) {
+      group.sort((a, b) => Number(completed(b)) - Number(completed(a)) || String(a.created_at || a.id).localeCompare(String(b.created_at || b.id)));
       const [task, ...copies] = group;
+      const groupIds = new Set(group.map(item => String(item.id)));
+      const groupRuns = activeRuns.filter(run => groupIds.has(String(run.task_id)));
+      if (groupRuns.length) {
+        for (const run of groupRuns) existingExecutions.push({ task_id: run.task_id, run_id: run.id, status: 'already_running', operational_status: run.operational_status || (run.status === 'awaiting_approval' ? 'WAITING_AUTHORIZATION' : run.status === 'awaiting_review' ? 'WAITING_INPUT' : 'RUNNING'), reason: 'reservation_existante_conservee' });
+        if (groupRuns.length > 1) blocked.push({ task_id: task.id, duplicate_ids: copies.map(item => item.id), run_ids: groupRuns.map(run => run.id), operational_status: 'TECHNICAL_ERROR', reason: 'plusieurs_runs_actifs_sur_un_objectif_regroupe' });
+        if (copies.length) duplicates.push({ canonical_task_id: task.id, duplicate_ids: copies.map(item => item.id), count: group.length });
+        continue;
+      }
+      if (completed(task)) continue;
       if (copies.length) duplicates.push({ canonical_task_id: task.id, duplicate_ids: copies.map((item) => item.id), count: group.length });
       const executor = resolveNovaExecutor(task);
       if (executor.kind === 'unsupported') {
-        blocked.push({ task_id: task.id, title: task.titre || task.title, kind: executor.kind, executable: false, reason: executor.reason || 'autorisation_explicite_requise' });
+        blocked.push({ task_id: task.id, title: task.titre || task.title, kind: executor.kind, executable: false, operational_status: operationalStatus({ reason: executor.reason }), reason: executor.reason || 'aucun_executeur_verifiable' });
         continue;
       }
       if (!allowWrites && !safeScheduledTask(task, executor)) {
@@ -252,6 +266,7 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
           kind: executor.kind,
           executor: executor.id,
           domain: executor.domain || null,
+          operational_status: 'WAITING_AUTHORIZATION',
           reason: 'autorisation_explicite_requise',
         });
         continue;
@@ -268,6 +283,7 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
         continue;
       }
       executableTasks.push({
+        task_id: task.id,
         titre: task.titre || task.title,
         description: task.description,
         notes: task.notes,
@@ -296,10 +312,10 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
       return { ...item, title: item.title || task?.titre || task?.title, executor: item.executor || executor?.id || null };
     };
     const executed = batch.results.filter((item) => item.status === 'completed').map(decorate);
-    const queued = batch.results.filter((item) => ['queued_local', 'already_running', 'awaiting_review'].includes(item.status)).map(decorate);
+    const queued = [...existingExecutions, ...batch.results.filter((item) => ['queued_local', 'already_running', 'awaiting_review'].includes(item.status))].map(decorate);
     blocked.push(...batch.results.filter((item) => !item.success).map((item) => {
       const decorated = decorate(item);
-      return { task_id: decorated.task_id, title: decorated.title, executor: decorated.executor, run_id: decorated.run_id, reason: decorated.error || decorated.status };
+      return { task_id: decorated.task_id, title: decorated.title, executor: decorated.executor, run_id: decorated.run_id, operational_status: decorated.operational_status, reason: decorated.error || decorated.status };
     }));
     for (const execution of executed) {
       const canonicalTask = tasks.find((task) => String(task.id) === String(execution.task_id));
@@ -316,6 +332,22 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
     state.last_finished_at = new Date().toISOString();
   }
 }
+
+async function taskRunSummaries(fetchRuns = agentFetch, organisation = 'jsinnovia') {
+  const statuses = ['', 'pending', 'queued', 'dispatching', 'dispatched', 'running', 'awaiting_approval', 'awaiting_review'];
+  const batches = await Promise.all(statuses.map(async status => {
+    const response = await fetchRuns(`/agent-runs?limit=200${status ? `&status=${status}` : ''}`, { headers: { 'x-organisation-id': organisation } });
+    if (!response.ok) throw new Error('Lecture des runs indisponible');
+    return rowsFrom(await response.json());
+  }));
+  const unique = new Map(batches.flat().map(run => [run.id, run]));
+  return [...unique.values()].map(run => ({ id: run.id, task_id: run.task_id, status: run.status, updated_at: run.updated_at, created_at: run.created_at, completed_at: run.completed_at, operational_status: run.result?.operational_status || null, proof_status: run.result?.proof_status || null, has_evidence: Boolean(run.result?.evidence?.length) }));
+}
+
+router.get('/runs', async (req, res) => {
+  try { res.json(await taskRunSummaries(agentFetch, req.user?.organisation || 'jsinnovia')); }
+  catch { res.status(502).json({ error: 'Lecture des runs indisponible' }); }
+});
 
 router.get('/status', (_req, res) => res.json({ enabled: AUTOPILOT_ENABLED, interval_ms: AUTOPILOT_INTERVAL_MS, ...state }));
 router.post('/run', async (req, res) => {
@@ -346,7 +378,7 @@ router.post('/local-results', async (req, res) => {
       }
       const runPayload = {
         status: 'completed',
-        result: { tool_runs: evidence },
+        result: { tool_runs: evidence, evidence, proof_status: 'verified', operational_status: 'DONE' },
         completed_at: evidence[evidence.length - 1].completed_at,
       };
       const existingRuns = rowsFrom(await agentRequest(`/agent-runs?task_id=${encodeURIComponent(taskId)}&provider_name=local-agent&limit=20`));
@@ -354,7 +386,7 @@ router.post('/local-results', async (req, res) => {
       const log = pendingRun?.id
         ? await agentRequest(`/agent-runs/${encodeURIComponent(pendingRun.id)}`, { method: 'PATCH', body: runPayload })
         : await agentRequest('/agent-runs', { method: 'POST', body: { task_id: taskId, agent_id: 'nova-local-tools', functional_role: 'windows_local_diagnostics', provider_name: 'local-agent', status: 'completed', execution_mode: 'autonomous', input: { title: String(item.title || '').slice(0, 240), tools: evidence.map((run) => run.tool) }, ...runPayload, idempotency_key: `local-autopilot:${taskId}:${evidence.map((run) => run.id).join(':')}`.slice(0, 500), requested_by: String(req.user?.email || req.user?.id || 'desktop-companion').slice(0, 180), started_at: evidence[0].started_at } });
-      await patchTask(taskId, { statut: 'terminee', notes: `NOVA locale — diagnostic terminé avec preuve.\nOutils: ${evidence.map((run) => run.tool).join(', ')}\nJournaux: ${evidence.map((run) => run.id).join(', ')}`.slice(0, 4000) });
+      await patchTask(taskId, { statut: 'terminee', notes: `${canonicalTask.notes || ''}\nNOVA locale — diagnostic terminé avec preuve.\nOutils: ${evidence.map((run) => run.tool).join(', ')}\nJournaux: ${evidence.map((run) => run.id).join(', ')}` });
       const duplicateTaskIds = await closeVerifiedDuplicates(
         canonicalTask,
         duplicateTasksForCanonical(allTasks, canonicalTask),
@@ -377,4 +409,4 @@ function startTaskAutopilotScheduler() {
   return { started: true, interval_ms: AUTOPILOT_INTERVAL_MS };
 }
 
-module.exports = { router, canonicalTaskTitle, duplicateTasksForCanonical, classifyTask, recordedExecutionFailure, rowsFrom, summarizeBusinessData, runAutopilot, startTaskAutopilotScheduler, state };
+module.exports = { router, taskRunSummaries, canonicalTaskTitle, duplicateTasksForCanonical, classifyTask, recordedExecutionFailure, rowsFrom, summarizeBusinessData, runAutopilot, startTaskAutopilotScheduler, state };

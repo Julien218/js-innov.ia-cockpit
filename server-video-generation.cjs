@@ -76,14 +76,11 @@ async function listJobs(query = '') {
 
 async function patchLinkedExecution(path, payload, organisation = 'jsinnovia') {
   if (!AGENT_KEY) throw new Error('Clé Agent manquante pour synchroniser la tâche vidéo.');
-  const response = await fetch(`${AGENT_URL}${path}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', 'x-agent-key': AGENT_KEY, 'x-organisation-id': organisation },
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || data.message || `Synchronisation vidéo HTTP ${response.status}`);
-  return data;
+  const { patchRun } = require('./server-task-batch.cjs');
+  return patchRun(async (_path, options) => fetch(`${AGENT_URL}${path}`, {
+    ...options, headers: { 'Content-Type': 'application/json', 'x-agent-key': AGENT_KEY, 'x-organisation-id': organisation },
+    signal: AbortSignal.timeout(45_000),
+  }), 'linked', payload, organisation);
 }
 
 async function completeLinkedExecution(job, finalJob) {
@@ -91,7 +88,10 @@ async function completeLinkedExecution(job, finalJob) {
   const runId = String(job?.metadata?.agent_run_id || '').trim();
   if (!taskId || !runId) return { linked: false };
   const organisation = String(job?.metadata?.organisation || 'jsinnovia');
+  if (!finalJob.completed_at || !finalJob.dropbox_path || !/^[a-f0-9]{64}$/i.test(finalJob.sha256 || '')) throw new Error('preuve_video_finale_incomplete');
   const proof = {
+    proof_status: 'verified', operational_status: 'DONE',
+    evidence: [{ type: 'video_artifact', path: finalJob.dropbox_path, sha256: finalJob.sha256 }],
     video_job_id: finalJob.id,
     provider_job_id: finalJob.provider_job_id,
     journal_id: `video-generation-${finalJob.id}`,
@@ -102,10 +102,7 @@ async function completeLinkedExecution(job, finalJob) {
     completed_at: finalJob.completed_at,
   };
   await patchLinkedExecution(`/agent-runs/${encodeURIComponent(runId)}`, { status: 'completed', result: proof, error: null, completed_at: finalJob.completed_at }, organisation);
-  await patchLinkedExecution(`/data/Tache/${encodeURIComponent(taskId)}`, {
-    statut: 'terminee',
-    notes: `Génération vidéo finalisée avec preuve.\nrun_id=${runId}\njournal=${proof.journal_id}\nDropbox=${proof.dropbox_path}\nSHA-256=${proof.sha256}`.slice(0, 4000),
-  }, organisation);
+  await patchLinkedExecution(`/data/Tache/${encodeURIComponent(taskId)}`, { statut: 'terminee' }, organisation);
   return { linked: true, task_id: taskId, run_id: runId };
 }
 
@@ -115,8 +112,8 @@ async function failLinkedExecution(job, error) {
   if (!taskId || !runId) return { linked: false };
   const organisation = String(job?.metadata?.organisation || 'jsinnovia');
   const message = String(error?.message || error || 'Échec vidéo').slice(0, 1000);
-  await patchLinkedExecution(`/agent-runs/${encodeURIComponent(runId)}`, { status: 'failed', error: message, completed_at: new Date().toISOString() }, organisation);
-  await patchLinkedExecution(`/data/Tache/${encodeURIComponent(taskId)}`, { statut: 'bloquee', notes: `Blocage d’exécution réel: ${message}\nrun_id=${runId}`.slice(0, 4000) }, organisation);
+  await patchLinkedExecution(`/agent-runs/${encodeURIComponent(runId)}`, { status: 'failed', result: { operational_status: 'FAILED', video_job_id: job.id }, error: message, completed_at: new Date().toISOString() }, organisation);
+  await patchLinkedExecution(`/data/Tache/${encodeURIComponent(taskId)}`, { statut: 'bloquee' }, organisation);
   return { linked: true, task_id: taskId, run_id: runId };
 }
 

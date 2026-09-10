@@ -106,7 +106,7 @@ test('un même titre ne peut apparaître deux fois dans un lot', () => {
 test('l’assignation proposée par le modèle reste une métadonnée non fiable', () => {
   assert.doesNotMatch(taskBatchSource, /record\s*=\s*\{[\s\S]*assigne_a\s*:/);
   assert.match(taskBatchSource, /requested_agent/);
-  assert.match(taskBatchSource, /resolveNovaExecutor\(item\.existing_task_id/);
+  assert.match(taskBatchSource, /resolveNovaExecutor\(item\.record\)/);
   assert.doesNotMatch(taskBatchSource, /resolveNovaExecutor\(item\.requested_agent/);
 });
 
@@ -125,7 +125,7 @@ test('une tâche d’écriture déléguée démarre réellement au lieu d’atte
 
 test('une délégation clôt la tâche uniquement après un résultat réel', () => {
   const reportIndex = taskBatchSource.indexOf('const outcome =');
-  const completeIndex = taskBatchSource.indexOf("statut: 'terminee'");
+  const completeIndex = taskBatchSource.lastIndexOf("statut: 'terminee'");
   assert.ok(reportIndex >= 0);
   assert.ok(completeIndex > reportIndex);
   assert.match(taskBatchSource, /status:\s*'completed'/);
@@ -189,7 +189,7 @@ test('already_running exige un agent_run actif et expose son identifiant', () =>
   ] }, 'task-1', Date.parse('2026-08-25T01:10:00Z')).id, 'run-1');
   assert.match(taskBatchSource, /agent-runs\?task_id=/);
   assert.match(taskBatchSource, /run_id: active\.id/);
-  assert.match(taskBatchSource, /STALE_RUNNING_MS/);
+  assert.equal(latestActiveRun([{ id: 'old-active', task_id: 'task-1', status: 'running', updated_at: '2020-01-01' }], 'task-1').id, 'old-active');
 });
 
 test('une confirmation formulée en phrase complète est consommée par le pont UI', () => {

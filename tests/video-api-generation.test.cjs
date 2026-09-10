@@ -157,8 +157,8 @@ test('un job vidéo NOVA clôt ou bloque sa tâche liée avec une preuve réelle
   assert.match(server, /completeLinkedExecution/);
   assert.match(server, /failLinkedExecution/);
   assert.match(server, /agent_run_id/);
-  assert.match(server, /Génération vidéo finalisée avec preuve/);
-  assert.match(server, /Blocage d’exécution réel/);
+  assert.match(server, /proof_status: 'verified'/);
+  assert.match(server, /operational_status: 'FAILED'/);
   assert.match(server, /async function submit[\s\S]*?return patchJob\(job\.id,[\s\S]*?async function poll/);
   assert.match(server, /async function complete[\s\S]*?const finalJob = await patchJob\(job\.id,[\s\S]*?await completeLinkedExecution\(job, finalJob\)[\s\S]*?return finalJob/);
 });

@@ -68,7 +68,7 @@ function normalized(value) {
 }
 
 function taskText(task = {}) {
-  return `${task.titre || task.title || ''}\n${task.description || ''}\n${task.notes || ''}`;
+  return `${task.titre || task.title || ''}\n${task.description || ''}`;
 }
 
 function isReadOnlySiteTask(task = {}, declaredReadOnly = false) {
@@ -127,7 +127,7 @@ function resolveNovaExecutor(task = {}) {
   const missingTargetReason = /(site|page web|depot github|repository|application web)/.test(text)
     ? 'cible_site_ou_depot_absente_de_la_tache'
     : /(image|media|photo|camera)/.test(text)
-      ? 'media_source_absente_ou_non_exploitable'
+      ? (sourceDocumentIdsFromTask(task).length ? 'aucun_executeur_media_enregistre' : 'media_source_absente_ou_non_exploitable')
       : 'aucun_executeur_reel_enregistre_pour_ce_type_de_tache';
   return {
     kind: 'unsupported',
@@ -381,7 +381,8 @@ async function executeVideoTask(task, agentRequest, createJob = null, context = 
 
 async function executeSiteTask(executor, task, { readOnly = false, dispatch = null, analyze = analyzeDomain } = {}) {
   const text = normalized(taskText(task));
-  if (/(galerie|galeries|membres?\/.?non.membres|plan de contenu|processus de vente|fonctionnalite|developpement)/.test(text)) {
+  const effectiveReadOnly = isReadOnlySiteTask(task, readOnly);
+  if (!effectiveReadOnly && /(galerie|galeries|membres?\/.?non.membres|plan de contenu|processus de vente|fonctionnalite|developpement)/.test(text)) {
     return {
       completed: false, blocked: true, awaiting_review: true, provider: 'cockpit-server',
       result: { domain: executor.domain, repository: executor.repository, dispatched: false, verified: false },
@@ -389,7 +390,6 @@ async function executeSiteTask(executor, task, { readOnly = false, dispatch = nu
       reason: 'developpement_non_execute_preuve_de_livraison_absente',
     };
   }
-  const effectiveReadOnly = isReadOnlySiteTask(task, readOnly);
   const before = await analyze(executor.domain);
   if (effectiveReadOnly) {
     return {
