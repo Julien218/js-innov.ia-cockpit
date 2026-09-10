@@ -17,6 +17,8 @@ test('le pipeline vidéo passe par la route Cockpit protégée et garde les deux
   assert.match(route, /\/projects/);
   assert.match(route, /\/exports/);
   assert.match(route, /\/upload/);
+  assert.match(route, /router.get\('\/media'/);
+  assert.match(route, /mediaProxyUrl/);
   assert.match(client, /VIDEO_API_BASE = '\/api\/video-studio'/);
   assert.match(client, /file_url: uploaded\.file_url \|\| uploaded\.url/);
   assert.doesNotMatch(client, /export async function uploadToStorage\(file, bucket = 'videos'/);
@@ -34,7 +36,7 @@ test('l’import audio ne perd plus l’URL et expose un vrai téléchargement',
   assert.match(recorder, /audio\.play\(\)/);
   assert.match(motion, /Télécharger la source/);
   assert.match(motion, /setMusicMotionHandoff/);
-  assert.match(motion, /navigate\\('\/video-studio\\/new'/);
+  assert.match(motion, /navigate\('\/video-studio\/new'/);
 });
 
 test('l’aperçu utilise la durée et l’horloge de l’audio quand ils existent', () => {
@@ -58,7 +60,7 @@ test('la migration crée les tables et le stockage nécessaires sans ouvrir l’
   assert.match(provenance, /audio: options\.audio === true \|\| Boolean\(vp\.audio_url\)/);
   assert.match(read('server-video-studio.cjs'), /video_project_id/);
   assert.match(read('src/pages/VideoStudio.jsx'), /preparePendingHandoff/);
-  assert.match(read('src/pages/VideoStudio.jsx'), /UploadFile\\(\\{ file: pendingHandoff.audioFile \\}/);
+  assert.match(read('src/pages/VideoStudio.jsx'), /UploadFile\(\{ file: pendingHandoff.audioFile \}/);
 });
 
 test('la nouvelle route serveur est syntaxiquement valide', () => {
