@@ -45,6 +45,7 @@ export function buildVideoProvenance(vp = {}, sourceProject = {}, options = {}) 
       fps: Number(options.fps) || 30,
       requestedDurationSeconds: durationSeconds,
       sourceContainer: clean(options.sourceContainer, 'WebM'),
+      audio: options.audio === true || Boolean(vp.audio_url),
       visualFormat: clean(options.visualFormat || vp.template_format, '16:9'),
     },
   };
