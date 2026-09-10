@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Film, Download, X, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
 import { finalizeStudioExport } from "@/lib/videoProvenance";
+import { createCanvasRecorder } from "@/lib/canvasMediaRecorder";
 
 const FPS = 30;
 const FONTS = { normal: "600 36px sans-serif", small: "400 24px sans-serif", large: "700 56px sans-serif" };
@@ -103,9 +104,11 @@ export default function MultiTrackExporter({ vp, tracks, sourceProject, onClose 
   const bgColor = vp?.template_colors?.bg || "#000000";
 
   const allClips = (tracks || []).flatMap(t => (t.clips || []).map(c => ({ ...c, trackType: t.type })));
-  const videoDuration = vp?.template_duration || Math.max(
+  const clipDuration = Math.max(
     ...allClips.map(c => (c.startTime || 0) + (c.duration || 4)), 10
   );
+  const audioDuration = Number(vp?.audio_duration_seconds) || 0;
+  const videoDuration = Math.max(Number(vp?.template_duration) || 0, clipDuration, audioDuration);
 
   useEffect(() => setTotalSec(videoDuration), [videoDuration]);
   useEffect(() => () => { stopRef.current = true; if (blobUrl) URL.revokeObjectURL(blobUrl); }, []);
@@ -128,14 +131,19 @@ export default function MultiTrackExporter({ vp, tracks, sourceProject, onClose 
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
-    const stream = canvas.captureStream(FPS);
-    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-      ? "video/webm;codecs=vp9" : "video/webm";
-    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 10_000_000 });
-    const chunks = [];
-    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-
-    recorder.start(250);
+    let recording;
+    try {
+      recording = await createCanvasRecorder({
+        canvas,
+        fps: FPS,
+        audioUrl: vp?.audio_url,
+        videoBitsPerSecond: 10_000_000,
+      });
+    } catch (error) {
+      setStatus("error");
+      setMessage(error?.message || "MediaRecorder non supporté. Utilisez Chrome ou Edge.");
+      return;
+    }
     setStatus("recording");
     setMessage(`Rendu ${Math.ceil(videoDuration)}s · ${W}×${H}`);
 
@@ -220,10 +228,12 @@ export default function MultiTrackExporter({ vp, tracks, sourceProject, onClose 
       }
     }
 
-    recorder.stop();
-    await new Promise(r => { recorder.onstop = r; });
-
-    const blob = new Blob(chunks, { type: "video/webm" });
+    const blob = await recording.stop();
+    if (stopRef.current) {
+      setStatus("idle");
+      setMessage("");
+      return;
+    }
     const url = URL.createObjectURL(blob);
     const fileSizeMb = blob.size / 1024 / 1024;
 
@@ -335,7 +345,7 @@ export default function MultiTrackExporter({ vp, tracks, sourceProject, onClose 
 
         <div className="flex gap-2">
           {status === "idle" && (
-            <button onClick={startExport} className="btn-gold flex-1 py-3 rounded-xl text-sm flex items-center justify-center gap-2">
+            <button onClick={() => startExport().catch((error) => { setStatus("error"); setMessage(error?.message || "Export impossible."); })} className="btn-gold flex-1 py-3 rounded-xl text-sm flex items-center justify-center gap-2">
               <Film size={14} />
               Lancer l'export
             </button>
