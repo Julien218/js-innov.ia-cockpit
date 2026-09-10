@@ -157,7 +157,9 @@ function exportPayload(body = {}, { partial = false, req } = {}) {
   const output = {};
   for (const field of EXPORT_TEXT_FIELDS) {
     if (!partial || hasOwn(body, field)) {
-      output[field] = field === 'video_project_id'\n        ? asText(body[field], null, 160)\n        : asText(body[field], partial ? null : '', field === 'file_url' ? 2000 : 10000);
+      output[field] = field === 'video_project_id'
+        ? asText(body[field], null, 160)
+        : asText(body[field], partial ? null : '', field === 'file_url' ? 2000 : 10000);
     }
   }
   for (const field of EXPORT_NUMBER_FIELDS) {
