@@ -86,7 +86,7 @@ export default function StudioSidebar({ vp, update, transitions, sourceProject }
       const newClips = [];
       for (const file of selectedFiles) {
         const uploaded = await base44.integrations.Core.UploadFile({ file });
-        const fileUrl = uploaded?.file_url || uploaded?.url;
+        const fileUrl = uploaded?.media_url || uploaded?.file_url || uploaded?.url;
         if (!fileUrl) throw new Error("Le serveur n’a pas renvoyé l’URL du média.");
         newClips.push({
           id: `clip_${Date.now()}_${Math.random().toString(36).slice(2)}`,
