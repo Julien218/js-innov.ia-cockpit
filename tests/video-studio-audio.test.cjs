@@ -19,6 +19,7 @@ test('le pipeline vidéo passe par la route Cockpit protégée et garde les deux
   assert.match(route, /\/upload/);
   assert.match(client, /VIDEO_API_BASE = '\/api\/video-studio'/);
   assert.match(client, /file_url: uploaded\.file_url \|\| uploaded\.url/);
+  assert.doesNotMatch(client, /export async function uploadToStorage\(file, bucket = 'videos'/);
 });
 
 test('l’import audio ne perd plus l’URL et expose un vrai téléchargement', () => {
@@ -28,6 +29,9 @@ test('l’import audio ne perd plus l’URL et expose un vrai téléchargement',
   assert.match(sidebar, /downloadRemoteFile/);
   assert.match(sidebar, /setUploading\(false\)/);
   assert.match(motion, /downloadBlob\(audioFile/);
+  const recorder = read('src/lib/canvasMediaRecorder.js');
+  assert.match(recorder, /createMediaStreamDestination/);
+  assert.match(recorder, /audio\.play\(\)/);
   assert.match(motion, /Télécharger la source/);
 });
 
@@ -48,6 +52,9 @@ test('la migration crée les tables et le stockage nécessaires sans ouvrir l’
   assert.match(migration, /insert into storage\.buckets/);
   assert.match(migration, /revoke all on table public\."VideoProject", public\."VideoExport" from anon, authenticated/);
   assert.match(migration, /grant all on table public\."VideoProject", public\."VideoExport" to service_role/);
+  const provenance = read('src/lib/videoProvenance.js');
+  assert.match(provenance, /audio: options\.audio === true \|\| Boolean\(vp\.audio_url\)/);
+  assert.match(read('server-video-studio.cjs'), /video_project_id/);
 });
 
 test('la nouvelle route serveur est syntaxiquement valide', () => {
