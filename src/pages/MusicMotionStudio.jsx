@@ -18,6 +18,7 @@ import {
 import PageHeader from '@/components/shared/PageHeader';
 import { downloadBlob, safeDownloadName } from '@/lib/fileDownload';
 import { setMusicMotionHandoff } from '@/lib/musicMotionHandoff';
+import { LOCAL_AGENT_URLS } from '@/lib/localAgentQueueBridge';
 
 const MODE_OPTIONS = [
   {
@@ -178,6 +179,28 @@ function fileToDataUrl(file) {
   });
 }
 
+async function requestLocalMusicMotionAnalysis(payload) {
+  let lastError = null;
+  for (const localUrl of LOCAL_AGENT_URLS) {
+    try {
+      const response = await fetch(localUrl + '/api/music-motion/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(20 * 60 * 1000),
+      });
+      if (response.status === 404) {
+        lastError = new Error('Route Music Motion absente sur ' + localUrl);
+        continue;
+      }
+      return response;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('Agent local Windows injoignable sur 8788/8787.');
+}
+
 function normalizeAnalyzedScenes(analysis, fallback) {
   const sections = analysis?.creative_plan?.sections;
   if (!Array.isArray(sections) || sections.length === 0) return fallback;
@@ -273,19 +296,14 @@ export default function MusicMotionStudio() {
 
     try {
       const audioDataUrl = await fileToDataUrl(audioFile);
-      const response = await fetch('http://127.0.0.1:8787/api/music-motion/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          audio_data_url: audioDataUrl,
-          audio_name: audioFile.name,
-          duration_seconds: duration || null,
-          mode,
-          dance_allowed: danceAllowed,
-          brief,
-          references: references.map((item) => item.name),
-        }),
-        signal: AbortSignal.timeout(20 * 60 * 1000),
+      const response = await requestLocalMusicMotionAnalysis({
+        audio_data_url: audioDataUrl,
+        audio_name: audioFile.name,
+        duration_seconds: duration || null,
+        mode,
+        dance_allowed: danceAllowed,
+        brief,
+        references: references.map((item) => item.name),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
