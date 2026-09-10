@@ -51,7 +51,7 @@ const getErrorMessage = (error, fallback) => {
 const isBlobUrl = (value) => String(value || "").startsWith("blob:");
 
 const uploadedFileUrl = (uploaded, label) => {
-  const url = uploaded?.file_url || uploaded?.url;
+  const url = uploaded?.media_url || uploaded?.file_url || uploaded?.url;
   if (!url) throw new Error("Le serveur n’a pas renvoyé l’URL " + label + ".");
   return url;
 };
