@@ -112,7 +112,7 @@ function StudioStartGuide({ vp, onOpenSidebar, onOpenPanel }) {
                 className="group rounded-xl border border-border bg-background/60 p-4 text-left transition-colors hover:border-primary/60 hover:bg-primary/5"
               >
                 <div className="flex items-center justify-between">
-                  <span className={\`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold \${step.done ? "bg-emerald-500/15 text-emerald-400" : "bg-primary/15 text-primary"}\`}>
+                  <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${step.done ? "bg-emerald-500/15 text-emerald-400" : "bg-primary/15 text-primary"}`}>
                     {step.done ? <CheckCircle2 size={16} /> : step.number}
                   </span>
                   <ChevronRight size={15} className="text-muted-foreground transition-transform group-hover:translate-x-0.5" />
@@ -120,7 +120,7 @@ function StudioStartGuide({ vp, onOpenSidebar, onOpenPanel }) {
                 <Icon size={20} className="mt-4 text-primary" />
                 <p className="mt-2 text-sm font-semibold text-foreground">{step.title}</p>
                 <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{step.detail}</p>
-                <p className={\`mt-3 text-[11px] font-medium \${step.done ? "text-emerald-400" : "text-primary"}\`}>
+                <p className={`mt-3 text-[11px] font-medium ${step.done ? "text-emerald-400" : "text-primary"}`}>
                   {step.done ? "Terminé · Modifier" : "Commencer →"}
                 </p>
               </button>
