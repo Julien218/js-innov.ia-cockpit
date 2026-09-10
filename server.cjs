@@ -81,6 +81,16 @@ try {
   console.warn('⚠️ Route commerce indisponible:', e.message);
 }
 
+// ── Pixelium / Espace C : demandes, devis différés et commissions ──
+// POST /request est protégé par x-commerce-key ; les lectures/configurations sont admin.
+try {
+  const pixeliumRouter = require('./server-pixelium.cjs');
+  app.use('/api/pixelium', pixeliumRouter);
+  console.log('✅ Route /api/pixelium activée (devis 35 min + attribution commerciale)');
+} catch (e) {
+  console.warn('⚠️ Route Pixelium indisponible:', e.message);
+}
+
 try {
   const crmRouter = require('./server-crm.cjs');
   app.use('/api/crm', requireSession('collaborateur'), crmRouter);
