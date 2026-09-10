@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { X, Download, Film, CheckCircle, AlertCircle } from "lucide-react";
 import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
 import { finalizeStudioExport } from "@/lib/videoProvenance";
-import { createCanvasRecorder } from "@/lib/canvasMediaRecorder";
+import { createCanvasRecorder, paceCanvasFrame } from "@/lib/canvasMediaRecorder";
 
 const FORMAT_PRESETS = {
   "9:16":  { width: 1080, height: 1920, label: "Vertical 9:16 (TikTok / Reels / Shorts)" },
@@ -98,6 +98,7 @@ export default function SocialExporter({ vp, sourceProject, onClose }) {
     setMessage(`Export ${templateFormat} · ${Math.ceil(fullDur)}s · ${clips.length} clips`);
 
     let lastUpdate = 0;
+    const renderStartedAt = globalThis.performance?.now?.() ?? Date.now();
 
     for (let frame = 0; frame < totalFrames; frame++) {
       if (stopRef.current) break;
@@ -225,6 +226,7 @@ export default function SocialExporter({ vp, sourceProject, onClose }) {
         setProgress(20 + Math.round((frame / totalFrames) * 78));
         await new Promise(r => setTimeout(r, 0));
       }
+      await paceCanvasFrame(frame, FPS, renderStartedAt);
     }
 
     const blob = await recording.stop();
