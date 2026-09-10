@@ -88,7 +88,7 @@ function sanitizeTaskItem(item = {}) {
   const legacyClientNote = rawClientId && !clientId && !isInternalClientReference(rawClientId)
     ? `Référence client non canonique conservée pour résolution: ${rawClientId}`
     : null;
-  const notes = [cleanText(item.notes, 3800), legacyClientNote].filter(Boolean).join('\\n').slice(0, 4000) || null;
+  const notes = [cleanText(item.notes, 3800), legacyClientNote].filter(Boolean).join('\n').slice(0, 4000) || null;
   return {
     record: {
       titre,
