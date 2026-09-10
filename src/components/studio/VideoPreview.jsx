@@ -44,15 +44,17 @@ export default function VideoPreview({
     : 0;
   const clip = clipList[safeClipIdx];
   const clipsDuration = clipList.reduce((sum, item) => sum + clipDuration(item), 0);
-  const parsedAudioDuration = Number(audioDuration) || 0;
-  const totalDuration = parsedAudioDuration > 0 ? parsedAudioDuration : clipsDuration;
   const hasAudio = Boolean(audioUrl);
 
   const [playing, setPlaying] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [showTransition, setShowTransition] = useState(false);
+  const [mediaDuration, setMediaDuration] = useState(0);
   const audioRef = useRef(null);
   const transitionTimerRef = useRef(null);
+  const parsedAudioDuration = Number(audioDuration) || 0;
+  const effectiveAudioDuration = parsedAudioDuration > 0 ? parsedAudioDuration : mediaDuration;
+  const totalDuration = effectiveAudioDuration > 0 ? effectiveAudioDuration : clipsDuration;
 
   const showClipTransition = useCallback(() => {
     setShowTransition(true);
@@ -74,12 +76,23 @@ export default function VideoPreview({
   useEffect(() => {
     setPlaying(false);
     setElapsed(0);
+    setMediaDuration(0);
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
     }
     if (clipList.length) onClipChange(0);
   }, [audioUrl, clipList.length, onClipChange]);
+
+  useEffect(() => {
+    setMediaDuration(0);
+    const audio = audioRef.current;
+    if (!hasAudio || !audio) return undefined;
+    const handleMetadata = () => setMediaDuration(Number(audio.duration) || 0);
+    audio.addEventListener("loadedmetadata", handleMetadata);
+    if (audio.readyState >= 1) handleMetadata();
+    return () => audio.removeEventListener("loadedmetadata", handleMetadata);
+  }, [audioUrl, hasAudio]);
 
   useEffect(() => {
     if (hasAudio || !playing || totalDuration <= 0) return undefined;
