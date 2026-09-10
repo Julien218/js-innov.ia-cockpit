@@ -67,8 +67,17 @@ function readAudioDuration(file) {
   });
 }
 
-export default function StudioSidebar({ vp, update, transitions, sourceProject }) {
-  const [tab, setTab] = useState("media");
+export default function StudioSidebar({ vp, update, transitions, sourceProject, activeTab, onActiveTabChange }) {
+  const [internalTab, setInternalTab] = useState(() => (
+    vp?.audio_url || (vp?.clips || []).length ? "media" : "audio"
+  ));
+  const tab = activeTab || internalTab;
+  const selectTab = (nextTab) => {
+    setInternalTab(nextTab);
+    onActiveTabChange?.(nextTab);
+  };
+  const audioReady = Boolean(vp?.audio_url);
+  const mediaReady = (vp?.clips || []).length > 0;
   const [addingText, setAddingText] = useState(false);
   const [newText, setNewText] = useState({ content: "", position: "centre", color: "#ffffff", size: "2rem", font: "Inter, sans-serif", bold: false });
   const [uploading, setUploading] = useState(false);
@@ -111,7 +120,7 @@ export default function StudioSidebar({ vp, update, transitions, sourceProject }
     setAudioError("");
     try {
       const uploaded = await base44.integrations.Core.UploadFile({ file });
-      const fileUrl = uploaded?.file_url || uploaded?.url;
+      const fileUrl = uploaded?.media_url || uploaded?.file_url || uploaded?.url;
       if (!fileUrl) throw new Error("Le serveur n’a pas renvoyé l’URL audio.");
       const audioDuration = await readAudioDuration(file);
       update("audio_url", fileUrl);
@@ -153,15 +162,48 @@ export default function StudioSidebar({ vp, update, transitions, sourceProject }
   const removeText = (id) => update("texts", (vp.texts || []).filter(t => t.id !== id));
 
   return (
-    <div className="w-56 border-r border-border flex flex-col bg-card shrink-0">
-      {/* Tabs */}
-      <div className="flex border-b border-border">
-        {[{ id: "media", icon: <Image size={13} /> }, { id: "audio", icon: <Music size={13} /> }, { id: "text", icon: <Type size={13} /> }, { id: "edit", icon: <Scissors size={13} /> }, { id: "fx", icon: <span className="text-xs">FX</span> }].map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex-1 py-2 flex justify-center items-center transition-colors ${tab === t.id ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}>
-            {t.icon}
+    <div className="w-64 border-r border-border flex flex-col bg-card shrink-0">
+      {/* Outils */}
+      <div className="grid grid-cols-5 border-b border-border bg-card/80">
+        {[
+          { id: "media", label: "Média", icon: <Image size={13} /> },
+          { id: "audio", label: "Audio", icon: <Music size={13} /> },
+          { id: "text", label: "Texte", icon: <Type size={13} /> },
+          { id: "edit", label: "Édition", icon: <Scissors size={13} /> },
+          { id: "fx", label: "FX", icon: <span className="text-[11px] font-semibold">FX</span> },
+        ].map((item) => (
+          <button
+            type="button"
+            key={item.id}
+            onClick={() => selectTab(item.id)}
+            title={item.label}
+            aria-label={"Ouvrir " + item.label}
+            className={`flex min-w-0 flex-col items-center justify-center gap-0.5 py-2 transition-colors ${tab === item.id ? "text-primary border-b-2 border-primary bg-primary/5" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            {item.icon}
+            <span className="truncate text-[9px] leading-none">{item.label}</span>
           </button>
         ))}
+      </div>
+
+      <div className="border-b border-border bg-background/40 p-3">
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">Démarrage rapide</p>
+          <span className="text-[10px] text-muted-foreground">{Number(audioReady) + Number(mediaReady)} / 2</span>
+        </div>
+        <div className="mt-2 space-y-1.5">
+          <button type="button" onClick={() => selectTab("audio")} className="flex w-full items-center gap-2 text-left text-[11px]">
+            <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${audioReady ? "bg-emerald-500/15 text-emerald-400" : "bg-primary/15 text-primary"}`}>{audioReady ? "✓" : "1"}</span>
+            <span className="min-w-0 flex-1 truncate text-foreground">Musique / audio</span>
+            <span className="text-[10px] text-muted-foreground">{audioReady ? "Prêt" : "Ajouter"}</span>
+          </button>
+          <button type="button" onClick={() => selectTab("media")} className="flex w-full items-center gap-2 text-left text-[11px]">
+            <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${mediaReady ? "bg-emerald-500/15 text-emerald-400" : "bg-primary/15 text-primary"}`}>{mediaReady ? "✓" : "2"}</span>
+            <span className="min-w-0 flex-1 truncate text-foreground">Images / clips</span>
+            <span className="text-[10px] text-muted-foreground">{mediaReady ? "Prêt" : "Ajouter"}</span>
+          </button>
+        </div>
+        <p className="mt-2 text-[10px] leading-4 text-muted-foreground">La musique est facultative pour une vidéo classique, mais nécessaire pour une synchronisation musicale.</p>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
@@ -238,7 +280,7 @@ export default function StudioSidebar({ vp, update, transitions, sourceProject }
                 </div>
               </div>
             )}
-            {audioError && <p className="text-[11px] text-red-400">{audioError}</p>}
+            {audioError && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-2 text-[11px] leading-4 text-red-300">{audioError}</div>}
             <div className="mt-2">
               <p className="text-xs text-muted-foreground mb-1.5 uppercase tracking-wide">BPM projet</p>
               <p className="text-primary font-bold text-sm">{sourceProject?.bpm || "–"} BPM</p>
