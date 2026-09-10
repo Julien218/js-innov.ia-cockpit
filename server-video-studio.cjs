@@ -110,11 +110,9 @@ async function request(baseUrl, endpoint, {
 }
 
 async function rest(baseUrl, table, options = {}) {
-  const result = await request(
-    baseUrl,
-    '/rest/v1/' + encodeURIComponent(table),
-    options,
-  );
+  const [tableName, query = ''] = String(table).split('?');
+  const endpoint = '/rest/v1/' + encodeURIComponent(tableName) + (query ? '?' + query : '');
+  const result = await request(baseUrl, endpoint, options);
   return result.data;
 }
 
@@ -184,7 +182,7 @@ async function listRows(table, req, allowedFilters = []) {
     }
     query.set(field, 'eq.' + safe);
   }
-  const rows = await rest(SUPABASE_URL, table, { key: SUPABASE_KEY });
+  const rows = await rest(SUPABASE_URL, table + '?' + query.toString(), { key: SUPABASE_KEY });
   return Array.isArray(rows) ? rows : [];
 }
 
