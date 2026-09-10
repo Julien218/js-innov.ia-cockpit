@@ -50,7 +50,7 @@ const TEXT_FONTS = ["Inter, sans-serif", "Playfair Display, serif", "monospace"]
 const TEXT_STYLES = ["normal", "gras", "italique"];
 
 function readAudioDuration(file) {
-  if (!file || typeof URL?.createObjectURL !== "function") return Promise.resolve(0);
+  if (!file || typeof globalThis.URL?.createObjectURL !== "function") return Promise.resolve(0);
   return new Promise((resolve) => {
     const probe = document.createElement("audio");
     const objectUrl = URL.createObjectURL(file);
