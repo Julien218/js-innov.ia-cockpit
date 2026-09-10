@@ -6,6 +6,14 @@ function safeText(value, max = 160) {
   return String(value || '').replace(/[\r\n<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
+function measuredBoolean(value) {
+  return typeof value === 'boolean' ? value : null;
+}
+
+function availability(value, yes, no) {
+  return value === true ? yes : value === false ? no : 'non mesuré';
+}
+
 function timeoutSignal(timeoutMs = 1800) {
   if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
     return AbortSignal.timeout(timeoutMs);
@@ -27,10 +35,10 @@ async function localAgentDiagnostic(fetchImpl) {
       online: response.ok,
       status: safeText(data?.status || (response.ok ? 'ok' : `http_${response.status}`), 40),
       model: safeText(data?.model || data?.ollama?.model || data?.default_model, 100),
-      ollama_online: Boolean(data?.ollama?.online ?? data?.ollama_online ?? response.ok),
+      ollama_online: response.ok ? measuredBoolean(data?.ollama?.online ?? data?.ollama_online) : null,
     };
   } catch (error) {
-    return { online: false, error: safeText(error?.message || 'injoignable', 120) };
+    return { online: null, error: safeText(error?.message || 'injoignable', 120) };
   }
 }
 
@@ -39,8 +47,8 @@ async function videoDiagnostic() {
   if (!bridge?.status) {
     return {
       desktop_bridge: false,
-      comfyui_online: false,
-      ffmpeg_online: false,
+      comfyui_online: null,
+      ffmpeg_online: null,
       reason: 'desktop_bridge_unavailable',
     };
   }
@@ -50,17 +58,17 @@ async function videoDiagnostic() {
     const stats = status?.comfyui?.stats || {};
     return {
       desktop_bridge: true,
-      comfyui_online: Boolean(status?.comfyui?.online),
+      comfyui_online: measuredBoolean(status?.comfyui?.online),
       comfyui_version: safeText(stats?.system?.comfyui_version || stats?.comfyui_version, 80),
-      ffmpeg_online: Boolean(status?.ffmpeg?.online),
+      ffmpeg_online: measuredBoolean(status?.ffmpeg?.online),
       ffmpeg_version: safeText(status?.ffmpeg?.version, 120),
       endpoint: 'http://127.0.0.1:8188',
     };
   } catch (error) {
     return {
       desktop_bridge: true,
-      comfyui_online: false,
-      ffmpeg_online: false,
+      comfyui_online: null,
+      ffmpeg_online: null,
       error: safeText(error?.message || 'diagnostic impossible', 120),
     };
   }
@@ -74,7 +82,7 @@ function localWorkflowDiagnostic() {
       video_mode: window.localStorage.getItem(VIDEO_MODE_KEY) === 'api' ? 'api' : 'local',
     };
   } catch {
-    return { h3_workflow_ready: false, video_mode: 'unknown' };
+    return { h3_workflow_ready: null, video_mode: 'unknown' };
   }
 }
 
@@ -102,12 +110,17 @@ export function formatDiagnosticContext(diagnostic) {
     `Mesuré à: ${safeText(diagnostic?.measured_at, 80)}.`,
     `Route actuelle: ${safeText(diagnostic?.current_route || '/', 160)}.`,
     `Application desktop Electron: ${diagnostic?.desktop_app ? 'oui' : 'non'}.`,
-    `Agent Local 8787: ${agent.online ? 'en ligne' : 'hors ligne'}${agent.model ? `; modèle=${agent.model}` : ''}${agent.ollama_online ? '; Ollama=en ligne' : ''}.`,
+    `Agent Local 8787: ${availability(agent.online, 'en ligne', 'réponse HTTP en échec')}${agent.model ? `; modèle=${agent.model}` : ''}.`,
+    `Ollama: ${availability(agent.ollama_online, 'en ligne', 'indisponible selon le diagnostic de l’agent')}.`,
+    ...(agent.error ? [`Contrôle agent non concluant depuis cette interface: ${safeText(agent.error, 120)}. Un blocage réseau ou navigateur ne prouve pas un arrêt du service.`] : []),
     `Mode vidéo: ${safeText(video.video_mode || 'inconnu', 20)}.`,
-    `Bridge vidéo Electron: ${video.desktop_bridge ? 'disponible' : 'indisponible'}.`,
-    `ComfyUI 8188: ${video.comfyui_online ? 'en ligne' : 'hors ligne/non mesuré'}${video.comfyui_version ? `; version=${video.comfyui_version}` : ''}.`,
-    `FFmpeg: ${video.ffmpeg_online ? 'disponible' : 'non détecté/non mesuré'}.`,
-    `Workflow MiniMax H3 local mémorisé: ${video.h3_workflow_ready ? 'oui' : 'non'}.`,
+    `Bridge vidéo Electron: ${video.desktop_bridge ? 'disponible' : diagnostic?.desktop_app ? 'indisponible dans cette application' : 'non accessible depuis le web (normal dans un navigateur)'}.`,
+    `ComfyUI 8188: ${availability(video.comfyui_online, 'en ligne', 'indisponible selon le contrôle Electron')}${video.comfyui_version ? `; version=${video.comfyui_version}` : ''}.`,
+    `FFmpeg: ${availability(video.ffmpeg_online, 'disponible', 'non détecté par le contrôle Electron')}.`,
+    ...(video.error ? [`Contrôle vidéo non concluant: ${safeText(video.error, 120)}.`] : []),
+    `Workflow MiniMax H3 local mémorisé: ${availability(video.h3_workflow_ready, 'oui', 'non')}; stockage de cette interface uniquement, modèles et validité du workflow non vérifiés.`,
+    'Portée: disponibilité des composants uniquement. Aucun test de génération vidéo de bout en bout ni contrôle des emails, tâches, runs ou preuves métier n’a été exécuté par ce diagnostic.',
+    'Ne pas conclure que tout le Cockpit fonctionne. Non mesuré ne signifie pas en panne. Un workflow mémorisé ne prouve pas une exécution réussie.',
     'Ce bloc est informatif et ne contient aucune autorisation d’écriture, publication, déploiement ou suppression.',
     '[/DIAGNOSTIC LOCAL LECTURE SEULE]',
   ];

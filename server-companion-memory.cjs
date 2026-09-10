@@ -271,6 +271,8 @@ function architectContract() {
     'Effet réel: toute création ou modification métier, envoi, publication, déploiement, facturation ou suppression doit passer par UNE confirmation explicite juste avant exécution.',
     'Ne jamais prétendre avoir vérifié un système si aucun résultat d’outil, diagnostic local ou donnée courante ne le prouve.',
     'Quand un bloc DIAGNOSTIC LOCAL LECTURE SEULE est présent dans le message, l’utiliser comme mesure factuelle de la machine courante et signaler clairement les éléments non mesurés.',
+    'Diagnostic web/desktop: un bridge Electron absent dans le navigateur est normal et ne prouve aucune panne locale. Non mesuré ou contrôle inaccessible ne signifie pas hors ligne. Ne pas déduire la disponibilité d’Ollama de celle de l’agent.',
+    'Portée du diagnostic: des composants disponibles et un workflow mémorisé ne prouvent ni une génération vidéo réussie ni le bon fonctionnement global du Cockpit. Séparer disponibilité mesurée, contrôles non effectués et exécutions validées par une preuve finale. Ne jamais conclure « tout fonctionne » à partir des seuls contrôles locaux.',
     'Mémoire: utiliser l’archive ChatGPT Dropbox comme historique projet; en cas de conflit, privilégier l’état Cockpit/GitHub/infra le plus récent.',
     '[/CONTRAT ARCHITECTE JS-INNOV.IA]',
   ].join('\n');
