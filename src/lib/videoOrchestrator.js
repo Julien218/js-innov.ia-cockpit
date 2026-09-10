@@ -227,23 +227,18 @@ export function prepareH3Workflow(baseWorkflow, options = {}) {
     if (type === 'RandomNoise' && 'noise_seed' in inputs) inputs.noise_seed = Number(seed);
     if (type === 'KSampler' && 'seed' in inputs) inputs.seed = Number(seed);
 
-    if (type === 'UNETLoader' && 'unet_name' in inputs) {
+    if (type === 'UNETLoader' && 'unet_name' in inputs && !String(inputs.unet_name || '').trim()) {
       inputs.unet_name = 'minimax_h3_fl2va_pruned_int8_convrot.safetensors';
     }
     if (type === 'CLIPLoader' && 'clip_name' in inputs) {
-      inputs.clip_name = 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors';
+      if (!String(inputs.clip_name || '').trim()) inputs.clip_name = 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors';
       if ('type' in inputs) inputs.type = 'minimax';
     }
-    if (type === 'VAELoader' && 'vae_name' in inputs) {
-      const current = String(inputs.vae_name || '').toLowerCase();
-      inputs.vae_name = current.includes('audio')
-        ? 'minimax_h3_audio_vae_fp32.safetensors'
-        : 'minimax_h3_video_vae_fp16.safetensors';
+    if (type === 'VAELoader' && 'vae_name' in inputs && !String(inputs.vae_name || '').trim()) {
+      inputs.vae_name = 'minimax_h3_video_vae_fp16.safetensors';
     }
-    if ((type.includes('LoraLoader') || type.includes('LoRA')) && 'lora_name' in inputs) {
-      if (String(inputs.lora_name || '').toLowerCase().includes('minimax_h3')) {
-        inputs.lora_name = 'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors';
-      }
+    if ((type.includes('LoraLoader') || type.includes('LoRA')) && 'lora_name' in inputs && !String(inputs.lora_name || '').trim()) {
+      inputs.lora_name = 'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors';
     }
   });
 
