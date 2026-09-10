@@ -76,6 +76,7 @@ COPY --from=builder /app/server-signage.cjs ./server-signage.cjs
 COPY --from=builder /app/server-villeconnect.cjs ./server-villeconnect.cjs
 COPY --from=builder /app/server-video-provenance-core.cjs ./server-video-provenance-core.cjs
 COPY --from=builder /app/server-video-provenance.cjs ./server-video-provenance.cjs
+COPY --from=builder /app/server-video-studio.cjs ./server-video-studio.cjs
 COPY --from=builder /app/server-video-generation-core.cjs ./server-video-generation-core.cjs
 COPY --from=builder /app/server-video-generation.cjs ./server-video-generation.cjs
 COPY --from=builder /app/server-dropbox-helper.cjs ./server-dropbox-helper.cjs
@@ -135,6 +136,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-villeconnect.cjs \
  && test -f /app/server-video-provenance-core.cjs \
  && test -f /app/server-video-provenance.cjs \
+ && test -f /app/server-video-studio.cjs \
  && test -f /app/server-video-generation-core.cjs \
  && test -f /app/server-video-generation.cjs \
  && test -f /app/server-assistant-batch.cjs \
@@ -178,6 +180,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-villeconnect.cjs \
  && node --check /app/server-video-provenance-core.cjs \
  && node --check /app/server-video-provenance.cjs \
+ && node --check /app/server-video-studio.cjs \
  && node --check /app/server-video-generation-core.cjs \
  && node --check /app/server-video-generation.cjs \
  && node --check /app/server-assistant-batch.cjs \
