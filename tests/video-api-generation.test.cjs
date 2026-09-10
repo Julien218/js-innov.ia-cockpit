@@ -4,8 +4,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   chooseProvider, providerAvailability, validateJobInput, buildProviderRequest,
-  xaiUsdFromUsage, estimateSoraUsd, publicConfig,
+  xaiUsdFromUsage, estimateSoraUsd, publicConfig, isCanonicalUuid,
+  isInternalClientReference, findCanonicalClient,
 } = require('../server-video-generation-core.cjs');
+const { sanitizeTaskBatchPayload } = require('../server-task-batch.cjs');
 
 test('le routage automatique préfère Grok puis Sora sans exposer les clés', () => {
   assert.equal(chooseProvider('auto', { XAI_API_KEY: 'secret-xai', OPENAI_API_KEY: 'secret-openai' }, new Date('2026-08-25')), 'xai');
@@ -13,6 +15,31 @@ test('le routage automatique préfère Grok puis Sora sans exposer les clés', (
   const config = publicConfig({ XAI_API_KEY: 'secret-xai', OPENAI_API_KEY: 'secret-openai' }, new Date('2026-08-25'));
   assert.equal(config.secret_values_exposed, false);
   assert.equal(JSON.stringify(config).includes('secret-'), false);
+});
+
+test('un alias client legacy est résolu avant toute écriture dans une colonne UUID', () => {
+  const internal = {
+    id: '99ca28a9-9f01-4fae-8640-7aeb50c95024',
+    nom: 'JS-Innov.IA — interne',
+    entreprise: 'JS-Innov.IA',
+    denomination_legale: 'JS-Innov.IA',
+    type_client: '',
+  };
+  assert.equal(isCanonicalUuid(internal.id), true);
+  assert.equal(isCanonicalUuid('client_jsinnovia'), false);
+  assert.equal(isInternalClientReference('client_jsinnovia'), true);
+  assert.equal(findCanonicalClient([internal], { clientId: 'client_jsinnovia' }).id, internal.id);
+
+  const payload = sanitizeTaskBatchPayload({
+    tasks: [{
+      titre: 'Générer le clip de démonstration',
+      description: 'Créer une vidéo synchronisée à partir du prompt et des références visuelles.',
+      client_id: 'client_jsinnovia',
+      agent_role: 'video_engineer',
+    }],
+  });
+  assert.equal(payload.tasks[0].record.client_id, null);
+  assert.equal(payload.tasks[0].record.client_nom, 'JS-Innov.IA');
 });
 
 test('Sora est automatiquement désactivé à sa date de fin de service', () => {
