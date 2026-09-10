@@ -138,7 +138,9 @@ export default function SocialExporter({ vp, sourceProject, onClose }) {
         const transType = clip.transition || vp?.transition || "fade";
         const transT = Math.min(0.4, clipDur * 0.2);
         const tIn = localT < transT ? localT / transT : 1;
-        const tOut = localT > clipDur - transT ? (clipDur - localT) / transT : 1;
+        const tOut = clipOffset >= totalDur
+          ? 1
+          : localT > clipDur - transT ? (clipDur - localT) / transT : 1;
         const alpha = Math.max(0, Math.min(1, Math.min(tIn, tOut)));
 
         if (img) {
@@ -203,7 +205,7 @@ export default function SocialExporter({ vp, sourceProject, onClose }) {
 
       } else {
         // Outro
-        const p = Math.min((t - INTRO_DUR - totalDur) / OUTRO_DUR, 1);
+        const p = Math.min((t - INTRO_DUR - contentDur) / OUTRO_DUR, 1);
         ctx.globalAlpha = Math.min(1, p / 0.2);
         ctx.fillStyle = accentColor;
         ctx.font = `bold ${Math.round(Math.min(WIDTH, HEIGHT) * 0.045)}px serif`;
