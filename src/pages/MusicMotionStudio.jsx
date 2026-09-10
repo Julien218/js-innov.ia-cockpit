@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AudioLines,
   CheckCircle2,
   Clapperboard,
   Download,
+  ArrowRight,
   Film,
   ImagePlus,
   Loader2,
@@ -15,6 +17,7 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { downloadBlob, safeDownloadName } from '@/lib/fileDownload';
+import { setMusicMotionHandoff } from '@/lib/musicMotionHandoff';
 
 const MODE_OPTIONS = [
   {
@@ -191,6 +194,7 @@ function normalizeAnalyzedScenes(analysis, fallback) {
 }
 
 export default function MusicMotionStudio() {
+  const navigate = useNavigate();
   const [audioFile, setAudioFile] = useState(null);
   const [audioUrl, setAudioUrl] = useState('');
   const [duration, setDuration] = useState(0);
@@ -246,6 +250,7 @@ export default function MusicMotionStudio() {
     const additions = files.map((file) => ({
       id: 'ref-' + Date.now() + '-' + Math.random().toString(16).slice(2),
       name: file.name,
+      file,
       url: URL.createObjectURL(file),
     }));
     setReferences((current) => [...current, ...additions].slice(0, 8));
@@ -355,6 +360,32 @@ export default function MusicMotionStudio() {
     analysis: analysisMeta,
     created_at: new Date().toISOString(),
   }), [audioFile, audioUrl, duration, mode, currentMode, danceAllowed, brief, formats, references, scenes, analysisMeta]);
+
+  const openInVideoStudio = () => {
+    if (!audioFile) {
+      setNotice({ type: 'error', text: 'Importez d’abord une chanson avant d’ouvrir le Studio vidéo.' });
+      return;
+    }
+    const aiPrompt = scenes
+      .map((scene) => `[${scene.start}s → ${scene.end}s] ${scene.prompt || scene.motion}`)
+      .filter(Boolean)
+      .join('\\n');
+    setMusicMotionHandoff({
+      title: projectPayload.title,
+      audioFile,
+      duration: duration || 0,
+      references: references
+        .filter((reference) => reference.file)
+        .map(({ id, name, file }) => ({ id, name, file })),
+      scenes,
+      aiPrompt,
+      metadata: {
+        ...projectPayload,
+        audio: { ...projectPayload.audio, preview_url: '' },
+      },
+    });
+    navigate('/video-studio/new');
+  };
 
   const saveDraft = () => {
     localStorage.setItem('jsinnovia.music-motion.draft', JSON.stringify(projectPayload));
@@ -612,7 +643,7 @@ export default function MusicMotionStudio() {
         <div>
           <p className="workspace-eyebrow">6 · Validation</p>
           <h3 className="font-semibold">Prêt pour le Studio vidéo local</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Le projet est conservé dans le navigateur avant son envoi à la génération ComfyUI.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Enregistrez localement ou ouvrez ce storyboard dans le Studio vidéo pour modifier les plans et lancer la génération.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={saveDraft} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm hover:border-primary/50">
@@ -621,7 +652,10 @@ export default function MusicMotionStudio() {
           <button type="button" onClick={() => downloadJson(projectPayload, 'music-motion-project.json')} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm hover:border-primary/50">
             <Download size={15} /> Exporter le storyboard
           </button>
-          <button type="button" onClick={() => setNotice({ type: 'success', text: 'Storyboard validé et prêt à être exporté.' })} className="btn-gold inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm">
+          <button type="button" onClick={openInVideoStudio} className="btn-gold inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm">
+            <ArrowRight size={15} /> Ouvrir dans le Studio vidéo
+          </button>
+          <button type="button" onClick={() => setNotice({ type: 'success', text: 'Storyboard validé et prêt à être exporté.' })} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm hover:border-primary/50">
             <CheckCircle2 size={15} /> Valider le storyboard
           </button>
         </div>
