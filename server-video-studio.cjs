@@ -377,7 +377,7 @@ function extensionOf(fileName) {
 
 function validStoragePath(value) {
   const path = String(value || '').trim();
-  return /^media\/\\d{4}-\\d{2}-\\d{2}\/[0-9a-f-]{36}(?:\.[a-z0-9]{1,12})?$/.test(path)
+  return /^media\/\d{4}-\d{2}-\d{2}\/[0-9a-f-]{36}(?:\.[a-z0-9]{1,12})?$/.test(path)
     ? path
     : null;
 }
