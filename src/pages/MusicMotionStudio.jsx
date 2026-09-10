@@ -439,7 +439,7 @@ export default function MusicMotionStudio() {
             <Music2 className="mb-2 text-primary" size={24} />
             <span className="text-sm font-medium">{audioFile ? audioFile.name : 'Importer un fichier audio'}</span>
             <span className="mt-1 text-xs text-muted-foreground">M4A, MP3, WAV · fichier conservé localement</span>
-            <input type="file" accept="audio/*" onChange={handleAudioChange} className="hidden" />
+            <input type="file" accept="audio/*,.m4a" onChange={handleAudioChange} className="hidden" />
           </label>
           {audioUrl && (
             <div className="rounded-xl border border-border bg-background/60 p-3">
