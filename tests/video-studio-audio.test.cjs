@@ -11,6 +11,7 @@ test('le pipeline vidéo passe par la route Cockpit protégée et garde les deux
   const server = read('server.cjs');
   const route = read('server-video-studio.cjs');
   const client = read('src/lib/supabaseVideoClient.js');
+  const dockerfile = read('Dockerfile');
   assert.match(server, /\/api\/video-studio/);
   assert.match(server, /requireSession\('admin'\)/);
   assert.match(server, /requirePermission\('production', 'admin'\)/);
@@ -20,6 +21,9 @@ test('le pipeline vidéo passe par la route Cockpit protégée et garde les deux
   assert.match(route, /router.get\('\/media'/);
   assert.match(route, /mediaProxyUrl/);
   assert.match(client, /VIDEO_API_BASE = '\/api\/video-studio'/);
+  assert.match(dockerfile, /COPY --from=builder \/app\/server-video-studio\.cjs \.\/server-video-studio\.cjs/);
+  assert.match(dockerfile, /test -f \/app\/server-video-studio\.cjs/);
+  assert.match(dockerfile, /node --check \/app\/server-video-studio\.cjs/);
   assert.match(client, /url: uploaded\.media_url \|\| uploaded\.file_url \|\| uploaded\.url/);
   assert.doesNotMatch(client, /export async function uploadToStorage\(file, bucket = 'videos'/);
 });
