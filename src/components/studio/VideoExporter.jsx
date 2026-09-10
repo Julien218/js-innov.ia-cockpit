@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Film, Download, X, AlertCircle, CheckCircle, Image, Loader2, Sparkles } from "lucide-react";
 import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
 import { finalizeStudioExport } from "@/lib/videoProvenance";
+import { createCanvasRecorder } from "@/lib/canvasMediaRecorder";
 
 export default function VideoExporter({ vp, sourceProject, onClose }) {
   const [status, setStatus] = useState("idle");
@@ -65,20 +66,19 @@ export default function VideoExporter({ vp, sourceProject, onClose }) {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
 
-    let stream, recorder, chunks = [];
+    let recording;
     try {
-      stream = canvas.captureStream(FPS);
-      const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-        ? "video/webm;codecs=vp9" : "video/webm";
-      recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-    } catch (e) {
+      recording = await createCanvasRecorder({
+        canvas,
+        fps: FPS,
+        audioUrl: freshVp?.audio_url,
+        videoBitsPerSecond: 8_000_000,
+      });
+    } catch (error) {
       setStatus("error");
-      setMessage("MediaRecorder non supporté. Utilisez Chrome ou Edge.");
+      setMessage(error?.message || "MediaRecorder non supporté. Utilisez Chrome ou Edge.");
       return;
     }
-
-    recorder.start(200);
     setStatus("recording");
 
     // Précalcul des timestamps de début de chaque clip
@@ -89,7 +89,9 @@ export default function VideoExporter({ vp, sourceProject, onClose }) {
       acc += c.duration || 4;
     }
     const totalDur = acc;
-    const fullDur = INTRO_DUR + totalDur + OUTRO_DUR;
+    const audioDur = Number(freshVp?.audio_duration_seconds) || 0;
+    const contentDur = Math.max(totalDur, audioDur);
+    const fullDur = INTRO_DUR + contentDur + OUTRO_DUR;
     const totalFrames = Math.ceil(fullDur * FPS);
 
     setMessage(`Rendu en cours… ${Math.ceil(fullDur)}s · ${clips.length} clips`);
@@ -135,14 +137,15 @@ export default function VideoExporter({ vp, sourceProject, onClose }) {
         ctx.fillRect(WIDTH / 2 - lineW / 2, HEIGHT * 0.65, lineW, 1);
         ctx.globalAlpha = 1;
 
-      } else if (clipOffset >= 0 && clipOffset < totalDur) {
+      } else if (clipOffset >= 0 && clipOffset < contentDur) {
         // ── CLIPS ──
-        const clipIdx = getClipAtOffset(clipOffset);
+        const visualOffset = Math.min(clipOffset, Math.max(0, totalDur - 0.001));
+        const clipIdx = getClipAtOffset(visualOffset);
         const clip = clips[clipIdx];
         const img = images[clipIdx];
         const clipStart = clipStarts[clipIdx];
         const clipDur = clip.duration || 4;
-        const localT = clipOffset - clipStart;
+        const localT = visualOffset - clipStart;
         const transT = Math.min(0.5, clipDur * 0.18);
         // Transition type par clip (définie par l'agent), fallback sur la globale
         const transType = clip.transition || freshVp?.transition || "fade";
@@ -252,10 +255,12 @@ export default function VideoExporter({ vp, sourceProject, onClose }) {
       }
     }
 
-    recorder.stop();
-    await new Promise((r) => { recorder.onstop = r; });
-
-    const blob = new Blob(chunks, { type: "video/webm" });
+    const blob = await recording.stop();
+    if (stopRef.current) {
+      setStatus("idle");
+      setMessage("");
+      return;
+    }
     const url = URL.createObjectURL(blob);
     blobUrlRef.current = url;
     const fileSizeMb = blob.size / 1024 / 1024;
@@ -346,7 +351,9 @@ Composition horizontale 16:9, très haut contraste, typographie lisible et domin
     };
   }, []);
 
-  const totalDurDisplay = Math.ceil(INTRO_DUR + (vp?.clips || []).reduce((s, c) => s + (c.duration || 4), 0) + OUTRO_DUR);
+  const clipDurDisplay = (vp?.clips || []).reduce((s, c) => s + (c.duration || 4), 0);
+  const audioDurDisplay = Number(vp?.audio_duration_seconds) || 0;
+  const totalDurDisplay = Math.ceil(INTRO_DUR + Math.max(clipDurDisplay, audioDurDisplay) + OUTRO_DUR);
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
@@ -448,7 +455,7 @@ Composition horizontale 16:9, très haut contraste, typographie lisible et domin
 
         <div className="flex gap-2">
           {status === "idle" && (
-            <button onClick={startExport} className="btn-gold flex-1 py-3 rounded-xl text-sm flex items-center justify-center gap-2">
+            <button onClick={() => startExport().catch((error) => { setStatus("error"); setMessage(error?.message || "Export impossible."); })} className="btn-gold flex-1 py-3 rounded-xl text-sm flex items-center justify-center gap-2">
               <Film size={14} />
               Lancer l'export vidéo
             </button>
