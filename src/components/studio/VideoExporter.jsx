@@ -159,7 +159,9 @@ export default function VideoExporter({ vp, sourceProject, onClose }) {
 
           // Progress d'entrée [0..1] et sortie [0..1]
           const tIn  = localT < transT ? localT / transT : 1;
-          const tOut = localT > clipDur - transT ? (clipDur - localT) / transT : 1;
+          const tOut = clipOffset >= totalDur
+            ? 1
+            : localT > clipDur - transT ? (clipDur - localT) / transT : 1;
           const alpha = Math.max(0, Math.min(1, Math.min(tIn, tOut)));
 
           ctx.save();
@@ -230,7 +232,7 @@ export default function VideoExporter({ vp, sourceProject, onClose }) {
 
       } else {
         // ── OUTRO ──
-        const p = Math.min((t - INTRO_DUR - totalDur) / OUTRO_DUR, 1);
+        const p = Math.min((t - INTRO_DUR - contentDur) / OUTRO_DUR, 1);
         const alpha = p < 0.15 ? p / 0.15 : 1;
         ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
         ctx.fillStyle = palette.primary;
