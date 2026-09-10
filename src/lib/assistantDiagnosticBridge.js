@@ -119,6 +119,8 @@ export function formatDiagnosticContext(diagnostic) {
     `FFmpeg: ${availability(video.ffmpeg_online, 'disponible', 'non détecté par le contrôle Electron')}.`,
     ...(video.error ? [`Contrôle vidéo non concluant: ${safeText(video.error, 120)}.`] : []),
     `Workflow MiniMax H3 local mémorisé: ${availability(video.h3_workflow_ready, 'oui', 'non')}; stockage de cette interface uniquement, modèles et validité du workflow non vérifiés.`,
+    'Une absence de workflow dans ce navigateur ne dit rien du workflow mémorisé dans Electron ou sur disque. Ne pas en déduire que le pipeline local est absent, inactif ou indisponible.',
+    'Un bridge inaccessible depuis le web indique uniquement une limite de cette interface. Ne pas en déduire que les traitements vidéo locaux sont arrêtés ou désactivés.',
     'Portée: disponibilité des composants uniquement. Aucun test de génération vidéo de bout en bout ni contrôle des emails, tâches, runs ou preuves métier n’a été exécuté par ce diagnostic.',
     'Ne pas conclure que tout le Cockpit fonctionne. Non mesuré ne signifie pas en panne. Un workflow mémorisé ne prouve pas une exécution réussie.',
     'Ce bloc est informatif et ne contient aucune autorisation d’écriture, publication, déploiement ou suppression.',
