@@ -30,7 +30,7 @@ test('sérialise aussi un message ComfyUI qui arrive comme objet', () => {
 
   assert.match(message, /node_id/);
   assert.match(message, /image not found/);
-  assert.doesNotMatch(message, /\\[object Object\\]/);
+  assert.doesNotMatch(message, /\[object Object\]/);
 });
 
 test('conserve un message texte et sérialise le corps inconnu', () => {
