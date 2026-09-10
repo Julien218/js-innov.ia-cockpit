@@ -47,6 +47,18 @@ test('l’import audio ne perd plus l’URL et expose un vrai téléchargement',
   assert.match(motion, /navigate\('\/video-studio\/new'/);
 });
 
+test('le Studio affiche un parcours guidé et des onglets compréhensibles', () => {
+  const studio = read('src/pages/VideoStudio.jsx');
+  const sidebar = read('src/components/studio/StudioSidebar.jsx');
+  assert.match(studio, /StudioStartGuide/);
+  assert.match(studio, /Construisez votre vidéo en 3 étapes/);
+  assert.match(studio, /activeTab=\{sidebarTab\}/);
+  assert.match(sidebar, /Démarrage rapide/);
+  assert.match(sidebar, /aria-label=\{"Ouvrir " \+ item\.label\}/);
+  assert.match(sidebar, /Musique \\/ audio/);
+  assert.match(sidebar, /Images \\/ clips/);
+});
+
 test('l’aperçu utilise la durée et l’horloge de l’audio quand ils existent', () => {
   const studio = read('src/pages/VideoStudio.jsx');
   const preview = read('src/components/studio/VideoPreview.jsx');
