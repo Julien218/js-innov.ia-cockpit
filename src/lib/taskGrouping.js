@@ -9,7 +9,8 @@ const normalizeKey = (value) => String(value || "")
 
 export function taskGroupKey(task = {}) {
   return [
-    normalizeKey(task.titre || task.title),
+    normalizeKey(task.titre || task.title).replace(/\b(delegation automatique|duplicata|copie)\b/g, "").replace(/\s+/g, " ").trim(),
+    String(task.organisation_id || task.organisation || ""),
     normalizeKey(task.client_id || task.client_nom),
     normalizeKey(task.projet_id || task.projet_nom),
   ].join("|");

@@ -9,7 +9,7 @@ import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { AlertTriangle, CheckCircle2, CircleDot, Clock3, Loader2, Pencil, Play, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
-import { isTaskBlocked, isTaskCompleted, normalizeTaskStatus } from "@/lib/taskStatus";
+import { isTaskBlocked, isTaskCompleted, normalizeTaskStatus, runOperationalStatus } from "@/lib/taskStatus";
 import { groupTasks } from "@/lib/taskGrouping";
 
 const formFields = [
@@ -39,7 +39,7 @@ const columns = [
   { key: "client_nom",    label: "Client" },
   { key: "projet_nom",    label: "Projet" },
   { key: "priorite",      label: "Priorité",  render: v => <StatusBadge status={v} /> },
-  { key: "statut",        label: "Statut",    render: v => <StatusBadge status={v} /> },
+  { key: "statut",        label: "Statut",    render: (v, row) => <StatusBadge status={row.operational_status || v} /> },
   { key: "date_echeance", label: "Échéance",  render: v => v ? new Date(v).toLocaleDateString("fr-BE") : "—" },
 ];
 
@@ -65,6 +65,16 @@ export default function Taches() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "État NOVA indisponible");
       return data;
+    },
+    refetchInterval: 30_000,
+  });
+
+  const { data: runs = [], isError: runsUnavailable } = useQuery({
+    queryKey: ["task-execution-runs"],
+    queryFn: async () => {
+      const response = await fetch("/api/task-autopilot/runs", { credentials: "same-origin" });
+      if (!response.ok) throw new Error("État des exécutions indisponible");
+      return response.json();
     },
     refetchInterval: 30_000,
   });
@@ -112,16 +122,21 @@ export default function Taches() {
   const waitingTaskIds = useMemo(() => new Set(awaitingAuthorization.map((item) => String(item.task_id))), [awaitingAuthorization]);
   const blockedTaskIds = useMemo(() => new Set(actualBlockers.map((item) => String(item.task_id))), [actualBlockers]);
   const displayRows = useMemo(() => {
-    const groupedRows = groupDuplicates ? groupTasks(rows) : rows;
+    const latest = new Map();
+    for (const run of [...runs].sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))) {
+      if (!latest.has(String(run.task_id))) latest.set(String(run.task_id), run);
+    }
+    const withRuns = rows.map(row => ({ ...row, operational_status: runOperationalStatus(latest.get(String(row.id))) }));
+    const groupedRows = groupDuplicates ? groupTasks(withRuns) : withRuns;
     return groupedRows.map((row) => {
       const ids = (row.duplicate_ids?.length ? row.duplicate_ids : [row.id]).map(String);
       const hasRealBlocker = ids.some((id) => blockedTaskIds.has(id));
       const waiting = ids.some((id) => waitingTaskIds.has(id));
-      return waiting && !hasRealBlocker
-        ? { ...row, statut: "en_attente", operational_status: "en_attente_autorisation" }
+      return waiting && !hasRealBlocker && !row.operational_status
+        ? { ...row, statut: "en_attente", operational_status: "WAITING_AUTHORIZATION" }
         : row;
     });
-  }, [rows, groupDuplicates, waitingTaskIds, blockedTaskIds]);
+  }, [rows, runs, groupDuplicates, waitingTaskIds, blockedTaskIds]);
   const isLate = (task) => task?.date_echeance && new Date(task.date_echeance) < new Date() && !isTaskCompleted(task);
 
   const counters = useMemo(() => ({
@@ -194,6 +209,7 @@ export default function Taches() {
         search={search} onSearch={(value) => { setSearch(value); setVisibleCount(25); }}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouvelle tâche</Button>} />
 
+      {runsUnavailable && <p role="alert" className="text-sm text-amber-600">Les états NOVA ne peuvent pas être actualisés. Les tâches et leurs historiques restent conservés.</p>}
       <section className="rounded-2xl border border-border/70 bg-card/70 p-4 shadow-sm" aria-label="Pilotage des exécutions NOVA">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-2">

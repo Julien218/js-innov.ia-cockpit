@@ -20,14 +20,14 @@ test('awaiting_approval reste un run actif et empêche une redélégation automa
   assert.equal(run?.id, 'run-review');
 });
 
-test('une exécution running trop ancienne ne masque pas une relance contrôlée', () => {
+test('une exécution ancienne conserve sa réservation tant que son arrêt n’est pas prouvé', () => {
   const run = latestActiveRun({ data: [{
     id: 'run-stale',
     task_id: 'task-1',
     status: 'running',
     updated_at: '2026-09-02T18:00:00.000Z',
   }] }, 'task-1', Date.parse('2026-09-02T20:00:00.000Z'));
-  assert.equal(run, null);
+  assert.equal(run?.id, 'run-stale');
 });
 
 test('la question de Julien est reconnue comme contrôle en lecture seule', () => {
