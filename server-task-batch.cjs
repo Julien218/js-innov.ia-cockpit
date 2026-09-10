@@ -7,6 +7,7 @@ const {
   executeVideoTask,
   resolveNovaExecutor,
 } = require('./server-nova-executors.cjs');
+const { isCanonicalUuid, isInternalClientReference } = require('./server-video-generation-core.cjs');
 
 const PRIORITIES = new Set(['basse', 'moyenne', 'haute', 'urgente']);
 // Les runs en attente d'une validation ou d'une revue restent actifs. Les considérer
@@ -79,6 +80,15 @@ function sanitizeTaskItem(item = {}) {
   const titre = cleanText(item.titre || item.title, 240);
   if (!titre) return null;
   const priority = PRIORITIES.has(String(item.priorite || '').trim()) ? String(item.priorite).trim() : 'moyenne';
+  const rawClientId = cleanText(item.client_id, 180) || null;
+  const clientId = rawClientId && isCanonicalUuid(rawClientId) ? rawClientId : null;
+  const explicitClientName = cleanText(item.client_nom || item.client_name, 180) || null;
+  const clientName = explicitClientName
+    || (rawClientId ? (isInternalClientReference(rawClientId) ? 'JS-Innov.IA' : rawClientId) : null);
+  const legacyClientNote = rawClientId && !clientId && !isInternalClientReference(rawClientId)
+    ? `Référence client non canonique conservée pour résolution: ${rawClientId}`
+    : null;
+  const notes = [cleanText(item.notes, 3800), legacyClientNote].filter(Boolean).join('\\n').slice(0, 4000) || null;
   return {
     record: {
       titre,
@@ -87,8 +97,9 @@ function sanitizeTaskItem(item = {}) {
       priorite: priority,
       date_echeance: cleanText(item.date_echeance, 20) || null,
       projet_id: cleanText(item.projet_id, 80) || null,
-      client_id: cleanText(item.client_id, 80) || null,
-      notes: cleanText(item.notes, 4000) || null,
+      client_id: clientId,
+      client_nom: clientName,
+      notes,
     },
     requested_agent: {
       name: cleanText(item.agent_name || item.assigne_a || item.agent, 180) || null,
