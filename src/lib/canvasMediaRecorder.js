@@ -62,7 +62,7 @@ export async function createCanvasRecorder({
     audioDestination?.stream && stopTracks(audioDestination.stream);
     stopTracks(stream);
     if (stream !== videoStream) stopTracks(videoStream);
-    await audioContext?.close?.().catch?.(() => {});
+    if (audioContext) await audioContext.close().catch(() => {});
   };
 
   try {
