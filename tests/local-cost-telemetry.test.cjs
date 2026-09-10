@@ -87,5 +87,5 @@ test('AI Cost Control et la fabrique vidéo utilisent la télémétrie locale', 
   assert.match(client, /api\/telemetry\/summary/);
   assert.match(server, /local_agent_telemetry_machine_plus_energy/);
   assert.match(server, /costCenterId: clean\(req\.body\?\.cost_center_id/);
-  assert.equal(desktop.version, '1.0.40');
+  assert.equal(desktop.version, '1.0.41');
 });
