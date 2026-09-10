@@ -37,6 +37,8 @@ export default function VideoPreview({
   audioDuration,
   currentClipIdx,
   onClipChange,
+  currentTime = 0,
+  onTimeChange,
 }) {
   const clipList = Array.isArray(clips) ? clips : [];
   const safeClipIdx = clipList.length
@@ -85,6 +87,19 @@ export default function VideoPreview({
   }, [audioUrl, clipList.length, onClipChange]);
 
   useEffect(() => {
+    const requested = Number(currentTime);
+    if (!Number.isFinite(requested) || Math.abs(requested - elapsed) < 0.05) return;
+    const bounded = Math.max(0, Math.min(totalDuration, requested));
+    setElapsed(bounded);
+    const nextClip = clipIndexAt(bounded, clipList);
+    if (nextClip !== safeClipIdx) changeClip(nextClip, true);
+    const audio = audioRef.current;
+    if (hasAudio && audio && Math.abs((Number(audio.currentTime) || 0) - bounded) > 0.1) {
+      audio.currentTime = bounded;
+    }
+  }, [changeClip, clipList, currentTime, elapsed, hasAudio, safeClipIdx, totalDuration]);
+
+  useEffect(() => {
     setMediaDuration(0);
     const audio = audioRef.current;
     if (!hasAudio || !audio) return undefined;
@@ -102,15 +117,17 @@ export default function VideoPreview({
         if (next >= totalDuration) {
           setPlaying(false);
           changeClip(0, false);
+          onTimeChange?.(0);
           return 0;
         }
         const nextClip = clipIndexAt(next, clipList);
         if (nextClip !== safeClipIdx) changeClip(nextClip);
+        onTimeChange?.(next);
         return next;
       });
     }, 100);
     return () => clearInterval(interval);
-  }, [changeClip, clipList, hasAudio, playing, safeClipIdx, totalDuration]);
+  }, [changeClip, clipList, hasAudio, onTimeChange, playing, safeClipIdx, totalDuration]);
 
   useEffect(() => {
     if (!hasAudio || !audioRef.current) return undefined;
@@ -118,12 +135,14 @@ export default function VideoPreview({
     const handleTimeUpdate = () => {
       const time = Number(audio.currentTime) || 0;
       setElapsed(time);
+      onTimeChange?.(time);
       const nextClip = clipIndexAt(time, clipList);
       if (nextClip !== safeClipIdx) changeClip(nextClip);
     };
     const handleEnded = () => {
       setPlaying(false);
       setElapsed(0);
+      onTimeChange?.(0);
       audio.currentTime = 0;
       changeClip(0, false);
     };
@@ -133,7 +152,7 @@ export default function VideoPreview({
       audio.removeEventListener("timeupdate", handleTimeUpdate);
       audio.removeEventListener("ended", handleEnded);
     };
-  }, [changeClip, clipList, hasAudio, safeClipIdx]);
+  }, [changeClip, clipList, hasAudio, onTimeChange, safeClipIdx]);
 
   useEffect(() => {
     const audio = audioRef.current;
