@@ -211,7 +211,7 @@ export default function StudioSidebar({ vp, update, transitions, sourceProject }
               {uploading ? <Loader2 size={13} className="animate-spin" /> : <Music size={13} />}
               {uploading ? "Upload…" : "Ajouter musique / audio"}
             </button>
-            <input ref={audioRef} type="file" accept="audio/*" className="hidden"
+            <input ref={audioRef} type="file" accept="audio/*,.m4a" className="hidden"
               onChange={async e => {
                 await handleAudioUpload(e.target.files?.[0]);
                 e.target.value = "";
