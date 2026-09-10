@@ -28,11 +28,25 @@ export function downloadBlob(blob, filename) {
   return link.download;
 }
 
+export function videoStudioMediaUrl(url) {
+  if (!url) return url;
+  try {
+    const parsed = new URL(url, globalThis.location?.origin || 'http://localhost');
+    const marker = '/storage/v1/object/public/video-studio/';
+    const markerIndex = parsed.pathname.indexOf(marker);
+    if (markerIndex < 0) return url;
+    const storagePath = decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length));
+    return '/api/video-studio/media?path=' + encodeURIComponent(storagePath);
+  } catch {
+    return url;
+  }
+}
+
 export async function downloadRemoteFile(url, filename, fetchImpl = globalThis.fetch) {
   if (!url || typeof fetchImpl !== 'function') {
     throw new Error('Le fichier audio n’est pas disponible.');
   }
-  const response = await fetchImpl(url, { credentials: 'same-origin' });
+  const response = await fetchImpl(videoStudioMediaUrl(url), { credentials: 'same-origin' });
   if (!response.ok) {
     throw new Error('Téléchargement refusé par le serveur (' + response.status + ').');
   }
