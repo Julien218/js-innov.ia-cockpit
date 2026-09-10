@@ -78,13 +78,14 @@ export default function VideoPreview({
   useEffect(() => {
     setPlaying(false);
     setElapsed(0);
+    onTimeChange?.(0);
     setMediaDuration(0);
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
     }
     if (clipList.length) onClipChange(0);
-  }, [audioUrl, clipList.length, onClipChange]);
+  }, [audioUrl, clipList.length, onClipChange, onTimeChange]);
 
   useEffect(() => {
     const requested = Number(currentTime);
