@@ -91,7 +91,7 @@ function clientReferenceAliases(client = {}) {
 
 function findCanonicalClient(clients = [], { clientId = '', clientName = '' } = {}) {
   const available = (Array.isArray(clients) ? clients : [])
-    .filter((client) => client && isCanonicalUuid(client.id));
+    .filter((client) => client && clean(client.id, 180));
   const requestedId = clean(clientId, 180);
   const requestedName = clean(clientName, 240);
   const aliasMatches = (reference) => available.filter((client) =>
