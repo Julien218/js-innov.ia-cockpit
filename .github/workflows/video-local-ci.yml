@@ -4,10 +4,17 @@ on:
   pull_request:
     paths:
       - "src/pages/VideoStudio.jsx"
+      - "src/pages/MusicMotionStudio.jsx"
       - "src/pages/DourCampaignVideo.jsx"
       - "src/components/studio/**"
       - "src/lib/videoOrchestrator.js"
       - "src/lib/videoProvenance.js"
+      - "src/lib/supabaseVideoClient.js"
+      - "src/lib/fileDownload.js"
+      - "server.cjs"
+      - "server-video-studio.cjs"
+      - "supabase/migrations/20260910120000_video_studio_assets.sql"
+      - "tests/video-studio-audio.test.cjs"
       - "server-video-generation-core.cjs"
       - "server-video-generation.cjs"
       - "server-nova-executors.cjs"
@@ -23,6 +30,7 @@ on:
       - main
     paths:
       - "src/pages/VideoStudio.jsx"
+      - "src/pages/MusicMotionStudio.jsx"
       - "src/pages/DourCampaignVideo.jsx"
       - "src/components/studio/**"
       - "src/lib/videoOrchestrator.js"
@@ -64,10 +72,12 @@ jobs:
           node --check src/lib/videoOrchestrator.js
           node --check src/lib/videoProvenance.js
           node --check server-video-generation-core.cjs
+          node --check server-video-studio.cjs
           node --check server-video-generation.cjs
           node --check server-nova-executors.cjs
           node --check server-video-provenance-core.cjs
           node --test tests/electron-comfy-error.test.cjs
+          node --test tests/video-studio-audio.test.cjs
           node --check server-video-provenance.cjs
 
       - name: Verify NOVA video autostart
