@@ -279,4 +279,11 @@ module.exports = {
   xaiUsdFromUsage,
   estimateSoraUsd,
   publicConfig,
+  isCanonicalUuid,
+  clientReferenceKey,
+  isInternalClientReference,
+  canonicalClientName,
+  isInternalClientRecord,
+  clientReferenceAliases,
+  findCanonicalClient,
 };
