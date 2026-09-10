@@ -236,7 +236,7 @@ export default function VideoOrchestratorPanel({ vp, onOptimizeMontage }) {
           </div>
           <div className="rounded-xl border border-border bg-card p-3">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Workflow H3</p>
-            <p className={`mt-1 text-sm font-semibold ${workflow ? 'text-emerald-600' : 'text-amber-600'}`}>
+            <p className={`mt-1 text-sm font-semibold ${workflow && status?.h3?.available ? 'text-emerald-600' : 'text-amber-600'}`}>
               {workflow && status?.h3?.available ? 'Prêt' : workflow ? 'Nœud H3 non détecté' : 'À importer une fois'}
             </p>
           </div>
