@@ -44,9 +44,11 @@ test('l’aperçu utilise la durée et l’horloge de l’audio quand ils existe
   const preview = read('src/components/studio/VideoPreview.jsx');
   assert.match(studio, /audioUrl=\{currentVp\.audio_url\}/);
   assert.match(studio, /audioDuration=\{currentVp\.audio_duration_seconds\}/);
+  assert.match(studio, /onTimeChange=\{setCurrentTime\}/);
   assert.match(preview, /addEventListener\("timeupdate"/);
   assert.match(preview, /audio\.play\(\)/);
   assert.match(preview, /audio\.currentTime = bounded/);
+  assert.match(preview, /onTimeChange\?\.\(time\)/);
 });
 
 test('la migration crée les tables et le stockage nécessaires sans ouvrir l’accès public SQL', () => {
@@ -61,6 +63,7 @@ test('la migration crée les tables et le stockage nécessaires sans ouvrir l’
   assert.match(read('server-video-studio.cjs'), /video_project_id/);
   assert.match(read('src/pages/VideoStudio.jsx'), /preparePendingHandoff/);
   assert.match(read('src/pages/VideoStudio.jsx'), /UploadFile\(\{ file: pendingHandoff.audioFile \}/);
+  assert.match(read('src/components/studio/VideoOrchestratorPanel.jsx'), /onClick=\{openOutputFolder\}/);
 });
 
 test('la nouvelle route serveur est syntaxiquement valide', () => {
