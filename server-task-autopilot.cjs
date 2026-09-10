@@ -229,6 +229,8 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
       groups.get(key).push(task);
     }
 
+    const activeRuns = (await taskRunSummaries()).filter(run => ['pending', 'queued', 'dispatching', 'dispatched', 'running', 'awaiting_approval', 'awaiting_review'].includes(run.status));
+    const existingExecutions = [];
     const executableTasks = [];
     const blocked = [];
     const awaitingAuthorization = [];
@@ -237,6 +239,14 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
     for (const group of groups.values()) {
       group.sort((a, b) => Number(completed(b)) - Number(completed(a)) || String(a.created_at || a.id).localeCompare(String(b.created_at || b.id)));
       const [task, ...copies] = group;
+      const groupIds = new Set(group.map(item => String(item.id)));
+      const groupRuns = activeRuns.filter(run => groupIds.has(String(run.task_id)));
+      if (groupRuns.length) {
+        for (const run of groupRuns) existingExecutions.push({ task_id: run.task_id, run_id: run.id, status: 'already_running', operational_status: run.operational_status || (run.status === 'awaiting_approval' ? 'WAITING_AUTHORIZATION' : run.status === 'awaiting_review' ? 'WAITING_INPUT' : 'RUNNING'), reason: 'reservation_existante_conservee' });
+        if (groupRuns.length > 1) blocked.push({ task_id: task.id, duplicate_ids: copies.map(item => item.id), run_ids: groupRuns.map(run => run.id), operational_status: 'TECHNICAL_ERROR', reason: 'plusieurs_runs_actifs_sur_un_objectif_regroupe' });
+        if (copies.length) duplicates.push({ canonical_task_id: task.id, duplicate_ids: copies.map(item => item.id), count: group.length });
+        continue;
+      }
       if (completed(task)) continue;
       if (copies.length) duplicates.push({ canonical_task_id: task.id, duplicate_ids: copies.map((item) => item.id), count: group.length });
       const executor = resolveNovaExecutor(task);
@@ -302,7 +312,7 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
       return { ...item, title: item.title || task?.titre || task?.title, executor: item.executor || executor?.id || null };
     };
     const executed = batch.results.filter((item) => item.status === 'completed').map(decorate);
-    const queued = batch.results.filter((item) => ['queued_local', 'already_running', 'awaiting_review'].includes(item.status)).map(decorate);
+    const queued = [...existingExecutions, ...batch.results.filter((item) => ['queued_local', 'already_running', 'awaiting_review'].includes(item.status))].map(decorate);
     blocked.push(...batch.results.filter((item) => !item.success).map((item) => {
       const decorated = decorate(item);
       return { task_id: decorated.task_id, title: decorated.title, executor: decorated.executor, run_id: decorated.run_id, operational_status: decorated.operational_status, reason: decorated.error || decorated.status };
