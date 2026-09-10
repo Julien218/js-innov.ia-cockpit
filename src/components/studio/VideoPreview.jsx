@@ -152,7 +152,7 @@ export default function VideoPreview({
     setElapsed(bounded);
     const nextClip = clipIndexAt(bounded, clipList);
     changeClip(nextClip, true);
-    if (hasAudio && audioRef.current) audioRef.current.currentTime = bounded;
+    if (hasAudio && audioRef.current) {\n      const audio = audioRef.current;\n      audio.currentTime = bounded;\n    }
   };
 
   const seek = (index) => {
