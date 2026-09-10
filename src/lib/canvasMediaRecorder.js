@@ -7,6 +7,28 @@ function recorderMimeType() {
   return candidates.find((type) => typeof MediaRecorder.isTypeSupported !== 'function' || MediaRecorder.isTypeSupported(type)) || '';
 }
 
+function clockNow() {
+  return globalThis.performance && typeof globalThis.performance.now === 'function'
+    ? globalThis.performance.now()
+    : Date.now();
+}
+
+// Canvas capture is real-time: pacing each rendered frame keeps the WebM duration
+// aligned with the audio instead of stopping after a tight CPU-bound loop.
+export async function paceCanvasFrame(frame, fps = 30, startedAt = clockNow()) {
+  const safeFps = Math.max(1, Number(fps) || 30);
+  const target = startedAt + ((Number(frame) + 1) / safeFps) * 1000;
+  const delay = target - clockNow();
+  if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+}
+  const candidates = [
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm',
+  ];
+  return candidates.find((type) => typeof MediaRecorder.isTypeSupported !== 'function' || MediaRecorder.isTypeSupported(type)) || '';
+}
+
 function stopTracks(stream) {
   stream?.getTracks?.().forEach((track) => track.stop());
 }
