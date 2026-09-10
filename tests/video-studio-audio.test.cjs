@@ -32,10 +32,14 @@ test('l’import audio ne perd plus l’URL et expose un vrai téléchargement',
   assert.match(sidebar, /setUploading\(false\)/);
   assert.match(motion, /downloadBlob\(audioFile/);
   const recorder = read('src/lib/canvasMediaRecorder.js');
+  const bridge = read('src/lib/localAgentQueueBridge.js');
   assert.match(recorder, /createMediaStreamDestination/);
+  assert.match(recorder, /paceCanvasFrame/);
+  assert.match(bridge, /8788.*8787/);
   assert.match(recorder, /audio\.play\(\)/);
   assert.match(motion, /Télécharger la source/);
   assert.match(motion, /setMusicMotionHandoff/);
+  assert.match(motion, /LOCAL_AGENT_URLS/);
   assert.match(motion, /navigate\('\/video-studio\/new'/);
 });
 
