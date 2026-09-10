@@ -3,8 +3,8 @@ begin;
 create table if not exists public."VideoProject" (
   id uuid primary key default gen_random_uuid(),
   title text not null default 'Nouveau montage',
-  audio_url text not null default '',
-  audio_name text not null default '',
+  audio_url text default '',
+  audio_name text default '',
   audio_duration_seconds numeric,
   transition text not null default 'fade',
   status text not null default 'draft',
