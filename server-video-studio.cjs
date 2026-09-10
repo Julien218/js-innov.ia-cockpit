@@ -1,5 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
+const { Readable } = require('stream');
 
 const router = express.Router();
 
@@ -374,6 +375,60 @@ function extensionOf(fileName) {
   return match ? match[1] : '';
 }
 
+function validStoragePath(value) {
+  const path = String(value || '').trim();
+  return /^media\/\\d{4}-\\d{2}-\\d{2}\/[0-9a-f-]{36}(?:\.[a-z0-9]{1,12})?$/.test(path)
+    ? path
+    : null;
+}
+
+function mediaProxyUrl(storagePath, { download = false } = {}) {
+  return '/api/video-studio/media?path=' + encodeURIComponent(storagePath) + (download ? '&download=1' : '');
+}
+
+router.get('/media', async (req, res) => {
+  const storagePath = validStoragePath(req.query?.path);
+  if (!storagePath) return res.status(400).json({ error: 'Chemin média invalide.' });
+  try {
+    requireConfiguration();
+    const headers = {
+      apikey: SUPABASE_KEY,
+      Authorization: 'Bearer ' + SUPABASE_KEY,
+    };
+    if (req.headers.range) headers.Range = req.headers.range;
+    const upstream = await fetch(
+      SUPABASE_URL
+        + '/storage/v1/object/'
+        + encodeURIComponent(STORAGE_BUCKET)
+        + '/'
+        + encodedStoragePath(storagePath),
+      { headers },
+    );
+    if (!upstream.ok && upstream.status !== 206) {
+      const error = new Error('Média introuvable dans le stockage (' + upstream.status + ').');
+      error.status = upstream.status === 404 ? 404 : 502;
+      throw error;
+    }
+
+    res.status(upstream.status);
+    for (const header of ['content-type', 'content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
+      const value = upstream.headers.get(header);
+      if (value) res.setHeader(header, value);
+    }
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    if (String(req.query?.download || '') === '1') {
+      const extension = extensionOf(storagePath) || '.bin';
+      res.setHeader('Content-Disposition', 'attachment; filename="music-motion' + extension + '"');
+    }
+    if (upstream.body && typeof Readable.fromWeb === 'function') {
+      return Readable.fromWeb(upstream.body).pipe(res);
+    }
+    return res.end(Buffer.from(await upstream.arrayBuffer()));
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
 router.post(
   '/upload',
   express.raw({ type: () => true, limit: MAX_UPLOAD_BYTES }),
@@ -405,9 +460,14 @@ router.post(
         + encodeURIComponent(STORAGE_BUCKET)
         + '/'
         + encodedStoragePath(storagePath);
+      const mediaUrl = mediaProxyUrl(storagePath);
+      const downloadUrl = mediaProxyUrl(storagePath, { download: true });
       return res.status(201).json({
-        url: publicUrl,
-        file_url: publicUrl,
+        url: mediaUrl,
+        file_url: mediaUrl,
+        media_url: mediaUrl,
+        download_url: downloadUrl,
+        public_url: publicUrl,
         path: storagePath,
         bucket: STORAGE_BUCKET,
         name: originalName,
