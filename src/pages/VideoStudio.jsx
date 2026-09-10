@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
 import TimelineEditor from "../components/studio/TimelineEditor";
@@ -14,6 +14,7 @@ import VideoModeToggle from "../components/studio/VideoModeToggle";
 import VideoOrchestratorPanel from "../components/studio/VideoOrchestratorPanel";
 import { VIDEO_MODES, buildLocalMontagePlan, buildVideoPromptLocally, getVideoMode } from "@/lib/videoOrchestrator";
 import { downloadBlob } from "@/lib/fileDownload";
+import { consumeMusicMotionHandoff } from "@/lib/musicMotionHandoff";
 import { ArrowLeft, Sparkles, Upload, Download, Save, Film, RefreshCw, Layers, Smartphone } from "lucide-react";
 
 const TRANSITIONS = [
@@ -47,6 +48,14 @@ const getErrorMessage = (error, fallback) => {
   return fallback;
 };
 
+const isBlobUrl = (value) => String(value || "").startsWith("blob:");
+
+const uploadedFileUrl = (uploaded, label) => {
+  const url = uploaded?.file_url || uploaded?.url;
+  if (!url) throw new Error("Le serveur n’a pas renvoyé l’URL " + label + ".");
+  return url;
+};
+
 export default function VideoStudio() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -66,8 +75,13 @@ export default function VideoStudio() {
   const [showSocialExporter, setShowSocialExporter] = useState(false);
   const [tracks, setTracks] = useState(null);
   const [videoMode, setVideoMode] = useState(getVideoMode);
+  const [pendingHandoff, setPendingHandoff] = useState(null);
+  const initializedRouteRef = useRef("");
 
   useEffect(() => {
+    const routeKey = id || "new";
+    if (initializedRouteRef.current === routeKey) return;
+    initializedRouteRef.current = routeKey;
     setLoading(true);
     setStudioError("");
 
@@ -106,6 +120,43 @@ export default function VideoStudio() {
   }, [id]);
 
   const initNew = (missingRequestedProject = false) => {
+    const handoff = consumeMusicMotionHandoff();
+    if (handoff?.audioFile) {
+      const audioPreviewUrl = URL.createObjectURL(handoff.audioFile);
+      const references = (Array.isArray(handoff.references) ? handoff.references : [])
+        .filter((reference) => reference?.file && typeof reference.file.arrayBuffer === "function");
+      const clips = references.map((reference, index) => ({
+        id: "clip_music_motion_" + index,
+        url: URL.createObjectURL(reference.file),
+        name: reference.name || "Référence " + (index + 1),
+        type: "image",
+        duration: 4,
+        transition: "fade",
+        source_reference_id: reference.id,
+      }));
+      setPendingHandoff({
+        ...handoff,
+        previewAudioUrl: audioPreviewUrl,
+        previewReferenceUrls: clips.map((clip) => clip.url),
+      });
+      setSourceProject(null);
+      setTracks(null);
+      setVp(createVideoProject({
+        title: handoff.title || handoff.audioFile.name || "Nouveau montage",
+        audio_url: audioPreviewUrl,
+        audio_name: handoff.audioFile.name || "musique",
+        audio_duration_seconds: Number(handoff.duration) || 0,
+        ai_prompt: handoff.aiPrompt || "",
+        clips,
+        metadata: {
+          handoff_version: 1,
+          music_motion: handoff.metadata || null,
+        },
+      }));
+      setLoading(false);
+      return;
+    }
+
     const search = new URLSearchParams(window.location.search);
     const projectId = search.get("project");
     if (projectId) {
@@ -149,6 +200,43 @@ export default function VideoStudio() {
     setVp((current) => createVideoProject({ ...createVideoProject(current), [key]: val }));
   };
 
+  useEffect(() => () => {
+    if (pendingHandoff?.previewAudioUrl) URL.revokeObjectURL(pendingHandoff.previewAudioUrl);
+    (pendingHandoff?.previewReferenceUrls || []).forEach((url) => URL.revokeObjectURL(url));
+  }, [pendingHandoff]);
+
+  const preparePendingHandoff = async (payload) => {
+    if (!pendingHandoff) return payload;
+    const prepared = { ...payload };
+    if (pendingHandoff.audioFile && isBlobUrl(prepared.audio_url)) {
+      const uploaded = await base44.integrations.Core.UploadFile({ file: pendingHandoff.audioFile });
+      prepared.audio_url = uploadedFileUrl(uploaded, "audio");
+      prepared.audio_name = pendingHandoff.audioFile.name || prepared.audio_name;
+    }
+
+    const references = new Map(
+      (pendingHandoff.references || []).map((reference) => [reference.id, reference]),
+    );
+    const uploadedReferences = new Map();
+    const preparedClips = [];
+    for (const clip of Array.isArray(prepared.clips) ? prepared.clips : []) {
+      const reference = references.get(clip.source_reference_id);
+      if (!reference?.file || !isBlobUrl(clip.url)) {
+        preparedClips.push(clip);
+        continue;
+      }
+      let fileUrl = uploadedReferences.get(reference.id);
+      if (!fileUrl) {
+        const uploaded = await base44.integrations.Core.UploadFile({ file: reference.file });
+        fileUrl = uploadedFileUrl(uploaded, "de la référence");
+        uploadedReferences.set(reference.id, fileUrl);
+      }
+      preparedClips.push({ ...clip, url: fileUrl });
+    }
+    prepared.clips = preparedClips;
+    return prepared;
+  };
+
   const reloadVp = useCallback(async () => {
     if (!vp?.id) {
       setStudioError("Enregistrez d’abord ce nouveau montage avant de le synchroniser.");
@@ -185,19 +273,22 @@ export default function VideoStudio() {
     setSaving(true);
     setStudioError("");
     try {
-      const payload = createVideoProject(vp);
+      const payload = await preparePendingHandoff(createVideoProject(vp));
+      setVp(createVideoProject(payload));
       if (payload.id) {
         const updated = await base44.entities.VideoProject.update(payload.id, payload);
         if (!updated || typeof updated !== "object") {
           throw new Error("La base n’a renvoyé aucun montage après la mise à jour.");
         }
         setVp(createVideoProject(updated));
+        setPendingHandoff(null);
       } else {
         const created = await base44.entities.VideoProject.create(payload);
         if (!created?.id) {
           throw new Error("La base n’a pas confirmé la création du montage.");
         }
         setVp(createVideoProject(created));
+        setPendingHandoff(null);
         navigate(`/video-studio/${created.id}`, { replace: true });
       }
     } catch (error) {
