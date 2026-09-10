@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 
 const { AGENT_REGISTRY } = require('./server-agent-registry.cjs');
+const { findCanonicalClient, isInternalClientRecord } = require('./server-video-generation-core.cjs');
 const { lookupBce } = require('./server-bce.cjs');
 const {
   analyzeDomain,
@@ -286,14 +287,23 @@ function sourceDocumentIdFromTask(task = {}) {
 }
 
 function videoClientForTask(task, clients = []) {
-  if (task?.client_id) return clients.find((client) => String(client.id) === String(task.client_id)) || null;
-  const text = normalized(taskText(task));
+  const requestedId = clean(task?.client_id, 180);
+  const requestedName = clean(task?.client_nom || task?.client_name, 240);
+  const requestedClient = findCanonicalClient(clients, { clientId: requestedId, clientName: requestedName });
+  if (requestedClient) return requestedClient;
+  // A non-canonical client_id must never be ignored and replaced by an unrelated
+  // name match. It is either resolved above (including legacy internal aliases)
+  // or reported as a missing client by the caller.
+  if (requestedId) return null;
+
+  const text = normalized(`${taskText(task)}\\n${requestedName}`);
   const matches = clients.filter((client) => {
     const name = normalized(clientName(client));
     return name.length >= 3 && text.includes(name);
   });
   if (matches.length === 1) return matches[0];
-  return clients.find((client) => normalized(client.type_client) === 'interne_jsinnovia')
+  return clients.find((client) => isInternalClientRecord(client))
+    || clients.find((client) => normalized(client.type_client) === 'interne_jsinnovia')
     || clients.find((client) => /js.?innov.?ia/.test(normalized(clientName(client))) && /interne/.test(normalized(`${client.nom || ''} ${client.notes || ''}`)))
     || null;
 }
@@ -360,7 +370,7 @@ async function executeVideoTask(task, agentRequest, createJob = null, context = 
       journal_id: response.journal_id,
       status: response.job?.status || 'queued',
       client_id: client.id,
-      internal_client_fallback: normalized(client.type_client) === 'interne_jsinnovia',
+      internal_client_fallback: isInternalClientRecord(client),
       source_document_ids: sourceDocumentIds,
       reference_mode: sourceDocumentIds.length > 1,
     },
