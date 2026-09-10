@@ -181,3 +181,14 @@ test('unsupported routing cannot overwrite an active claim returned during a rac
   assert.equal(outcome.results[0].status, 'already_running');
   assert.equal(db.patches(), 0);
 });
+
+test('run summaries retain active executions older than the recent history window', async () => {
+  const { taskRunSummaries } = require('../server-task-autopilot.cjs');
+  const rows = await taskRunSummaries(async url => new Response(JSON.stringify(
+    url.includes('status=pending') ? [{ id: 'old-active', task_id: 't1', status: 'pending', created_at: '2020-01-01' }]
+    : url.includes('&status=') ? [] : [{ id: 'recent', task_id: 't2', status: 'cancelled', input: { secret_context: 'not returned' } }]
+  )), 'jsinnovia');
+  assert.ok(rows.some(run => run.id === 'old-active'));
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every(run => !('input' in run)));
+});

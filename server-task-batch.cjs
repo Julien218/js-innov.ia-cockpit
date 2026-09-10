@@ -304,7 +304,7 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
 
       if (executor.kind === 'unsupported') {
         const op = executor.operational_status || operationalStatus({ reason: executor.reason });
-        run = await createRun(agentFetch, task, item, executor, token, index, organisation, requestedBy, 'failed');
+        run = await createRun(agentFetch, task, item, executor, token, index, organisation, requestedBy, 'pending');
         if (run.reused) {
           results.push({ index, success: true, task_id: task.id, run_id: run.id, executor: run.agent_id || executor.id, status: 'already_running', operational_status: run.result?.operational_status || 'RUNNING', reused: true });
           continue;

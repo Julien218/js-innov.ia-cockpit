@@ -123,7 +123,8 @@ export default function Taches() {
   const blockedTaskIds = useMemo(() => new Set(actualBlockers.map((item) => String(item.task_id))), [actualBlockers]);
   const displayRows = useMemo(() => {
     const latest = new Map();
-    for (const run of [...runs].sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))) {
+    const isActiveRun = run => ["pending", "queued", "dispatching", "dispatched", "running", "awaiting_approval", "awaiting_review"].includes(run.status);
+    for (const run of [...runs].sort((a, b) => Number(isActiveRun(b)) - Number(isActiveRun(a)) || String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))) {
       if (!latest.has(String(run.task_id))) latest.set(String(run.task_id), run);
     }
     const withRuns = rows.map(row => ({ ...row, operational_status: runOperationalStatus(latest.get(String(row.id))) }));

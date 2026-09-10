@@ -323,13 +323,20 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
   }
 }
 
+async function taskRunSummaries(fetchRuns = agentFetch, organisation = 'jsinnovia') {
+  const statuses = ['', 'pending', 'queued', 'dispatching', 'dispatched', 'running', 'awaiting_approval', 'awaiting_review'];
+  const batches = await Promise.all(statuses.map(async status => {
+    const response = await fetchRuns(`/agent-runs?limit=200${status ? `&status=${status}` : ''}`, { headers: { 'x-organisation-id': organisation } });
+    if (!response.ok) throw new Error('Lecture des runs indisponible');
+    return rowsFrom(await response.json());
+  }));
+  const unique = new Map(batches.flat().map(run => [run.id, run]));
+  return [...unique.values()].map(run => ({ id: run.id, task_id: run.task_id, status: run.status, updated_at: run.updated_at, created_at: run.created_at, completed_at: run.completed_at, operational_status: run.result?.operational_status || null, proof_status: run.result?.proof_status || null, has_evidence: Boolean(run.result?.evidence?.length) }));
+}
+
 router.get('/runs', async (req, res) => {
-  try {
-    const response = await agentFetch('/agent-runs?limit=200', { headers: { 'x-organisation-id': req.user?.organisation || 'jsinnovia' } });
-    const data = await response.json();
-    if (!response.ok) return res.status(response.status).json({ error: 'Lecture des runs indisponible' });
-    res.json(rowsFrom(data).map(run => ({ id: run.id, task_id: run.task_id, status: run.status, updated_at: run.updated_at, created_at: run.created_at, completed_at: run.completed_at, operational_status: run.result?.operational_status || null, proof_status: run.result?.proof_status || null, has_evidence: Boolean(run.result?.evidence?.length) })));
-  } catch { res.status(502).json({ error: 'Lecture des runs indisponible' }); }
+  try { res.json(await taskRunSummaries(agentFetch, req.user?.organisation || 'jsinnovia')); }
+  catch { res.status(502).json({ error: 'Lecture des runs indisponible' }); }
 });
 
 router.get('/status', (_req, res) => res.json({ enabled: AUTOPILOT_ENABLED, interval_ms: AUTOPILOT_INTERVAL_MS, ...state }));
@@ -392,4 +399,4 @@ function startTaskAutopilotScheduler() {
   return { started: true, interval_ms: AUTOPILOT_INTERVAL_MS };
 }
 
-module.exports = { router, canonicalTaskTitle, duplicateTasksForCanonical, classifyTask, recordedExecutionFailure, rowsFrom, summarizeBusinessData, runAutopilot, startTaskAutopilotScheduler, state };
+module.exports = { router, taskRunSummaries, canonicalTaskTitle, duplicateTasksForCanonical, classifyTask, recordedExecutionFailure, rowsFrom, summarizeBusinessData, runAutopilot, startTaskAutopilotScheduler, state };
