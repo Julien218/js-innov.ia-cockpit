@@ -15,7 +15,7 @@ import VideoOrchestratorPanel from "../components/studio/VideoOrchestratorPanel"
 import { VIDEO_MODES, buildLocalMontagePlan, buildVideoPromptLocally, getVideoMode } from "@/lib/videoOrchestrator";
 import { downloadBlob } from "@/lib/fileDownload";
 import { consumeMusicMotionHandoff } from "@/lib/musicMotionHandoff";
-import { ArrowLeft, Sparkles, Upload, Download, Save, Film, RefreshCw, Layers, Smartphone } from "lucide-react";
+import { ArrowLeft, Sparkles, Upload, Download, Save, Film, RefreshCw, Layers, Smartphone, CheckCircle2, ImagePlus, Music2, ListChecks, ChevronRight } from "lucide-react";
 
 const TRANSITIONS = [
   { id: "fade", label: "Fondu", icon: "🌅" },
@@ -56,6 +56,87 @@ const uploadedFileUrl = (uploaded, label) => {
   return url;
 };
 
+function StudioStartGuide({ vp, onOpenSidebar, onOpenPanel }) {
+  const hasAudio = Boolean(vp?.audio_url);
+  const hasMedia = (vp?.clips || []).length > 0;
+  const hasPrompt = Boolean(vp?.ai_prompt);
+  const steps = [
+    {
+      number: 1,
+      title: "Ajouter la musique",
+      detail: "M4A, MP3 ou WAV. L’audio sert d’horloge pour synchroniser les plans.",
+      icon: Music2,
+      done: hasAudio,
+      action: () => onOpenSidebar("audio"),
+    },
+    {
+      number: 2,
+      title: "Ajouter des images ou clips",
+      detail: "Vos références, une planche ou des vidéos. Vous pourrez régler chaque durée.",
+      icon: ImagePlus,
+      done: hasMedia,
+      action: () => onOpenSidebar("media"),
+    },
+    {
+      number: 3,
+      title: "Préparer le prompt",
+      detail: "Décrivez l’ambiance, les mouvements et le type de vidéo à produire.",
+      icon: Sparkles,
+      done: hasPrompt,
+      action: () => onOpenPanel("ai"),
+    },
+  ];
+
+  return (
+    <div className="mx-auto w-full max-w-4xl p-5">
+      <div className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/10 via-background to-accent/10 p-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+            <ListChecks size={21} />
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Parcours guidé</p>
+            <h3 className="mt-1 text-lg font-semibold text-foreground">Construisez votre vidéo en 3 étapes</h3>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">Commencez par les éléments que vous avez déjà. Vous pouvez revenir modifier chaque étape à tout moment.</p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          {steps.map((step) => {
+            const Icon = step.icon;
+            return (
+              <button
+                type="button"
+                key={step.number}
+                onClick={step.action}
+                className="group rounded-xl border border-border bg-background/60 p-4 text-left transition-colors hover:border-primary/60 hover:bg-primary/5"
+              >
+                <div className="flex items-center justify-between">
+                  <span className={\`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold \${step.done ? "bg-emerald-500/15 text-emerald-400" : "bg-primary/15 text-primary"}\`}>
+                    {step.done ? <CheckCircle2 size={16} /> : step.number}
+                  </span>
+                  <ChevronRight size={15} className="text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                </div>
+                <Icon size={20} className="mt-4 text-primary" />
+                <p className="mt-2 text-sm font-semibold text-foreground">{step.title}</p>
+                <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{step.detail}</p>
+                <p className={\`mt-3 text-[11px] font-medium \${step.done ? "text-emerald-400" : "text-primary"}\`}>
+                  {step.done ? "Terminé · Modifier" : "Commencer →"}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-border/70 bg-background/40 px-3 py-2.5 text-[11px] leading-4 text-muted-foreground">
+          <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-primary" />
+          <span>La musique est optionnelle pour une vidéo classique. Pour un clip musical, elle devient la référence de synchronisation de toute la timeline.</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function VideoStudio() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -65,6 +146,7 @@ export default function VideoStudio() {
   const [saving, setSaving] = useState(false);
   const [studioError, setStudioError] = useState("");
   const [activePanel, setActivePanel] = useState("timeline");
+  const [sidebarTab, setSidebarTab] = useState(null);
   const [driveStatus, setDriveStatus] = useState(null);
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -84,6 +166,7 @@ export default function VideoStudio() {
     initializedRouteRef.current = routeKey;
     setLoading(true);
     setStudioError("");
+    setSidebarTab(null);
 
     if (id && id !== "new") {
       base44.entities.VideoProject.filter({ id }).then(([found]) => {
@@ -397,6 +480,8 @@ export default function VideoStudio() {
   const clipsDuration = currentVp.clips.reduce((sum, clip) => sum + (clip?.duration || 4), 0);
   const audioDuration = Number(currentVp.audio_duration_seconds) || 0;
   const totalDuration = Math.max(clipsDuration, audioDuration);
+  const hasAudio = Boolean(currentVp.audio_url);
+  const hasClips = currentVp.clips.length > 0;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -411,19 +496,19 @@ export default function VideoStudio() {
               onChange={e => update("title", e.target.value)}
               className="font-display font-semibold text-foreground text-base bg-transparent border-none outline-none focus:ring-0 w-64"
             />
-            <p className="text-xs text-muted-foreground">Studio · {currentVp.clips.length} clips · {totalDuration}s</p>
+            <p className="text-xs text-muted-foreground">Studio · {currentVp.clips.length} clips · {totalDuration}s · {hasAudio ? "audio prêt" : "audio à ajouter"}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <VideoModeToggle
             onChange={(nextMode) => {
               setVideoMode(nextMode);
               if (nextMode === VIDEO_MODES.LOCAL && activePanel === "agent") setActivePanel("orchestrator");
             }}
           />
-          <button onClick={reloadVp} title="Rafraîchir depuis la base" className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-primary hover:border-primary/50 transition-all">
+          <button onClick={reloadVp} title="Recharger ce montage depuis la base" aria-label="Recharger ce montage depuis la base" className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-primary hover:border-primary/50 transition-all">
             <RefreshCw size={13} />
-            Sync
+            Recharger
           </button>
           {tracks && (
             <button onClick={() => setShowMultiExporter(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg btn-gold text-xs font-medium">
@@ -451,6 +536,7 @@ export default function VideoStudio() {
           </button>
           <button onClick={handleDownload} title="Télécharger le prompt IA" aria-label="Télécharger le prompt IA" className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/50 transition-all">
             <Download size={13} />
+            <span className="hidden xl:inline">Télécharger</span>
           </button>
           <button onClick={handleSave} disabled={saving} className="btn-gold flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs">
             <Save size={13} />
@@ -467,7 +553,7 @@ export default function VideoStudio() {
       )}
 
       <div className="flex flex-1 overflow-hidden">
-        <StudioSidebar vp={currentVp} update={update} transitions={TRANSITIONS} sourceProject={sourceProject} />
+        <StudioSidebar vp={currentVp} update={update} transitions={TRANSITIONS} sourceProject={sourceProject} activeTab={sidebarTab} onActiveTabChange={setSidebarTab} />
 
         <div className="flex flex-col flex-1 overflow-hidden">
           <VideoPreview
@@ -517,15 +603,34 @@ export default function VideoStudio() {
               </div>
             )}
             {activePanel === "timeline" && (
-              <TimelineEditor
-                clips={currentVp.clips}
-                onChange={(clips) => update("clips", clips)}
-                transition={currentVp.transition}
-                transitions={TRANSITIONS}
-                onGlobalTransition={(transition) => update("transition", transition)}
-                currentClipIdx={currentClipIdx}
-                onSelect={setCurrentClipIdx}
-              />
+              hasClips ? (
+                <TimelineEditor
+                  clips={currentVp.clips}
+                  onChange={(clips) => update("clips", clips)}
+                  transition={currentVp.transition}
+                  transitions={TRANSITIONS}
+                  onGlobalTransition={(transition) => update("transition", transition)}
+                  currentClipIdx={currentClipIdx}
+                  onSelect={setCurrentClipIdx}
+                />
+              ) : (
+                <StudioStartGuide
+                  vp={currentVp}
+                  onOpenSidebar={setSidebarTab}
+                  onOpenPanel={setActivePanel}
+                />
+              )
+            )}
+            {activePanel === "timeline" && hasClips && !hasAudio && (
+              <div className="mx-5 mt-4 flex items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 text-xs">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Music2 size={15} className="shrink-0 text-primary" />
+                  <span>Ajoutez une musique si vous souhaitez synchroniser les plans sur le rythme.</span>
+                </div>
+                <button type="button" onClick={() => setSidebarTab("audio")} className="shrink-0 font-medium text-primary hover:underline">
+                  Ajouter l’audio →
+                </button>
+              </div>
             )}
             {activePanel === "ai" && (
               <AiPromptPanel
