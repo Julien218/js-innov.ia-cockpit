@@ -21,14 +21,6 @@ export async function paceCanvasFrame(frame, fps = 30, startedAt = clockNow()) {
   const delay = target - clockNow();
   if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
 }
-  const candidates = [
-    'video/webm;codecs=vp9,opus',
-    'video/webm;codecs=vp8,opus',
-    'video/webm',
-  ];
-  return candidates.find((type) => typeof MediaRecorder.isTypeSupported !== 'function' || MediaRecorder.isTypeSupported(type)) || '';
-}
-
 function stopTracks(stream) {
   stream?.getTracks?.().forEach((track) => track.stop());
 }
