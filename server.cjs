@@ -252,6 +252,15 @@ try {
   console.warn('⚠️ Finaliseur vidéo indisponible:', e.message);
 }
 
+// ── Studio vidéo : projets, exports et médias via session Cockpit ─────
+try {
+  const videoStudioRouter = require('./server-video-studio.cjs');
+  app.use('/api/video-studio', requireSession('admin'), requirePermission('production', 'admin'), videoStudioRouter);
+  console.log('✅ Route Studio vidéo activée (projets, exports, upload média)');
+} catch (e) {
+  console.warn('⚠️ Route Studio vidéo indisponible:', e.message);
+}
+
 // ── Génération vidéo API : Grok / Sora + coûts + archivage ─
 try {
   const videoGeneration = require('./server-video-generation.cjs');
