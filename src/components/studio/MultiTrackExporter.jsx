@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Film, Download, X, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
 import { finalizeStudioExport } from "@/lib/videoProvenance";
-import { createCanvasRecorder } from "@/lib/canvasMediaRecorder";
+import { createCanvasRecorder, paceCanvasFrame } from "@/lib/canvasMediaRecorder";
 
 const FPS = 30;
 const FONTS = { normal: "600 36px sans-serif", small: "400 24px sans-serif", large: "700 56px sans-serif" };
@@ -149,6 +149,7 @@ export default function MultiTrackExporter({ vp, tracks, sourceProject, onClose 
 
     const totalFrames = Math.ceil(videoDuration * FPS);
     let lastYield = 0;
+    const renderStartedAt = globalThis.performance?.now?.() ?? Date.now();
 
     for (let frame = 0; frame < totalFrames; frame++) {
       if (stopRef.current) break;
@@ -226,6 +227,7 @@ export default function MultiTrackExporter({ vp, tracks, sourceProject, onClose 
         setProgress(10 + Math.round((frame / totalFrames) * 88));
         await new Promise(r => setTimeout(r, 0));
       }
+      await paceCanvasFrame(frame, FPS, renderStartedAt);
     }
 
     const blob = await recording.stop();
