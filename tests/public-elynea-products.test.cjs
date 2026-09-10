@@ -49,16 +49,21 @@ test('billing qualification is explicit and records the matched product in the C
   ];
   const qualification = elynea.analyzeQualification(messages);
   assert.ok(qualification.categories.includes('facturation'));
-  assert.equal(qualification.product_match?.id, null);
+  assert.equal(qualification.product_match, null);
 
   const firstTurnQualification = elynea.analyzeQualification([messages[0]]);
   assert.equal(firstTurnQualification.product_match?.id, 'hainoflow');
 
+  const payloadMessages = [
+    messages[0],
+    messages[1],
+    { role: 'user', content: 'Je suis indépendant et je veux surtout mes factures.' },
+  ];
   const payload = elynea.buildRequestPayload({
     requestId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-    messages: [messages[0], messages[1], { role: 'user', content: 'Je suis indépendant et je veux surtout mes factures.' }],
+    messages: payloadMessages,
     contact: { name: 'Client Test', email: 'client@example.test', company: '', phone: '' },
-    qualification: elynea.analyzeQualification([messages[0], messages[1], { role: 'user', content: 'Je suis indépendant et je veux surtout mes factures.' }]),
+    qualification: elynea.analyzeQualification(payloadMessages),
   });
   assert.match(payload.message, /Produit pressenti : HainoFlow/);
 });
