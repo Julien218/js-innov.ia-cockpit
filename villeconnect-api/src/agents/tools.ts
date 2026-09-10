@@ -9,7 +9,13 @@ import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// Lazy getter — openai v6 valide apiKey à l'instanciation.
+// Ne pas instancier au niveau module (échoue au build sans OPENAI_API_KEY réelle).
+let _openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return _openai;
+}
 
 // Helper pour extraire le contexte serveur depuis runContext
 function extractCtx(rc: unknown): { cityId: string; userId: string } {
@@ -43,7 +49,7 @@ export const searchCityMemory = tool({
   parameters: z.object({ query: z.string(), threshold: z.number().min(0).max(1).default(0.7), limit: z.number().min(1).max(10).default(5) }),
   execute: async ({ query, threshold, limit }, rc) => {
     const { cityId } = extractCtx(rc);
-    const emb = await openai.embeddings.create({ model: 'text-embedding-3-small', input: query });
+    const emb = await getOpenAI().embeddings.create({ model: 'text-embedding-3-small', input: query });
     const { data, error } = await supabaseAdmin.rpc('match_memory_vectors', { query_embedding: emb.data[0].embedding, city_id_filter: cityId, match_threshold: threshold, match_count: limit });
     if (error) throw new Error(error.message);
     return data ?? [];
