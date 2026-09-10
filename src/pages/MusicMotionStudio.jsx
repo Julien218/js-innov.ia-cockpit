@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
+import { downloadBlob, safeDownloadName } from '@/lib/fileDownload';
 
 const MODE_OPTIONS = [
   {
@@ -158,13 +159,10 @@ function buildTimeline(duration, mode, danceAllowed) {
 }
 
 function downloadJson(payload, filename) {
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(
+    new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }),
+    filename,
+  );
 }
 
 
@@ -227,6 +225,19 @@ export default function MusicMotionStudio() {
     setAudioUrl(nextUrl);
     setScenes([]);
     setNotice({ type: 'success', text: 'Chanson chargée. Ajoutez vos références puis lancez la préparation.' });
+  };
+
+  const downloadAudio = () => {
+    if (!audioFile) {
+      setNotice({ type: 'error', text: 'Importez d’abord une chanson.' });
+      return;
+    }
+    try {
+      downloadBlob(audioFile, safeDownloadName(audioFile.name || 'musique.m4a'));
+      setNotice({ type: 'success', text: 'La source audio a été téléchargée.' });
+    } catch (error) {
+      setNotice({ type: 'error', text: 'Téléchargement audio impossible : ' + (error?.message || 'erreur inconnue') });
+    }
   };
 
   const handleReferenceChange = (event) => {
@@ -402,9 +413,11 @@ export default function MusicMotionStudio() {
           {audioUrl && (
             <div className="rounded-xl border border-border bg-background/60 p-3">
               <audio controls src={audioUrl} className="w-full" />
-              <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                <span>Durée détectée</span>
-                <span className="font-mono text-foreground">{formatTime(duration)}</span>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span>Durée détectée · <span className="font-mono text-foreground">{formatTime(duration)}</span></span>
+                <button type="button" onClick={downloadAudio} className="inline-flex items-center gap-1 text-primary hover:underline">
+                  <Download size={13} /> Télécharger la source
+                </button>
               </div>
             </div>
           )}
