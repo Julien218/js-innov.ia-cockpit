@@ -120,7 +120,6 @@ export default function Taches() {
   const actualBlockers = Array.isArray(autopilotResult.blocked) ? autopilotResult.blocked : [];
   const queuedExecutions = Array.isArray(autopilotResult.queued) ? autopilotResult.queued : [];
   const waitingTaskIds = useMemo(() => new Set(awaitingAuthorization.map((item) => String(item.task_id))), [awaitingAuthorization]);
-  const blockedTaskIds = useMemo(() => new Set(actualBlockers.map((item) => String(item.task_id))), [actualBlockers]);
   const displayRows = useMemo(() => {
     const latest = new Map();
     const isActiveRun = run => ["pending", "queued", "dispatching", "dispatched", "running", "awaiting_approval", "awaiting_review"].includes(run.status);
@@ -131,13 +130,19 @@ export default function Taches() {
     const groupedRows = groupDuplicates ? groupTasks(withRuns) : withRuns;
     return groupedRows.map((row) => {
       const ids = (row.duplicate_ids?.length ? row.duplicate_ids : [row.id]).map(String);
-      const hasRealBlocker = ids.some((id) => blockedTaskIds.has(id));
+      const blocker = actualBlockers.find(item => [item.task_id, ...(item.duplicate_ids || [])].some(id => ids.includes(String(id))));
+      const hasRealBlocker = Boolean(blocker);
+      if (blocker?.operational_status) return { ...row, operational_status: blocker.operational_status };
+      if (!row.operational_status && row.duplicate_tasks) {
+        const execution = row.duplicate_tasks.find(task => task.operational_status);
+        if (execution) return { ...row, operational_status: execution.operational_status };
+      }
       const waiting = ids.some((id) => waitingTaskIds.has(id));
       return waiting && !hasRealBlocker && !row.operational_status
         ? { ...row, statut: "en_attente", operational_status: "WAITING_AUTHORIZATION" }
         : row;
     });
-  }, [rows, runs, groupDuplicates, waitingTaskIds, blockedTaskIds]);
+  }, [rows, runs, groupDuplicates, waitingTaskIds, actualBlockers]);
   const isLate = (task) => task?.date_echeance && new Date(task.date_echeance) < new Date() && !isTaskCompleted(task);
 
   const counters = useMemo(() => ({

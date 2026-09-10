@@ -242,8 +242,11 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
       const groupIds = new Set(group.map(item => String(item.id)));
       const groupRuns = activeRuns.filter(run => groupIds.has(String(run.task_id)));
       if (groupRuns.length) {
-        for (const run of groupRuns) existingExecutions.push({ task_id: run.task_id, run_id: run.id, status: 'already_running', operational_status: run.operational_status || (run.status === 'awaiting_approval' ? 'WAITING_AUTHORIZATION' : run.status === 'awaiting_review' ? 'WAITING_INPUT' : 'RUNNING'), reason: 'reservation_existante_conservee' });
-        if (groupRuns.length > 1) blocked.push({ task_id: task.id, duplicate_ids: copies.map(item => item.id), run_ids: groupRuns.map(run => run.id), operational_status: 'TECHNICAL_ERROR', reason: 'plusieurs_runs_actifs_sur_un_objectif_regroupe' });
+        for (const run of groupRuns) {
+          const item = { task_id: run.task_id, title: group.find(task => String(task.id) === String(run.task_id))?.titre, run_id: run.id, status: 'already_running', operational_status: run.operational_status || (run.status === 'awaiting_approval' ? 'WAITING_AUTHORIZATION' : run.status === 'awaiting_review' ? 'WAITING_INPUT' : 'RUNNING'), reason: 'reservation_existante_conservee' };
+          if (item.operational_status === 'WAITING_AUTHORIZATION') awaitingAuthorization.push(item); else existingExecutions.push(item);
+        }
+        if (groupRuns.length > 1) blocked.push({ task_id: task.id, title: task.titre || task.title, duplicate_ids: copies.map(item => item.id), run_ids: groupRuns.map(run => run.id), operational_status: 'TECHNICAL_ERROR', reason: 'plusieurs_runs_actifs_sur_un_objectif_regroupe' });
         if (copies.length) duplicates.push({ canonical_task_id: task.id, duplicate_ids: copies.map(item => item.id), count: group.length });
         continue;
       }
@@ -334,7 +337,7 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
 }
 
 async function taskRunSummaries(fetchRuns = agentFetch, organisation = 'jsinnovia') {
-  const statuses = ['', 'pending', 'queued', 'dispatching', 'dispatched', 'running', 'awaiting_approval', 'awaiting_review'];
+  const statuses = ['', 'completed', 'failed', 'pending', 'queued', 'dispatching', 'dispatched', 'running', 'awaiting_approval', 'awaiting_review'];
   const batches = await Promise.all(statuses.map(async status => {
     const response = await fetchRuns(`/agent-runs?limit=200${status ? `&status=${status}` : ''}`, { headers: { 'x-organisation-id': organisation } });
     if (!response.ok) throw new Error('Lecture des runs indisponible');
