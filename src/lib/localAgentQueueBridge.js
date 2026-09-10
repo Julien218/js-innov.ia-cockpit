@@ -1,4 +1,5 @@
-const DEFAULT_LOCAL_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
+export const LOCAL_AGENT_URLS = Object.freeze(['http://127.0.0.1:8788', 'http://127.0.0.1:8787']);
+const DEFAULT_LOCAL_URLS = LOCAL_AGENT_URLS;
 
 export const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
 export const LOCAL_AUTOPILOT_LAST_RUN_KEY = 'nova_local_autopilot_last_run_v1';
