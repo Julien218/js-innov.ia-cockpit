@@ -476,6 +476,8 @@ export default function VideoStudio() {
             transition={currentVp.transition}
             audioUrl={currentVp.audio_url}
             audioDuration={currentVp.audio_duration_seconds}
+            currentTime={currentTime}
+            onTimeChange={setCurrentTime}
             currentClipIdx={currentClipIdx}
             onClipChange={setCurrentClipIdx}
           />
@@ -510,7 +512,7 @@ export default function VideoStudio() {
                   }}
                   currentTime={currentTime}
                   onSeek={setCurrentTime}
-                  duration={currentVp.template_duration || 30}
+                  duration={Math.max(Number(currentVp.template_duration) || 0, totalDuration, 30)}
                 />
               </div>
             )}
