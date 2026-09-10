@@ -35,7 +35,7 @@ async function localAgentDiagnostic(fetchImpl) {
       online: response.ok,
       status: safeText(data?.status || (response.ok ? 'ok' : `http_${response.status}`), 40),
       model: safeText(data?.model || data?.ollama?.model || data?.default_model, 100),
-      ollama_online: response.ok ? measuredBoolean(data?.ollama?.online ?? data?.ollama_online) : null,
+      ollama_online: response.ok ? measuredBoolean(data?.services?.ollama?.online ?? data?.ollama?.online ?? data?.ollama_online) : null,
     };
   } catch (error) {
     return { online: null, error: safeText(error?.message || 'injoignable', 120) };

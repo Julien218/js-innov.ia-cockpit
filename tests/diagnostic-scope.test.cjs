@@ -28,7 +28,7 @@ test('diagnostics distinguish availability, unknown measurements and execution p
   });
   await t.test('successful desktop measurements do not certify end-to-end operation', async () => {
     environment(async () => ({ comfyui: { online: true }, ffmpeg: { online: true } }), '{}');
-    const d = await collectReadOnlyDiagnostics(async () => ({ ok: true, json: async () => ({ ollama: { online: true } }) }));
+    const d = await collectReadOnlyDiagnostics(async () => ({ ok: true, json: async () => ({ services: { ollama: { online: true } } }) }));
     assert.equal(d.local_agent.ollama_online, true);
     assert.equal(d.video.comfyui_online, true);
     assert.equal(d.video.ffmpeg_online, true);
