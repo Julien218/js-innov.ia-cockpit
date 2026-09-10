@@ -164,6 +164,15 @@ export default function VideoOrchestratorPanel({ vp, onOptimizeMontage }) {
     }
   };
 
+  const openOutputFolder = async () => {
+    try {
+      await openLocalOutputFolder();
+      setNotice({ type: 'success', text: 'Le dossier output local est ouvert.' });
+    } catch (error) {
+      setNotice({ type: 'error', text: error.message });
+    }
+  };
+
   const optimizeMontage = async () => {
     if (!onOptimizeMontage) return;
     setOptimizing(true);
@@ -312,7 +321,7 @@ export default function VideoOrchestratorPanel({ vp, onOptimizeMontage }) {
                   <Square size={13} /> Stop
                 </button>
               )}
-              <button onClick={openLocalOutputFolder} className="px-3 py-2 rounded-xl border border-border text-sm flex items-center gap-2 text-muted-foreground hover:text-foreground">
+              <button onClick={openOutputFolder} className="px-3 py-2 rounded-xl border border-border text-sm flex items-center gap-2 text-muted-foreground hover:text-foreground">
                 <FolderOpen size={14} /> Dossier output
               </button>
               {onOptimizeMontage && (

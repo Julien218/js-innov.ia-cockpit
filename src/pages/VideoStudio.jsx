@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
 import TimelineEditor from "../components/studio/TimelineEditor";
@@ -13,6 +13,8 @@ import SocialExporter from "../components/studio/SocialExporter";
 import VideoModeToggle from "../components/studio/VideoModeToggle";
 import VideoOrchestratorPanel from "../components/studio/VideoOrchestratorPanel";
 import { VIDEO_MODES, buildLocalMontagePlan, buildVideoPromptLocally, getVideoMode } from "@/lib/videoOrchestrator";
+import { downloadBlob } from "@/lib/fileDownload";
+import { consumeMusicMotionHandoff } from "@/lib/musicMotionHandoff";
 import { ArrowLeft, Sparkles, Upload, Download, Save, Film, RefreshCw, Layers, Smartphone } from "lucide-react";
 
 const TRANSITIONS = [
@@ -31,6 +33,7 @@ const createVideoProject = (project = {}) => {
     title: "Nouveau montage",
     audio_url: "",
     audio_name: "",
+    audio_duration_seconds: 0,
     transition: "fade",
     status: "draft",
     ...safeProject,
@@ -43,6 +46,14 @@ const getErrorMessage = (error, fallback) => {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string" && error.trim()) return error;
   return fallback;
+};
+
+const isBlobUrl = (value) => String(value || "").startsWith("blob:");
+
+const uploadedFileUrl = (uploaded, label) => {
+  const url = uploaded?.file_url || uploaded?.url;
+  if (!url) throw new Error("Le serveur n’a pas renvoyé l’URL " + label + ".");
+  return url;
 };
 
 export default function VideoStudio() {
@@ -58,13 +69,19 @@ export default function VideoStudio() {
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [currentClipIdx, setCurrentClipIdx] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
   const [showExporter, setShowExporter] = useState(false);
   const [showMultiExporter, setShowMultiExporter] = useState(false);
   const [showSocialExporter, setShowSocialExporter] = useState(false);
   const [tracks, setTracks] = useState(null);
   const [videoMode, setVideoMode] = useState(getVideoMode);
+  const [pendingHandoff, setPendingHandoff] = useState(null);
+  const initializedRouteRef = useRef("");
 
   useEffect(() => {
+    const routeKey = id || "new";
+    if (initializedRouteRef.current === routeKey) return;
+    initializedRouteRef.current = routeKey;
     setLoading(true);
     setStudioError("");
 
@@ -103,6 +120,43 @@ export default function VideoStudio() {
   }, [id]);
 
   const initNew = (missingRequestedProject = false) => {
+    const handoff = consumeMusicMotionHandoff();
+    if (handoff?.audioFile) {
+      const audioPreviewUrl = URL.createObjectURL(handoff.audioFile);
+      const references = (Array.isArray(handoff.references) ? handoff.references : [])
+        .filter((reference) => reference?.file && typeof reference.file.arrayBuffer === "function");
+      const clips = references.map((reference, index) => ({
+        id: "clip_music_motion_" + index,
+        url: URL.createObjectURL(reference.file),
+        name: reference.name || "Référence " + (index + 1),
+        type: "image",
+        duration: 4,
+        transition: "fade",
+        source_reference_id: reference.id,
+      }));
+      setPendingHandoff({
+        ...handoff,
+        previewAudioUrl: audioPreviewUrl,
+        previewReferenceUrls: clips.map((clip) => clip.url),
+      });
+      setSourceProject(null);
+      setTracks(null);
+      setVp(createVideoProject({
+        title: handoff.title || handoff.audioFile.name || "Nouveau montage",
+        audio_url: audioPreviewUrl,
+        audio_name: handoff.audioFile.name || "musique",
+        audio_duration_seconds: Number(handoff.duration) || 0,
+        ai_prompt: handoff.aiPrompt || "",
+        clips,
+        metadata: {
+          handoff_version: 1,
+          music_motion: handoff.metadata || null,
+        },
+      }));
+      setLoading(false);
+      return;
+    }
+
     const search = new URLSearchParams(window.location.search);
     const projectId = search.get("project");
     if (projectId) {
@@ -146,8 +200,48 @@ export default function VideoStudio() {
     setVp((current) => createVideoProject({ ...createVideoProject(current), [key]: val }));
   };
 
+  useEffect(() => () => {
+    if (pendingHandoff?.previewAudioUrl) URL.revokeObjectURL(pendingHandoff.previewAudioUrl);
+    (pendingHandoff?.previewReferenceUrls || []).forEach((url) => URL.revokeObjectURL(url));
+  }, [pendingHandoff]);
+
+  const preparePendingHandoff = async (payload) => {
+    if (!pendingHandoff) return payload;
+    const prepared = { ...payload };
+    if (pendingHandoff.audioFile && isBlobUrl(prepared.audio_url)) {
+      const uploaded = await base44.integrations.Core.UploadFile({ file: pendingHandoff.audioFile });
+      prepared.audio_url = uploadedFileUrl(uploaded, "audio");
+      prepared.audio_name = pendingHandoff.audioFile.name || prepared.audio_name;
+    }
+
+    const references = new Map(
+      (pendingHandoff.references || []).map((reference) => [reference.id, reference]),
+    );
+    const uploadedReferences = new Map();
+    const preparedClips = [];
+    for (const clip of Array.isArray(prepared.clips) ? prepared.clips : []) {
+      const reference = references.get(clip.source_reference_id);
+      if (!reference?.file || !isBlobUrl(clip.url)) {
+        preparedClips.push(clip);
+        continue;
+      }
+      let fileUrl = uploadedReferences.get(reference.id);
+      if (!fileUrl) {
+        const uploaded = await base44.integrations.Core.UploadFile({ file: reference.file });
+        fileUrl = uploadedFileUrl(uploaded, "de la référence");
+        uploadedReferences.set(reference.id, fileUrl);
+      }
+      preparedClips.push({ ...clip, url: fileUrl });
+    }
+    prepared.clips = preparedClips;
+    return prepared;
+  };
+
   const reloadVp = useCallback(async () => {
-    if (!vp?.id) return;
+    if (!vp?.id) {
+      setStudioError("Enregistrez d’abord ce nouveau montage avant de le synchroniser.");
+      return;
+    }
     try {
       const [fresh] = await base44.entities.VideoProject.filter({ id: vp.id });
       if (!fresh) {
@@ -179,19 +273,22 @@ export default function VideoStudio() {
     setSaving(true);
     setStudioError("");
     try {
-      const payload = createVideoProject(vp);
+      const payload = await preparePendingHandoff(createVideoProject(vp));
+      setVp(createVideoProject(payload));
       if (payload.id) {
         const updated = await base44.entities.VideoProject.update(payload.id, payload);
         if (!updated || typeof updated !== "object") {
           throw new Error("La base n’a renvoyé aucun montage après la mise à jour.");
         }
         setVp(createVideoProject(updated));
+        setPendingHandoff(null);
       } else {
         const created = await base44.entities.VideoProject.create(payload);
         if (!created?.id) {
           throw new Error("La base n’a pas confirmé la création du montage.");
         }
         setVp(createVideoProject(created));
+        setPendingHandoff(null);
         navigate(`/video-studio/${created.id}`, { replace: true });
       }
     } catch (error) {
@@ -216,12 +313,9 @@ export default function VideoStudio() {
     setActivePanel("ai");
     try {
       const currentProject = createVideoProject(vp);
-      if (videoMode === VIDEO_MODES.LOCAL) {
+      if (videoMode === VIDEO_MODES.LOCAL || !base44.functions?.invoke) {
         update("ai_prompt", buildVideoPromptLocally(currentProject, sourceProject));
         return;
-      }
-      if (!base44.functions?.invoke) {
-        throw new Error("Le générateur de prompt API n’est pas configuré sur ce client vidéo.");
       }
       const res = await base44.functions.invoke("generateVideoPrompt", { videoProject: currentProject, sourceProject });
       update("ai_prompt", res.data.prompt);
@@ -233,13 +327,24 @@ export default function VideoStudio() {
   };
 
   const handleUploadDrive = async () => {
+    setActivePanel("drive");
     const currentProject = createVideoProject(vp);
     if (!currentProject.ai_prompt) {
       setStudioError("Générez d’abord le prompt IA avant l’envoi vers Drive.");
       return;
     }
     if (!base44.functions?.invoke) {
-      setStudioError("L’upload Drive historique n’est pas configuré sur le client vidéo actuel.");
+      try {
+        const content = `JS-INNOV.IA VIDEO DEMO BUILDER — ${currentProject.title}\n${"=".repeat(60)}\n\n${currentProject.ai_prompt}`;
+        downloadBlob(
+          new Blob([content], { type: "text/plain;charset=utf-8" }),
+          `${currentProject.title.replace(/\s+/g, "_")}_MONTAGE_PROMPT.txt`,
+        );
+        setDriveStatus({ localDownload: true });
+        setStudioError("");
+      } catch (error) {
+        setStudioError(`Export local impossible : ${getErrorMessage(error, "erreur inconnue")}`);
+      }
       return;
     }
     setUploading(true);
@@ -271,13 +376,15 @@ export default function VideoStudio() {
       return;
     }
     const content = `JS-INNOV.IA VIDEO DEMO BUILDER — ${currentProject.title}\n${"=".repeat(60)}\n\n${currentProject.ai_prompt}`;
-    const blob = new Blob([content], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${currentProject.title.replace(/\s+/g, "_")}_PROMPT.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      downloadBlob(
+        new Blob([content], { type: "text/plain;charset=utf-8" }),
+        `${currentProject.title.replace(/\s+/g, "_")}_PROMPT.txt`,
+      );
+      setStudioError("");
+    } catch (error) {
+      setStudioError(`Téléchargement du prompt impossible : ${getErrorMessage(error, "erreur inconnue")}`);
+    }
   };
 
   if (loading) return (
@@ -287,7 +394,9 @@ export default function VideoStudio() {
   );
 
   const currentVp = createVideoProject(vp);
-  const totalDuration = currentVp.clips.reduce((sum, clip) => sum + (clip?.duration || 4), 0);
+  const clipsDuration = currentVp.clips.reduce((sum, clip) => sum + (clip?.duration || 4), 0);
+  const audioDuration = Number(currentVp.audio_duration_seconds) || 0;
+  const totalDuration = Math.max(clipsDuration, audioDuration);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -340,7 +449,7 @@ export default function VideoStudio() {
             <Upload size={13} />
             {uploading ? "Upload…" : "Drive"}
           </button>
-          <button onClick={handleDownload} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/50 transition-all">
+          <button onClick={handleDownload} title="Télécharger le prompt IA" aria-label="Télécharger le prompt IA" className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/50 transition-all">
             <Download size={13} />
           </button>
           <button onClick={handleSave} disabled={saving} className="btn-gold flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs">
@@ -365,6 +474,10 @@ export default function VideoStudio() {
             clips={currentVp.clips}
             texts={currentVp.texts}
             transition={currentVp.transition}
+            audioUrl={currentVp.audio_url}
+            audioDuration={currentVp.audio_duration_seconds}
+            currentTime={currentTime}
+            onTimeChange={setCurrentTime}
             currentClipIdx={currentClipIdx}
             onClipChange={setCurrentClipIdx}
           />
@@ -397,9 +510,9 @@ export default function VideoStudio() {
                     setTracks(newTracks);
                     update("template_tracks", newTracks);
                   }}
-                  currentTime={0}
-                  onSeek={() => {}}
-                  duration={currentVp.template_duration || 30}
+                  currentTime={currentTime}
+                  onSeek={setCurrentTime}
+                  duration={Math.max(Number(currentVp.template_duration) || 0, totalDuration, 30)}
                 />
               </div>
             )}
@@ -440,6 +553,11 @@ export default function VideoStudio() {
             {activePanel === "drive" && (
               <div className="p-5 space-y-4">
                 <h3 className="font-display text-sm font-semibold gold-text">Google Drive</h3>
+                {driveStatus?.localDownload && !currentVp.drive_url && (
+                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+                    Prompt téléchargé sur ce poste. La connexion Google Drive n’est pas configurée sur ce Cockpit.
+                  </div>
+                )}
                 {currentVp.drive_url ? (
                   <div className="card-premium rounded-xl p-4 space-y-3">
                     <div className="flex items-center gap-2 text-green-400">

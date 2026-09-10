@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { X, Download, Film, CheckCircle, AlertCircle } from "lucide-react";
 import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
 import { finalizeStudioExport } from "@/lib/videoProvenance";
+import { createCanvasRecorder, paceCanvasFrame } from "@/lib/canvasMediaRecorder";
 
 const FORMAT_PRESETS = {
   "9:16":  { width: 1080, height: 1920, label: "Vertical 9:16 (TikTok / Reels / Shorts)" },
@@ -67,20 +68,19 @@ export default function SocialExporter({ vp, sourceProject, onClose }) {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
 
-    let stream, recorder, chunks = [];
+    let recording;
     try {
-      stream = canvas.captureStream(FPS);
-      const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-        ? "video/webm;codecs=vp9" : "video/webm";
-      recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 6_000_000 });
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-    } catch {
+      recording = await createCanvasRecorder({
+        canvas,
+        fps: FPS,
+        audioUrl: vp?.audio_url,
+        videoBitsPerSecond: 6_000_000,
+      });
+    } catch (error) {
       setStatus("error");
-      setMessage("MediaRecorder non supporté. Utilisez Chrome ou Edge.");
+      setMessage(error?.message || "MediaRecorder non supporté. Utilisez Chrome ou Edge.");
       return;
     }
-
-    recorder.start(200);
     setStatus("recording");
 
     const clipStarts = [];
@@ -90,12 +90,15 @@ export default function SocialExporter({ vp, sourceProject, onClose }) {
       acc += c.duration || 3;
     }
     const totalDur = acc;
-    const fullDur = INTRO_DUR + totalDur + OUTRO_DUR;
+    const audioDur = Number(vp?.audio_duration_seconds) || 0;
+    const contentDur = Math.max(totalDur, audioDur);
+    const fullDur = INTRO_DUR + contentDur + OUTRO_DUR;
     const totalFrames = Math.ceil(fullDur * FPS);
 
     setMessage(`Export ${templateFormat} · ${Math.ceil(fullDur)}s · ${clips.length} clips`);
 
     let lastUpdate = 0;
+    const renderStartedAt = globalThis.performance?.now?.() ?? Date.now();
 
     for (let frame = 0; frame < totalFrames; frame++) {
       if (stopRef.current) break;
@@ -122,20 +125,23 @@ export default function SocialExporter({ vp, sourceProject, onClose }) {
         }
         ctx.globalAlpha = 1;
 
-      } else if (clipOffset >= 0 && clipOffset < totalDur) {
+      } else if (clipOffset >= 0 && clipOffset < contentDur) {
         // Clips
+        const visualOffset = Math.min(clipOffset, Math.max(0, totalDur - 0.001));
         let clipIdx = 0;
         for (let i = clips.length - 1; i >= 0; i--) {
-          if (clipOffset >= clipStarts[i]) { clipIdx = i; break; }
+          if (visualOffset >= clipStarts[i]) { clipIdx = i; break; }
         }
         const clip = clips[clipIdx];
         const img = images[clipIdx];
-        const localT = clipOffset - clipStarts[clipIdx];
+        const localT = visualOffset - clipStarts[clipIdx];
         const clipDur = clip.duration || 3;
         const transType = clip.transition || vp?.transition || "fade";
         const transT = Math.min(0.4, clipDur * 0.2);
         const tIn = localT < transT ? localT / transT : 1;
-        const tOut = localT > clipDur - transT ? (clipDur - localT) / transT : 1;
+        const tOut = clipOffset >= totalDur
+          ? 1
+          : localT > clipDur - transT ? (clipDur - localT) / transT : 1;
         const alpha = Math.max(0, Math.min(1, Math.min(tIn, tOut)));
 
         if (img) {
@@ -200,7 +206,7 @@ export default function SocialExporter({ vp, sourceProject, onClose }) {
 
       } else {
         // Outro
-        const p = Math.min((t - INTRO_DUR - totalDur) / OUTRO_DUR, 1);
+        const p = Math.min((t - INTRO_DUR - contentDur) / OUTRO_DUR, 1);
         ctx.globalAlpha = Math.min(1, p / 0.2);
         ctx.fillStyle = accentColor;
         ctx.font = `bold ${Math.round(Math.min(WIDTH, HEIGHT) * 0.045)}px serif`;
@@ -220,12 +226,15 @@ export default function SocialExporter({ vp, sourceProject, onClose }) {
         setProgress(20 + Math.round((frame / totalFrames) * 78));
         await new Promise(r => setTimeout(r, 0));
       }
+      await paceCanvasFrame(frame, FPS, renderStartedAt);
     }
 
-    recorder.stop();
-    await new Promise(r => { recorder.onstop = r; });
-
-    const blob = new Blob(chunks, { type: "video/webm" });
+    const blob = await recording.stop();
+    if (stopRef.current) {
+      setStatus("idle");
+      setMessage("");
+      return;
+    }
     blobUrlRef.current = URL.createObjectURL(blob);
     const fileSizeMb = blob.size / 1024 / 1024;
 
@@ -284,7 +293,9 @@ export default function SocialExporter({ vp, sourceProject, onClose }) {
     };
   }, []);
 
-  const totalDurDisplay = Math.ceil(INTRO_DUR + (vp?.clips || []).filter(c => c.url).reduce((s, c) => s + (c.duration || 3), 0) + OUTRO_DUR);
+  const clipDurDisplay = (vp?.clips || []).filter(c => c.url).reduce((s, c) => s + (c.duration || 3), 0);
+  const audioDurDisplay = Number(vp?.audio_duration_seconds) || 0;
+  const totalDurDisplay = Math.ceil(INTRO_DUR + Math.max(clipDurDisplay, audioDurDisplay) + OUTRO_DUR);
   const mediaClips = (vp?.clips || []).filter(c => c.url);
 
   return (
@@ -355,7 +366,7 @@ export default function SocialExporter({ vp, sourceProject, onClose }) {
 
         <div className="flex gap-2">
           {status === "idle" && (
-            <button onClick={startExport} disabled={mediaClips.length === 0}
+            <button onClick={() => startExport().catch((error) => { setStatus("error"); setMessage(error?.message || "Export impossible."); })} disabled={mediaClips.length === 0}
               className="btn-gold flex-1 py-3 rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-40">
               <Film size={14} />
               Exporter en WebM {templateFormat}

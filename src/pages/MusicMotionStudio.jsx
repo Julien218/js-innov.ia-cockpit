@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AudioLines,
   CheckCircle2,
   Clapperboard,
   Download,
+  ArrowRight,
   Film,
   ImagePlus,
   Loader2,
@@ -14,6 +16,9 @@ import {
   X,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
+import { downloadBlob, safeDownloadName } from '@/lib/fileDownload';
+import { setMusicMotionHandoff } from '@/lib/musicMotionHandoff';
+import { LOCAL_AGENT_URLS } from '@/lib/localAgentQueueBridge';
 
 const MODE_OPTIONS = [
   {
@@ -158,13 +163,10 @@ function buildTimeline(duration, mode, danceAllowed) {
 }
 
 function downloadJson(payload, filename) {
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(
+    new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }),
+    filename,
+  );
 }
 
 
@@ -175,6 +177,28 @@ function fileToDataUrl(file) {
     reader.onerror = () => reject(reader.error || new Error('Lecture du fichier audio impossible.'));
     reader.readAsDataURL(file);
   });
+}
+
+async function requestLocalMusicMotionAnalysis(payload) {
+  let lastError = null;
+  for (const localUrl of LOCAL_AGENT_URLS) {
+    try {
+      const response = await fetch(localUrl + '/api/music-motion/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(20 * 60 * 1000),
+      });
+      if (response.status === 404) {
+        lastError = new Error('Route Music Motion absente sur ' + localUrl);
+        continue;
+      }
+      return response;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('Agent local Windows injoignable sur 8788/8787.');
 }
 
 function normalizeAnalyzedScenes(analysis, fallback) {
@@ -193,6 +217,7 @@ function normalizeAnalyzedScenes(analysis, fallback) {
 }
 
 export default function MusicMotionStudio() {
+  const navigate = useNavigate();
   const [audioFile, setAudioFile] = useState(null);
   const [audioUrl, setAudioUrl] = useState('');
   const [duration, setDuration] = useState(0);
@@ -229,12 +254,26 @@ export default function MusicMotionStudio() {
     setNotice({ type: 'success', text: 'Chanson chargée. Ajoutez vos références puis lancez la préparation.' });
   };
 
+  const downloadAudio = () => {
+    if (!audioFile) {
+      setNotice({ type: 'error', text: 'Importez d’abord une chanson.' });
+      return;
+    }
+    try {
+      downloadBlob(audioFile, safeDownloadName(audioFile.name || 'musique.m4a'));
+      setNotice({ type: 'success', text: 'La source audio a été téléchargée.' });
+    } catch (error) {
+      setNotice({ type: 'error', text: 'Téléchargement audio impossible : ' + (error?.message || 'erreur inconnue') });
+    }
+  };
+
   const handleReferenceChange = (event) => {
     const files = [...(event.target.files || [])];
     event.target.value = '';
     const additions = files.map((file) => ({
       id: 'ref-' + Date.now() + '-' + Math.random().toString(16).slice(2),
       name: file.name,
+      file,
       url: URL.createObjectURL(file),
     }));
     setReferences((current) => [...current, ...additions].slice(0, 8));
@@ -257,19 +296,14 @@ export default function MusicMotionStudio() {
 
     try {
       const audioDataUrl = await fileToDataUrl(audioFile);
-      const response = await fetch('http://127.0.0.1:8787/api/music-motion/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          audio_data_url: audioDataUrl,
-          audio_name: audioFile.name,
-          duration_seconds: duration || null,
-          mode,
-          dance_allowed: danceAllowed,
-          brief,
-          references: references.map((item) => item.name),
-        }),
-        signal: AbortSignal.timeout(20 * 60 * 1000),
+      const response = await requestLocalMusicMotionAnalysis({
+        audio_data_url: audioDataUrl,
+        audio_name: audioFile.name,
+        duration_seconds: duration || null,
+        mode,
+        dance_allowed: danceAllowed,
+        brief,
+        references: references.map((item) => item.name),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -345,6 +379,32 @@ export default function MusicMotionStudio() {
     created_at: new Date().toISOString(),
   }), [audioFile, audioUrl, duration, mode, currentMode, danceAllowed, brief, formats, references, scenes, analysisMeta]);
 
+  const openInVideoStudio = () => {
+    if (!audioFile) {
+      setNotice({ type: 'error', text: 'Importez d’abord une chanson avant d’ouvrir le Studio vidéo.' });
+      return;
+    }
+    const aiPrompt = scenes
+      .map((scene) => `[${scene.start}s → ${scene.end}s] ${scene.prompt || scene.motion}`)
+      .filter(Boolean)
+      .join('\\n');
+    setMusicMotionHandoff({
+      title: projectPayload.title,
+      audioFile,
+      duration: duration || 0,
+      references: references
+        .filter((reference) => reference.file)
+        .map(({ id, name, file }) => ({ id, name, file })),
+      scenes,
+      aiPrompt,
+      metadata: {
+        ...projectPayload,
+        audio: { ...projectPayload.audio, preview_url: '' },
+      },
+    });
+    navigate('/video-studio/new');
+  };
+
   const saveDraft = () => {
     localStorage.setItem('jsinnovia.music-motion.draft', JSON.stringify(projectPayload));
     setNotice({ type: 'success', text: 'Projet enregistré sur ce poste. Les fichiers restent locaux.' });
@@ -397,14 +457,16 @@ export default function MusicMotionStudio() {
             <Music2 className="mb-2 text-primary" size={24} />
             <span className="text-sm font-medium">{audioFile ? audioFile.name : 'Importer un fichier audio'}</span>
             <span className="mt-1 text-xs text-muted-foreground">M4A, MP3, WAV · fichier conservé localement</span>
-            <input type="file" accept="audio/*" onChange={handleAudioChange} className="hidden" />
+            <input type="file" accept="audio/*,.m4a" onChange={handleAudioChange} className="hidden" />
           </label>
           {audioUrl && (
             <div className="rounded-xl border border-border bg-background/60 p-3">
               <audio controls src={audioUrl} className="w-full" />
-              <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                <span>Durée détectée</span>
-                <span className="font-mono text-foreground">{formatTime(duration)}</span>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span>Durée détectée · <span className="font-mono text-foreground">{formatTime(duration)}</span></span>
+                <button type="button" onClick={downloadAudio} className="inline-flex items-center gap-1 text-primary hover:underline">
+                  <Download size={13} /> Télécharger la source
+                </button>
               </div>
             </div>
           )}
@@ -599,7 +661,7 @@ export default function MusicMotionStudio() {
         <div>
           <p className="workspace-eyebrow">6 · Validation</p>
           <h3 className="font-semibold">Prêt pour le Studio vidéo local</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Le projet est conservé dans le navigateur avant son envoi à la génération ComfyUI.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Enregistrez localement ou ouvrez ce storyboard dans le Studio vidéo pour modifier les plans et lancer la génération.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={saveDraft} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm hover:border-primary/50">
@@ -608,7 +670,10 @@ export default function MusicMotionStudio() {
           <button type="button" onClick={() => downloadJson(projectPayload, 'music-motion-project.json')} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm hover:border-primary/50">
             <Download size={15} /> Exporter le storyboard
           </button>
-          <button type="button" onClick={() => setNotice({ type: 'success', text: 'Storyboard validé et prêt à être exporté.' })} className="btn-gold inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm">
+          <button type="button" onClick={openInVideoStudio} className="btn-gold inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm">
+            <ArrowRight size={15} /> Ouvrir dans le Studio vidéo
+          </button>
+          <button type="button" onClick={() => setNotice({ type: 'success', text: 'Storyboard validé et prêt à être exporté.' })} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm hover:border-primary/50">
             <CheckCircle2 size={15} /> Valider le storyboard
           </button>
         </div>
