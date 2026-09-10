@@ -58,93 +58,150 @@ export async function uploadToStorage(file, bucket = 'videos', path = null) {
 }
 
 // ─── Compatibilité base44 SDK (shim pour les composants existants) ─────────
-// Permet d'utiliser les composants du générateur sans modifier leur code
+const VIDEO_API_BASE = '/api/video-studio';
+const videoExportSubscribers = new Set();
+
+async function videoApiRequest(endpoint, { method = 'GET', body } = {}) {
+  const response = await fetch(VIDEO_API_BASE + endpoint, {
+    method,
+    credentials: 'same-origin',
+    headers: {
+      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+    },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+  const data = response.status === 204 ? null : await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || 'Requête du studio vidéo impossible.');
+  }
+  return data;
+}
+
+function queryParams(filters = {}, order = '', limit = '') {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters || {})) {
+    if (value !== undefined && value !== null && value !== '') params.set(key, String(value));
+  }
+  if (order) params.set('order', String(order));
+  if (limit) params.set('limit', String(limit));
+  const encoded = params.toString();
+  return encoded ? '?' + encoded : '';
+}
+
+function asArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value && Array.isArray(value.items)) return value.items;
+  return [];
+}
+
+function notifyVideoExport(type, data) {
+  const event = { type, id: data?.id, data };
+  for (const callback of videoExportSubscribers) {
+    try { callback(event); } catch (error) { console.warn('[VideoExport subscribe]', error); }
+  }
+}
+
+function makeVideoStudioEntity(resource, { subscribable = false } = {}) {
+  const entity = {
+    list: async (order = '-created_date', limit = 100) => asArray(
+      await videoApiRequest('/' + resource + queryParams({}, order, limit))
+    ),
+    get: (id) => videoApiRequest('/' + resource + '/' + encodeURIComponent(id)),
+    filter: async (filters = {}, order = '', limit = 100) => asArray(
+      await videoApiRequest('/' + resource + queryParams(filters, order, limit))
+    ),
+    create: async (data) => {
+      const created = await videoApiRequest('/' + resource, { method: 'POST', body: data });
+      if (subscribable) notifyVideoExport('create', created);
+      return created;
+    },
+    update: async (id, data) => {
+      const updated = await videoApiRequest('/' + resource + '/' + encodeURIComponent(id), { method: 'PATCH', body: data });
+      if (subscribable) notifyVideoExport('update', updated);
+      return updated;
+    },
+    delete: async (id) => {
+      await videoApiRequest('/' + resource + '/' + encodeURIComponent(id), { method: 'DELETE' });
+      if (subscribable) notifyVideoExport('delete', { id });
+      return { id };
+    },
+  };
+  if (subscribable) {
+    entity.subscribe = (callback) => {
+      if (typeof callback !== 'function') return () => {};
+      videoExportSubscribers.add(callback);
+      return () => videoExportSubscribers.delete(callback);
+    };
+  }
+  return entity;
+}
+
+const sourceProjectEntity = {
+  list: async (order = '-created_at', limit = 100) => asArray(
+    await videoApiRequest('/source-projects' + queryParams({}, order, limit))
+  ),
+  filter: async (filters = {}) => asArray(
+    await videoApiRequest('/source-projects' + queryParams(filters))
+  ),
+  get: async (id) => {
+    const rows = asArray(await videoApiRequest('/source-projects' + queryParams({ id })));
+    return rows[0] || null;
+  },
+};
+
+// Les rapports vidéo historiques restent sur leur adaptateur Supabase existant.
+const legacyReportEntity = {
+  list: (order, limit) => unwrapSupabase(videoDb.AIVideoReport.list(order, limit), {
+    label: 'Chargement des rapports vidéo IA',
+    fallback: [],
+  }),
+  filter: (filters) => unwrapSupabase(videoDb.AIVideoReport.filter(filters), {
+    label: 'Recherche du rapport vidéo IA',
+    fallback: [],
+  }),
+  create: (data) => unwrapSupabase(videoDb.AIVideoReport.create(data), {
+    label: 'Création du rapport vidéo IA',
+    required: true,
+  }),
+  update: (id, data) => unwrapSupabase(videoDb.AIVideoReport.update(id, data), {
+    label: 'Mise à jour du rapport vidéo IA',
+    required: true,
+  }),
+  delete: (id) => unwrapSupabase(videoDb.AIVideoReport.delete(id), {
+    label: 'Suppression du rapport vidéo IA',
+  }),
+};
+
+export async function uploadToStorage(file, bucket = 'video-studio', path = null) {
+  if (!file || typeof file.arrayBuffer !== 'function') {
+    throw new Error('Aucun fichier média à envoyer.');
+  }
+  const fileName = path || file.name || 'media.bin';
+  const response = await fetch(VIDEO_API_BASE + '/upload', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'x-file-name': encodeURIComponent(fileName),
+    },
+    body: file,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || 'Upload média impossible.');
+  }
+  return data;
+}
+
 export const base44Shim = {
   entities: {
-    VideoProject: {
-      list: (order, limit) => unwrapSupabase(videoDb.VideoProject.list(order, limit), {
-        label: 'Chargement des montages vidéo',
-        fallback: [],
-      }),
-      filter: (filters) => unwrapSupabase(videoDb.VideoProject.filter(filters), {
-        label: 'Recherche du montage vidéo',
-        fallback: [],
-      }),
-      create: (data) => unwrapSupabase(videoDb.VideoProject.create(data), {
-        label: 'Création du montage vidéo',
-        required: true,
-      }),
-      update: (id, data) => unwrapSupabase(videoDb.VideoProject.update(id, data), {
-        label: 'Mise à jour du montage vidéo',
-        required: true,
-      }),
-      delete: (id) => unwrapSupabase(videoDb.VideoProject.delete(id), {
-        label: 'Suppression du montage vidéo',
-      }),
-    },
-    AIVideoReport: {
-      list: (order, limit) => unwrapSupabase(videoDb.AIVideoReport.list(order, limit), {
-        label: 'Chargement des rapports vidéo IA',
-        fallback: [],
-      }),
-      filter: (filters) => unwrapSupabase(videoDb.AIVideoReport.filter(filters), {
-        label: 'Recherche du rapport vidéo IA',
-        fallback: [],
-      }),
-      create: (data) => unwrapSupabase(videoDb.AIVideoReport.create(data), {
-        label: 'Création du rapport vidéo IA',
-        required: true,
-      }),
-      update: (id, data) => unwrapSupabase(videoDb.AIVideoReport.update(id, data), {
-        label: 'Mise à jour du rapport vidéo IA',
-        required: true,
-      }),
-      delete: (id) => unwrapSupabase(videoDb.AIVideoReport.delete(id), {
-        label: 'Suppression du rapport vidéo IA',
-      }),
-    },
-    VideoExport: {
-      list: (order, limit) => unwrapSupabase(videoDb.VideoExport.list(order, limit), {
-        label: 'Chargement des exports vidéo',
-        fallback: [],
-      }),
-      filter: (filters) => unwrapSupabase(videoDb.VideoExport.filter(filters), {
-        label: 'Recherche de l’export vidéo',
-        fallback: [],
-      }),
-      create: (data) => unwrapSupabase(videoDb.VideoExport.create(data), {
-        label: 'Création de l’export vidéo',
-        required: true,
-      }),
-      update: (id, data) => unwrapSupabase(videoDb.VideoExport.update(id, data), {
-        label: 'Mise à jour de l’export vidéo',
-        required: true,
-      }),
-      delete: (id) => unwrapSupabase(videoDb.VideoExport.delete(id), {
-        label: 'Suppression de l’export vidéo',
-      }),
-      subscribe: (callback) => {
-        const channel = supabase.channel('video_export_changes')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'VideoExport' },
-            (payload) => callback({ type: payload.eventType, id: /** @type {any} */ (payload.old)?.id, data: payload.new })
-          ).subscribe();
-        return () => { void supabase.removeChannel(channel); };
-      },
-    },
-    Project: {
-      list: (order, limit) => unwrapSupabase(
-        supabase.from('projets_fr').select('*').order('created_date', { ascending: false }).limit(limit || 50),
-        { label: 'Chargement des projets', fallback: [] },
-      ),
-      filter: (filters) => unwrapSupabase(
-        supabase.from('projets_fr').select('*').match(filters),
-        { label: 'Recherche du projet source', fallback: [] },
-      ),
-    },
+    VideoProject: makeVideoStudioEntity('projects'),
+    AIVideoReport: legacyReportEntity,
+    VideoExport: makeVideoStudioEntity('exports', { subscribable: true }),
+    Project: sourceProjectEntity,
   },
   integrations: {
     Core: {
-      // Génération d'image via novaChat backend
       GenerateImage: async ({ prompt }) => {
         const res = await fetch('https://js-innov-command-center-production.up.railway.app/api/nova', {
           method: 'POST',
@@ -152,14 +209,18 @@ export const base44Shim = {
           body: JSON.stringify({ action: 'generate_image', prompt }),
         });
         if (!res.ok) {
-          throw new Error(`Génération d’image impossible (${res.status}).`);
+          throw new Error('Génération d’image impossible (' + res.status + ').');
         }
         const data = await res.json();
         return { url: data.image_url || data.url || '' };
       },
       UploadFile: async ({ file, fileName = file?.name }) => {
-        const url = await uploadToStorage(file, 'uploads', fileName);
-        return { url };
+        const uploaded = await uploadToStorage(file, 'video-studio', fileName);
+        return {
+          ...uploaded,
+          url: uploaded.url || uploaded.file_url || '',
+          file_url: uploaded.file_url || uploaded.url || '',
+        };
       },
     },
   },
