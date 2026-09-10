@@ -128,7 +128,9 @@ function projectPayload(body = {}, { partial = false, req } = {}) {
   const output = {};
   for (const field of PROJECT_TEXT_FIELDS) {
     if (!partial || hasOwn(body, field)) {
-      output[field] = asText(body[field], partial ? null : field === 'title' ? 'Nouveau montage' : '', field === 'ai_prompt' ? 100000 : 10000);
+      output[field] = field === 'title' && partial && !String(body[field] || '').trim()
+        ? 'Nouveau montage'
+        : asText(body[field], partial ? null : field === 'title' ? 'Nouveau montage' : '', field === 'ai_prompt' ? 100000 : 10000);
     }
   }
   for (const field of PROJECT_NUMBER_FIELDS) {
