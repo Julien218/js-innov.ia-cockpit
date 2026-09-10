@@ -55,8 +55,8 @@ test('le Studio affiche un parcours guidé et des onglets compréhensibles', () 
   assert.match(studio, /activeTab=\{sidebarTab\}/);
   assert.match(sidebar, /Démarrage rapide/);
   assert.match(sidebar, /aria-label=\{"Ouvrir " \+ item\.label\}/);
-  assert.match(sidebar, /Musique \\/ audio/);
-  assert.match(sidebar, /Images \\/ clips/);
+  assert.ok(sidebar.includes("Musique / audio"));
+  assert.ok(sidebar.includes("Images / clips"));
 });
 
 test('l’aperçu utilise la durée et l’horloge de l’audio quand ils existent', () => {
