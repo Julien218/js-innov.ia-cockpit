@@ -73,12 +73,13 @@ export default function VideoOrchestratorPanel({ vp, onOptimizeMontage }) {
     refresh();
   }, [mode]);
 
-  const localReady = Boolean(status?.comfyui?.online);
+  const localReady = Boolean(status?.comfyui?.online && status?.h3?.available);
   const systemLabel = useMemo(() => {
     if (mode === VIDEO_MODES.API) return 'API externe autorisée';
     if (!status) return 'Vérification du moteur local…';
-    if (localReady) return 'ComfyUI local connecté';
-    return 'ComfyUI local hors ligne';
+    if (!status.comfyui?.online) return 'ComfyUI local hors ligne';
+    if (!status.h3?.available) return 'Nœud H3 non détecté';
+    return 'ComfyUI local connecté';
   }, [mode, status, localReady]);
 
   const importWorkflow = async (event) => {
@@ -106,8 +107,12 @@ export default function VideoOrchestratorPanel({ vp, onOptimizeMontage }) {
       });
       return;
     }
-    if (!localReady) {
+    if (!status?.comfyui?.online) {
       setNotice({ type: 'error', text: 'ComfyUI local est hors ligne. Démarre ComfyUI puis actualise.' });
+      return;
+    }
+    if (!status?.h3?.available) {
+      setNotice({ type: 'error', text: 'Le nœud MiniMaxH3ImageToVideo n’est pas détecté dans ComfyUI.' });
       return;
     }
     if (!workflow) {
@@ -231,8 +236,8 @@ export default function VideoOrchestratorPanel({ vp, onOptimizeMontage }) {
           </div>
           <div className="rounded-xl border border-border bg-card p-3">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Workflow H3</p>
-            <p className={`mt-1 text-sm font-semibold ${workflow ? 'text-emerald-600' : 'text-amber-600'}`}>
-              {workflow ? 'Prêt' : 'À importer une fois'}
+            <p className={`mt-1 text-sm font-semibold ${workflow && status?.h3?.available ? 'text-emerald-600' : 'text-amber-600'}`}>
+              {workflow && status?.h3?.available ? 'Prêt' : workflow ? 'Nœud H3 non détecté' : 'À importer une fois'}
             </p>
           </div>
         </div>

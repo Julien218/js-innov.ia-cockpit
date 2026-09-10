@@ -20,6 +20,19 @@ test('formate les erreurs ComfyUI structurées sans produire [object Object]', (
   assert.doesNotMatch(message, /\[object Object\]/);
 });
 
+test('sérialise aussi un message ComfyUI qui arrive comme objet', () => {
+  const message = formatComfyErrorBody({
+    error: {
+      type: 'invalid_prompt',
+      message: { node_id: '12', reason: 'image not found' },
+    },
+  });
+
+  assert.match(message, /node_id/);
+  assert.match(message, /image not found/);
+  assert.doesNotMatch(message, /\[object Object\]/);
+});
+
 test('conserve un message texte et sérialise le corps inconnu', () => {
   assert.equal(formatComfyErrorBody('ComfyUI arrêté'), 'ComfyUI arrêté');
   assert.equal(formatComfyErrorBody({ code: 'bad_workflow', node: 7 }), '{"code":"bad_workflow","node":7}');
