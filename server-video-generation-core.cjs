@@ -11,6 +11,115 @@ function cleanIdList(value, maxItems = 7) {
   return [...new Set(raw.map((item) => clean(item, 180)).filter(Boolean))].slice(0, maxItems);
 }
 
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isCanonicalUuid(value) {
+  return UUID_RE.test(clean(value, 180));
+}
+
+function clientReferenceKey(value) {
+  return clean(value, 180)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function sameClientReference(left, right) {
+  const a = clientReferenceKey(left);
+  const b = clientReferenceKey(right);
+  return Boolean(a && b) && (a === b || a.startsWith(`${b}_`) || b.startsWith(`${a}_`));
+}
+
+function isInternalClientReference(value) {
+  return new Set([
+    'client_jsinnovia',
+    'client_js_innovia',
+    'client_js_innov_ia',
+    'jsinnovia',
+    'js_innovia',
+    'js_innov_ia',
+    'interne_jsinnovia',
+    'interne_js_innovia',
+    'jsinnovia_interne',
+    'js_innovia_interne',
+  ]).has(clientReferenceKey(value));
+}
+
+function canonicalClientName(client = {}) {
+  return clean(client.denomination_legale || client.entreprise || [client.prenom, client.nom].filter(Boolean).join(' ') || client.nom || client.name, 240);
+}
+
+function isInternalClientRecord(client = {}) {
+  const references = [
+    client.type_client,
+    client.slug,
+    client.key,
+    client.code,
+    client.client_key,
+    client.external_id,
+    client.denomination_legale,
+    client.entreprise,
+    client.nom,
+    client.name,
+  ];
+  if (references.some((value) => isInternalClientReference(value))) return true;
+  const text = references.map(clientReferenceKey).filter(Boolean).join(' ');
+  return /(?:^|_)(?:interne|internal)(?:_|$)/.test(text)
+    && /js_?innov(?:_?ia)?/.test(text);
+}
+
+function clientReferenceAliases(client = {}) {
+  return [
+    client.id,
+    client.client_id,
+    client.slug,
+    client.key,
+    client.code,
+    client.client_key,
+    client.external_id,
+    client.type_client,
+    canonicalClientName(client),
+    client.nom,
+    client.entreprise,
+    client.denomination_legale,
+    client.name,
+  ].filter(Boolean);
+}
+
+function findCanonicalClient(clients = [], { clientId = '', clientName = '' } = {}) {
+  const available = (Array.isArray(clients) ? clients : [])
+    .filter((client) => client && isCanonicalUuid(client.id));
+  const requestedId = clean(clientId, 180);
+  const requestedName = clean(clientName, 240);
+  const aliasMatches = (reference) => available.filter((client) =>
+    clientReferenceAliases(client).some((alias) => sameClientReference(alias, reference))
+  );
+
+  if (requestedId) {
+    const exact = available.find((client) => String(client.id) === requestedId);
+    if (exact) return exact;
+    const matches = aliasMatches(requestedId);
+    if (matches.length === 1) return matches[0];
+    if (isInternalClientReference(requestedId)) {
+      const internal = available.filter(isInternalClientRecord);
+      if (internal.length === 1) return internal[0];
+    }
+    return null;
+  }
+
+  if (!requestedName) return null;
+  const matches = aliasMatches(requestedName);
+  if (matches.length === 1) return matches[0];
+  if (isInternalClientReference(requestedName)) {
+    const internal = available.filter(isInternalClientRecord);
+    if (internal.length === 1) return internal[0];
+  }
+  return null;
+}
+
 function providerAvailability(env = process.env, now = new Date()) {
   const soraExpired = now.toISOString().slice(0, 10) >= SORA_SHUTDOWN_DATE;
   return {
