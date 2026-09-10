@@ -14,6 +14,7 @@ on:
       - "src/lib/canvasMediaRecorder.js"
       - "server.cjs"
       - "server-video-studio.cjs"
+      - "Dockerfile"
       - "supabase/migrations/20260910120000_video_studio_assets.sql"
       - "tests/video-studio-audio.test.cjs"
       - "server-video-generation-core.cjs"
