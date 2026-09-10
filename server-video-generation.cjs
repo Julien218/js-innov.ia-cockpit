@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('node:crypto');
 const {
   chooseProvider, validateJobInput, resolveCostScope, buildProviderRequest, xaiUsdFromUsage,
-  estimateSoraUsd, publicConfig,
+  estimateSoraUsd, publicConfig, isCanonicalUuid, findCanonicalClient,
 } = require('./server-video-generation-core.cjs');
 const { encodeVideoPackage } = require('./server-video-provenance-core.cjs');
 const { finalizeVideoBuffer, archiveFinalizedVideo } = require('./server-video-provenance.cjs');
@@ -160,25 +160,30 @@ async function listVideoClients(organisation = 'jsinnovia') {
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
 }
 
-async function resolveClientInput(input = {}) {
-  if (String(input.client_id || '').trim()) return input;
+async function resolveClientInput(input = {}, organisation = 'jsinnovia') {
+  const requestedId = String(input.client_id || '').trim();
   const requestedName = String(input.client_name || '').trim();
-  if (!requestedName) return input;
+  if (!requestedId && !requestedName) return input;
+  // video_generation_jobs stores a text snapshot, but every CRM reference must
+  // be canonical before cost-center lookup or task synchronization.
+  if (requestedId && isCanonicalUuid(requestedId)) return input;
   if (!AGENT_KEY) throw new Error('Impossible de retrouver le client : clé Agent Cockpit manquante.');
-  const response = await fetch(`${AGENT_URL}/data/Client?limit=2000`, { headers: { 'x-agent-key': AGENT_KEY } });
-  const clients = await response.json().catch(() => []);
-  if (!response.ok) throw new Error(`Recherche client impossible (${response.status}).`);
-  const key = normalizedName(requestedName);
-  const matches = (Array.isArray(clients) ? clients : []).filter((client) => {
-    const names = [canonicalClientName(client), client.nom, client.entreprise, client.denomination_legale].map(normalizedName).filter(Boolean);
-    return names.includes(key);
+  const response = await fetch(`${AGENT_URL}/data/Client?limit=2000`, {
+    headers: {
+      'x-agent-key': AGENT_KEY,
+      'x-organisation-id': String(organisation || 'jsinnovia'),
+    },
   });
-  if (matches.length !== 1) {
-    throw new Error(matches.length > 1
-      ? `Plusieurs clients correspondent à « ${requestedName} » : sélection manuelle requise.`
+  const payload = await response.json().catch(() => []);
+  if (!response.ok) throw new Error(`Recherche client impossible (${response.status}).`);
+  const clients = normalizeClientRows(payload);
+  const client = findCanonicalClient(clients, { clientId: requestedId, clientName: requestedName });
+  if (!client?.id) {
+    throw new Error(requestedId
+      ? `Identifiant client « ${requestedId} » non canonique ou introuvable dans le Cockpit.`
       : `Client « ${requestedName} » introuvable dans le Cockpit : créez ou sélectionnez sa fiche avant de générer.`);
   }
-  return { ...input, client_id: matches[0].id, client_name: canonicalClientName(matches[0]) };
+  return { ...input, client_id: client.id, client_name: canonicalClientName(client) };
 }
 
 function providerHeaders(provider) {
@@ -363,7 +368,7 @@ router.get('/jobs/:id', async (req, res) => {
 });
 
 async function createVideoGenerationJob(body, user = {}) {
-  const resolvedBody = await resolveClientInput(body);
+  const resolvedBody = await resolveClientInput(body, user?.organisation || body?.organisation || 'jsinnovia');
   const preliminaryInput = validateJobInput(resolvedBody);
   const centers = await crm(`client_cost_centers?select=id,client_id,metadata&client_id=eq.${encodeURIComponent(preliminaryInput.clientId)}&is_active=eq.true&limit=100`);
   const input = validateJobInput(resolveCostScope(resolvedBody, centers));
