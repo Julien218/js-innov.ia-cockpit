@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Film, Download, X, AlertCircle, CheckCircle, Image, Loader2, Sparkles } from "lucide-react";
 import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
 import { finalizeStudioExport } from "@/lib/videoProvenance";
-import { createCanvasRecorder } from "@/lib/canvasMediaRecorder";
+import { createCanvasRecorder, paceCanvasFrame } from "@/lib/canvasMediaRecorder";
 
 export default function VideoExporter({ vp, sourceProject, onClose }) {
   const [status, setStatus] = useState("idle");
@@ -105,6 +105,7 @@ export default function VideoExporter({ vp, sourceProject, onClose }) {
     }
 
     let lastProgressUpdate = 0;
+    const renderStartedAt = globalThis.performance?.now?.() ?? Date.now();
 
     for (let frame = 0; frame < totalFrames; frame++) {
       if (stopRef.current) break;
@@ -255,6 +256,7 @@ export default function VideoExporter({ vp, sourceProject, onClose }) {
         // Yield au navigateur 1x par seconde
         await new Promise((r) => setTimeout(r, 0));
       }
+      await paceCanvasFrame(frame, FPS, renderStartedAt);
     }
 
     const blob = await recording.stop();
