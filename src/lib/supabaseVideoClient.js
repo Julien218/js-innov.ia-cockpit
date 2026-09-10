@@ -209,8 +209,8 @@ export const base44Shim = {
         const uploaded = await uploadToStorage(file, 'video-studio', fileName);
         return {
           ...uploaded,
-          url: uploaded.url || uploaded.file_url || '',
-          file_url: uploaded.file_url || uploaded.url || '',
+          url: uploaded.media_url || uploaded.file_url || uploaded.url || '',
+          file_url: uploaded.media_url || uploaded.file_url || uploaded.url || '',
         };
       },
     },
