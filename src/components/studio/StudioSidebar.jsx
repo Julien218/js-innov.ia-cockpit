@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
-import { Upload, Music, Type, Plus, Image, Loader2, ChevronDown, ChevronUp, Scissors } from "lucide-react";
+import { Upload, Download, Music, Type, Plus, Image, Loader2, ChevronDown, ChevronUp, Scissors } from "lucide-react";
+import { downloadRemoteFile, safeDownloadName } from "@/lib/fileDownload";
 import ClipEditTools from "./ClipEditTools";
 
 // Inline editable text overlay item
@@ -48,38 +49,98 @@ const TEXT_POSITIONS = ["haut", "centre", "bas"];
 const TEXT_FONTS = ["Inter, sans-serif", "Playfair Display, serif", "monospace"];
 const TEXT_STYLES = ["normal", "gras", "italique"];
 
+function readAudioDuration(file) {
+  if (!file || typeof URL?.createObjectURL !== "function") return Promise.resolve(0);
+  return new Promise((resolve) => {
+    const probe = document.createElement("audio");
+    const objectUrl = URL.createObjectURL(file);
+    const cleanup = (duration) => {
+      URL.revokeObjectURL(objectUrl);
+      probe.removeAttribute("src");
+      probe.load();
+      resolve(Number.isFinite(duration) ? duration : 0);
+    };
+    probe.preload = "metadata";
+    probe.onloadedmetadata = () => cleanup(Number(probe.duration));
+    probe.onerror = () => cleanup(0);
+    probe.src = objectUrl;
+  });
+}
+
 export default function StudioSidebar({ vp, update, transitions, sourceProject }) {
   const [tab, setTab] = useState("media");
   const [addingText, setAddingText] = useState(false);
   const [newText, setNewText] = useState({ content: "", position: "centre", color: "#ffffff", size: "2rem", font: "Inter, sans-serif", bold: false });
   const [uploading, setUploading] = useState(false);
+  const [downloadingAudio, setDownloadingAudio] = useState(false);
+  const [audioError, setAudioError] = useState("");
   const fileRef = useRef(null);
   const audioRef = useRef(null);
 
   const handleMediaUpload = async (files) => {
+    const selectedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+    if (!selectedFiles.length) return;
     setUploading(true);
-    const newClips = [];
-    for (const file of files) {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      newClips.push({
-        id: `clip_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-        url: file_url,
-        name: file.name,
-        type: file.type.startsWith("video") ? "video" : "image",
-        duration: file.type.startsWith("video") ? 10 : 4,
-        transition: vp.transition || "fade",
-      });
+    setAudioError("");
+    try {
+      const newClips = [];
+      for (const file of selectedFiles) {
+        const uploaded = await base44.integrations.Core.UploadFile({ file });
+        const fileUrl = uploaded?.file_url || uploaded?.url;
+        if (!fileUrl) throw new Error("Le serveur n’a pas renvoyé l’URL du média.");
+        newClips.push({
+          id: `clip_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+          url: fileUrl,
+          name: file.name,
+          type: file.type.startsWith("video") ? "video" : "image",
+          duration: file.type.startsWith("video") ? 10 : 4,
+          transition: vp.transition || "fade",
+        });
+      }
+      update("clips", [...(vp.clips || []), ...newClips]);
+    } catch (error) {
+      setAudioError("Import média impossible : " + (error?.message || "erreur inconnue"));
+    } finally {
+      setUploading(false);
     }
-    update("clips", [...(vp.clips || []), ...newClips]);
-    setUploading(false);
   };
 
   const handleAudioUpload = async (file) => {
+    if (!file) return;
     setUploading(true);
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
-    update("audio_url", file_url);
-    update("audio_name", file.name);
-    setUploading(false);
+    setAudioError("");
+    try {
+      const uploaded = await base44.integrations.Core.UploadFile({ file });
+      const fileUrl = uploaded?.file_url || uploaded?.url;
+      if (!fileUrl) throw new Error("Le serveur n’a pas renvoyé l’URL audio.");
+      const audioDuration = await readAudioDuration(file);
+      update("audio_url", fileUrl);
+      update("audio_name", file.name);
+      update("audio_duration_seconds", audioDuration);
+    } catch (error) {
+      setAudioError("Import audio impossible : " + (error?.message || "erreur inconnue"));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleAudioDownload = async () => {
+    if (!vp.audio_url) {
+      setAudioError("Aucune musique n’est disponible dans ce montage.");
+      return;
+    }
+    setDownloadingAudio(true);
+    setAudioError("");
+    try {
+      await downloadRemoteFile(
+        vp.audio_url,
+        safeDownloadName(vp.audio_name || vp.title || "musique") + (vp.audio_name?.includes(".") ? "" : ".audio"),
+      );
+    } catch (error) {
+      setAudioError("Téléchargement audio impossible : " + (error?.message || "erreur inconnue"));
+    } finally {
+      setDownloadingAudio(false);
+    }
   };
 
   const addText = () => {
@@ -113,7 +174,10 @@ export default function StudioSidebar({ vp, update, transitions, sourceProject }
               {uploading ? "Upload…" : "Ajouter clips / images"}
             </button>
             <input ref={fileRef} type="file" multiple accept="image/*,video/*" className="hidden"
-              onChange={e => handleMediaUpload(Array.from(e.target.files))} />
+              onChange={async e => {
+                await handleMediaUpload(Array.from(e.target.files || []));
+                e.target.value = "";
+              }} />
             {/* Source images */}
             {sourceProject?.artworks_images?.length > 0 && (
               <div>
@@ -148,15 +212,33 @@ export default function StudioSidebar({ vp, update, transitions, sourceProject }
               {uploading ? "Upload…" : "Ajouter musique / audio"}
             </button>
             <input ref={audioRef} type="file" accept="audio/*" className="hidden"
-              onChange={e => handleAudioUpload(e.target.files[0])} />
+              onChange={async e => {
+                await handleAudioUpload(e.target.files?.[0]);
+                e.target.value = "";
+              }} />
             {vp.audio_url && (
               <div className="card-premium rounded-lg p-3 space-y-2">
                 <p className="text-xs font-medium text-foreground truncate">{vp.audio_name}</p>
                 <audio controls src={vp.audio_url} className="w-full" style={{ height: "32px" }} />
-                <button onClick={() => { update("audio_url", ""); update("audio_name", ""); }}
-                  className="text-xs text-destructive hover:underline">Supprimer</button>
+                <p className="text-[11px] text-muted-foreground">
+                  {vp.audio_duration_seconds ? Math.round(vp.audio_duration_seconds) + " s · synchronisation disponible dans l’aperçu" : "Durée à recalculer dans l’aperçu"}
+                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <button onClick={handleAudioDownload} disabled={downloadingAudio}
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50">
+                    {downloadingAudio ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                    {downloadingAudio ? "Téléchargement…" : "Télécharger"}
+                  </button>
+                  <button onClick={() => {
+                    update("audio_url", "");
+                    update("audio_name", "");
+                    update("audio_duration_seconds", 0);
+                    setAudioError("");
+                  }} className="text-xs text-destructive hover:underline">Supprimer</button>
+                </div>
               </div>
             )}
+            {audioError && <p className="text-[11px] text-red-400">{audioError}</p>}
             <div className="mt-2">
               <p className="text-xs text-muted-foreground mb-1.5 uppercase tracking-wide">BPM projet</p>
               <p className="text-primary font-bold text-sm">{sourceProject?.bpm || "–"} BPM</p>
