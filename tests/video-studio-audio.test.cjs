@@ -20,7 +20,7 @@ test('le pipeline vidéo passe par la route Cockpit protégée et garde les deux
   assert.match(route, /router.get\('\/media'/);
   assert.match(route, /mediaProxyUrl/);
   assert.match(client, /VIDEO_API_BASE = '\/api\/video-studio'/);
-  assert.match(client, /file_url: uploaded\.file_url \|\| uploaded\.url/);
+  assert.match(client, /url: uploaded\.media_url \|\| uploaded\.file_url \|\| uploaded\.url/);
   assert.doesNotMatch(client, /export async function uploadToStorage\(file, bucket = 'videos'/);
 });
 
