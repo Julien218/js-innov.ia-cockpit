@@ -76,7 +76,7 @@ function comfyRequest(pathname, { method = "GET", json, body, headers = {}, time
         try { parsed = raw ? JSON.parse(raw) : {}; } catch (_) { /* texte brut */ }
         if (res.statusCode >= 200 && res.statusCode < 300) return resolve(parsed);
         const detail = formatComfyErrorBody(parsed);
-        reject(new Error(`ComfyUI HTTP ${res.statusCode}: ${detail || "erreur inconnue"}`));
+        reject(new Error(`ComfyUI HTTP ${res.statusCode} (${method} ${pathname}): ${detail || "erreur inconnue"}`));
       });
     });
     req.on("timeout", () => req.destroy(new Error("ComfyUI timeout")));
@@ -84,6 +84,36 @@ function comfyRequest(pathname, { method = "GET", json, body, headers = {}, time
     if (payload) req.write(payload);
     req.end();
   });
+}
+
+function workflowNodeEntries(workflow) {
+  return Object.entries(workflow || {}).filter(([, node]) => (
+    node
+    && typeof node === "object"
+    && typeof node.class_type === "string"
+    && node.inputs
+    && typeof node.inputs === "object"
+  ));
+}
+
+async function validateComfyWorkflow(workflow) {
+  const entries = workflowNodeEntries(workflow);
+  if (!entries.length) throw new Error("Workflow ComfyUI API vide ou invalide.");
+
+  const objectInfo = await comfyRequest("/object_info", { timeoutMs: 15000 });
+  const available = new Set(Object.keys(objectInfo && typeof objectInfo === "object" ? objectInfo : {}));
+  const missing = [...new Set(entries.map(([, node]) => node.class_type))].filter((type) => {
+    if (available.has(type)) return false;
+    return !/minimax.*h3|h3.*minimax/i.test(type)
+      || ![...available].some((name) => name === type || name.includes(type) || type.includes(name));
+  });
+  if (missing.length) {
+    throw new Error(
+      `Workflow incompatible avec ComfyUI : nœud(s) absent(s) ${missing.join(", ")}. `
+      + "Installe le nœud H3 requis puis réimporte le workflow au format API.",
+    );
+  }
+  return { nodeTypes: [...new Set(entries.map(([, node]) => node.class_type))] };
 }
 
 function commandAvailable(command, args = ["--version"]) {
@@ -266,6 +296,7 @@ ipcMain.handle("video-local-queue", async (_event, payload = {}) => {
   if (!workflow || typeof workflow !== "object" || Array.isArray(workflow)) {
     throw new Error("Workflow ComfyUI API invalide.");
   }
+  await validateComfyWorkflow(workflow);
   return comfyRequest("/prompt", {
     method: "POST",
     json: {
@@ -338,6 +369,7 @@ async function queueNextLocalVideoJob(batch) {
     record.attempts = Number(record.attempts || 0) + 1;
     saveLocalVideoBatches();
     try {
+      await validateComfyWorkflow(record.workflow);
       const queued = await comfyRequest("/prompt", {
         method: "POST",
         json: {
