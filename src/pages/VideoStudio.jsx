@@ -13,6 +13,7 @@ import SocialExporter from "../components/studio/SocialExporter";
 import VideoModeToggle from "../components/studio/VideoModeToggle";
 import VideoOrchestratorPanel from "../components/studio/VideoOrchestratorPanel";
 import { VIDEO_MODES, buildLocalMontagePlan, buildVideoPromptLocally, getVideoMode } from "@/lib/videoOrchestrator";
+import { downloadBlob } from "@/lib/fileDownload";
 import { ArrowLeft, Sparkles, Upload, Download, Save, Film, RefreshCw, Layers, Smartphone } from "lucide-react";
 
 const TRANSITIONS = [
@@ -31,6 +32,7 @@ const createVideoProject = (project = {}) => {
     title: "Nouveau montage",
     audio_url: "",
     audio_name: "",
+    audio_duration_seconds: 0,
     transition: "fade",
     status: "draft",
     ...safeProject,
@@ -271,13 +273,15 @@ export default function VideoStudio() {
       return;
     }
     const content = `JS-INNOV.IA VIDEO DEMO BUILDER — ${currentProject.title}\n${"=".repeat(60)}\n\n${currentProject.ai_prompt}`;
-    const blob = new Blob([content], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${currentProject.title.replace(/\s+/g, "_")}_PROMPT.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      downloadBlob(
+        new Blob([content], { type: "text/plain;charset=utf-8" }),
+        `${currentProject.title.replace(/\s+/g, "_")}_PROMPT.txt`,
+      );
+      setStudioError("");
+    } catch (error) {
+      setStudioError(`Téléchargement du prompt impossible : ${getErrorMessage(error, "erreur inconnue")}`);
+    }
   };
 
   if (loading) return (
@@ -340,7 +344,7 @@ export default function VideoStudio() {
             <Upload size={13} />
             {uploading ? "Upload…" : "Drive"}
           </button>
-          <button onClick={handleDownload} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/50 transition-all">
+          <button onClick={handleDownload} title="Télécharger le prompt IA" aria-label="Télécharger le prompt IA" className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/50 transition-all">
             <Download size={13} />
           </button>
           <button onClick={handleSave} disabled={saving} className="btn-gold flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs">
@@ -365,6 +369,8 @@ export default function VideoStudio() {
             clips={currentVp.clips}
             texts={currentVp.texts}
             transition={currentVp.transition}
+            audioUrl={currentVp.audio_url}
+            audioDuration={currentVp.audio_duration_seconds}
             currentClipIdx={currentClipIdx}
             onClipChange={setCurrentClipIdx}
           />
