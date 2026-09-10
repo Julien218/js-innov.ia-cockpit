@@ -60,6 +60,7 @@ export default function VideoStudio() {
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [currentClipIdx, setCurrentClipIdx] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
   const [showExporter, setShowExporter] = useState(false);
   const [showMultiExporter, setShowMultiExporter] = useState(false);
   const [showSocialExporter, setShowSocialExporter] = useState(false);
@@ -149,7 +150,10 @@ export default function VideoStudio() {
   };
 
   const reloadVp = useCallback(async () => {
-    if (!vp?.id) return;
+    if (!vp?.id) {
+      setStudioError("Enregistrez d’abord ce nouveau montage avant de le synchroniser.");
+      return;
+    }
     try {
       const [fresh] = await base44.entities.VideoProject.filter({ id: vp.id });
       if (!fresh) {
@@ -218,12 +222,9 @@ export default function VideoStudio() {
     setActivePanel("ai");
     try {
       const currentProject = createVideoProject(vp);
-      if (videoMode === VIDEO_MODES.LOCAL) {
+      if (videoMode === VIDEO_MODES.LOCAL || !base44.functions?.invoke) {
         update("ai_prompt", buildVideoPromptLocally(currentProject, sourceProject));
         return;
-      }
-      if (!base44.functions?.invoke) {
-        throw new Error("Le générateur de prompt API n’est pas configuré sur ce client vidéo.");
       }
       const res = await base44.functions.invoke("generateVideoPrompt", { videoProject: currentProject, sourceProject });
       update("ai_prompt", res.data.prompt);
@@ -241,7 +242,17 @@ export default function VideoStudio() {
       return;
     }
     if (!base44.functions?.invoke) {
-      setStudioError("L’upload Drive historique n’est pas configuré sur le client vidéo actuel.");
+      try {
+        const content = `JS-INNOV.IA VIDEO DEMO BUILDER — ${currentProject.title}\n${"=".repeat(60)}\n\n${currentProject.ai_prompt}`;
+        downloadBlob(
+          new Blob([content], { type: "text/plain;charset=utf-8" }),
+          `${currentProject.title.replace(/\s+/g, "_")}_MONTAGE_PROMPT.txt`,
+        );
+        setDriveStatus({ localDownload: true });
+        setStudioError("");
+      } catch (error) {
+        setStudioError(`Export local impossible : ${getErrorMessage(error, "erreur inconnue")}`);
+      }
       return;
     }
     setUploading(true);
@@ -291,7 +302,9 @@ export default function VideoStudio() {
   );
 
   const currentVp = createVideoProject(vp);
-  const totalDuration = currentVp.clips.reduce((sum, clip) => sum + (clip?.duration || 4), 0);
+  const clipsDuration = currentVp.clips.reduce((sum, clip) => sum + (clip?.duration || 4), 0);
+  const audioDuration = Number(currentVp.audio_duration_seconds) || 0;
+  const totalDuration = Math.max(clipsDuration, audioDuration);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -403,8 +416,8 @@ export default function VideoStudio() {
                     setTracks(newTracks);
                     update("template_tracks", newTracks);
                   }}
-                  currentTime={0}
-                  onSeek={() => {}}
+                  currentTime={currentTime}
+                  onSeek={setCurrentTime}
                   duration={currentVp.template_duration || 30}
                 />
               </div>
@@ -446,6 +459,11 @@ export default function VideoStudio() {
             {activePanel === "drive" && (
               <div className="p-5 space-y-4">
                 <h3 className="font-display text-sm font-semibold gold-text">Google Drive</h3>
+                {driveStatus?.localDownload && !currentVp.drive_url && (
+                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+                    Prompt téléchargé sur ce poste. La connexion Google Drive n’est pas configurée sur ce Cockpit.
+                  </div>
+                )}
                 {currentVp.drive_url ? (
                   <div className="card-premium rounded-xl p-4 space-y-3">
                     <div className="flex items-center gap-2 text-green-400">
