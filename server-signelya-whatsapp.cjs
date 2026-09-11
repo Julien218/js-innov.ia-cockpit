@@ -325,7 +325,7 @@ async function notifyVideosOnline({ publicationId, ownerEmail, playerName }) {
       dedupeKey: `publication:${publicationId}:videos-online`,
       ownerEmail: email,
       eventType: 'videos.online',
-      audience: ['commercial', 'superadmin'],
+      audience: ['commercial'],
       payload: { publicationId, playerName, clientName: name }
     });
     if (!event) return { duplicate: true };
