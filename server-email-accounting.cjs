@@ -5,7 +5,7 @@ const { shouldTrashImapPromotion } = require('./server-email-trash-core.cjs');
 const { storeBuffer, isDropboxConfigured } = require('./server-documents.cjs');
 const { createCostEvent } = require('./server-client-costs.cjs');
 const { recordUsage, authorizeUsage } = require('./server-ai-cost.cjs');
-const { classifyEmail, extractAccountingMetadata, shouldArchiveAttachment, sourceTypeForProvider, buildDailyDigest, isOperationalGitHubNotification } = require('./server-email-accounting-core.cjs');
+const { classifyEmail, extractAccountingMetadata, shouldArchiveAttachment, sourceTypeForProvider, buildDailyDigest, formatAccountingLog, isOperationalGitHubNotification } = require('./server-email-accounting-core.cjs');
 const { fetchGoogleAccounts, fetchGoogleEmails, fetchGoogleEmailById, isGoogleMailConfigured } = require('./server-google-mail.cjs');
 
 const router = express.Router();
@@ -21,6 +21,7 @@ const TRANSLATION_PROJECT_KEY = 'nova-email-accounting';
 let running = null;
 let scheduler = null;
 let githubCleanupStarted = false;
+let lastScan = null;
 
 function imapCleanupEnabled() {
   return process.env.NOVA_IMAP_AUTO_TRASH_PROMOTIONS === 'true';
@@ -321,7 +322,16 @@ async function cleanupImapPromotions(mailbox, summaries) {
 
 async function scanMailboxes() {
   const startedAt = new Date();
-  const stats = { scanned: 0, created: 0, skipped: 0, failed: 0, mailboxes: {} };
+  const stats = { started_at: startedAt.toISOString(), scanned: 0, created: 0, skipped: 0, failed: 0, archived: 0, awaiting_review: 0, mailboxes: {} };
+  const recordItem = (item) => {
+    if (item?.skipped) {
+      stats.skipped += 1;
+      return;
+    }
+    stats.created += 1;
+    if (item?.document_id) stats.archived += 1;
+    if (item?.status === 'awaiting_review') stats.awaiting_review += 1;
+  };
   for (const mailbox of SCAN_MAILBOXES) {
     const cfg = getMailboxConfig(mailbox);
     if (!cfg?.password || isAliasMailbox(mailbox)) {
@@ -335,18 +345,25 @@ async function scanMailboxes() {
       for (const summary of recent) {
         stats.scanned += 1;
         try {
-          const item = await processMessage(mailbox, summary);
-          item?.skipped ? stats.skipped++ : stats.created++;
+          recordItem(await processMessage(mailbox, summary));
         } catch (error) {
           stats.failed += 1;
           console.error('[email-accounting] message failed', { mailbox, uid: summary.uid, error: error.message });
         }
       }
       const cleanup = await cleanupImapPromotions(mailbox, result.emails || []);
-      stats.mailboxes[mailbox] = { configured: true, total: result.total, recent: recent.length, cleanup };
+      stats.mailboxes[mailbox] = { configured: true, status: 'ok', total: result.total, recent: recent.length, cleanup };
     } catch (error) {
       stats.failed += 1;
-      stats.mailboxes[mailbox] = { configured: true, error: error.message };
+      const authenticationFailed = /auth|credential|login|password/i.test(String(error.message || ''));
+      stats.mailboxes[mailbox] = {
+        configured: true,
+        status: 'failed',
+        error_code: authenticationFailed ? 'authentication_failed' : 'mailbox_error',
+        error: error.message,
+        required_secret: mailbox === 'assurances' ? 'EMAIL_PASSWORD_ASSURANCES' : `EMAIL_PASSWORD_${mailbox.toUpperCase()}`,
+      };
+      console.error(formatAccountingLog('mailbox failed', { mailbox, error_code: stats.mailboxes[mailbox].error_code, required_secret: stats.mailboxes[mailbox].required_secret }));
     }
   }
 
@@ -358,19 +375,21 @@ async function scanMailboxes() {
         for (const summary of recent) {
           stats.scanned += 1;
           try {
-            const outcome = await processGoogleMessage(account, summary);
-            if (outcome?.skipped) stats.skipped += 1; else stats.created += 1;
+            recordItem(await processGoogleMessage(account, summary));
           } catch (_) { stats.failed += 1; }
         }
-        stats.mailboxes[mailbox] = { configured: true, scanned: recent.length, provider: 'google' };
+        stats.mailboxes[mailbox] = { configured: true, status: 'ok', scanned: recent.length, provider: 'google' };
       } catch (error) {
         stats.failed += 1;
-        stats.mailboxes[mailbox] = { configured: true, provider: 'google', error: error.message };
+        stats.mailboxes[mailbox] = { configured: true, status: 'failed', provider: 'google', error_code: 'google_mailbox_error', error: error.message };
+        console.error(formatAccountingLog('mailbox failed', { mailbox, provider: 'google', error_code: 'google_mailbox_error' }));
       }
     }
   }
   stats.duration_ms = Date.now() - startedAt.getTime();
-  console.info('[email-accounting] scan complete', stats);
+  stats.finished_at = new Date().toISOString();
+  lastScan = stats;
+  console.info(formatAccountingLog('scan complete', stats));
   return stats;
 }
 
@@ -383,7 +402,10 @@ async function itemsForDate(date) {
 async function sendDailyReport({ force = false } = {}) {
   const date = localDate();
   const existing = await rest(`email_daily_reports?select=*&organisation=eq.${ORGANISATION}&report_date=eq.${date}&limit=1`);
-  if (existing?.[0]?.status === 'sent' && !force) return existing[0];
+  if (existing?.[0]?.status === 'sent' && !force) {
+    console.info(formatAccountingLog('daily report already sent', { report_date: date, report_id: existing[0].id, sent_at: existing[0].sent_at, counters: existing[0].counters || {} }));
+    return existing[0];
+  }
   const digest = buildDailyDigest(date, await itemsForDate(date));
   const recipient = process.env.NOVA_EMAIL_REPORT_TO || process.env.EMAIL_JSINNOVIA_ADDRESS || 'info@jsinnovia.com';
   let report = existing?.[0];
@@ -394,9 +416,12 @@ async function sendDailyReport({ force = false } = {}) {
   try {
     const sent = await sendEmail('jsinnovia', { to: recipient, subject: digest.subject, text: digest.text });
     const rows = await rest(`email_daily_reports?id=eq.${report.id}`, { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ status: 'sent', sent_at: new Date().toISOString(), message_id: sent.messageId, summary: digest.text, counters: digest.counts, error: null, updated_at: new Date().toISOString() }) });
-    return rows?.[0] || report;
+    const saved = rows?.[0] || report;
+    console.info(formatAccountingLog('daily report sent', { report_date: date, report_id: saved.id, message_id: sent.messageId || null, recipient, counters: digest.counts }));
+    return saved;
   } catch (error) {
     await rest(`email_daily_reports?id=eq.${report.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'failed', error: error.message, updated_at: new Date().toISOString() }) });
+    console.error(formatAccountingLog('daily report failed', { report_date: date, report_id: report.id, recipient, error: error.message }));
     throw error;
   }
 }
@@ -406,6 +431,16 @@ async function runCycle({ sendReport = false, forceReport = false } = {}) {
   running = (async () => {
     const scan = await scanMailboxes();
     const report = sendReport ? await sendDailyReport({ force: forceReport }) : null;
+    console.info(formatAccountingLog('cycle complete', {
+      scanned: scan.scanned,
+      created: scan.created,
+      skipped: scan.skipped,
+      failed: scan.failed,
+      archived: scan.archived,
+      awaiting_review: scan.awaiting_review,
+      report_status: report?.status || (sendReport ? 'unknown' : 'not_scheduled'),
+      report_id: report?.id || null,
+    }));
     return { scan, report };
   })().finally(() => { running = null; });
   return running;
@@ -434,7 +469,7 @@ router.get('/status', async (_req, res) => {
   try {
     const reports = await rest(`email_daily_reports?select=*&organisation=eq.${ORGANISATION}&order=report_date.desc&limit=1`);
     const pending = await rest(`email_accounting_items?select=id&organisation=eq.${ORGANISATION}&status=eq.awaiting_review&limit=1000`);
-    res.json({ success: true, enabled: process.env.NOVA_EMAIL_ACCOUNTING_ENABLED !== 'false', running: Boolean(running), dropbox_configured: isDropboxConfigured(), imap_auto_trash_promotions: imapCleanupEnabled(), imap_promotion_retention_days: Math.min(Math.max(Number(process.env.NOVA_IMAP_PROMOTION_RETENTION_DAYS) || 7, 2), 30), report_hour: Number(process.env.NOVA_EMAIL_REPORT_HOUR || 18), timezone: process.env.NOVA_EMAIL_REPORT_TIMEZONE || 'Europe/Brussels', pending_reviews: pending?.length || 0, last_report: reports?.[0] || null });
+    res.json({ success: true, enabled: process.env.NOVA_EMAIL_ACCOUNTING_ENABLED !== 'false', running: Boolean(running), dropbox_configured: isDropboxConfigured(), imap_auto_trash_promotions: imapCleanupEnabled(), imap_promotion_retention_days: Math.min(Math.max(Number(process.env.NOVA_IMAP_PROMOTION_RETENTION_DAYS) || 7, 2), 30), report_hour: Number(process.env.NOVA_EMAIL_REPORT_HOUR || 18), timezone: process.env.NOVA_EMAIL_REPORT_TIMEZONE || 'Europe/Brussels', pending_reviews: pending?.length || 0, last_report: reports?.[0] || null, last_scan: lastScan, mailbox_health: lastScan?.mailboxes || null });
   } catch (error) { res.status(503).json({ error: error.message }); }
 });
 
