@@ -224,61 +224,52 @@ async function jsAgentRequest(path, options = {}) {
   return data;
 }
 
-async function createRepairTask(domain, kind, before) {
-  const issueText = (before.issues || []).map((item) => `- ${item.label}`).join('\n') || '- Aucun incident critique; optimisation demandée.';
-  return jsAgentRequest('/data/Tache', {
-    method: 'POST',
-    body: JSON.stringify({
-      titre: `${kind === 'seo' ? 'SEO automatique' : 'Réparation IA'} — ${domain}`,
-      description: [
-        `Domaine: ${domain}`,
-        `Application: ${before.app}`,
-        `Agent métier recommandé: ${before.agent_hint}`,
-        `Type: ${kind}`,
-        '',
-        'Diagnostic avant intervention:',
-        issueText,
-        '',
-        `Score SEO avant: ${before.seo?.score ?? 'n/a'}/100`,
-        `HTTP avant: ${before.http?.apex?.status || 0}`,
-      ].join('\n').slice(0, 5000),
-      statut: 'en_cours',
-      priorite: before.issues?.some((item) => item.severity === 'critical') ? 'urgente' : 'haute',
-      notes: 'Créée automatiquement par Domaines / Companion après confirmation utilisateur.',
-    }),
+const domainRepairsInFlight = new Map();
+
+async function domainAgentFetch(path, options = {}) {
+  if (!JS_AGENT_KEY) throw new Error('JSINNOVIA_AGENT_KEY non configurée.');
+  return fetch(`${JS_AGENT_URL}${path}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', 'x-agent-key': JS_AGENT_KEY,
+      'x-organisation-id': 'jsinnovia', ...(options.headers || {}) },
   });
 }
 
-async function patchTask(taskId, payload) {
-  if (!taskId) return null;
-  return jsAgentRequest(`/data/Tache/${encodeURIComponent(taskId)}`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  }).catch(() => null);
-}
-
-async function recordRun({ task, agent, domain, kind, status, result, error, conversationId }) {
-  if (!JS_AGENT_KEY) return null;
-  return jsAgentRequest('/agent-runs', {
-    method: 'POST',
-    body: JSON.stringify({
-      task_id: task?.id ? String(task.id) : null,
-      agent_id: String(agent?.key || agent?.provider_agent_id || 'domain-agent'),
-      functional_role: String(agent?.role || 'domain_ops'),
-      provider_agent_id: agent?.provider_agent_id || null,
-      provider_name: agent ? 'cockpit-server' : 'unavailable',
-      status,
-      execution_mode: 'confirmed_write',
-      input: { domain, kind },
-      result: result ? { summary: String(result).slice(0, 4000), conversation_id: conversationId || null } : null,
-      error: error ? String(error).slice(0, 500) : null,
-      requested_by: 'cockpit-domaines',
-      base44_agent_id: null,
-      base44_conv_id: null,
-      started_at: new Date().toISOString(),
-      completed_at: ['completed', 'failed', 'blocked'].includes(status) ? new Date().toISOString() : null,
-    }),
-  }).catch(() => null);
+async function runDomainRepair({ domain, kind, before, user, agentFetch = domainAgentFetch, executionHandlers = {} }) {
+  const tenant = user?.organisation || 'jsinnovia';
+  const objective = `${tenant}:${domain}:${kind}`;
+  if (domainRepairsInFlight.has(objective)) return domainRepairsInFlight.get(objective);
+  const promise = (async () => {
+    // Lazy import avoids the executor → domain diagnostics dependency cycle.
+    const { executeTaskBatch, sanitizeTaskBatchPayload } = require('./server-task-batch.cjs');
+    const title = `${kind === 'seo' ? 'SEO automatique' : 'Réparation IA'} — ${domain}`;
+    const payload = sanitizeTaskBatchPayload({ tasks: [{
+      titre: title,
+      description: `Domaine: ${domain}\nType: ${kind}\nApplication: ${before.app || domain}`,
+      notes: 'Objectif confirmé depuis Domaines, suivi par le moteur canonique NOVA.',
+      priorite: before.issues?.some(issue => issue.severity === 'critical') ? 'urgente' : 'haute',
+      read_only: false,
+    }] });
+    const batch = await executeTaskBatch({ payload, user, tenant, agentFetch, executionHandlers,
+      token: `domain-objective-${crypto.createHash('sha256').update(objective).digest('hex')}` });
+    const item = batch.results[0];
+    if (!item) throw new Error('Aucun résultat NOVA retourné.');
+    const verified = item.status === 'completed' && item.operational_status === 'DONE';
+    const message = verified ? 'Objectif vérifié ; consultez la preuve NOVA.'
+      : item.operational_status === 'NO_EXECUTOR' ? 'Aucun exécuteur de correction raccordé. Le diagnostic est disponible ; aucune réparation n’est annoncée comme lancée.'
+      : item.operational_status === 'WAITING_INPUT' ? 'Informations ou retour d’agent requis. La réservation existante est conservée.'
+      : item.operational_status === 'WAITING_AUTHORIZATION' ? 'Une autorisation reste requise pour cette exécution.'
+      : ['RUNNING', 'RETRYING'].includes(item.operational_status) ? 'Exécution existante suivie par NOVA ; aucune seconde exécution créée.'
+      : item.reason === 'tache_historique_terminee_conservee_sans_relance' ? 'Tâche historique conservée. Aucune nouvelle réparation lancée.'
+      : 'Exécution non confirmée. Consultez le blocage NOVA avant de relancer.';
+    return { success: item.success, verified, domain, kind, before,
+      task: item.task_id ? { id: item.task_id, titre: title } : null,
+      run_id: item.run_id || null, status: item.status, operational_status: item.operational_status || null,
+      reused: Boolean(item.reused), reason: item.reason || item.error || null, message,
+      execution: item.result || null };
+  })();
+  domainRepairsInFlight.set(objective, promise);
+  try { return await promise; } finally { domainRepairsInFlight.delete(objective); }
 }
 
 function verifiedImprovement(kind, before, after) {
@@ -436,45 +427,11 @@ router.post('/repair', async (req, res) => {
   pendingDomainActions.delete(token);
 
   const { domain, kind, before } = resolved.item;
-  let task = null;
-  let agent = null;
   try {
-    task = await createRepairTask(domain, kind, before);
-    agent = agentForDomain(domain);
-
-    if (!agent) {
-      await patchTask(task?.id, { statut: 'bloquee', notes: 'Aucun agent métier compatible associé au domaine.' });
-      await recordRun({ task, agent, domain, kind, status: 'blocked', error: 'agent_missing' });
-      return res.status(409).json({ success: false, verified: false, domain, task, before, error: 'Aucun agent métier compatible associé au domaine.' });
-    }
-
-    const repository = MANAGED_DOMAINS[domain]?.repository || null;
-    const result = { domain, kind, repository, hosting: MANAGED_DOMAINS[domain]?.hosting || null, before, queued_at: new Date().toISOString() };
-    await patchTask(task?.id, { statut: 'en_cours', notes: `Prise en charge interne par NOVA Site Ops${repository ? ` sur ${repository}` : ''}. Base44 n’est pas utilisé.` });
-    await recordRun({
-      task,
-      agent,
-      domain,
-      kind,
-      status: 'pending',
-      result: JSON.stringify(result),
-      error: repository ? null : 'repository_missing',
-    });
-    return res.status(202).json({
-      success: true,
-      verified: false,
-      status: 'queued_internal',
-      domain,
-      kind,
-      task,
-      agent: { name: agent.name, role: agent.role, provider_agent_id: agent.provider_agent_id },
-      execution: result,
-      before,
-    });
+    const result = await runDomainRepair({ domain, kind, before, user: req.user });
+    res.status(result.operational_status === 'TECHNICAL_ERROR' ? 502 : 200).json({ ...result, ...(result.operational_status === 'TECHNICAL_ERROR' ? { error: result.reason || result.message } : {}) });
   } catch (error) {
-    if (task?.id) await patchTask(task.id, { statut: 'bloquee', notes: `Réparation automatique bloquée: ${String(error.message || error).slice(0, 400)}` });
-    await recordRun({ task, agent, domain, kind, status: 'failed', error: error.message });
-    res.status(500).json({ success: false, verified: false, domain, task, error: error.message });
+    res.status(502).json({ success: false, verified: false, domain, error: error.message });
   }
 });
 
@@ -484,3 +441,5 @@ module.exports.safeDomain = safeDomain;
 module.exports.MANAGED_DOMAINS = MANAGED_DOMAINS;
 module.exports.verifiedImprovement = verifiedImprovement;
 module.exports.agentForDomain = agentForDomain;
+
+module.exports.runDomainRepair = runDomainRepair;

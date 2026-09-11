@@ -17,11 +17,12 @@ test('autopilot preserves conflicting historical claims without starting another
   try {
     const result = await runAutopilot();
     assert.equal(result.executed.length, 0);
-    assert.equal(result.queued.length, 1);
+    assert.equal(result.queued.length, 0);
     assert.equal(result.awaiting_authorization.length, 1);
     assert.equal(result.blocked[0].title, 'Analyser les factures');
-    assert.equal(result.blocked[0].reason, 'plusieurs_runs_actifs_sur_un_objectif_regroupe');
-    assert.equal(result.blocked[0].operational_status, 'TECHNICAL_ERROR');
+    assert.equal(result.blocked[0].reason, 'attente_confirmation_execution_agent');
+    assert.equal(result.blocked[0].run_ids.length, 2);
+    assert.equal(result.blocked[0].operational_status, 'WAITING_INPUT');
     assert.ok(methods.every(method => method === 'GET'));
   } finally { global.fetch = previous; }
 });

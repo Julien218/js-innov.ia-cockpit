@@ -9,7 +9,7 @@ import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { AlertTriangle, CheckCircle2, CircleDot, Clock3, Loader2, Pencil, Play, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
-import { isTaskBlocked, isTaskCompleted, normalizeTaskStatus, runOperationalStatus } from "@/lib/taskStatus";
+import { isTaskBlocked, isTaskCompleted, isTaskInProgress, runOperationalStatus, taskBlockerMessage } from "@/lib/taskStatus";
 import { groupTasks } from "@/lib/taskGrouping";
 
 const formFields = [
@@ -147,7 +147,7 @@ export default function Taches() {
 
   const counters = useMemo(() => ({
     actives: displayRows.filter((task) => !isTaskCompleted(task)).length,
-    en_cours: displayRows.filter((task) => normalizeTaskStatus(task.statut ?? task.status) === "en_cours").length,
+    en_cours: displayRows.filter((task) => isTaskInProgress(task)).length,
     bloquees: displayRows.filter(isTaskBlocked).length,
     retard: displayRows.filter(isLate).length,
     terminees: displayRows.filter(isTaskCompleted).length,
@@ -161,7 +161,7 @@ export default function Taches() {
         if (statusFilter === "actives" && isTaskCompleted(task)) return false;
         if (statusFilter === "bloquees" && !isTaskBlocked(task)) return false;
         if (statusFilter === "retard" && !isLate(task)) return false;
-        if (statusFilter === "en_cours" && normalizeTaskStatus(task.statut ?? task.status) !== "en_cours") return false;
+        if (statusFilter === "en_cours" && !isTaskInProgress(task)) return false;
         if (statusFilter === "terminees" && !isTaskCompleted(task)) return false;
         if (!term) return true;
         return [task._search_text, task.titre, task.description, task.client_nom, task.projet_nom]
@@ -169,8 +169,8 @@ export default function Taches() {
           .some((value) => String(value).toLowerCase().includes(term));
       })
       .sort((a, b) => {
-        const stateA = isTaskBlocked(a) ? 0 : isLate(a) ? 1 : normalizeTaskStatus(a.statut ?? a.status) === "en_cours" ? 2 : isTaskCompleted(a) ? 4 : 3;
-        const stateB = isTaskBlocked(b) ? 0 : isLate(b) ? 1 : normalizeTaskStatus(b.statut ?? b.status) === "en_cours" ? 2 : isTaskCompleted(b) ? 4 : 3;
+        const stateA = isTaskBlocked(a) ? 0 : isLate(a) ? 1 : isTaskInProgress(a) ? 2 : isTaskCompleted(a) ? 4 : 3;
+        const stateB = isTaskBlocked(b) ? 0 : isLate(b) ? 1 : isTaskInProgress(b) ? 2 : isTaskCompleted(b) ? 4 : 3;
         if (stateA !== stateB) return stateA - stateB;
         return (priorityRank[a.priorite] ?? 9) - (priorityRank[b.priorite] ?? 9);
       });
@@ -233,7 +233,7 @@ export default function Taches() {
             </div>
             {actualBlockers.slice(0, 3).map((item) => (
               <p key={`${item.task_id}-${item.reason}`} className="text-xs text-red-500">
-                {item.title || item.task_id} — {item.reason || "exécuteur indisponible"}
+                {item.title || item.task_id} — {taskBlockerMessage(item.reason)}
               </p>
             ))}
           </div>

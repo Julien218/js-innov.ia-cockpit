@@ -42,14 +42,14 @@ test('la route réparation exige un jeton préparé et le consomme avant effet r
   assert.match(source, /\/prepare-repair/);
   assert.match(source, /pendingDomainActions\.delete\(token\)/);
   assert.match(source, /Confirmation de domaine absente ou déjà consommée/);
-  assert.match(source, /execution_mode:\s*'confirmed_write'/);
+  assert.match(source, /runDomainRepair/);
 });
 
 test('la réparation crée une tâche et la transmet au moteur interne NOVA', () => {
   const source = fs.readFileSync(path.join(root, 'server-domain-ops.cjs'), 'utf8');
-  assert.match(source, /createRepairTask\(domain, kind, before\)/);
-  assert.match(source, /Prise en charge interne par NOVA Site Ops/);
-  assert.match(source, /status: 'queued_internal'/);
+  assert.match(source, /executeTaskBatch/);
+  assert.match(source, /domain-objective-/);
+  assert.doesNotMatch(source, /status: 'queued_internal'/);
   assert.doesNotMatch(source, /executeBase44Agent/);
 });
 
