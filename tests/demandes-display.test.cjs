@@ -37,7 +37,7 @@ const mocks = data => ({
   '@/lib/usePermissions': `export const usePermissions = () => ({ role: 'superadmin', canAccess: () => true });`,
 });
 
-function render(Component) {
+function render(Component, initialPath = '/') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const originalError = console.error;
   const errors = [];
@@ -46,7 +46,7 @@ function render(Component) {
   };
   try {
     const html = renderToStaticMarkup(React.createElement(QueryClientProvider, { client },
-      React.createElement(MemoryRouter, null, React.createElement(Component))));
+      React.createElement(MemoryRouter, { initialEntries: [initialPath] }, React.createElement(Component))));
     assert.deepEqual(errors, [], 'Rendering must not hide errors inside DataTable');
     return html;
   } finally { client.clear(); console.error = originalError; }
@@ -76,6 +76,21 @@ test('navigation badge counts new requests and disappears when they are processe
   const Processed = (await load('src/components/layout/Sidebar.jsx', mocks(fixtures.map((r, i) => ({ ...r, statut: i ? 'traite' : 'en_cours' }))))).default;
   const processedLink = render(Processed).match(/<a[^>]*href="\/demandes"[^>]*>(.*?)<\/a>/s)?.[1];
   assert.doesNotMatch(processedLink, /bg-red-500/);
+});
+
+test('compact workspace keeps daily links, opens the active module and respects permissions', async () => {
+  const Sidebar = (await load('src/components/layout/Sidebar.jsx', mocks([]))).default;
+  const home = render(Sidebar);
+  assert.match(home, /aria-label="Trouver un module"/);
+  assert.match(home, /href="\/taches"/);
+  assert.match(home, /href="\/clients"/);
+  assert.doesNotMatch(home, /href="\/music-motion"/);
+  assert.match(render(Sidebar, '/music-motion'), /aria-current="page"[^>]*href="\/music-motion"|href="\/music-motion"[^>]*aria-current="page"/);
+  const Restricted = (await load('src/components/layout/Sidebar.jsx', {
+    ...mocks([]), '@/lib/usePermissions': `export const usePermissions = () => ({ role: 'client', canAccess: path => path === '/' });`,
+  })).default;
+  const restricted = render(Restricted);
+  assert.doesNotMatch(restricted, /href="\/taches"|href="\/emails"|>Studio</);
 });
 
 test('status aliases, provenance and editable payload preserve truthful record semantics', async () => {

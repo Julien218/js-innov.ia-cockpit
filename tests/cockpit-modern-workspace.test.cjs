@@ -18,7 +18,7 @@ test('the task workspace supports search, filters and progressive display', () =
   const source = read('src/pages/Taches.jsx');
   assert.match(source, /statusFilter/);
   assert.match(source, /search=\{search\}/);
-  assert.match(source, /Les tâches bloquées, en retard et urgentes sont affichées en premier/);
+  assert.match(source, /Priorité aux blocages et aux échéances/);
   assert.match(source, /Afficher 25 de plus/);
   assert.match(source, /filteredTasks\.slice\(0, visibleCount\)/);
 });
