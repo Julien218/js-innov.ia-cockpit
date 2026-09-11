@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useId } from "react";
+import { missingRequiredField, numericInput } from '@/lib/formValidation';
 import {
   Dialog,
   DialogContent,
@@ -44,10 +45,13 @@ export default function FormModal({
 }) {
   // State local si pas de controlled data
   const [localData, setLocalData] = useState({});
+  const [validationError, setValidationError] = useState('');
+  const formId = useId();
 
   // Réinitialiser quand le modal s'ouvre ou que initialData change
   useEffect(() => {
     if (open) {
+      setValidationError('');
       setLocalData(initialData || controlledData || {});
     }
   }, [open, initialData, controlledData]);
@@ -66,6 +70,10 @@ export default function FormModal({
 
   const handleSubmit = (e) => {
     e?.preventDefault?.();
+    if (submitting) return;
+    const missing = missingRequiredField(safeFields, currentData);
+    if (missing) { setValidationError(`Renseignez le champ « ${missing.label} ».`); return; }
+    setValidationError('');
     // Pattern 1: onSubmit reçoit les données directement
     if (onSubmit) {
       onSubmit(currentData);
@@ -90,13 +98,13 @@ export default function FormModal({
             const fieldKey = field.key || field.name || `field_${idx}`;
             return (
               <div key={fieldKey} className="space-y-1.5">
-                <Label className="text-xs font-medium">{field.label}</Label>
+                <Label htmlFor={`${formId}-${fieldKey}`} className="text-xs font-medium">{field.label}{field.required ? ' *' : ''}</Label>
                 {field.type === "select" ? (
                   <Select
                     value={currentData?.[fieldKey] || ""}
                     onValueChange={(v) => handleChange(fieldKey, v)}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id={`${formId}-${fieldKey}`} aria-required={field.required}>
                       <SelectValue placeholder={`Sélectionner ${field.label?.toLowerCase() || ""}`} />
                     </SelectTrigger>
                     <SelectContent>
@@ -114,6 +122,8 @@ export default function FormModal({
                   </Select>
                 ) : field.type === "textarea" ? (
                   <Textarea
+                    id={`${formId}-${fieldKey}`}
+                    required={field.required}
                     value={currentData?.[fieldKey] || ""}
                     onChange={(e) => handleChange(fieldKey, e.target.value)}
                     placeholder={field.placeholder || ""}
@@ -121,12 +131,13 @@ export default function FormModal({
                   />
                 ) : (
                   <Input
+                    id={`${formId}-${fieldKey}`}
                     type={field.type || "text"}
-                    value={currentData?.[fieldKey] || ""}
+                    value={currentData?.[fieldKey] ?? ""}
                     onChange={(e) =>
                       handleChange(
                         fieldKey,
-                        field.type === "number" ? parseFloat(e.target.value) || "" : e.target.value
+                        field.type === "number" ? numericInput(e.target.value) : e.target.value
                       )
                     }
                     placeholder={field.placeholder || ""}
@@ -136,6 +147,7 @@ export default function FormModal({
               </div>
             );
           })}
+          {validationError && <p role="alert" className="text-sm text-red-400">{validationError}</p>}
           <DialogFooter className="pt-4">
             <Button type="button" variant="outline" onClick={onClose}>
               Annuler
