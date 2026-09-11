@@ -42,9 +42,13 @@ test('l’import audio ne perd plus l’URL et expose un vrai téléchargement',
   assert.match(bridge, /8788.*8787/);
   assert.match(recorder, /audio\.play\(\)/);
   assert.match(motion, /Télécharger la source/);
-  assert.match(motion, /setMusicMotionHandoff/);
-  assert.match(motion, /LOCAL_AGENT_URLS/);
-  assert.match(motion, /navigate\('\/video-studio\/new'/);
+  // Music Motion now owns its portable media and original-audio timeline.
+  // It no longer turns references into generic four-second Video Studio clips.
+  assert.match(motion, /downloadSourceAudio/);
+  assert.match(motion, /exportProjectZip/);
+  assert.match(motion, /makeLocalClient/);
+  assert.match(motion, /<TimelinePreview project=\{project\}/);
+  assert.match(motion, /audio_id:await uploadLocal\(p\.audio\.asset_id\)/);
 });
 
 test('le Studio affiche un parcours guidé et des onglets compréhensibles', () => {

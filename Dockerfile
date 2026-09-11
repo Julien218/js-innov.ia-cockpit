@@ -79,6 +79,8 @@ COPY --from=builder /app/server-video-provenance.cjs ./server-video-provenance.c
 COPY --from=builder /app/server-video-studio.cjs ./server-video-studio.cjs
 COPY --from=builder /app/server-video-generation-core.cjs ./server-video-generation-core.cjs
 COPY --from=builder /app/server-video-generation.cjs ./server-video-generation.cjs
+COPY --from=builder /app/server-music-motion.cjs ./server-music-motion.cjs
+COPY --from=builder /app/local-agent/music-motion-engine.mjs ./local-agent/music-motion-engine.mjs
 COPY --from=builder /app/server-dropbox-helper.cjs ./server-dropbox-helper.cjs
 COPY --from=builder /app/server-ai-cost.cjs ./server-ai-cost.cjs
 COPY --from=builder /app/server-nova-routing.cjs ./server-nova-routing.cjs
@@ -203,7 +205,7 @@ server {
     root /app/dist;
     index index.html;
 
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.railway.app https://app.base44.com https://api.base44.com wss://*.supabase.co http://127.0.0.1:8787 http://localhost:8787 http://127.0.0.1:8788 http://localhost:8788 http://127.0.0.1:8791 http://localhost:8791 http://127.0.0.1:8792 http://localhost:8792 http://127.0.0.1:8793 http://localhost:8793; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: data:; connect-src 'self' https://*.supabase.co https://*.railway.app https://app.base44.com https://api.base44.com wss://*.supabase.co http://127.0.0.1:8787 http://localhost:8787 http://127.0.0.1:8788 http://localhost:8788 http://127.0.0.1:8791 http://localhost:8791 http://127.0.0.1:8792 http://localhost:8792 http://127.0.0.1:8793 http://localhost:8793; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "DENY" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;

@@ -1,6 +1,13 @@
-# Dépendances optionnelles pour l’analyse musicale locale.
-# faster-whisper fournit les paroles et les timecodes mot par mot.
-# librosa/soundfile fournissent BPM et indicateurs d’énergie.
-faster-whisper>=1.1.0
-librosa>=0.10.2
-soundfile>=0.12.1
+# Analyse acoustique intégrale : pile validée avec Python 3.12 et FFmpeg.
+# Bornes majeures conservatrices : toute mise à niveau doit repasser les tests.
+numpy>=1.26,<3
+scipy>=1.12,<2
+librosa>=0.10.2,<1
+soundfile>=0.12.1,<1
+
+# Voix : transcription optionnelle. Modèles préinstallés, pas de téléchargement automatique.
+# Les timecodes Whisper restent des estimations, pas un alignement forcé des paroles.
+faster-whisper>=1.1.0,<2
+
+# Extraction PDF locale facultative ; aucun OCR automatique.
+pypdf>=5,<7

@@ -1,0 +1,24 @@
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs/promises');
+const os=require('node:os');
+const path=require('node:path');
+const Module=require('node:module');
+// Minimal HTTP adapter: test the real route handlers without fetching npm packages.
+const load=Module._load;
+Module._load=function(id,...args){
+  if(id==='express') return {Router(){
+    return {routes:[],get(p,h){this.routes.push({method:'GET',path:p,handler:h});},post(p,h){this.routes.push({method:'POST',path:p,handler:h});}};
+  }};
+  return load.call(this,id,...args);
+};
+let createRouter;try{({createRouter}=require('../server-music-motion.cjs'));}finally{Module._load=load;}
+async function call(router,method,path,body={},user='user-a',params={}){const route=router.routes.find(r=>r.method===method&&r.path===path);const res={code:200,value:null,status(c){this.code=c;return this;},json(v){this.value=v;return this;}};await route.handler({body,user:user?{id:user}:null,params},res);return res;}
+const consent={paid:true,external_transfer:true,one_request:true};
+const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
+const wait=()=>new Promise(r=>setTimeout(r,20));
+
+test('Cloud: missing configuration or explicit consent cannot spend money',async()=>{const r=createRouter({env:{}});const no=await call(r,'POST','/jobs',{type:'image',request_id:'x',prompt:'test',consent});assert.equal(no.code,503);const dir=await fs.mkdtemp(path.join(os.tmpdir(),'mm-api-'));try{const configured=createRouter({env:{XAI_API_KEY:'test-only',MUSIC_MOTION_DATA_DIR:dir},fetchImpl:()=>{throw Error('must not call');}});assert.equal((await call(configured,'POST','/jobs',{type:'image',request_id:'x',prompt:'test'})).code,403);assert.equal((await call(configured,'POST','/jobs',{},null)).code,401);}finally{await fs.rm(dir,{recursive:true,force:true});}});
+test('Cloud: one image request, durable media, idempotent retry and user isolation',async()=>{const dir=await fs.mkdtemp(path.join(os.tmpdir(),'mm-api-'));let requests=0;try{const r=createRouter({env:{XAI_API_KEY:'test-only',MUSIC_MOTION_DATA_DIR:dir},fetchImpl:async(url,options)=>{requests++;assert.equal(url,'https://api.x.ai/v1/images/generations');assert.equal(JSON.parse(options.body).response_format,'b64_json');return new Response(JSON.stringify({data:[{b64_json:png}]}),{status:200});}});const body={type:'image',request_id:'image-once',prompt:'test',consent};assert.equal((await call(r,'POST','/jobs',body)).code,202);let done;for(let n=0;n<100;n++){done=await call(r,'GET','/jobs/:id',{},'user-a',{id:'image-once'});if(done.value.status==='completed')break;await wait();}assert.equal(done.value.status,'completed');assert.equal(requests,1);assert.ok(done.value.result.asset.sha256);assert.equal(JSON.stringify(done.value).includes('test-only'),false);assert.equal(JSON.stringify(done.value).includes('input'),false);assert.equal((await call(r,'POST','/jobs',body)).code,200);assert.equal(requests,1);assert.equal((await call(r,'GET','/jobs/:id',{},'user-b',{id:'image-once'})).code,404);assert.equal((await call(r,'POST','/jobs',{...body,prompt:'different'})).code,409);}finally{await fs.rm(dir,{recursive:true,force:true});}});
+test('Cloud: a lost submission response is failed, not automatically re-billed',async()=>{const dir=await fs.mkdtemp(path.join(os.tmpdir(),'mm-api-'));let calls=0;try{const r=createRouter({env:{XAI_API_KEY:'test-only',MUSIC_MOTION_DATA_DIR:dir},fetchImpl:async()=>{calls++;throw new Error('network timeout');}});const body={type:'video',duration_seconds:5,request_id:'uncertain',prompt:'test',image_data_url:'data:image/png;base64,'+png,consent};await call(r,'POST','/jobs',body);let status;for(let n=0;n<100;n++){status=await call(r,'GET','/jobs/:id',{},'user-a',{id:'uncertain'});if(status.value.status==='failed')break;await wait();}assert.equal(status.value.status,'failed');await call(r,'POST','/jobs',body);assert.equal(calls,1);}finally{await fs.rm(dir,{recursive:true,force:true});}});
+test('Cloud: simultaneous paid calls are serialized for the same account',async()=>{const dir=await fs.mkdtemp(path.join(os.tmpdir(),'mm-api-'));let count=0;try{const r=createRouter({env:{XAI_API_KEY:'test-only',MUSIC_MOTION_DATA_DIR:dir,MUSIC_MOTION_DAILY_REQUEST_LIMIT:'1'},fetchImpl:async()=>{count++;await new Promise(r=>setTimeout(r,50));return new Response(JSON.stringify({data:[{b64_json:png}]}));}});const body={type:'image',prompt:'test',consent};const results=await Promise.all([call(r,'POST','/jobs',{...body,request_id:'one'}),call(r,'POST','/jobs',{...body,request_id:'two'})]);assert.equal(results.filter(r=>r.code===202).length,1);assert.equal(results.filter(r=>r.code===409||r.code===429).length,1);await new Promise(r=>setTimeout(r,120));assert.equal(count,1);}finally{await fs.rm(dir,{recursive:true,force:true});}});

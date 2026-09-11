@@ -14,7 +14,8 @@ class WhisperFallbackTest(unittest.TestCase):
     def run_model(self, failure, lazy=False, device='cuda', cpu_failure=False):
         calls = []
         class Model:
-            def __init__(self, name, device, compute_type):
+            def __init__(self, name, device, compute_type, local_files_only=False):
+                assert local_files_only is True
                 self.device = device
                 calls.append((device, compute_type))
                 if device != 'cpu' and not lazy:

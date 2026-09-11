@@ -49,7 +49,9 @@
           "package.json",
           "music_motion_analyzer.py",
           "requirements-music-motion.txt",
-          "install-music-motion-windows.ps1"
+          "install-music-motion-windows.ps1",
+          "music-motion-*.mjs",
+          "music_motion_document.py"
         ]
       },
       {
