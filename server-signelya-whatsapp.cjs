@@ -389,7 +389,10 @@ async function pollOfflinePlayers() {
         [String(player.id), normalizeEmail(player.owner_email), offline ? 'offline' : 'online',
           offline ? player.last_seen_at : null, player.last_seen_at]
       );
-      if (offline && previousState === 'online') {
+      // Retry the event creation for every confirmed outage. The unique dedupe
+      // key makes this idempotent and also records an outage first discovered
+      // after a service restart, when no previous in-memory transition exists.
+      if (offline) {
         const result = await notifyConfirmedOffline(player);
         if (result?.eventId) {
           await client.query(
