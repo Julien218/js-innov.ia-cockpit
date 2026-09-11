@@ -21,6 +21,8 @@ test('calendar uses the CRM entity and real routes; music studio remains admin s
   const module = catalog.find(item => item.routes.includes('/music-motion'));
   assert.equal(module.code, 'production');
   assert.deepEqual(module.roles, ['admin']);
+  const app = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8');
+  assert.match(app, /path="\/exported-videos" element=\{<Navigate to="\/exports" replace/);
 });
 
 test('page search handles accents, permissions, client routes and insurance restrictions', async () => {
