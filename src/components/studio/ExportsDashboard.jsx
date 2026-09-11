@@ -1,5 +1,7 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { Download, Eye, FileVideo, Calendar, HardDrive, Search, ChevronDown, Loader2 } from "lucide-react";
+import { exportAvailability, exportFilename, formatExportSize } from "@/lib/exportMetrics";
+import { downloadRemoteFile, videoStudioMediaUrl } from "@/lib/fileDownload";
 import VideoPlayer from "@/components/ExportsLibrary/VideoPlayer";
 
 export default function ExportsDashboard({ exports = [] }) {
@@ -7,15 +9,14 @@ export default function ExportsDashboard({ exports = [] }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("recent"); // recent | oldest | name
   const [showSortMenu, setShowSortMenu] = useState(false);
-  const videoRef = useRef(null);
-
-  const handleDownload = (videoExport) => {
-    const a = document.createElement("a");
-    a.href = videoExport.file_url;
-    a.download = `${videoExport.title.replace(/\s+/g, "_")}_${videoExport.format || "export"}.webm`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  const [downloadError, setDownloadError] = useState("");
+  const [downloading, setDownloading] = useState(null);
+  const handleDownload = async (videoExport) => {
+    setDownloadError("");
+    setDownloading(videoExport.id);
+    try { await downloadRemoteFile(videoExport.file_url, exportFilename(videoExport)); }
+    catch (error) { setDownloadError(error.message || "Téléchargement impossible."); }
+    finally { setDownloading(null); }
   };
 
   const formatDate = (dateStr) => {
@@ -29,20 +30,15 @@ export default function ExportsDashboard({ exports = [] }) {
     });
   };
 
-  const formatSize = (mb) => {
-    if (!mb) return "–";
-    return mb < 1 ? `${(mb * 1024).toFixed(0)} KB` : `${mb.toFixed(1)} MB`;
-  };
-
   // Filtrer et trier les exports
   const filteredExports = exports.filter(exp => 
-    exp.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    exp.export_type.toLowerCase().includes(searchTerm.toLowerCase())
+    String(exp.title || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+    String(exp.export_type || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const sortedExports = [...filteredExports].sort((a, b) => {
     if (sortBy === "name") {
-      return a.title.localeCompare(b.title);
+      return String(a.title || "").localeCompare(String(b.title || ""));
     } else if (sortBy === "oldest") {
       return new Date(a.created_date).getTime() - new Date(b.created_date).getTime();
     } else {
@@ -63,6 +59,7 @@ export default function ExportsDashboard({ exports = [] }) {
 
   return (
     <div className="space-y-4">
+      {downloadError && <p role="alert" className="text-sm text-destructive">{downloadError}</p>}
       {/* Video player modal */}
       {selectedExport && (
         <VideoPlayer videoExport={selectedExport} onClose={() => setSelectedExport(null)} />
@@ -75,6 +72,7 @@ export default function ExportsDashboard({ exports = [] }) {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
+            aria-label="Rechercher un export"
             placeholder="Rechercher par titre ou type…"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -138,7 +136,7 @@ export default function ExportsDashboard({ exports = [] }) {
               {exp.file_url ? (
                 <>
                   <video
-                    src={exp.file_url}
+                    src={videoStudioMediaUrl(exp.file_url)}
                     className="w-full h-full object-cover"
                     preload="metadata"
                     onMouseEnter={(e) => {
@@ -153,6 +151,7 @@ export default function ExportsDashboard({ exports = [] }) {
                   <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent hidden group-hover:flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
                     <button
                       onClick={() => setSelectedExport(exp)}
+                      aria-label={`Visionner ${exp.title || "cet export"}`}
                       className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-all"
                     >
                       <Eye size={18} />
@@ -179,16 +178,16 @@ export default function ExportsDashboard({ exports = [] }) {
             {/* Info */}
             <div className="p-4 flex-1 flex flex-col gap-3">
               <div>
-                <h3 className="font-semibold text-sm text-foreground truncate">{exp.title}</h3>
+                <h3 className="font-semibold text-sm text-foreground truncate">{exp.title || "Export sans titre"}</h3>
                 <div className="flex items-center gap-2 mt-1">
-                  {exp.status === 'completed' ? (
+                  {exportAvailability(exp) === 'ready' ? (
                     <span className="text-xs text-green-400">✓ Prêt</span>
-                  ) : exp.status === 'error' ? (
+                  ) : exportAvailability(exp) === 'error' ? (
                     <span className="text-xs text-destructive">✕ Erreur</span>
                   ) : (
                     <>
-                      <Loader2 size={12} className="animate-spin text-primary" />
-                      <span className="text-xs text-primary">Génération…</span>
+                      {exportAvailability(exp) === 'pending' && <Loader2 size={12} className="animate-spin text-primary" />}
+                      <span className="text-xs text-primary">{exportAvailability(exp) === 'pending' ? 'Préparation…' : 'Fichier indisponible'}</span>
                     </>
                   )}
                   <span className="text-xs text-muted-foreground">· {exp.export_type}</span>
@@ -197,10 +196,10 @@ export default function ExportsDashboard({ exports = [] }) {
 
               {/* Metadata */}
               <div className="space-y-1.5">
-                {exp.status === 'completed' && exp.file_size_mb && (
+                {exportAvailability(exp) === 'ready' && exp.file_size_mb && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <HardDrive size={12} />
-                    <span>{formatSize(exp.file_size_mb)}</span>
+                    <span>{formatExportSize(exp.file_size_mb)}</span>
                   </div>
                 )}
                 {exp.created_date && (
@@ -209,33 +208,22 @@ export default function ExportsDashboard({ exports = [] }) {
                     <span>{formatDate(exp.created_date)}</span>
                   </div>
                 )}
-                {exp.status !== 'completed' && (
-                  <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden mt-2">
-                    <div
-                      className={`h-full rounded-full transition-all duration-300 ${
-                        exp.status === 'error' ? 'bg-destructive' : 'bg-primary'
-                      }`}
-                      style={{
-                        width: exp.status === 'error' ? '100%' : '60%',
-                        animation: exp.status === 'error' ? 'none' : 'pulse 1.5s ease-in-out infinite',
-                      }}
-                    />
-                  </div>
-                )}
+
               </div>
 
               {/* Actions */}
               <div className="flex gap-2 mt-auto pt-2">
                 <button
                   onClick={() => setSelectedExport(exp)}
-                  disabled={exp.status !== 'completed'}
+                  disabled={exportAvailability(exp) !== 'ready'}
                   className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Eye size={13} /> {exp.status === 'completed' ? 'Visionner' : 'En attente'}
+                  <Eye size={13} /> {exportAvailability(exp) === 'ready' ? 'Visionner' : 'En attente'}
                 </button>
                 <button
+                  aria-label={`Télécharger ${exp.title || "cet export"}`}
                   onClick={() => handleDownload(exp)}
-                  disabled={exp.status !== 'completed'}
+                  disabled={exportAvailability(exp) !== 'ready' || downloading !== null}
                   className="btn-gold flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Download size={13} />

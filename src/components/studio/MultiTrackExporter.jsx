@@ -1,3 +1,4 @@
+import { templateDimensions } from "@/lib/videoTemplateProject";
 import { useState, useRef, useEffect } from "react";
 import { Film, Download, X, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
@@ -99,8 +100,7 @@ export default function MultiTrackExporter({ vp, tracks, sourceProject, onClose 
   const canvasRef = useRef(null);
   const stopRef = useRef(false);
 
-  const W = vp?.template_format === "9:16" ? 1080 : 1920;
-  const H = vp?.template_format === "9:16" ? 1920 : 960;
+  const [W, H] = templateDimensions(vp?.template_format);
   const bgColor = vp?.template_colors?.bg || "#000000";
 
   const allClips = (tracks || []).flatMap(t => (t.clips || []).map(c => ({ ...c, trackType: t.type })));
@@ -369,3 +369,4 @@ export default function MultiTrackExporter({ vp, tracks, sourceProject, onClose 
     </div>
   );
 }
+

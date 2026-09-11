@@ -29,19 +29,29 @@ const useValidationsBadge = () => {
   return data.filter(v => v.statut === "en_attente").length;
 };
 
-const useEmailBadge = () => {
-  const [unread, setUnread] = React.useState(0);
+const useEmailBadge = (enabled) => {
+  const [unread, setUnread] = React.useState(null);
   React.useEffect(() => {
-    const poll = () => {
-      fetch('/api/emails?limit=1', { credentials: 'same-origin' })
-        .then(r => r.ok ? r.json() : { unread: 0 })
-        .then(d => setUnread(d.unread || 0))
-        .catch(() => {});
+    if (!enabled) { setUnread(null); return; }
+    let stopped = false;
+    let timer;
+    const controller = new AbortController();
+    const poll = async () => {
+      let retry = true;
+      try {
+        const response = await fetch('/api/emails?limit=1', { credentials: 'same-origin', signal: controller.signal });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          // Repeated IMAP logins cannot repair rejected credentials.
+          retry = ![401, 403].includes(response.status) && !/authenticat|invalid.credentials|login.failed/i.test(data.error || '');
+          if (!stopped) setUnread(null);
+        } else if (!stopped) setUnread(Number.isFinite(Number(data.unread)) ? Number(data.unread) : null);
+      } catch { if (!stopped) setUnread(null); }
+      if (!stopped && retry) timer = setTimeout(poll, 120000);
     };
-    poll();
-    const interval = setInterval(poll, 120000);
-    return () => clearInterval(interval);
-  }, []);
+    void poll();
+    return () => { stopped = true; controller.abort(); clearTimeout(timer); };
+  }, [enabled]);
   return unread;
 };
 
@@ -172,7 +182,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
   const { user, logout } = useAuth();
   const { role, canAccess } = usePermissions();
   const validationCount = useValidationsBadge();
-  const emailCount = useEmailBadge();
+  const emailCount = useEmailBadge(canAccess("/emails"));
   const demandeCount = useDemandeBadge();
   const agentStatus = useAgentLocalStatus();
 
