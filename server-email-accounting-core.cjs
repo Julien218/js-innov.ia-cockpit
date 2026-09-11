@@ -83,8 +83,8 @@ function sourceTypeForProvider(provider) {
   return 'other';
 }
 
-function buildDailyDigest(date, items) {
-  const counts = items.reduce((acc, item) => {
+function summarizeAccountingItems(items = []) {
+  return items.reduce((acc, item) => {
     acc[item.category] = (acc[item.category] || 0) + 1;
     if (item.status === 'awaiting_review') acc.awaiting_review += 1;
     if (item.document_id) acc.archived += 1;
@@ -92,6 +92,14 @@ function buildDailyDigest(date, items) {
     if (item.metadata?.cleanup?.action === 'moved_to_trash') acc.moved_to_trash += 1;
     return acc;
   }, { awaiting_review: 0, archived: 0, failed: 0, moved_to_trash: 0 });
+}
+
+function formatAccountingLog(event, details = {}) {
+  return `[email-accounting] ${clean(event, 80)} ${JSON.stringify(details)}`;
+}
+
+function buildDailyDigest(date, items) {
+  const counts = summarizeAccountingItems(items);
   const important = items.filter((item) => item.category !== 'other').slice(0, 20);
   const lines = important.map((item) => `- [${item.mailbox}] ${clean(item.subject, 120)} — ${clean(item.sender, 80)} (${item.category}${item.document_id ? ', archivé Dropbox' : ''})`);
   const text = [
@@ -111,4 +119,4 @@ function buildDailyDigest(date, items) {
   return { counts, text, subject: `NOVA — Compte rendu e-mails du ${date}` };
 }
 
-module.exports = { classifyEmail, extractAccountingMetadata, shouldArchiveAttachment, sourceTypeForProvider, buildDailyDigest, parseEuroAmount, invoiceNumber, isOperationalGitHubNotification };
+module.exports = { classifyEmail, extractAccountingMetadata, shouldArchiveAttachment, sourceTypeForProvider, buildDailyDigest, summarizeAccountingItems, formatAccountingLog, parseEuroAmount, invoiceNumber, isOperationalGitHubNotification };

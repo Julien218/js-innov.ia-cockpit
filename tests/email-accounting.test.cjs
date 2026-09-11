@@ -58,6 +58,23 @@ test('le rapport quotidien indique validation, Dropbox et corbeille récupérabl
   assert.match(report.text, /Aucun e-mail n.a été supprimé définitivement/i);
 });
 
+test('les compteurs comptables sont réutilisables par les journaux et le statut Cockpit', () => {
+  const counts = core.summarizeAccountingItems([
+    { category: 'invoice', status: 'awaiting_review', document_id: 'doc-1' },
+    { category: 'request_or_quote', status: 'awaiting_review' },
+    { category: 'other', status: 'ignored', metadata: { cleanup: { action: 'moved_to_trash' } } },
+    { category: 'invoice', status: 'failed' },
+  ]);
+  assert.deepEqual(counts, { awaiting_review: 2, archived: 1, failed: 1, moved_to_trash: 1, invoice: 2, request_or_quote: 1, other: 1 });
+});
+
+test('les événements email-accounting sont journalisés sur une seule ligne structurée', () => {
+  const line = core.formatAccountingLog('daily report sent', { archived: 2, awaiting_review: 3 });
+  assert.match(line, /^\[email-accounting\] daily report sent \{/);
+  assert.doesNotMatch(line, /\r|\n/);
+  assert.deepEqual(JSON.parse(line.slice(line.indexOf('{'))), { archived: 2, awaiting_review: 3 });
+});
+
 test('le serveur lit les messages sans les marquer comme lus et protège le module', () => {
   const emailSource = fs.readFileSync(path.join(__dirname, '..', 'server-email.cjs'), 'utf8');
   const accountingSource = fs.readFileSync(path.join(__dirname, '..', 'server-email-accounting.cjs'), 'utf8');
@@ -68,6 +85,10 @@ test('le serveur lit les messages sans les marquer comme lus et protège le modu
   assert.match(accountingSource, /SUPABASE_SERVICE_ROLE_KEY/);
   assert.match(accountingSource, /ignoreOperationalGitHubFalsePositives/);
   assert.match(accountingSource, /nova:auto-filter:github-operational/);
+  assert.match(accountingSource, /daily report sent/);
+  assert.match(accountingSource, /daily report failed/);
+  assert.match(accountingSource, /mailbox_health: lastScan\?\.mailboxes/);
+  assert.match(accountingSource, /required_secret: mailbox === 'assurances' \? 'EMAIL_PASSWORD_ASSURANCES'/);
   assert.doesNotMatch(accountingSource, /headers: \{ apikey: CRM_KEY/);
 });
 

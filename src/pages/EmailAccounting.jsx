@@ -141,7 +141,9 @@ export default function EmailAccounting() {
 
   useEffect(() => { load(); }, [load]);
 
-  const archived = useMemo(() => items.filter((item) => item.document_id).length, [items]);
+  const archived = status?.last_report?.counters?.archived ?? items.filter((item) => item.document_id).length;
+  const mailboxFailures = useMemo(() => Object.entries(status?.mailbox_health || {}).filter(([, mailbox]) => mailbox?.status === 'failed'), [status]);
+  const reportLabel = status?.last_report?.status === 'sent' ? 'Envoyé' : status?.last_report?.status === 'failed' ? 'Échec' : status?.last_report?.status === 'pending' ? 'En attente' : 'À venir';
   const updateDraft = (id, patch) => setDrafts((current) => ({ ...current, [id]: { ...(current[id] || {}), ...patch } }));
 
   const runNow = async () => {
@@ -178,11 +180,12 @@ export default function EmailAccounting() {
     </div>
 
     {error && <div className="flex items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-200"><AlertTriangle className="h-5 w-5" />{error}</div>}
+    {mailboxFailures.length > 0 && <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-100"><div className="flex items-center gap-2 font-medium"><AlertTriangle className="h-5 w-5" />Une boîte e-mail nécessite une intervention</div>{mailboxFailures.map(([key, mailbox]) => <p key={key} className="mt-2 text-xs text-amber-200/80">{key === 'assurances' ? 'Assurances Dour' : key} : {mailbox.error_code === 'authentication_failed' ? `identifiants refusés — renouveler le secret Railway ${mailbox.required_secret}` : 'connexion impossible'}</p>)}</div>}
 
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <Stat icon={Clock3} label="En attente de validation" value={status?.pending_reviews ?? '—'} />
       <Stat icon={Archive} label="Pièces déjà archivées" value={archived} color="text-cyan-300" />
-      <Stat icon={MailCheck} label="Rapport quotidien" value={status?.last_report?.status === 'sent' ? 'Envoyé' : 'À venir'} color="text-emerald-300" />
+      <Stat icon={MailCheck} label="Rapport quotidien" value={reportLabel} color={status?.last_report?.status === 'failed' ? 'text-red-300' : 'text-emerald-300'} />
       <Stat icon={CheckCircle2} label="Heure planifiée" value={`${status?.report_hour ?? 18} h`} color="text-violet-300" />
     </div>
 
