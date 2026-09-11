@@ -24,6 +24,8 @@ test('diagnostics distinguish availability, unknown measurements and execution p
     assert.match(text, /non accessible depuis le web/);
     assert.match(text, /ComfyUI 8188: non mesuré/);
     assert.match(text, /Ollama: non mesuré/);
+    assert.match(text, /ne dit rien du workflow mémorisé dans Electron ou sur disque/);
+    assert.match(text, /Ne pas en déduire que les traitements vidéo locaux sont arrêtés ou désactivés/);
     assert.doesNotMatch(text, /hors ligne\/non mesuré/);
   });
   await t.test('successful desktop measurements do not certify end-to-end operation', async () => {
