@@ -1,0 +1,59 @@
+name: Music Motion Production CI
+
+on:
+  push:
+    branches: [feat/elynea-music-motion-production-20260911]
+    paths:
+      - '.github/workflows/music-motion-production-ci.yml'
+      - 'tests/music-motion-production.test.cjs'
+  pull_request:
+    paths:
+      - 'src/pages/MusicMotionStudio.jsx'
+      - 'src/components/music-motion/**'
+      - 'src/lib/music-motion/**'
+      - 'local-agent/music_motion*'
+      - 'local-agent/music-motion*'
+      - 'tests/music-motion*'
+      - '.github/workflows/music-motion-production-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Prepare private source snapshot for integration validation
+        run: |
+          python3 - <<'PY'
+          import pathlib, subprocess, zipfile
+          paths = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
+          with zipfile.ZipFile('/tmp/music-motion-source.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+              for name in paths:
+                  if not name: continue
+                  p = pathlib.Path(name)
+                  if p.name.startswith('.env') or p.suffix.lower() in ('.pem', '.key', '.p12', '.pfx'): continue
+                  if p.is_file(): z.write(p, name)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: music-motion-source-${{ github.sha }}
+          path: /tmp/music-motion-source.zip
+          retention-days: 1
+      - name: Install
+        run: npm ci
+      - name: Build cockpit
+        run: npm run build
+      - name: Production regressions
+        run: |
+          if test -f tests/music-motion-production.test.cjs; then
+            node --test tests/music-motion-production.test.cjs
+          fi
