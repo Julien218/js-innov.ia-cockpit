@@ -40,6 +40,12 @@ jobs:
           assert all(not f.startswith(('.github/', '.env', '/')) and '..' not in pathlib.PurePosixPath(f).parts for f in files)
           subprocess.run(['git','apply','--check','-'],input=patch,check=True)
           subprocess.run(['git','apply','-'],input=patch,check=True)
+          correction=(folder/'corrections.patch').read_bytes()
+          assert hashlib.sha256(correction).hexdigest()=='5dde597a4a2f1833a9b9379aeaf5f5b27c8a6393606ebac53060816d9cd84cd6'
+          fixes=[line.split('\t',2)[2] for line in subprocess.check_output(['git','apply','--numstat','-'],input=correction).decode().splitlines()]
+          assert sorted(fixes)==sorted(['src/pages/MusicMotionStudio.jsx','tests/video-studio-audio.test.cjs','tests/music_motion_analysis_test.py','local-agent/requirements-music-motion.txt'])
+          subprocess.run(['git','apply','--check','-'],input=correction,check=True)
+          subprocess.run(['git','apply','-'],input=correction,check=True)
           pathlib.Path('music-motion-proof/source-verification.json').write_text(json.dumps({'sha256':expected,'files':files,'base_commit':meta['base_commit']},indent=2))
           PY
       - uses: actions/setup-node@v4
@@ -52,7 +58,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg
-          python -m pip install 'numpy<3' soundfile pypdf
+          python -m pip install 'numpy==2.3.5' 'scipy==1.17.0' 'librosa==0.11.0' 'soundfile>=0.12,<1' 'pypdf>=5,<7'
           npm ci --legacy-peer-deps --no-audit --no-fund
       - name: Compile the complete cockpit
         shell: bash
@@ -65,7 +71,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/music-motion-production.test.cjs tests/music-motion-cloud.test.cjs tests/music-motion-render.test.cjs 2>&1 | tee music-motion-proof/node-tests.log
+          node --test tests/music-motion-production.test.cjs tests/music-motion-cloud.test.cjs tests/music-motion-render.test.cjs tests/video-studio-audio.test.cjs 2>&1 | tee music-motion-proof/node-tests.log
           python tests/music_motion_analysis_test.py 2>&1 | tee music-motion-proof/analysis-tests.log
           python tests/whisper_fallback_test.py 2>&1 | tee music-motion-proof/whisper-tests.log
       - name: Commit verified source to feature branch only
@@ -76,7 +82,7 @@ jobs:
           test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
           python3 - <<'PY'
           import json, pathlib, subprocess
-          files=json.loads(pathlib.Path('.music-motion-delivery/manifest.json').read_text())['files']
+          files=json.loads(pathlib.Path('.music-motion-delivery/manifest.json').read_text())['files']+['tests/video-studio-audio.test.cjs']
           subprocess.run(['git','add','--',*files],check=True)
           subprocess.run(['git','rm','-r','--','.music-motion-delivery'],check=True)
           PY
