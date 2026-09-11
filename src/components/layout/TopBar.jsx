@@ -1,53 +1,66 @@
-import React from "react";
-import { Bell, Search, HelpCircle, Menu, Sparkles } from "lucide-react";
-import { useAuth } from "@/lib/AuthContext";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import React, { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { MessageSquare, Search, HelpCircle, Menu } from 'lucide-react';
+import { useAuth } from '@/lib/AuthContext';
+import { usePermissions } from '@/lib/usePermissions';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { allNavGroups } from './Sidebar';
+import { searchNavigation } from '@/lib/navigation';
 
 export default function TopBar({ onOpenMobileMenu }) {
   const { user } = useAuth();
-  const today = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
-
+  const { role, canAccess } = usePermissions();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const results = searchNavigation(allNavGroups, query, {
+    role, canAccess,
+    insuranceAllowed: role === 'superadmin' || user?.email?.toLowerCase() === 'olivier.trevis@pv.be',
+  });
+  useEffect(() => { setSearchOpen(false); setQuery(''); }, [location.pathname]);
+  const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
   return (
     <header className="h-14 border-b flex items-center justify-between px-3 sm:px-5 gap-2 sm:gap-4 sticky top-0 z-20 shrink-0">
-      <button
-        onClick={onOpenMobileMenu}
-        className="md:hidden p-2 -ml-1 rounded-xl hover:bg-white/5 text-foreground transition-colors"
-        aria-label="Ouvrir le menu"
-      >
-        <Menu className="w-5 h-5" />
-      </button>
-
-      <div className="hidden md:flex items-center gap-2 min-w-[170px]">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.65)]" />
-        <p className="text-[11px] text-muted-foreground capitalize tracking-wide">{today}</p>
+      <button onClick={onOpenMobileMenu} className="md:hidden p-2 rounded-xl" aria-label="Ouvrir le menu"><Menu className="w-5 h-5" /></button>
+      <p className="hidden md:block text-xs text-muted-foreground capitalize">{today}</p>
+      <div className="flex-1 max-w-md relative" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setSearchOpen(false); }}>
+        <Search className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+        <Input aria-label="Rechercher une page" placeholder="Aller à une page…" value={query}
+          aria-expanded={searchOpen} aria-controls="navigation-results" autoComplete="off"
+          onFocus={() => setSearchOpen(true)} onChange={event => { setQuery(event.target.value); setSearchOpen(true); }}
+          onKeyDown={event => {
+            if (event.key === 'Escape') setSearchOpen(false);
+            if (event.key === 'Enter' && searchOpen && results[0]) { event.preventDefault(); navigate(results[0].path); setSearchOpen(false); }
+          }} className="pl-9 h-9 text-xs rounded-xl" />
+        {searchOpen && <nav id="navigation-results" aria-label="Résultats de recherche des pages" className="absolute top-full mt-2 left-0 right-0 max-h-[60vh] overflow-auto rounded-xl border bg-background shadow-xl p-2">
+          <p className="px-2 py-1 text-xs text-muted-foreground">{query ? 'Pages accessibles' : 'Accès rapide · tapez le nom d’une page'}</p>
+          {results.map(item => <Link key={item.path} to={item.path} onClick={() => setSearchOpen(false)} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted focus-visible:bg-muted">
+            <item.icon className="w-4 h-4 shrink-0" /><span className="text-sm">{item.label}<span className="block text-xs text-muted-foreground">{item.group}</span></span>
+          </Link>)}
+          {!results.length && <p role="status" className="p-2 text-sm">Aucune page accessible ne correspond à « {query} ».</p>}
+        </nav>}
       </div>
-
-      <div className="flex-1 max-w-md relative group">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
-        <Input
-          placeholder="Rechercher dans le Cockpit…"
-          className="pl-9 pr-9 h-9 text-xs bg-white/[0.035] border border-white/[0.065] rounded-xl focus-visible:ring-1 focus-visible:ring-primary/40 focus-visible:border-primary/25 placeholder:text-muted-foreground/60"
-        />
-        <Sparkles className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-primary/45" />
+      <div className="flex items-center gap-1 shrink-0">
+        {canAccess('/demandes') && <Button asChild variant="ghost" size="icon" aria-label="Ouvrir les demandes" title="Demandes à traiter"><Link to="/demandes"><MessageSquare className="w-4 h-4" /></Link></Button>}
+        <Button variant="ghost" size="icon" aria-label="Aide à la navigation" title="Aide à la navigation" onClick={() => setHelpOpen(true)}><HelpCircle className="w-4 h-4" /></Button>
+        <span title={user?.email} className="hidden sm:flex w-8 h-8 rounded-xl bg-primary/10 items-center justify-center text-primary text-xs font-bold">{user?.full_name?.charAt(0) || user?.email?.charAt(0)?.toUpperCase() || 'J'}</span>
       </div>
-
-      <div className="flex items-center gap-1.5 shrink-0">
-        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-muted-foreground hover:text-foreground hover:bg-white/5 relative">
-          <Bell className="w-4 h-4" />
-          <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-primary rounded-full shadow-[0_0_10px_rgba(212,175,55,0.75)]" />
-        </Button>
-        <Button variant="ghost" size="icon" className="hidden sm:flex h-9 w-9 rounded-xl text-muted-foreground hover:text-foreground hover:bg-white/5">
-          <HelpCircle className="w-4 h-4" />
-        </Button>
-        <div className="relative ml-1">
-          <div className="w-8 h-8 rounded-xl gradient-primary p-[1px] shadow-[0_8px_24px_rgba(212,175,55,0.16)]">
-            <div className="w-full h-full rounded-[11px] bg-[#0b0d12] flex items-center justify-center text-primary text-xs font-bold">
-              {user?.full_name?.charAt(0) || user?.email?.charAt(0)?.toUpperCase() || "J"}
-            </div>
+      <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Se repérer dans le Cockpit</DialogTitle><DialogDescription>Choisissez une page selon ce que vous voulez faire.</DialogDescription></DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p><strong>Rechercher une page :</strong> saisissez son nom, puis sélectionnez un résultat. Entrée ouvre le premier résultat ; Échap ferme la recherche.</p>
+            <p><strong>Suivre le travail :</strong> les Demandes rassemblent les besoins ; les Projets et les Tâches servent à suivre leur réalisation.</p>
+            <p><strong>Créer et gérer :</strong> le Studio regroupe la production de contenus ; Finance contient les devis et les factures.</p>
+            <p><strong>Lire les états :</strong> une autorisation requise, une information manquante et une erreur technique demandent des actions différentes. « Terminée avec preuve » indique un résultat documenté.</p>
+            <p className="text-muted-foreground">La recherche porte sur les pages accessibles à votre compte, pas sur le contenu des documents. Sur mobile, ouvrez le menu en haut à gauche.</p>
           </div>
-        </div>
-      </div>
+        </DialogContent>
+      </Dialog>
     </header>
   );
 }

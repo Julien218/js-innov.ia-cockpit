@@ -30,9 +30,10 @@ test('la messagerie reçoit un cadre dark premium dédié sans modifier sa logiq
   assert.match(css, /Email workspace: dark by design/);
 });
 
-test('la top bar premium garde recherche notifications et profil', () => {
-  assert.match(topbar, /Rechercher dans le Cockpit/);
-  assert.match(topbar, /Bell/);
+test('la top bar propose une recherche de pages, les demandes et une aide accessible', () => {
+  assert.match(topbar, /Rechercher une page/);
+  assert.match(topbar, /Ouvrir les demandes/);
   assert.match(topbar, /HelpCircle/);
-  assert.match(topbar, /gradient-primary/);
+  assert.match(topbar, /setHelpOpen\(true\)/);
+  assert.match(topbar, /user\?\.full_name/);
 });

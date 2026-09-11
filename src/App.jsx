@@ -49,7 +49,6 @@ import AIVideoReportGenerator from "@/pages/AIVideoReportGenerator";
 import ThumbnailGenerator from "@/pages/ThumbnailGenerator";
 import DourCampaignVideo from "@/pages/DourCampaignVideo";
 import ExportsLibrary from "@/pages/ExportsLibrary";
-import ExportedVideos from "@/pages/ExportedVideos";
 import Templates from "@/pages/Templates";
 import ProjectCalendar from "@/pages/ProjectCalendar";
 import Parametres from "@/pages/Parametres";
@@ -132,7 +131,7 @@ const AppRoutes = () => {
           <Route path="/thumbnail" element={<ThumbnailGenerator />} />
           <Route path="/dour-campaign" element={<DourCampaignVideo />} />
           <Route path="/exports" element={<ExportsLibrary />} />
-          <Route path="/exported-videos" element={<ExportedVideos />} />
+          <Route path="/exported-videos" element={<Navigate to="/exports" replace />} />
           <Route path="/templates" element={<Templates />} />
           <Route path="/calendar" element={<ProjectCalendar />} />
 
