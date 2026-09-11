@@ -37,8 +37,9 @@ const mocks = data => ({
   '@/lib/usePermissions': `export const usePermissions = () => ({ role: 'superadmin', canAccess: () => true });`,
 });
 
-function render(Component, initialPath = '/') {
+function render(Component, initialPath = '/', cachedQueries = []) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  for (const [key, data] of cachedQueries) client.setQueryData(key, data);
   const originalError = console.error;
   const errors = [];
   console.error = (...args) => {
@@ -91,6 +92,19 @@ test('compact workspace keeps daily links, opens the active module and respects 
   })).default;
   const restricted = render(Restricted);
   assert.doesNotMatch(restricted, /href="\/taches"|href="\/emails"|>Studio</);
+});
+
+test('task cards keep the title, operational state, context and grouped history visible', async () => {
+  const Page = (await load('src/pages/Taches.jsx', mocks([]))).default;
+  const html = render(Page, '/taches', [
+    [['Tache'], [{id: 'task-a', titre: 'Préparer le dossier', description: 'Pièces à vérifier', client_nom: 'Client test', projet_nom: 'Projet test', statut: 'en_cours', priorite: 'haute'}]],
+    [['task-execution-runs'], [{id:'run-a', task_id:'task-a', status:'pending', operational_status:'WAITING_INPUT'}]],
+    [['task-autopilot-status'], {last_result:{blocked:[], queued:[], awaiting_authorization:[]}}],
+  ]);
+  const cards = html.match(/<div[^>]*aria-label="Liste des tâches"[^>]*>(.*?)<div class="hidden lg:block">/s)?.[1];
+  assert.ok(cards, 'Small screens must have a task list separate from the wide table');
+  for (const value of ['Préparer le dossier', 'Informations requises', 'Client test', 'Projet test', 'Pièces à vérifier', 'Modifier Préparer le dossier', 'Détails et actions']) assert.ok(cards.includes(value), value);
+  assert.doesNotMatch(cards, /Exécution en cours/);
 });
 
 test('status aliases, provenance and editable payload preserve truthful record semantics', async () => {
