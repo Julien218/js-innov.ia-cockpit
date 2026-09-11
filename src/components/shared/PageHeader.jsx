@@ -23,6 +23,7 @@ export default function PageHeader({ title, subtitle, onAdd, addLabel = "Ajouter
             <div className="relative flex-1 sm:flex-none">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
               <Input
+                aria-label={`Rechercher dans ${title}`}
                 placeholder="Rechercher..."
                 value={search || ""}
                 onChange={(e) => onSearch(e.target.value)}

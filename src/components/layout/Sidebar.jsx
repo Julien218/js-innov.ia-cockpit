@@ -16,6 +16,7 @@ import { usePermissions } from "@/lib/usePermissions";
 import { ROLE_LABELS, ROLE_COLORS } from "@/lib/roles";
 import { useDemandes } from "@/lib/useDemandes";
 import { isNewDemande } from "@/lib/demandePresentation";
+import { isNavigationActive } from "@/lib/navigation";
 
 const OLIVIER_EMAIL = 'olivier.trevis@pv.be';
 
@@ -71,7 +72,7 @@ const ROLE_ICONS = {
   client: User,
 };
 
-const allNavGroups = [
+export const allNavGroups = [
   {
     label: "Pilotage",
     items: [
@@ -160,6 +161,13 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
     return window.localStorage.getItem("cockpit-sidebar-collapsed") === "true";
   });
   const location = useLocation();
+  const compact = collapsed && !mobileOpen;
+  React.useEffect(() => {
+    if (!mobileOpen) return;
+    const closeOnEscape = event => { if (event.key === 'Escape') onCloseMobile?.(); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [mobileOpen, onCloseMobile]);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { role, canAccess } = usePermissions();
@@ -221,19 +229,19 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
         className={cn(
           "relative flex flex-col h-screen bg-white border-r border-border transition-all duration-300 ease-in-out",
           "md:relative md:translate-x-0 md:z-30",
-          collapsed ? "md:w-[68px]" : "md:w-[240px]",
+          compact ? "md:w-[68px]" : "md:w-[240px]",
           "fixed md:static z-50 w-[260px] shrink-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >
         <div className={cn(
           "flex items-center gap-3 px-4 py-4 border-b border-border",
-          collapsed && "md:justify-center md:px-2"
+          compact && "md:justify-center md:px-2"
         )}>
           <div className="flex-shrink-0 w-9 h-9 rounded-xl overflow-hidden shadow-lg">
             <img src="/logo.png" alt="JS-Innov.IA" className="w-full h-full object-cover" />
           </div>
-          {!collapsed && (
+          {!compact && (
             <div className="overflow-hidden flex-1">
               <p className="text-sm font-bold text-foreground leading-tight" style={{fontFamily: "'Space Grotesk', sans-serif"}}>JS-Innov.IA</p>
               <p className="text-[10px] text-muted-foreground font-medium tracking-wide">COCKPIT</p>
@@ -248,7 +256,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
           </button>
         </div>
 
-        {!collapsed && (
+        {!compact && (
           <div className="mx-3 mt-3 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5"
             style={{ backgroundColor: colors.badge + "15" }}>
             <RoleIcon className="w-3 h-3 flex-shrink-0" style={{ color: colors.badge }} />
@@ -261,32 +269,33 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
           {navGroups.map((group) => (
             <div key={group.label} className="mb-3">
-              {!collapsed && (
+              {!compact && (
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-3 mb-1.5">
                   {group.label}
                 </p>
               )}
               {group.items.map((item) => {
                 const itemPath = getPath(item);
-                const active = location.pathname === itemPath ||
-                  (itemPath !== "/" && location.pathname.startsWith(itemPath));
+                const active = isNavigationActive(location.pathname, itemPath);
                 const badge = item.badge ? badgeValues[item.badge] || 0 : 0;
                 return (
                   <Link
                     key={itemPath}
                     to={itemPath}
+                    aria-label={item.label}
+                    aria-current={active ? 'page' : undefined}
                     onClick={handleNavClick}
-                    title={collapsed ? item.label : undefined}
+                    title={compact ? item.label : undefined}
                     className={cn(
                       "sidebar-item mb-0.5 relative min-h-[44px]",
-                      collapsed ? "md:justify-center md:px-0 md:py-2.5" : "",
+                      compact ? "md:justify-center md:px-0 md:py-2.5" : "",
                       active
                         ? "active"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     )}
                   >
                     <item.icon className="w-[18px] h-[18px] flex-shrink-0" />
-                    {!collapsed && (
+                    {!compact && (
                       <>
                         <span className="text-sm font-medium flex-1 truncate">{item.label}</span>
                         {badge > 0 && (
@@ -294,15 +303,15 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
                             {badge}
                           </span>
                         )}
-                        {item.agentStatus && !collapsed && (
+                        {item.agentStatus && !compact && (
                           <span className={cn("w-2 h-2 rounded-full flex-shrink-0", agentStatus === "online" ? "bg-emerald-500" : agentStatus === "checking" ? "bg-amber-400 animate-pulse" : "bg-red-500")} title={agentStatus === "online" ? "Agent 8787 connecté" : "Agent 8787 hors ligne"} />
                         )}
-                        {item.agentLocal && !collapsed && (
+                        {item.agentLocal && !compact && (
                           <span className={cn("text-[9px] font-mono", agentStatus === "online" ? "text-emerald-500" : "text-red-400")}>8787</span>
                         )}
                       </>
                     )}
-                    {collapsed && badge > 0 && (
+                    {compact && badge > 0 && (
                       <span className="absolute top-1 right-1 text-[9px] font-bold bg-red-500 text-white rounded-full min-w-[16px] h-[16px] px-1 flex items-center justify-center">
                         {badge}
                       </span>
@@ -318,13 +327,13 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
           type="button"
           onClick={toggleCollapsed}
           aria-label={collapsed ? "Déplier la navigation" : "Réduire la navigation"}
-          title={collapsed ? "Déplier la navigation" : "Réduire la navigation"}
+          title={compact ? "Déplier la navigation" : "Réduire la navigation"}
           className="hidden md:flex items-center justify-center py-2.5 border-t border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         >
-          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          {compact ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
         </button>
 
-        {!collapsed ? (
+        {!compact ? (
           <div className="border-t border-border p-3">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">

@@ -27,7 +27,7 @@ function mediaType(asset) {
 
 export default function Production() {
   const navigate = useNavigate();
-  const { data: mediaLibrary = { assets: [] }, isLoading: mediaLoading } = useQuery({
+  const { data: mediaLibrary = { assets: [] }, isLoading: mediaLoading, isError: mediaError, refetch: retryMedia, isFetching: mediaFetching } = useQuery({
     queryKey: ["production-dropbox-assets"],
     queryFn: async () => {
       const response = await fetch("/api/documents/portfolio-assets?limit=500", { credentials: "same-origin" });
@@ -126,6 +126,10 @@ export default function Production() {
           <p className="workspace-eyebrow">Bibliothèque</p>
           <h2 className="text-base font-semibold">Retrouver les créations</h2>
         </div>
+        {mediaError && <div role="alert" className="mb-3 rounded-xl border border-amber-500/40 p-3 text-sm">
+          La bibliothèque est indisponible. Les compteurs ne peuvent pas être vérifiés.
+          <Button variant="outline" size="sm" className="ml-3" disabled={mediaFetching} onClick={() => retryMedia()}>{mediaFetching ? 'Chargement…' : 'Réessayer'}</Button>
+        </div>}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
           {categories.map(cat => (
             <button
@@ -138,7 +142,7 @@ export default function Production() {
                 <cat.icon className="w-4 h-4" />
               </div>
               <p className="text-xs font-semibold leading-tight">{cat.label}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{mediaLoading ? "Chargement…" : `${cat.count} élément${cat.count > 1 ? "s" : ""}`}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{mediaLoading ? "Chargement…" : mediaError ? "Non vérifié" : `${cat.count} élément${cat.count > 1 ? "s" : ""}`}</p>
             </button>
           ))}
         </div>
