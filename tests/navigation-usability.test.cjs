@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 test('navigation identifies child routes without activating sibling prefixes', async () => {
   const { isNavigationActive } = await import('../src/lib/navigation.js');
@@ -7,6 +9,18 @@ test('navigation identifies child routes without activating sibling prefixes', a
   assert.equal(isNavigationActive('/emails/inbox', '/emails'), true);
   assert.equal(isNavigationActive('/clients', '/'), false);
   assert.equal(isNavigationActive('/', '/'), true);
+});
+
+test('calendar uses the CRM entity and real routes; music studio remains admin scoped', () => {
+  const calendar = fs.readFileSync(path.join(__dirname, '../src/pages/ProjectCalendar.jsx'), 'utf8');
+  assert.match(calendar, /entities\.Projet\.list/);
+  assert.doesNotMatch(calendar, /entities\.Project\.|\/project\//);
+  assert.doesNotMatch(calendar, /toISOString/);
+  assert.match(calendar, /date_fin_prevue/);
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '../permission-catalog.json'), 'utf8'));
+  const module = catalog.find(item => item.routes.includes('/music-motion'));
+  assert.equal(module.code, 'production');
+  assert.deepEqual(module.roles, ['admin']);
 });
 
 test('page search handles accents, permissions, client routes and insurance restrictions', async () => {

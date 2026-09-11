@@ -8,6 +8,8 @@ export default function ProjectCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [reload, setReload] = useState(0);
   const navigate = useNavigate();
 
   const STATUS_CONFIG = {
@@ -19,11 +21,15 @@ export default function ProjectCalendar() {
   };
 
   useEffect(() => {
-    base44.entities.Project.list("-created_date").then(p => {
-      setProjects(p);
-      setLoading(false);
-    });
-  }, []);
+    let active = true;
+    setLoading(true);
+    setError('');
+    base44.entities.Projet.list("-created_at").then(rows => {
+      if (active) setProjects(rows.map(p => ({ ...p, project_name: p.nom, delivery_date: p.date_fin_prevue?.slice(0, 10), status: ({ en_attente: 'planning', en_cours: 'in_production', pause: 'in_review', termine: 'delivered', annule: 'archived' })[p.statut] || 'planning' })));
+    }).catch(() => { if (active) setError('Impossible de charger les projets. Réessayez pour vérifier le calendrier.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [reload]);
 
   const getDaysInMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   const getFirstDayOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
@@ -34,7 +40,7 @@ export default function ProjectCalendar() {
   const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
 
   const getProjectsForDate = (day) => {
-    const dateStr = new Date(currentDate.getFullYear(), currentDate.getMonth(), day).toISOString().split("T")[0];
+    const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     return projects.filter(p => p.delivery_date === dateStr);
   };
 
@@ -52,18 +58,19 @@ export default function ProjectCalendar() {
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="font-display text-2xl font-semibold text-foreground">Calendrier des projets</h1>
-            <p className="text-sm text-muted-foreground mt-1">Visualisez vos projets vidéo par date de livraison</p>
+            <p className="text-sm text-muted-foreground mt-1">Visualisez vos projets par date de fin prévue</p>
           </div>
           <button
-            onClick={() => navigate("/project/new")}
+            onClick={() => navigate("/projets")}
             className="btn-gold px-4 py-2.5 rounded-xl text-sm"
           >
-            + Nouveau projet
+            Gérer les projets
           </button>
         </div>
       </div>
 
       <div className="px-6 py-8 max-w-6xl mx-auto">
+        {error && <div role="alert" className="mb-4 rounded-lg border border-amber-500/40 p-3">{error}<button className="ml-3 underline" disabled={loading} onClick={() => setReload(value => value + 1)}>Réessayer</button></div>}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Calendrier */}
           <div className="lg:col-span-2 card-premium rounded-2xl p-6">
@@ -71,10 +78,10 @@ export default function ProjectCalendar() {
             <div className="flex items-center justify-between mb-6">
               <h2 className="font-semibold text-foreground capitalize">{monthName}</h2>
               <div className="flex gap-2">
-                <button onClick={prevMonth} className="p-2 hover:bg-muted rounded-lg transition">
+                <button aria-label="Mois précédent" onClick={() => { setSelectedDate(null); prevMonth(); }} className="p-2 hover:bg-muted rounded-lg transition">
                   <ChevronLeft size={18} className="text-muted-foreground" />
                 </button>
-                <button onClick={nextMonth} className="p-2 hover:bg-muted rounded-lg transition">
+                <button aria-label="Mois suivant" onClick={() => { setSelectedDate(null); nextMonth(); }} className="p-2 hover:bg-muted rounded-lg transition">
                   <ChevronRight size={18} className="text-muted-foreground" />
                 </button>
               </div>
@@ -101,6 +108,11 @@ export default function ProjectCalendar() {
                 return (
                   <div
                     key={idx}
+                    role={day ? 'button' : undefined}
+                    tabIndex={day ? 0 : undefined}
+                    aria-label={day ? `${day} ${monthName}` : undefined}
+                    aria-pressed={day ? selectedDate === day : undefined}
+                    onKeyDown={event => { if (day && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setSelectedDate(day); } }}
                     onClick={() => day && setSelectedDate(day)}
                     className={`aspect-square p-2 rounded-lg cursor-pointer transition-all ${
                       day ? "border" : ""
@@ -161,17 +173,17 @@ export default function ProjectCalendar() {
                     month: "long"
                   })}
                 </div>
-                {getProjectsForDate(selectedDate).length === 0 ? (
+                {loading || error ? <p className="text-xs text-muted-foreground">{loading ? 'Chargement…' : 'Dates non vérifiées'}</p> : getProjectsForDate(selectedDate).length === 0 ? (
                   <p className="text-xs text-muted-foreground">Aucun projet pour cette date</p>
                 ) : (
                   <div className="space-y-2">
                     {getProjectsForDate(selectedDate).map(p => {
-                      const statusConfig = STATUS_CONFIG[p.status || "planning"];
+                      const statusConfig = (STATUS_CONFIG[p.status] || STATUS_CONFIG.planning);
                       const StatusIcon = statusConfig.icon;
                       return (
                         <div
                           key={p.id}
-                          onClick={() => navigate(`/project/${p.id}`)}
+                          onClick={() => navigate("/projets")}
                           className={`p-3 rounded-lg border cursor-pointer transition-all ${statusConfig.color} hover:shadow-md`}
                         >
                           <div className="flex items-start gap-2 mb-1">
@@ -212,7 +224,7 @@ export default function ProjectCalendar() {
                     .sort((a, b) => new Date(a.delivery_date).getTime() - new Date(b.delivery_date).getTime())
                     .slice(0, 5)
                     .map(p => {
-                      const statusConfig = STATUS_CONFIG[p.status || "planning"];
+                      const statusConfig = (STATUS_CONFIG[p.status] || STATUS_CONFIG.planning);
                       const StatusIcon = statusConfig.icon;
                       const daysUntil = Math.ceil(
                         (new Date(p.delivery_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
@@ -220,7 +232,7 @@ export default function ProjectCalendar() {
                       return (
                         <div
                           key={p.id}
-                          onClick={() => navigate(`/project/${p.id}`)}
+                          onClick={() => navigate("/projets")}
                           className="p-3 rounded-lg border border-border hover:bg-muted/50 cursor-pointer transition-all"
                         >
                           <div className="flex items-start justify-between gap-2 mb-1">
