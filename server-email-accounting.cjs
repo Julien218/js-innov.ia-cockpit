@@ -5,7 +5,7 @@ const { shouldTrashImapPromotion } = require('./server-email-trash-core.cjs');
 const { storeBuffer, isDropboxConfigured } = require('./server-documents.cjs');
 const { createCostEvent } = require('./server-client-costs.cjs');
 const { recordUsage, authorizeUsage } = require('./server-ai-cost.cjs');
-const { classifyEmail, extractAccountingMetadata, shouldArchiveAttachment, sourceTypeForProvider, buildDailyDigest, formatAccountingLog, isOperationalGitHubNotification } = require('./server-email-accounting-core.cjs');
+const { classifyEmail, extractAccountingMetadata, shouldArchiveAttachment, sourceTypeForProvider, buildDailyDigest, formatAccountingLog, isOperationalGitHubNotification, isHighConfidencePromotionSubject } = require('./server-email-accounting-core.cjs');
 const { fetchGoogleAccounts, fetchGoogleEmails, fetchGoogleEmailById, isGoogleMailConfigured } = require('./server-google-mail.cjs');
 
 const router = express.Router();
@@ -393,6 +393,35 @@ async function scanMailboxes() {
   return stats;
 }
 
+async function ignorePromotionAccountingFalsePositives() {
+  const items = await rest(`email_accounting_items?select=id,subject,category,status,metadata&organisation=eq.${ORGANISATION}&status=eq.awaiting_review&category=in.(invoice,subscription_invoice)&limit=1000`);
+  let corrected = 0;
+  for (const item of items || []) {
+    if (!isHighConfidencePromotionSubject(item.subject)) continue;
+    const correctedAt = new Date().toISOString();
+    await patchItem(item.id, {
+      category: 'other',
+      confidence: 0.97,
+      status: 'reported',
+      amount_minor: null,
+      invoice_number: null,
+      reviewed_by: 'nova:auto-filter:promotional-subject',
+      reviewed_at: correctedAt,
+      metadata: {
+        ...(item.metadata || {}),
+        classification_correction: {
+          reason: 'high_confidence_promotional_subject',
+          corrected_at: correctedAt,
+          previous_category: item.category,
+        },
+      },
+    });
+    corrected += 1;
+  }
+  console.info(formatAccountingLog('promotion false positives corrected', { inspected: items?.length || 0, corrected }));
+  return { inspected: items?.length || 0, corrected };
+}
+
 async function itemsForDate(date) {
   const since = new Date(Date.now() - 48 * 3600000).toISOString();
   const rows = await rest(`email_accounting_items?select=*&organisation=eq.${ORGANISATION}&or=(created_at.gte.${encodeURIComponent(since)},updated_at.gte.${encodeURIComponent(since)})&order=created_at.desc&limit=500`);
@@ -457,7 +486,10 @@ function startEmailAccountingScheduler() {
   if (scheduler) return { started: true, reason: 'already_started' };
   if (!githubCleanupStarted) {
     githubCleanupStarted = true;
-    setTimeout(() => ignoreOperationalGitHubFalsePositives().catch((error) => console.warn('[email-accounting] GitHub cleanup:', error.message)), 5000).unref?.();
+    setTimeout(async () => {
+      await ignoreOperationalGitHubFalsePositives().catch((error) => console.warn('[email-accounting] GitHub cleanup:', error.message));
+      await ignorePromotionAccountingFalsePositives().catch((error) => console.warn('[email-accounting] promotion cleanup:', error.message));
+    }, 5000).unref?.();
   }
   setTimeout(schedulerTick, 15000).unref?.();
   scheduler = setInterval(schedulerTick, Math.max(300000, Number(process.env.NOVA_EMAIL_SCAN_INTERVAL_MS || 900000)));
@@ -555,4 +587,4 @@ router.post('/items/:id/review', async (req, res) => {
   } catch (error) { res.status(503).json({ error: error.message }); }
 });
 
-module.exports = { router, startEmailAccountingScheduler, runCycle, scanMailboxes, sendDailyReport, ignoreOperationalGitHubFalsePositives, cleanupImapPromotions };
+module.exports = { router, startEmailAccountingScheduler, runCycle, scanMailboxes, sendDailyReport, ignoreOperationalGitHubFalsePositives, ignorePromotionAccountingFalsePositives, cleanupImapPromotions };

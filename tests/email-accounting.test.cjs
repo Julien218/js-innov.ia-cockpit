@@ -58,6 +58,18 @@ test('le rapport quotidien indique validation, Dropbox et corbeille récupérabl
   assert.match(report.text, /Aucun e-mail n.a été supprimé définitivement/i);
 });
 
+test('une offre promotionnelle IONOS ne devient jamais une facture à valider', () => {
+  const result = core.classifyEmail({
+    from: 'IONOS <resources@crm.ionos.com>',
+    subject: 'Offre à durée limitée : profitez vite de votre crédit de 5 € !',
+    text: 'Votre abonnement peut bénéficier de cette promotion. Exemple de tarif 34,80 EUR.',
+    attachments: [{ filename: 'logo-ionos.png', size: 1200 }],
+  });
+  assert.equal(result.category, 'other');
+  assert.equal(result.needsReview, false);
+  assert.equal(result.reason, 'high_confidence_promotional_subject');
+});
+
 test('les compteurs comptables sont réutilisables par les journaux et le statut Cockpit', () => {
   const counts = core.summarizeAccountingItems([
     { category: 'invoice', status: 'awaiting_review', document_id: 'doc-1' },
@@ -79,6 +91,7 @@ test('le serveur lit les messages sans les marquer comme lus et protège le modu
   const emailSource = fs.readFileSync(path.join(__dirname, '..', 'server-email.cjs'), 'utf8');
   const accountingSource = fs.readFileSync(path.join(__dirname, '..', 'server-email-accounting.cjs'), 'utf8');
   const serverSource = fs.readFileSync(path.join(__dirname, '..', 'server.cjs'), 'utf8');
+  const pageSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'pages', 'EmailAccounting.jsx'), 'utf8');
   assert.match(emailSource, /markSeen = true/);
   assert.match(emailSource, /if \(markSeen\) imap\.addFlags/);
   assert.match(serverSource, /requirePermission\('email_accounting', 'admin'\)/);
@@ -89,6 +102,9 @@ test('le serveur lit les messages sans les marquer comme lus et protège le modu
   assert.match(accountingSource, /daily report failed/);
   assert.match(accountingSource, /mailbox_health: lastScan\?\.mailboxes/);
   assert.match(accountingSource, /required_secret: mailbox === 'assurances' \? 'EMAIL_PASSWORD_ASSURANCES'/);
+  assert.match(accountingSource, /nova:auto-filter:promotional-subject/);
+  assert.match(accountingSource, /ignorePromotionAccountingFalsePositives/);
+  assert.match(pageSource, /corbeille récupérable/);
   assert.doesNotMatch(accountingSource, /headers: \{ apikey: CRM_KEY/);
 });
 
