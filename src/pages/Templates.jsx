@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { VIDEO_TEMPLATES } from "@/data/videoTemplates";
-import { base44 } from "@/api/base44Client";
+import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
+import { createTemplateProject } from "@/lib/videoTemplateProject";
 import { Clock, Layers, Music, ChevronRight } from "lucide-react";
 
 const CATEGORIES = [
@@ -17,46 +18,26 @@ export default function Templates() {
   const [category, setCategory] = useState("all");
   const [creating, setCreating] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [error, setError] = useState("");
+  const creationPending = useRef(false);
 
   const filtered = category === "all" ? VIDEO_TEMPLATES : VIDEO_TEMPLATES.filter(t => t.category === category);
 
   const handleUse = async (template) => {
+    if (creationPending.current) return;
+    creationPending.current = true;
     setCreating(template.id);
-    // Créer un VideoProject depuis le template
-    const now = Date.now();
-    const tracks = template.tracks.map(track => ({
-      ...track,
-      clips: track.clips.map(clip => ({ ...clip, id: `${clip.id}_${now}` })),
-    }));
-    const vp = await base44.entities.VideoProject.create({
-      title: `${template.label} — ${new Date().toLocaleDateString("fr-FR")}`,
-      clips: tracks.flatMap(t => t.clips),
-      transition: template.transitions,
-      status: "draft",
-      ai_prompt: "",
-      audio_name: "",
-      audio_url: "",
-      texts: tracks.filter(t => t.type === "text").flatMap(t =>
-        t.clips.map(c => ({
-          content: c.content,
-          position: c.style?.position || "center",
-          color: c.style?.color || "#ffffff",
-          size: `${c.style?.fontSize || 36}px`,
-          bold: c.style?.bold || false,
-          animation: c.style?.animation || "fadeIn",
-          startTime: c.startTime,
-          duration: c.duration,
-        }))
-      ),
-      // Stocker les données de template enrichies
-      template_id: template.id,
-      template_tracks: tracks,
-      template_duration: template.duration,
-      template_format: template.format,
-      template_colors: template.colors,
-    });
-    setCreating(null);
-    navigate(`/studio/${vp.id}`);
+    setError("");
+    try {
+      const vp = await base44.entities.VideoProject.create(createTemplateProject(template));
+      if (!vp?.id) throw new Error("Le serveur n’a pas confirmé le projet créé. Vérifiez la liste des montages avant de réessayer.");
+      navigate(`/video-studio/${encodeURIComponent(vp.id)}`);
+    } catch (cause) {
+      setError(cause?.message || "Impossible de créer le montage. Vérifiez la liste des montages avant de réessayer.");
+    } finally {
+      creationPending.current = false;
+      setCreating(null);
+    }
   };
 
   return (
@@ -68,6 +49,7 @@ export default function Templates() {
       </div>
 
       <div className="px-6 py-6 max-w-6xl mx-auto">
+        {error && <div role="alert" className="mb-4 rounded-xl border border-destructive/40 p-4 text-sm text-destructive">{error}</div>}
         {/* Filtres */}
         <div className="flex gap-2 mb-6 flex-wrap">
           {CATEGORIES.map(c => (
@@ -172,7 +154,7 @@ export default function Templates() {
                 <div className="flex gap-2 mt-auto pt-1">
                   <button
                     onClick={(e) => { e.stopPropagation(); handleUse(template); }}
-                    disabled={creating === template.id}
+                    disabled={creating !== null}
                     className="btn-gold flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-medium disabled:opacity-60"
                   >
                     {creating === template.id ? (
@@ -186,6 +168,7 @@ export default function Templates() {
                     onClick={(e) => { e.stopPropagation(); setPreview(preview === template.id ? null : template.id); }}
                     className="px-3 py-2.5 rounded-xl border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all"
                     title="Voir le détail"
+                    aria-label={`Voir les scènes du modèle ${template.label}`}
                   >
                     <Layers size={13} />
                   </button>

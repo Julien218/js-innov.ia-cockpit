@@ -1,25 +1,32 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { base44Shim as base44 } from "@/lib/supabaseVideoClient";
 import { FileVideo, RefreshCw, Loader2 } from "lucide-react";
+import { sumExportMetric } from "@/lib/exportMetrics";
 import ExportsDashboard from "@/components/studio/ExportsDashboard";
 
 export default function ExportsLibrary() {
   const [exports, setExports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const requestSequence = useRef(0);
 
   const loadExports = async (isRefresh = false) => {
+    const request = ++requestSequence.current;
+    setError("");
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     
     try {
       const loaded = await base44.entities.VideoExport.list('-created_date', 100);
+      if (request !== requestSequence.current) return;
       setExports(loaded);
+      setHasLoaded(true);
     } catch (error) {
-      console.error('Erreur lors du chargement des exports:', error);
+      if (request === requestSequence.current) setError(error?.message || "Chargement des exports impossible.");
     } finally {
-      if (isRefresh) setRefreshing(false);
-      else setLoading(false);
+      if (request === requestSequence.current) { setRefreshing(false); setLoading(false); }
     }
   };
 
@@ -40,7 +47,7 @@ export default function ExportsLibrary() {
       });
     });
 
-    return () => unsubscribe();
+    return () => { requestSequence.current += 1; unsubscribe(); };
   }, []);
 
   return (
@@ -55,12 +62,12 @@ export default function ExportsLibrary() {
               </div>
               <div>
                 <h1 className="font-display text-2xl font-semibold text-foreground">Médiathèque d'exports</h1>
-                <p className="text-sm text-muted-foreground mt-1">Tous vos fichiers WebM téléchargés et prêts à l'emploi</p>
+                <p className="text-sm text-muted-foreground mt-1">Vos exports et leurs fichiers disponibles</p>
               </div>
             </div>
             <button
               onClick={() => loadExports(true)}
-              disabled={refreshing}
+              disabled={loading || refreshing}
               className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all disabled:opacity-50"
             >
               <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
@@ -71,18 +78,18 @@ export default function ExportsLibrary() {
           {/* Stats */}
           <div className="grid grid-cols-3 gap-4">
             <div className="card-premium rounded-lg p-3">
-              <div className="text-2xl font-bold text-primary">{exports.length}</div>
+              <div className="text-2xl font-bold text-primary">{hasLoaded ? exports.length : "—"}</div>
               <div className="text-xs text-muted-foreground mt-1">Exports sauvegardés</div>
             </div>
             <div className="card-premium rounded-lg p-3">
               <div className="text-2xl font-bold text-primary">
-                {(exports.reduce((sum, e) => sum + (e.file_size_mb || 0), 0)).toFixed(1)}
+                {hasLoaded ? sumExportMetric(exports, "file_size_mb").toFixed(1) : "—"}
               </div>
               <div className="text-xs text-muted-foreground mt-1">MB au total</div>
             </div>
             <div className="card-premium rounded-lg p-3">
               <div className="text-2xl font-bold text-primary">
-                {Math.round(exports.reduce((sum, e) => sum + (e.duration_seconds || 0), 0) / 60)}
+                {hasLoaded ? Math.round(sumExportMetric(exports, "duration_seconds") / 60) : "—"}
               </div>
               <div className="text-xs text-muted-foreground mt-1">Minutes de vidéo</div>
             </div>
@@ -92,14 +99,18 @@ export default function ExportsLibrary() {
 
       {/* Content */}
       <div className="px-6 py-8 max-w-6xl mx-auto">
+        {error && <div role="alert" className="mb-4 rounded-xl border border-destructive/40 p-4 text-sm">
+          <p>{error}</p>
+          <p>{hasLoaded ? "Les exports affichés proviennent du dernier chargement réussi." : "Impossible de vérifier les exports. Utilisez Actualiser pour réessayer."}</p>
+        </div>}
         {loading ? (
           <div className="flex items-center justify-center py-12 gap-3">
             <Loader2 size={20} className="animate-spin text-primary" />
             <span className="text-sm text-muted-foreground">Chargement des exports…</span>
           </div>
-        ) : (
+        ) : hasLoaded ? (
           <ExportsDashboard exports={exports} />
-        )}
+        ) : null}
       </div>
     </div>
   );

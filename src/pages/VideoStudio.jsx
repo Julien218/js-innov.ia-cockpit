@@ -37,6 +37,7 @@ const createVideoProject = (project = {}) => {
     transition: "fade",
     status: "draft",
     ...safeProject,
+    template_colors: safeProject.template_colors || safeProject.metadata?.template_colors,
     clips: Array.isArray(safeProject.clips) ? safeProject.clips : [],
     texts: Array.isArray(safeProject.texts) ? safeProject.texts : [],
   };
@@ -174,6 +175,7 @@ export default function VideoStudio() {
           const normalized = createVideoProject(found);
           setVp(normalized);
           setTracks(normalized.template_tracks || null);
+          setActivePanel(normalized.template_tracks?.length ? "multitrack" : "timeline");
           if (normalized.project_id) {
             base44.entities.Project.filter({ id: normalized.project_id }).then(([p]) => {
               setSourceProject(p || null);
@@ -477,9 +479,9 @@ export default function VideoStudio() {
   );
 
   const currentVp = createVideoProject(vp);
-  const clipsDuration = currentVp.clips.reduce((sum, clip) => sum + (clip?.duration || 4), 0);
+  const clipsDuration = currentVp.clips.reduce((sum, clip) => sum + (Number(clip?.duration) || 4), 0);
   const audioDuration = Number(currentVp.audio_duration_seconds) || 0;
-  const totalDuration = Math.max(clipsDuration, audioDuration);
+  const totalDuration = Math.max(clipsDuration, audioDuration, Number(currentVp.template_duration) || 0);
   const hasAudio = Boolean(currentVp.audio_url);
   const hasClips = currentVp.clips.length > 0;
 
@@ -598,7 +600,7 @@ export default function VideoStudio() {
                   }}
                   currentTime={currentTime}
                   onSeek={setCurrentTime}
-                  duration={Math.max(Number(currentVp.template_duration) || 0, totalDuration, 30)}
+                  duration={Math.max(Number(currentVp.template_duration) || 0, totalDuration) || 30}
                 />
               </div>
             )}
@@ -720,3 +722,4 @@ export default function VideoStudio() {
     </div>
   );
 }
+

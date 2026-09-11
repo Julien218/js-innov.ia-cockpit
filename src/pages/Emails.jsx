@@ -1,3 +1,4 @@
+import { mailboxErrorMessage } from "@/lib/mailError";
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { MAIL_CATEGORIES, mailCategory, mailCategoryCounts, filterMailboxEmails } from '@/lib/mailboxCategories';
 import { useSearchParams } from "react-router-dom";
@@ -408,7 +409,7 @@ export default function Emails() {
       if (!data.success) throw new Error(data.error || 'Erreur de chargement');
       if (!controller.signal.aborted) setEmails(data.emails || []);
     } catch (err) {
-      if (!controller.signal.aborted) { setError(err.message); setEmails([]); }
+      if (!controller.signal.aborted) { setError(mailboxErrorMessage(err)); setEmails([]); }
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
@@ -532,7 +533,7 @@ export default function Emails() {
         <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[360px_1fr]">
           <div className={`${selectedUid ? 'hidden md:block' : 'block'} border-r border-white/8 overflow-y-auto`}>
             {loading && <div className="p-8 text-center text-gray-500 text-sm"><Loader2 className="w-5 h-5 animate-spin inline mr-2" />Chargement...</div>}
-            {error && <div className="m-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">{error}</div>}
+            {error && <div role="alert" className="m-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">{error}</div>}
             {!loading && !error && filtered.length === 0 && <div className="p-8 text-center text-gray-600 text-sm">Aucun email.</div>}
             {filtered.map(email => <EmailListItem key={email.uid} email={email} isSelected={selectedUid === email.uid} sentFolder={isSentFolder} onClick={() => fetchDetail(email)} onDelete={handleDelete} onArchive={handleArchive} />)}
           </div>

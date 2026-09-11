@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from "react";
+import { exportFilename, formatExportSize } from "@/lib/exportMetrics";
+import { downloadRemoteFile, videoStudioMediaUrl } from "@/lib/fileDownload";
 import { X, Play, Pause, Volume2, VolumeX, Download } from "lucide-react";
 
 export default function VideoPlayer({ videoExport, onClose }) {
@@ -8,6 +10,8 @@ export default function VideoPlayer({ videoExport, onClose }) {
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const videoRef = useRef(null);
+  const [error, setError] = useState("");
+  const [downloading, setDownloading] = useState(false);
 
   const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -34,7 +38,7 @@ export default function VideoPlayer({ videoExport, onClose }) {
     const video = videoRef.current;
     if (!video) return;
     if (playing) {
-      video.play().catch(() => {});
+      video.play().catch(() => { setPlaying(false); setError("Lecture impossible. Vérifiez la disponibilité du fichier."); });
     } else {
       video.pause();
     }
@@ -46,14 +50,18 @@ export default function VideoPlayer({ videoExport, onClose }) {
     }
   }, [volume, isMuted]);
 
-  const handleDownload = () => {
-    const a = document.createElement("a");
-    a.href = videoExport.file_url;
-    a.download = `${videoExport.title}.webm`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  const handleDownload = async () => {
+    setError(""); setDownloading(true);
+    try { await downloadRemoteFile(videoExport.file_url, exportFilename(videoExport)); }
+    catch (cause) { setError(cause.message || "Téléchargement impossible."); }
+    finally { setDownloading(false); }
   };
+
+  useEffect(() => {
+    const onKey = event => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const formatTime = (sec) => {
     const m = Math.floor(sec / 60);
@@ -68,19 +76,21 @@ export default function VideoPlayer({ videoExport, onClose }) {
         <div>
           <p className="font-display text-base font-semibold text-white">{videoExport.title}</p>
           <p className="text-xs text-white/40 mt-1">
-            {videoExport.format} · {videoExport.duration_seconds}s · {(videoExport.file_size_mb).toFixed(1)} MB
+            {videoExport.format} · {videoExport.duration_seconds}s · {formatExportSize(videoExport.file_size_mb)}
           </p>
         </div>
-        <button onClick={onClose} className="text-white/50 hover:text-white transition-colors">
+        <button aria-label="Fermer le lecteur" onClick={onClose} className="text-white/50 hover:text-white transition-colors">
           <X size={24} />
         </button>
       </div>
 
+      {error && <p role="alert" className="p-3 text-red-300">{error}</p>}
       {/* Video player */}
       <div className="flex-1 flex items-center justify-center overflow-hidden bg-black" onClick={e => e.stopPropagation()}>
         <video
           ref={videoRef}
-          src={videoExport.file_url}
+          src={videoStudioMediaUrl(videoExport.file_url)}
+          onError={() => { setPlaying(false); setError("Ce fichier vidéo ne peut pas être lu. Vérifiez sa disponibilité."); }}
           className="max-w-full max-h-full object-contain"
           controls={false}
         />
@@ -106,6 +116,7 @@ export default function VideoPlayer({ videoExport, onClose }) {
         <div className="flex items-center gap-4">
           {/* Play/Pause */}
           <button
+            aria-label={playing ? "Pause" : "Lire la vidéo"}
             onClick={() => setPlaying(!playing)}
             className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground hover:bg-primary/90 transition-colors"
           >
@@ -115,12 +126,14 @@ export default function VideoPlayer({ videoExport, onClose }) {
           {/* Volume control */}
           <div className="flex items-center gap-2">
             <button
+              aria-label={isMuted ? "Activer le son" : "Couper le son"}
               onClick={() => setIsMuted(!isMuted)}
               className="text-white/50 hover:text-white transition-colors"
             >
               {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
             </button>
             <input
+              aria-label="Volume"
               type="range"
               min="0"
               max="1"
@@ -145,6 +158,7 @@ export default function VideoPlayer({ videoExport, onClose }) {
           {/* Download button */}
           <button
             onClick={handleDownload}
+            disabled={downloading}
             className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/20 text-white/70 hover:text-white hover:border-white/40 transition-colors text-sm"
           >
             <Download size={16} />
