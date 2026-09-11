@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto = require('node:crypto');
 const { analyzeDomain, MANAGED_DOMAINS } = require('./server-domain-ops.cjs');
-const { executeTaskBatch, sanitizeTaskBatchPayload, canonicalTaskKey, completionResult, operationalStatus } = require('./server-task-batch.cjs');
+const { executeTaskBatch, sanitizeTaskBatchPayload, canonicalTaskKey, completionResult, operationalStatus, persistedRunState } = require('./server-task-batch.cjs');
 const { resolveNovaExecutor, isReadOnlySiteTask } = require('./server-nova-executors.cjs');
 
 const router = express.Router();
@@ -244,9 +244,11 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
       if (groupRuns.length) {
         for (const run of groupRuns) {
           const item = { task_id: run.task_id, title: group.find(task => String(task.id) === String(run.task_id))?.titre, run_id: run.id, status: 'already_running', operational_status: run.operational_status || (run.status === 'awaiting_approval' ? 'WAITING_AUTHORIZATION' : run.status === 'awaiting_review' ? 'WAITING_INPUT' : 'RUNNING'), reason: 'reservation_existante_conservee' };
-          if (item.operational_status === 'WAITING_AUTHORIZATION') awaitingAuthorization.push(item); else existingExecutions.push(item);
+          if (item.operational_status === 'WAITING_AUTHORIZATION') awaitingAuthorization.push(item);
+          else if (['RUNNING', 'RETRYING'].includes(item.operational_status)) existingExecutions.push(item);
+          else if (!blocked.some(entry => entry.task_id === task.id)) blocked.push({ ...item, task_id: task.id, title: task.titre || task.title, reason: run.reason || 'confirmation_execution_absente', run_ids: groupRuns.map(entry => entry.id) });
         }
-        if (groupRuns.length > 1) blocked.push({ task_id: task.id, title: task.titre || task.title, duplicate_ids: copies.map(item => item.id), run_ids: groupRuns.map(run => run.id), operational_status: 'TECHNICAL_ERROR', reason: 'plusieurs_runs_actifs_sur_un_objectif_regroupe' });
+        if (groupRuns.filter(run => ['RUNNING', 'RETRYING'].includes(run.operational_status)).length > 1) blocked.push({ task_id: task.id, title: task.titre || task.title, duplicate_ids: copies.map(item => item.id), run_ids: groupRuns.map(run => run.id), operational_status: 'TECHNICAL_ERROR', reason: 'plusieurs_runs_actifs_sur_un_objectif_regroupe' });
         if (copies.length) duplicates.push({ canonical_task_id: task.id, duplicate_ids: copies.map(item => item.id), count: group.length });
         continue;
       }
@@ -344,7 +346,7 @@ async function taskRunSummaries(fetchRuns = agentFetch, organisation = 'jsinnovi
     return rowsFrom(await response.json());
   }));
   const unique = new Map(batches.flat().map(run => [run.id, run]));
-  return [...unique.values()].map(run => ({ id: run.id, task_id: run.task_id, status: run.status, updated_at: run.updated_at, created_at: run.created_at, completed_at: run.completed_at, operational_status: run.result?.operational_status || null, proof_status: run.result?.proof_status || null, has_evidence: Boolean(run.result?.evidence?.length) }));
+  return [...unique.values()].map(run => ({ id: run.id, task_id: run.task_id, status: run.status, updated_at: run.updated_at, created_at: run.created_at, completed_at: run.completed_at, ...persistedRunState(run), proof_status: run.result?.proof_status || null, has_evidence: Boolean(run.result?.evidence?.length) }));
 }
 
 router.get('/runs', async (req, res) => {

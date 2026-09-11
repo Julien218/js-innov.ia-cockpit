@@ -185,9 +185,7 @@ export default function Domaines() {
       setConfirmation(null);
       setBanner({
         type: result.verified ? "success" : "warning",
-        text: result.verified
-          ? `${domain} : correction appliquée et vérifiée automatiquement.`
-          : `${domain} : intervention lancée mais amélioration non vérifiée. La tâche reste bloquée pour contrôle.`,
+        text: `${domain} : ${result.message || "Résultat non confirmé. Consultez le suivi NOVA."}`,
       });
     } catch (error) {
       const payload = error.payload || {};
