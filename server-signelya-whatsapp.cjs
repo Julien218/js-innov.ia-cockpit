@@ -165,7 +165,46 @@ async function sendSuperadminOfflineEmail(client, event, { playerName, clientNam
   }
 }
 
-async function sendSuperadminPush(client, event, { playerName, clientName, minutes }) {
+async function sendSuperadminOnlineEmail(client, event, { playerName, clientName, restoredAt }) {
+  const delivery = await client.query(
+    `insert into signelya_email_deliveries
+      (event_id,recipient_email,status)
+     values ($1,$2,'queued') returning id`,
+    [event.id, SUPERADMIN_EMAIL]
+  );
+  const deliveryId = delivery.rows[0].id;
+  try {
+    const transport = getMailTransport();
+    if (!transport) throw new Error('SMTP JS-Innov.IA non configuré');
+    await transport.sendMail({
+      from: `"SIGNELYA Assistance" <${SMTP_EMAIL}>`,
+      to: SUPERADMIN_EMAIL,
+      subject: `[SIGNELYA] Écran de nouveau en ligne — ${clientName}`,
+      text: [
+        'Connexion de l’écran rétablie.',
+        `Client : ${clientName}`,
+        `Écran : ${playerName}`,
+        `Nouveau signal : ${restoredAt}`,
+        '',
+        'La surveillance SIGNELYA a automatiquement confirmé le retour du Player.'
+      ].join('\n')
+    });
+    await client.query(
+      "update signelya_email_deliveries set status='sent',updated_at=now() where id=$1",
+      [deliveryId]
+    );
+    return { sent: true };
+  } catch (error) {
+    await client.query(
+      "update signelya_email_deliveries set status='failed',error=$2,updated_at=now() where id=$1",
+      [deliveryId, String(error.message || error).slice(0,1000)]
+    );
+    console.error('[signelya][email]', error.message);
+    return { sent: false, error: error.message };
+  }
+}
+
+async function sendSuperadminPush(client, event, { playerName, clientName, minutes, title, body, tag }) {
   if (!pushConfigured()) return { configured: false, sent: 0 };
   const subscriptions = await client.query(
     `select id,subscription from signelya_push_subscriptions
@@ -175,10 +214,10 @@ async function sendSuperadminPush(client, event, { playerName, clientName, minut
   for (const row of subscriptions.rows) {
     try {
       await webpush.sendNotification(row.subscription, JSON.stringify({
-        title: 'SIGNELYA — Écran hors ligne',
-        body: `${clientName} · ${playerName} est hors ligne depuis ${minutes} minutes.`,
+        title: title || 'SIGNELYA — Écran hors ligne',
+        body: body || `${clientName} · ${playerName} est hors ligne depuis ${minutes} minutes.`,
         url: '/ecran-geant',
-        tag: `signelya-offline-${event.id}`
+        tag: tag || `signelya-offline-${event.id}`
       }));
       sent += 1;
       await client.query(
@@ -197,6 +236,38 @@ async function sendSuperadminPush(client, event, { playerName, clientName, minut
     }
   }
   return { configured: true, sent };
+}
+
+async function notifyBackOnline(player) {
+  if (!NOTIFICATIONS_ENABLED) return { disabled: true };
+  await ensureReady();
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    const ownerEmail = normalizeEmail(player.owner_email);
+    const name = await clientName(client, ownerEmail);
+    const restoredAt = new Date(player.last_seen_at || Date.now()).toISOString();
+    const playerName = player.name || 'Écran SIGNELYA';
+    const event = await insertEvent(client, {
+      dedupeKey: `player:${player.id}:online:${restoredAt}`,
+      ownerEmail,
+      eventType: 'screen.online_restored',
+      audience: ['client', 'superadmin'],
+      payload: { playerId: player.id, playerName, clientName: name, restoredAt }
+    });
+    if (!event) return { duplicate: true };
+    const emailResult = await sendSuperadminOnlineEmail(client, event, { playerName, clientName: name, restoredAt });
+    const pushResult = await sendSuperadminPush(client, event, {
+      playerName,
+      clientName: name,
+      title: 'SIGNELYA — Écran de nouveau en ligne',
+      body: `${name} · ${playerName} transmet à nouveau correctement.`,
+      tag: `signelya-online-${event.id}`
+    });
+    return { eventId: event.id, superadminEmail: emailResult, superadminPush: pushResult };
+  } finally {
+    client.release();
+  }
 }
 
 async function notifyConfirmedOffline(player) {
@@ -254,7 +325,7 @@ async function notifyVideosOnline({ publicationId, ownerEmail, playerName }) {
       dedupeKey: `publication:${publicationId}:videos-online`,
       ownerEmail: email,
       eventType: 'videos.online',
-      audience: ['commercial'],
+      audience: ['commercial', 'superadmin'],
       payload: { publicationId, playerName, clientName: name }
     });
     if (!event) return { duplicate: true };
@@ -326,6 +397,9 @@ async function pollOfflinePlayers() {
             [String(player.id)]
           );
         }
+      }
+      if (!offline && previousState === 'offline') {
+        await notifyBackOnline(player);
       }
     }
   } catch (error) {
@@ -426,6 +500,87 @@ router.delete('/push/subscriptions', requireSession('superadmin'), async (req, r
   }
 });
 
+function notificationVisibility(role) {
+  if (['admin', 'superadmin'].includes(role)) return '($2::text is not null)';
+  if (role === 'collaborateur') {
+    return `(
+      ('commercial' = any(e.audience) or 'collaborateur' = any(e.audience))
+      and exists (
+        select 1 from signelya_client_commercial_assignments a
+        where lower(a.client_email)=lower(e.owner_email)
+          and lower(a.commercial_email)=lower($2)
+      )
+    )`;
+  }
+  return "lower(e.owner_email)=lower($2) and 'client'=any(e.audience)";
+}
+
+router.get('/notifications', requireSession('client'), async (req, res) => {
+  try {
+    await ensureReady();
+    const email = normalizeEmail(req.user.email);
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit || 20)));
+    const visibility = notificationVisibility(req.user.role);
+    const result = await getPool().query(
+      `select e.id,e.event_type,e.owner_email,e.audience,e.payload,e.created_at,
+              (r.event_id is not null) as read,
+              count(*) filter (where r.event_id is null) over()::int as unread_count
+       from signelya_notification_events e
+       left join signelya_notification_reads r
+         on r.event_id=e.id and lower(r.user_email)=lower($1)
+       where ${visibility}
+       order by e.created_at desc
+       limit $3`,
+      [email, email, limit]
+    );
+    const unreadCount = Number(result.rows[0]?.unread_count || 0);
+    const events = result.rows.map(({ unread_count, ...event }) => event);
+    res.json({ events, unreadCount });
+  } catch (error) {
+    res.status(503).json({ error: error.message });
+  }
+});
+
+router.post('/notifications/read-all', requireSession('client'), async (req, res) => {
+  try {
+    await ensureReady();
+    const email = normalizeEmail(req.user.email);
+    const visibility = notificationVisibility(req.user.role);
+    await getPool().query(
+      `insert into signelya_notification_reads (event_id,user_email)
+       select e.id,$1 from signelya_notification_events e
+       where ${visibility}
+       on conflict (event_id,user_email) do nothing`,
+      [email, email]
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(503).json({ error: error.message });
+  }
+});
+
+router.post('/notifications/:id/read', requireSession('client'), async (req, res) => {
+  try {
+    await ensureReady();
+    const email = normalizeEmail(req.user.email);
+    const eventId = String(req.params.id || '');
+    if (!/^[0-9a-f-]{36}$/i.test(eventId)) return res.status(400).json({ error: 'Notification invalide' });
+    const visibility = notificationVisibility(req.user.role);
+    const result = await getPool().query(
+      `insert into signelya_notification_reads (event_id,user_email)
+       select e.id,$1 from signelya_notification_events e
+       where e.id=$3 and ${visibility}
+       on conflict (event_id,user_email) do nothing
+       returning event_id`,
+      [email, email, eventId]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: 'Notification introuvable' });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(503).json({ error: error.message });
+  }
+});
+
 router.get('/status', requireSession('superadmin'), async (req, res) => {
   try {
     await ensureReady();
@@ -516,4 +671,4 @@ function startMonitor() {
   setTimeout(() => pollOfflinePlayers(), 15000).unref?.();
 }
 
-module.exports = { router, startMonitor, notifyVideosOnline, notifyConfirmedOffline };
+module.exports = { router, startMonitor, notifyVideosOnline, notifyConfirmedOffline, notifyBackOnline };
