@@ -5,14 +5,27 @@ on:
     branches: [feat/elynea-music-motion-production-20260911]
     paths:
       - '.github/workflows/music-motion-production-ci.yml'
-      - 'tests/music-motion-production.test.cjs'
-  pull_request:
-    paths:
       - 'src/pages/MusicMotionStudio.jsx'
+      - 'src/pages/VideoStudio.jsx'
       - 'src/components/music-motion/**'
+      - 'src/components/studio/VideoPreview.jsx'
       - 'src/lib/music-motion/**'
       - 'local-agent/music_motion*'
       - 'local-agent/music-motion*'
+      - 'local-agent/server.js'
+      - 'local-agent/requirements-music-motion.txt'
+      - 'tests/music-motion*'
+  pull_request:
+    paths:
+      - 'src/pages/MusicMotionStudio.jsx'
+      - 'src/pages/VideoStudio.jsx'
+      - 'src/components/music-motion/**'
+      - 'src/components/studio/VideoPreview.jsx'
+      - 'src/lib/music-motion/**'
+      - 'local-agent/music_motion*'
+      - 'local-agent/music-motion*'
+      - 'local-agent/server.js'
+      - 'local-agent/requirements-music-motion.txt'
       - 'tests/music-motion*'
       - '.github/workflows/music-motion-production-ci.yml'
   workflow_dispatch:
@@ -20,40 +33,53 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: music-motion-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
-      - name: Prepare private source snapshot for integration validation
-        run: |
-          python3 - <<'PY'
-          import pathlib, subprocess, zipfile
-          paths = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
-          with zipfile.ZipFile('/tmp/music-motion-source.zip', 'w', zipfile.ZIP_DEFLATED) as z:
-              for name in paths:
-                  if not name: continue
-                  p = pathlib.Path(name)
-                  if p.name.startswith('.env') or p.suffix.lower() in ('.pem', '.key', '.p12', '.pfx'): continue
-                  if p.is_file(): z.write(p, name)
-          PY
-      - uses: actions/upload-artifact@v4
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
         with:
-          name: music-motion-source-${{ github.sha }}
-          path: /tmp/music-motion-source.zip
-          retention-days: 1
-      - name: Install
+          python-version: '3.12'
+      - name: Install FFmpeg and acoustic dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          python -m pip install 'numpy>=1.26,<3' 'scipy>=1.12,<2' 'librosa>=0.10.2,<1' 'soundfile>=0.12,<1' 'pypdf>=5,<7'
+      - name: Install cockpit dependencies
         run: npm ci
       - name: Build cockpit
         run: npm run build
-      - name: Production regressions
+      - name: Focused production regressions
         run: |
           if test -f tests/music-motion-production.test.cjs; then
-            node --test tests/music-motion-production.test.cjs
+            node --test tests/music-motion-production.test.cjs tests/video-studio-audio.test.cjs tests/whisper-fallback.test.cjs
+          else
+            node --test tests/video-studio-audio.test.cjs tests/whisper-fallback.test.cjs
           fi
+      - name: Full-source acoustic regressions
+        run: |
+          if test -f tests/music-motion-audio_test.py; then
+            python tests/music-motion-audio_test.py
+          fi
+      - name: Private dependency snapshot for offline integration validation
+        if: github.ref == 'refs/heads/feat/elynea-music-motion-production-20260911' && github.event_name == 'push'
+        run: |
+          tar -czf /tmp/music-motion-node-dependencies.tar.gz node_modules
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/feat/elynea-music-motion-production-20260911' && github.event_name == 'push'
+        with:
+          name: music-motion-dependencies-${{ github.sha }}
+          path: /tmp/music-motion-node-dependencies.tar.gz
+          retention-days: 1
