@@ -36,8 +36,9 @@ const columns = [
       )}
     </div>
   ) },
-  { key: "client_nom",    label: "Client" },
-  { key: "projet_nom",    label: "Projet" },
+  { key: "projet_nom", label: "Contexte", render: (value, row) => (
+    <div className="text-xs"><p>{value || row.client_nom || "—"}</p>{value && row.client_nom && <p className="text-muted-foreground">{row.client_nom}</p>}</div>
+  ) },
   { key: "priorite",      label: "Priorité",  render: v => <StatusBadge status={v} /> },
   { key: "statut",        label: "Statut",    render: (v, row) => <StatusBadge status={row.operational_status || v} /> },
   { key: "date_echeance", label: "Échéance",  render: v => v ? new Date(v).toLocaleDateString("fr-BE") : "—" },
@@ -187,10 +188,10 @@ export default function Taches() {
 
   const actions = (row) => (
     <div className="flex gap-2">
-      <Button size="icon" variant="ghost" onClick={() => { setEditing(row); setOpen(true); }}>
+      <Button size="icon" variant="ghost" aria-label={`Modifier ${row.titre || 'la tâche'}`} title="Modifier la tâche" onClick={() => { setEditing(row); setOpen(true); }}>
         <Pencil className="w-4 h-4" />
       </Button>
-      <Button size="icon" variant="ghost" className="text-red-400"
+      <Button size="icon" variant="ghost" className="text-muted-foreground hover:text-red-600" aria-label={`Supprimer ${row.titre || 'la tâche'}`} title="Supprimer la tâche"
         onClick={() => { if (confirm("Supprimer cette tâche ?")) del.mutate(row.id); }}>
         <Trash2 className="w-4 h-4" />
       </Button>
@@ -210,13 +211,17 @@ export default function Taches() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader title="Tâches" subtitle={`${filteredTasks.length} tâche(s) affichée(s) · ${rows.length} enregistrement(s) conservé(s)`}
         search={search} onSearch={(value) => { setSearch(value); setVisibleCount(25); }}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouvelle tâche</Button>} />
 
       {runsUnavailable && <p role="alert" className="text-sm text-amber-600">Les états NOVA ne peuvent pas être actualisés. Les tâches et leurs historiques restent conservés.</p>}
-      <section className="rounded-2xl border border-border/70 bg-card/70 p-4 shadow-sm" aria-label="Pilotage des exécutions NOVA">
+      <details className="rounded-xl border border-border/70 bg-card p-4" aria-label="Pilotage des exécutions NOVA">
+        <summary className="cursor-pointer text-sm font-semibold focus-visible:outline-primary">
+          Pilotage NOVA <span className="ml-2 font-normal text-muted-foreground">{autopilotStatus?.last_result ? `${awaitingAuthorization.length} autorisation(s) · ${queuedExecutions.length} en cours · ${actualBlockers.length} blocage(s)` : 'État en cours de vérification'} — détails et actions</span>
+        </summary>
+        <div className="mt-4 border-t border-border pt-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
@@ -259,7 +264,8 @@ export default function Taches() {
             </Button>
           </div>
         </div>
-      </section>
+        </div>
+      </details>
 
       <section className="workspace-toolbar" aria-label="Filtres des tâches">
         <div className="flex flex-wrap gap-2">
@@ -282,7 +288,7 @@ export default function Taches() {
           })}
         </div>
         <p className="text-xs text-muted-foreground">
-          Les tâches bloquées, en retard et urgentes sont affichées en premier. Aucun doublon n’est supprimé.
+          Priorité aux blocages et aux échéances. Les historiques restent conservés.
         </p>
         <Button
           type="button"

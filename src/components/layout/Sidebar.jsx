@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Users, Target, FolderKanban,
-  FileText, Receipt, ChevronLeft, ChevronRight, X,
+  FileText, Receipt, ChevronLeft, ChevronRight, ChevronDown, Search, X,
   CheckSquare, MessageSquare, Shield,
   Network, Smartphone, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
@@ -166,11 +166,18 @@ export const allNavGroups = [
 ];
 
 export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
+  const [navSearch, setNavSearch] = useState("");
+  const [expandedGroups, setExpandedGroups] = useState({ Pilotage: true, Projets: true, CRM: true });
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem("cockpit-sidebar-collapsed") === "true";
   });
   const location = useLocation();
+  React.useEffect(() => {
+    setNavSearch("");
+    const activeGroup = allNavGroups.find(group => group.items.some(item => isNavigationActive(location.pathname, item.path)));
+    if (activeGroup) setExpandedGroups(current => ({ ...current, [activeGroup.label]: true }));
+  }, [location.pathname]);
   const compact = collapsed && !mobileOpen;
   React.useEffect(() => {
     if (!mobileOpen) return;
@@ -276,15 +283,29 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
           </div>
         )}
 
-        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
-          {navGroups.map((group) => (
+        {!compact && (
+          <div className="relative mx-3 mt-3">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <input aria-label="Trouver un module" placeholder="Trouver un module…" value={navSearch}
+              onChange={event => setNavSearch(event.target.value)}
+              className="h-10 w-full rounded-lg border border-border bg-muted/40 pl-9 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+            {navSearch && <button type="button" aria-label="Effacer la recherche de module" onClick={() => setNavSearch("")} className="absolute right-1 top-1 p-2"><X className="h-4 w-4" /></button>}
+          </div>
+        )}
+        <nav aria-label="Navigation principale" className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
+          {navGroups.filter(group => compact || !navSearch.trim() || group.items.some(item => `${group.label} ${item.label}`.toLocaleLowerCase('fr').includes(navSearch.trim().toLocaleLowerCase('fr')))).map((group) => {
+            const containsActive = group.items.some(item => isNavigationActive(location.pathname, getPath(item)));
+            const expanded = compact || Boolean(navSearch.trim()) || (expandedGroups[group.label] ?? containsActive);
+            return (
             <div key={group.label} className="mb-3">
               {!compact && (
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-3 mb-1.5">
-                  {group.label}
-                </p>
+                <button type="button" aria-expanded={expanded}
+                  onClick={() => setExpandedGroups(current => ({ ...current, [group.label]: !expanded }))}
+                  className="flex min-h-10 w-full items-center justify-between rounded-lg px-3 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground">
+                  <span>{group.label}</span><ChevronDown className={cn("h-3.5 w-3.5 transition-transform", !expanded && "-rotate-90")} />
+                </button>
               )}
-              {group.items.map((item) => {
+              {expanded && group.items.filter(item => compact || !navSearch.trim() || `${group.label} ${item.label}`.toLocaleLowerCase('fr').includes(navSearch.trim().toLocaleLowerCase('fr'))).map((item) => {
                 const itemPath = getPath(item);
                 const active = isNavigationActive(location.pathname, itemPath);
                 const badge = item.badge ? badgeValues[item.badge] || 0 : 0;
@@ -330,7 +351,8 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
                 );
               })}
             </div>
-          ))}
+          );})}
+          {!compact && navSearch.trim() && !navGroups.some(group => group.items.some(item => `${group.label} ${item.label}`.toLocaleLowerCase('fr').includes(navSearch.trim().toLocaleLowerCase('fr')))) && <p role="status" className="px-3 py-4 text-sm text-muted-foreground">Aucun module trouvé.</p>}
         </nav>
 
         <button
