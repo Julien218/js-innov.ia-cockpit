@@ -4,6 +4,7 @@ const INVOICE_TERMS = /\b(facture|invoice|rechnung|receipt|reçu|abonnement|subs
 const REQUEST_TERMS = /\b(devis|quote|offre|demande|request|renseignement|information|rendez-vous|proposition)\b/i;
 const GITHUB_NOTIFICATION_SENDER = /(?:notifications|noreply)@github\.com/i;
 const GITHUB_BILLING_SUBJECT = /\b(invoice|facture|receipt|reçu|billing|payment due|paiement)\b/i;
+const BILLING_DOCUMENT_EXTENSIONS = new Set(['.pdf', '.xml', '.csv', '.xlsx', '.xls']);
 const SAFE_ACCOUNTING_EXTENSIONS = new Set(['.pdf', '.xml', '.csv', '.xlsx', '.xls', '.png', '.jpg', '.jpeg', '.webp']);
 
 function clean(value, max = 500) {
@@ -42,13 +43,27 @@ function isOperationalGitHubNotification(email) {
     && !GITHUB_BILLING_SUBJECT.test(String(email?.subject || ''));
 }
 
+function isHighConfidencePromotionSubject(subject) {
+  const normalized = clean(subject, 500)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  return /\b(offre a duree limitee|offre exclusive|profitez|credit de \d|code promo|derniere chance|newsletter|promotion|soldes|black friday)\b/.test(normalized);
+}
+
 function classifyEmail(email) {
   if (isOperationalGitHubNotification(email)) {
     return { category: 'other', confidence: 0.99, needsReview: false, reason: 'github_operational_notification' };
   }
   const attachments = Array.isArray(email?.attachments) ? email.attachments : [];
   const names = attachments.map((item) => item.filename || '').join(' ');
+  const subject = String(email?.subject || '');
   const haystack = `${email?.subject || ''} ${email?.text || email?.body || ''} ${names}`;
+  const explicitBillingSubject = INVOICE_TERMS.test(subject);
+  const billingDocument = attachments.some((item) => BILLING_DOCUMENT_EXTENSIONS.has(path.extname(item.filename || '').toLowerCase()));
+  if (isHighConfidencePromotionSubject(subject) && !explicitBillingSubject && !billingDocument) {
+    return { category: 'other', confidence: 0.97, needsReview: false, reason: 'high_confidence_promotional_subject' };
+  }
   const invoiceSignal = INVOICE_TERMS.test(haystack);
   const accountingAttachment = attachments.some((item) => SAFE_ACCOUNTING_EXTENSIONS.has(path.extname(item.filename || '').toLowerCase()));
   if (invoiceSignal) {
@@ -119,4 +134,4 @@ function buildDailyDigest(date, items) {
   return { counts, text, subject: `NOVA — Compte rendu e-mails du ${date}` };
 }
 
-module.exports = { classifyEmail, extractAccountingMetadata, shouldArchiveAttachment, sourceTypeForProvider, buildDailyDigest, summarizeAccountingItems, formatAccountingLog, parseEuroAmount, invoiceNumber, isOperationalGitHubNotification };
+module.exports = { classifyEmail, extractAccountingMetadata, shouldArchiveAttachment, sourceTypeForProvider, buildDailyDigest, summarizeAccountingItems, formatAccountingLog, parseEuroAmount, invoiceNumber, isOperationalGitHubNotification, isHighConfidencePromotionSubject };
