@@ -3,8 +3,8 @@ self.addEventListener('push', event => {
   try { data = event.data?.json() || {}; } catch { data = { body: event.data?.text() || '' }; }
   event.waitUntil(self.registration.showNotification(data.title || 'SIGNELYA', {
     body: data.body || 'Nouvelle alerte SIGNELYA',
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
+    icon: '/signelya-icon-192.png',
+    badge: '/signelya-icon-192.png',
     tag: data.tag || 'signelya-alert',
     renotify: true,
     data: { url: data.url || '/ecran-geant' }
