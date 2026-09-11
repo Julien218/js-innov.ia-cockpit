@@ -50,65 +50,79 @@ def transcribe(audio_path: Path) -> dict:
         result["runtime_seconds"] = round(time.time() - started, 3)
         return result
 
-    try:
-        model = WhisperModel(
-            model_name,
-            device=device,
-            compute_type=compute_type,
-        )
-        segments, info = model.transcribe(
-            str(audio_path),
-            language=language or None,
-            word_timestamps=True,
-            vad_filter=True,
-            condition_on_previous_text=True,
-        )
-
-        normalized_segments = []
-        transcript_parts = []
-        for segment in segments:
-            words = []
-            for word in getattr(segment, "words", None) or []:
-                words.append(
+    attempts = [(device, compute_type)]
+    if device != "cpu":
+        attempts.append(("cpu", "int8"))
+    for attempt_device, attempt_compute in attempts:
+        try:
+            model = WhisperModel(
+                model_name,
+                device=attempt_device,
+                compute_type=attempt_compute,
+            )
+            segments, info = model.transcribe(
+                str(audio_path),
+                language=language or None,
+                word_timestamps=True,
+                vad_filter=True,
+                condition_on_previous_text=True,
+            )
+    
+            normalized_segments = []
+            transcript_parts = []
+            for segment in segments:
+                words = []
+                for word in getattr(segment, "words", None) or []:
+                    words.append(
+                        {
+                            "word": str(getattr(word, "word", "") or "").strip(),
+                            "start": safe_float(getattr(word, "start", None), 0.0),
+                            "end": safe_float(getattr(word, "end", None), 0.0),
+                            "probability": safe_float(
+                                getattr(word, "probability", None), None
+                            ),
+                        }
+                    )
+                text = str(getattr(segment, "text", "") or "").strip()
+                if text:
+                    transcript_parts.append(text)
+                normalized_segments.append(
                     {
-                        "word": str(getattr(word, "word", "") or "").strip(),
-                        "start": safe_float(getattr(word, "start", None), 0.0),
-                        "end": safe_float(getattr(word, "end", None), 0.0),
-                        "probability": safe_float(
-                            getattr(word, "probability", None), None
-                        ),
+                        "id": int(getattr(segment, "id", len(normalized_segments))),
+                        "start": safe_float(getattr(segment, "start", None), 0.0),
+                        "end": safe_float(getattr(segment, "end", None), 0.0),
+                        "text": text,
+                        "words": words,
                     }
                 )
-            text = str(getattr(segment, "text", "") or "").strip()
-            if text:
-                transcript_parts.append(text)
-            normalized_segments.append(
+    
+            result.update(
                 {
-                    "id": int(getattr(segment, "id", len(normalized_segments))),
-                    "start": safe_float(getattr(segment, "start", None), 0.0),
-                    "end": safe_float(getattr(segment, "end", None), 0.0),
-                    "text": text,
-                    "words": words,
+                    "ok": True,
+                    "device": attempt_device,
+                    "compute_type": attempt_compute,
+                    "fallback_used": attempt_device != device,
+                    "transcript": " ".join(transcript_parts).strip(),
+                    "segments": normalized_segments,
+                    "detected_language": getattr(info, "language", None),
+                    "language_probability": safe_float(
+                        getattr(info, "language_probability", None), None
+                    ),
+                    "duration_seconds": safe_float(
+                        getattr(info, "duration", None), None
+                    ),
                 }
             )
-
-        result.update(
-            {
-                "ok": True,
-                "transcript": " ".join(transcript_parts).strip(),
-                "segments": normalized_segments,
-                "detected_language": getattr(info, "language", None),
-                "language_probability": safe_float(
-                    getattr(info, "language_probability", None), None
-                ),
-                "duration_seconds": safe_float(
-                    getattr(info, "duration", None), None
-                ),
-            }
-        )
-    except Exception as error:
-        result["warnings"].append("Transcription locale échouée: " + str(error))
-        result["error_code"] = "transcription_failed"
+            break
+        except Exception as error:
+            gpu_error = any(token in str(error).lower() for token in ("cuda", "cublas", "cudnn", "cudart"))
+            if attempt_device != "cpu" and gpu_error:
+                result["warnings"].append("Accélération GPU indisponible ; nouvelle tentative sur CPU (int8).")
+                result["gpu_error"] = str(error)
+                continue
+            result["warnings"].append("Transcription locale échouée: " + str(error))
+            result["error_code"] = "transcription_failed"
+            break
 
     result["runtime_seconds"] = round(time.time() - started, 3)
     return result
@@ -155,7 +169,7 @@ def main() -> int:
 
     transcription = transcribe(audio_path)
     transcription["acoustic"] = acoustic_summary(audio_path)
-    print(json.dumps(transcription, ensure_ascii=False))
+    print(json.dumps(transcription, ensure_ascii=True))
     return 0
 
 
