@@ -27,8 +27,8 @@ const formFields = [
 
 const columns = [
   { key: "titre",         label: "Tâche", render: (value, row) => (
-    <div className="flex items-center gap-2">
-      <span>{value}</span>
+    <div className="flex max-w-sm items-center gap-2 whitespace-normal">
+      <span className="break-words">{value}</span>
       {row.duplicate_count > 1 && (
         <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-600" title={`${row.duplicate_count} enregistrements regroupés`}>
           ×{row.duplicate_count}
@@ -302,6 +302,20 @@ export default function Taches() {
       </section>
 
       <div className="data-surface">
+        <div className="lg:hidden divide-y divide-border" aria-label="Liste des tâches">
+          {isLoading ? <p role="status" className="p-4 text-sm text-muted-foreground">Chargement des tâches…</p> : filteredTasks.length === 0 ? <p className="p-6 text-sm text-muted-foreground">Aucune tâche ne correspond à ces filtres</p> : filteredTasks.slice(0, visibleCount).map(row => (
+            <article key={row.id} className="space-y-3 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <h2 className="min-w-0 break-words text-sm font-semibold">{row.titre || 'Tâche sans titre'}</h2>
+                <Button size="icon" variant="ghost" className="shrink-0" aria-label={`Modifier ${row.titre || 'la tâche'}`} onClick={() => { setEditing(row); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2"><StatusBadge status={row.operational_status || row.statut} /><StatusBadge status={row.priorite} />{row.duplicate_count > 1 && <span className="text-xs text-muted-foreground">{row.duplicate_count} enregistrements regroupés</span>}</div>
+              {(row.projet_nom || row.client_nom || row.date_echeance) && <p className="text-xs text-muted-foreground">{[row.projet_nom, row.client_nom, row.date_echeance && `Échéance : ${new Date(row.date_echeance).toLocaleDateString('fr-BE')}`].filter(Boolean).join(' · ')}</p>}
+              <details><summary className="cursor-pointer text-xs text-muted-foreground">Détails et actions</summary><div className="mt-2 space-y-2"><p className="whitespace-pre-wrap break-words text-sm">{row.description || 'Aucune description.'}</p>{actions(row)}</div></details>
+            </article>
+          ))}
+        </div>
+        <div className="hidden lg:block">
         <DataTable
           columns={columns}
           data={filteredTasks.slice(0, visibleCount)}
@@ -309,6 +323,7 @@ export default function Taches() {
           actions={actions}
           emptyMessage="Aucune tâche ne correspond à ces filtres"
         />
+        </div>
         {filteredTasks.length > visibleCount && (
           <div className="flex items-center justify-between border-t border-border/70 px-4 py-3">
             <span className="text-xs text-muted-foreground">{visibleCount} sur {filteredTasks.length} affichées</span>
