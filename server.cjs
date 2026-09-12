@@ -294,6 +294,12 @@ function immediateExecutionMiddleware(req, _res, next) {
 app.use('/api/assistant', requireSession('client'), requirePermission('nova', 'client'), require('./server-assistant-intent.cjs').router);
 console.log('✅ NOVA : confirmations liées à la demande courante et préclassement email disponibles');
 
+// IONOS : inventaire du compte réservé au propriétaire, sans outil d'écriture.
+const ionosConnector = require('./server-ionos.cjs');
+app.use('/api/ionos', ionosConnector.router);
+app.use('/api/assistant', requireSession('client'), requirePermission('nova', 'client'), ionosConnector.chatRouter);
+console.log('✅ NOVA ELYNEA : connecteur IONOS en lecture seule installé');
+
 // Les suppressions unitaires explicites sont résolues avant tout modèle/batch.
 try {
   const documentDelete = require('./server-nova-document-delete.cjs');

@@ -1,0 +1,275 @@
+[
+  {
+    "name": "domains_list_domains",
+    "description": "Lister les domaines. Pagination offset/limit ; ne pas conclure à un inventaire complet sur une page.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "tld": {
+          "type": "string"
+        },
+        "pending_provisioning": {
+          "type": "boolean"
+        },
+        "name": {
+          "minLength": 3,
+          "type": "string"
+        },
+        "include_domain_status": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "dns_get_zones",
+    "description": "Lister les zones DNS du compte Hosting.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "dns_get_zone",
+    "description": "Consulter une zone DNS et ses enregistrements ; identifiant issu de dns_get_zones.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "zone_id": {
+          "type": "string"
+        },
+        "record_name": {
+          "type": "string"
+        },
+        "record_type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "zone_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "dedicatedserver_list_servers",
+    "description": "Lister les serveurs dédiés, état et ressources du contrat validé.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "dedicatedserver_list_ips",
+    "description": "Lister les IP du contrat Dedicated Server validé.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "dedicatedserver_list_contracts",
+    "description": "Lister les contrats Dedicated Server accessibles avant consultation.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "dedicatedserver_list_backups",
+    "description": "Lister les sauvegardes du contrat Dedicated Server validé.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "dedicatedserver_list_monitoring_policies",
+    "description": "Consulter les politiques de surveillance du contrat Dedicated Server validé.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "corevps_list_servers",
+    "description": "Lister les VPS et leur état pour un contrat validé par corevps_list_contracts.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "corevps_list_firewall_policies",
+    "description": "Consulter les politiques pare-feu du contrat VPS validé.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "corevps_list_ips",
+    "description": "Lister les IP du contrat VPS validé.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "corevps_list_contracts",
+    "description": "Lister les contrats VPS accessibles avant toute consultation VPS.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "corevps_list_monitoring_alarms",
+    "description": "Lister les alarmes du contrat VPS validé.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "corevps_get_server_monitoring_graphics",
+    "description": "Consulter une métrique VPS pour un serveur et un contrat précédemment listés.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "server_id": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        },
+        "contract_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "start": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "end": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "step": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "server_id",
+        "query"
+      ],
+      "type": "object"
+    }
+  }
+]
