@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import PageHeader from "@/components/shared/PageHeader";
+import IonosPanel from "@/components/IonosPanel";
 import { PLATFORM_SERVICE_LIST, PLATFORM_SERVICES } from "@/config/platformServices";
 import { cn } from "@/lib/utils";
 import {
@@ -206,6 +207,8 @@ export default function Domaines() {
         title="Domaines"
         subtitle="Monitoring live · diagnostic IA · réparation confirmée · SEO automatique"
       />
+
+      <IonosPanel />
 
       <section className="rounded-2xl border border-border bg-card p-4 space-y-3">
         <div>
