@@ -1,4 +1,4 @@
-"""Real Chromium smoke test of the actual workspace; mock auth, no paid/local AI calls.
+"""Real Chromium workspace test; mocked auth/chat, no paid/local AI generation.
 Run after: pip install playwright && playwright install --with-deps chromium
 """
 import hashlib
@@ -14,7 +14,7 @@ import urllib.request
 import wave
 import zipfile
 import zlib
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = Path(os.environ.get('MUSIC_MOTION_TEST_ARTIFACT_DIR', tempfile.mkdtemp(prefix='motion-ui-proof-')))
@@ -27,7 +27,7 @@ def png():
     return b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('!2I5B',320,180,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(pixels))+chunk(b'IEND',b'')
 
 def main():
-    proof={'checks':[], 'react_errors':[], 'generation_requests':[]}
+    proof={'checks':[], 'react_errors':[], 'generation_requests':[], 'mocked_chat_requests':0}
     html=ROOT/'music-motion-validation.html'; jsx=ROOT/'music-motion-validation.jsx'
     if html.exists() or jsx.exists():
         raise RuntimeError('Temporary validation entry already exists; do not overwrite user files.')
@@ -60,6 +60,11 @@ def main():
                 def api(route):
                     if '/api/auth/session' in route.request.url:
                         route.fulfill(json={'valid':True,'user':{'id':'test-user','name':'Validation locale','role':'admin'}})
+                    elif route.request.url.endswith('/api/music-motion/production/chat') and route.request.method=='POST':
+                        proof['mocked_chat_requests']+=1
+                        body=route.request.post_data_json
+                        scene_id=body['context']['scenes'][0]['id']
+                        route.fulfill(json={'message':'Proposition de test à valider.', 'actions':[{'type':'update_scene','scene_id':scene_id,'patch':{'image_prompt':'Plan proposé dans le test navigateur.'}}]})
                     else:
                         if route.request.method=='POST':proof['generation_requests'].append(route.request.url)
                         route.fulfill(status=503,json={'error':'No AI provider connected during this test.'})
@@ -73,12 +78,30 @@ def main():
                     page.locator('input[type=file][accept=".zip"]').set_input_files(str(archive))
                     dialog=page.get_by_role('dialog');dialog.wait_for();assert '8 scènes' in dialog.inner_text() and '8 médias' in dialog.inner_text()
                     page.get_by_role('button',name='Importer ce projet',exact=True).click();dialog.wait_for(state='hidden')
-                    assert page.get_by_label('Prompt de l’image-clé',exact=True).input_value()=='Décor sobre bleu nuit.'
+                    image_prompt=page.get_by_label('Prompt de l’image-clé',exact=True)
+                    expect(image_prompt).to_have_value('Décor sobre bleu nuit.')
                     proof['checks'].append('8 scenes, images and prompts imported through real browser ZIP decoding')
                     page.get_by_role('button',name='Verrouiller la scène',exact=True).click()
-                    assert page.get_by_label('Prompt de l’image-clé',exact=True).is_disabled()
-                    page.get_by_role('button',name='Déverrouiller la scène',exact=True).click()
-                    proof['checks'].append('Scene lock enforced in UI')
+                    expect(image_prompt).to_be_disabled()
+                    # The actual scene button is labelled "Déverrouiller", not "Déverrouiller la scène".
+                    page.get_by_role('button',name='Déverrouiller',exact=True).click()
+                    expect(image_prompt).to_be_enabled()
+                    proof['checks'].append('Scene lock and unlock enforced in UI')
+                    page.get_by_label('Message à Elynea',exact=True).fill('Propose une image différente.')
+                    page.get_by_role('button',name='Envoyer à Elynea locale',exact=True).click()
+                    action=page.get_by_role('button',name='Appliquer : update scene',exact=True)
+                    action.last.click()
+                    expect(image_prompt).to_have_value('Plan proposé dans le test navigateur.')
+                    proof['checks'].append('Fresh mocked director proposal applies after explicit click')
+                    page.get_by_label('Message à Elynea',exact=True).fill('Propose une seconde version.')
+                    page.get_by_role('button',name='Envoyer à Elynea locale',exact=True).click()
+                    expect(action).to_have_count(2)
+                    image_prompt.fill('Modification manuelle à préserver.')
+                    action.last.click()
+                    page.get_by_role('status').filter(has_text='périmée').first.wait_for()
+                    expect(image_prompt).to_have_value('Modification manuelle à préserver.')
+                    proof['checks'].append('Stale director proposal rejected; manual prompt preserved')
+                    page.get_by_role('button',name='Fermer le message',exact=True).click()
                     page.locator('input[type=file][accept="audio/*,.m4a,.flac"]').set_input_files(str(audio))
                     with page.expect_download() as d:
                         page.get_by_role('button',name='Télécharger la source audio originale',exact=True).click()
@@ -99,7 +122,7 @@ def main():
                     project.locator('option').filter(has_text='Validation Music Motion').wait_for(state='attached')
                     project.select_option(label='Validation Music Motion')
                     page.get_by_role('button',name='Télécharger la source audio originale',exact=True).wait_for()
-                    assert page.get_by_label('Prompt de l’image-clé',exact=True).input_value()
+                    expect(page.get_by_label('Prompt de l’image-clé',exact=True)).to_have_value('Modification manuelle à préserver.')
                     proof['checks'].append('Project, prompts and media restored after reload from IndexedDB')
                     page.screenshot(path=str(OUT/'workspace-desktop.png'),full_page=True)
                     page.set_viewport_size({'width':390,'height':844});page.wait_for_timeout(300)
@@ -108,8 +131,10 @@ def main():
                     proof['checks'].append('Mobile 390px layout without horizontal overflow')
                     assert not proof['react_errors'],proof['react_errors']
                     assert not proof['generation_requests'],proof['generation_requests']
+                    assert proof['mocked_chat_requests']==2
                 finally:
                     page.screenshot(path=str(OUT/'ui-last-state.png'),full_page=True)
+                    (OUT/'ui-last-state.html').write_text(page.content(),encoding='utf-8')
                     browser.close()
     finally:
         if server:
