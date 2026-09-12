@@ -60,6 +60,10 @@ def main():
                 def api(route):
                     if '/api/auth/session' in route.request.url:
                         route.fulfill(json={'valid':True,'user':{'id':'test-user','name':'Validation locale','role':'admin'}})
+                    elif route.request.url.endswith('/api/music-motion/production/capabilities') and route.request.method=='GET':
+                        # makeLocalClient checks the service identity before sending chat.
+                        # Keep that production safeguard; mock only this test transport.
+                        route.fulfill(json={'service':'elynea-music-motion-local','analysis':False,'render':False,'ollama':True,'checkpoints':[],'video_workflows':[]})
                     elif route.request.url.endswith('/api/music-motion/production/chat') and route.request.method=='POST':
                         proof['mocked_chat_requests']+=1
                         body=route.request.post_data_json
@@ -83,7 +87,6 @@ def main():
                     proof['checks'].append('8 scenes, images and prompts imported through real browser ZIP decoding')
                     page.get_by_role('button',name='Verrouiller la scène',exact=True).click()
                     expect(image_prompt).to_be_disabled()
-                    # The actual scene button is labelled "Déverrouiller", not "Déverrouiller la scène".
                     page.get_by_role('button',name='Déverrouiller',exact=True).click()
                     expect(image_prompt).to_be_enabled()
                     proof['checks'].append('Scene lock and unlock enforced in UI')
