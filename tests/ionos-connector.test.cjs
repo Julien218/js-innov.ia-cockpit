@@ -55,9 +55,34 @@ test('Cloud reads enforce host, GET, no redirect, credentials and response redac
 });
 
 test('Missing credentials never trigger network calls', async () => {
-  const before = process.env.IONOS_PAT; delete process.env.IONOS_PAT;
+  const before = process.env.IONOS_PAT; const dnsBefore = process.env.IONOS_DNS_API_KEY;
+  delete process.env.IONOS_PAT; delete process.env.IONOS_DNS_API_KEY;
   try { await assert.rejects(core.read('dns_get_zones', {}, { fetchImpl: () => { throw new Error('network should not run'); } }), /IONOS_PAT/); }
-  finally { if (before !== undefined) process.env.IONOS_PAT = before; }
+  finally { if (before !== undefined) process.env.IONOS_PAT = before; if (dnsBefore !== undefined) process.env.IONOS_DNS_API_KEY = dnsBefore; }
+});
+
+test('DNS key fallback is read-only and explicitly scopes domain results to DNS zones', async () => {
+  const patBefore = process.env.IONOS_PAT; const dnsBefore = process.env.IONOS_DNS_API_KEY;
+  delete process.env.IONOS_PAT; process.env.IONOS_DNS_API_KEY = syntheticValue;
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push(url); assert.equal(init.method, 'GET'); assert.equal(init.redirect, 'error');
+    assert.equal(init.headers['X-API-Key'], syntheticValue);
+    return new Response(JSON.stringify([{ id: 'z1', name: 'one.test' }, { id: 'z2', name: 'two.test' }]));
+  };
+  try {
+    const result = await core.read('domains_list_domains', { offset: 1, limit: 1 }, { fetchImpl });
+    assert.equal(result.scope, 'dns_zones_only'); assert.equal(result.data[0].name, 'two.test');
+    assert.equal(calls[0], 'https://api.hosting.ionos.com/dns/v1/zones');
+    await core.read('dns_get_zone', { zone_id: 'zone', record_type: 'A' }, { fetchImpl });
+    assert.equal(calls[1], 'https://api.hosting.ionos.com/dns/v1/zones/zone?recordType=A');
+    await assert.rejects(core.read('dns_get_zone', { zone_id: '../escape' }, { fetchImpl }), /invalide/);
+    await assert.rejects(core.read('corevps_list_contracts', {}, { fetchImpl }), /IONOS_PAT/);
+    assert.equal(calls.length, 2);
+  } finally {
+    if (patBefore === undefined) delete process.env.IONOS_PAT; else process.env.IONOS_PAT = patBefore;
+    if (dnsBefore === undefined) delete process.env.IONOS_DNS_API_KEY; else process.env.IONOS_DNS_API_KEY = dnsBefore;
+  }
 });
 
 test('Hosting uses real SDK initialize and tools/call with fixed Bearer endpoint', async () => {

@@ -3,6 +3,7 @@ const Ajv = require('ajv');
 const catalog = require('./ionos-read-tools.json');
 const ENDPOINT = 'https://mcp.ionos.com/mcp';
 const CLOUD = 'https://api.ionos.com/cloudapi/v6';
+const DNS = 'https://api.hosting.ionos.com/dns/v1/zones';
 const tools = new Map(catalog.map(tool => [tool.name, tool]));
 const ajv = new Ajv({ strict: false });
 const validators = new Map(catalog.map(tool => [tool.name, ajv.compile(tool.inputSchema)]));
@@ -25,15 +26,16 @@ function redact(value) {
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) =>
     [key, /password|secret|token|authcode|authinfo|privatekey/i.test(key.replace(/[^a-z]/gi, '')) ? '[masqué]' : redact(item)]));
   if (typeof value === 'string') {
-    for (const name of ['IONOS_PAT', 'IONOS_CLOUD_TOKEN']) {
+    for (const name of ['IONOS_PAT', 'IONOS_CLOUD_TOKEN', 'IONOS_DNS_API_KEY']) {
       if (process.env[name]) value = value.split(process.env[name]).join('[masqué]');
     }
   }
   return value;
 }
 function configuration() {
-  return { version: 'ionos-read-v1', read_only: true,
+  return { version: 'ionos-read-v2', read_only: true,
     hosting_configured: Boolean(String(process.env.IONOS_PAT || '').trim()),
+    dns_configured: Boolean(String(process.env.IONOS_DNS_API_KEY || '').trim()),
     cloud_configured: Boolean(String(process.env.IONOS_CLOUD_TOKEN || '').trim()),
     // Configuration presence is not proof that credentials work.
     connection_verified: false };
@@ -85,8 +87,39 @@ async function cloudRead(args, fetchImpl = global.fetch) {
 }
 async function read(name, args = {}, options = {}) {
   validate(name, args);
-  const data = name === 'cloud_read' ? await cloudRead(args, options.fetchImpl) : await hostingRead(name, args, options.fetchImpl);
-  return { provider: 'IONOS', read_only: true, tool: name, checked_at: new Date().toISOString(), data };
+  const dnsFallback = !configuration().hosting_configured && configuration().dns_configured && ['dns_get_zones', 'dns_get_zone', 'domains_list_domains'].includes(name);
+  const data = dnsFallback ? await dnsRead(name, args, options.fetchImpl)
+    : name === 'cloud_read' ? await cloudRead(args, options.fetchImpl) : await hostingRead(name, args, options.fetchImpl);
+  const scope = dnsFallback && name === 'domains_list_domains' ? 'dns_zones_only' : undefined;
+  return { provider: 'IONOS', read_only: true, tool: name, checked_at: new Date().toISOString(), data, scope,
+    notice: scope ? 'Domaines présents dans les zones DNS ; cet accès ne fournit pas l’inventaire des contrats de domaines.' : undefined };
+}
+async function dnsRead(name, args, fetchImpl = global.fetch) {
+  let url = DNS;
+  if (name === 'dns_get_zone') {
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(args.zone_id)) throw failure('Identifiant de zone invalide.', 400);
+    url += `/${args.zone_id}`;
+    const query = new URLSearchParams();
+    if (args.record_name) query.set('recordName', args.record_name);
+    if (args.record_type) query.set('recordType', args.record_type);
+    if (query.size) url += `?${query}`;
+  }
+  const key = secret('IONOS_DNS_API_KEY');
+  try {
+    const response = await fetchImpl(url, { method: 'GET', redirect: 'error',
+      headers: { 'X-API-Key': key }, signal: AbortSignal.timeout(25_000) });
+    if (!response.ok) throw failure('DNS API indisponible.');
+    const data = redact(await response.json());
+    if (name !== 'domains_list_domains') return data;
+    if (args.tld || args.pending_provisioning !== undefined || args.include_domain_status) {
+      throw failure('Ces filtres de domaines nécessitent le PAT Hosting.', 400);
+    }
+    const filtered = rows(data).filter(item => !args.name || String(item.name || item.zoneName || '').includes(args.name));
+    return filtered.slice(args.offset || 0, (args.offset || 0) + (args.limit || 100));
+  } catch (error) {
+    if (error.status === 400) throw error;
+    throw failure('Lecture DNS impossible. Vérifier la clé API Hosting et ses droits.');
+  }
 }
 function rows(value) {
   if (Array.isArray(value)) {
