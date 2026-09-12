@@ -11,6 +11,10 @@ Dans Railway, projet NOVA V2, service cockpit-v3, environnement production :
   avec uniquement `ionos:domain:hosting::domain/read`, `ionos:domain:hosting::dns/read`,
   `ionos:server:hosting::corevps/read`, `ionos:server:hosting::dedicatedserver/read`.
 - Facultatif : `IONOS_CLOUD_TOKEN`, valeur du token créé dans DCD → Management → Token Manager.
+- Pour un accès DNS seul, `IONOS_DNS_API_KEY` accepte la clé API Hosting au format `préfixe.secret`.
+  Sans PAT, les boutons Domaines et DNS consultent les zones ; le panneau précise que ce ne sont
+  pas les contrats de domaines. VPS/dédiés restent disponibles uniquement avec le PAT.
+  Cette variable n'active pas le module d'écriture historique (`IONOS_API_KEY`).
 - Ne jamais préfixer ces variables par VITE_, ni les placer dans un fichier client.
 - Appliquer les variables dans Railway pour qu'elles soient disponibles au prochain déploiement.
 

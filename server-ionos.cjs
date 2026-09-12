@@ -29,7 +29,7 @@ function createRouters(service = connector) {
         message: 'Le connecteur IONOS de NOVA consulte les domaines, DNS et serveurs. Aucune modification n’a été effectuée. Une opération d’administration exige un aperçu précis et une confirmation séparée.', confirmation: null });
       if (intent === 'status') {
         const state = service.configuration();
-        return res.json({ message: state.hosting_configured ? 'Le connecteur IONOS est installé. Demandez « Liste mes domaines IONOS » ou ouvrez Domaines → IONOS. La validité du jeton sera vérifiée lors de la consultation.' : 'Le connecteur IONOS est installé. Ajoutez IONOS_PAT dans les variables Railway du cockpit pour activer la consultation.', ionos: state });
+        return res.json({ message: state.hosting_configured || state.dns_configured ? 'Le connecteur IONOS est installé. Demandez « Liste mes domaines IONOS » ou ouvrez Domaines → IONOS. La connexion sera vérifiée lors de la consultation. Les serveurs nécessitent un PAT Hosting.' : 'Le connecteur IONOS est installé. Ajoutez IONOS_PAT pour tous les produits, ou IONOS_DNS_API_KEY pour les DNS, dans les variables Railway du cockpit.', ionos: state });
       }
       try {
         const result = await service.read(intent, intent === 'domains_list_domains' ? { offset: 0, limit: 100 } : {});
@@ -39,7 +39,7 @@ function createRouters(service = connector) {
           return `- ${String(item.name || item.zoneName || item.properties?.name || item.contract_name || item.id || 'Ressource').replace(/[\r\n]/g, ' ').slice(0, 180)}${item.id ? ` — ${item.id}` : ''}`;
         });
         const contracts = intent.includes('contracts');
-        const message = [`Consultation IONOS vérifiée le ${result.checked_at}.`, ...lines,
+        const message = [`Consultation IONOS vérifiée le ${result.checked_at}.`, result.notice || '', ...lines,
           items.length ? '' : 'Aucune ressource retournée pour cette consultation.',
           contracts ? 'Ouvrez Domaines → IONOS et sélectionnez un contrat pour consulter ses serveurs.' : 'Ouvrez Domaines → IONOS pour les détails et la suite des pages.',
           'Cette réponse correspond à la page consultée, pas nécessairement à tout le compte.'].filter(Boolean).join('\n');

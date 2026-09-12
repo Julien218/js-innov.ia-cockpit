@@ -51,13 +51,14 @@ export default function IonosPanel() {
   }
   function open(item) {
     if (!item?.id) return;
+    if (result?.scope === 'dns_zones_only') return load('dns_get_zone', { zone_id: item.id });
     if (request.tool === 'dns_get_zones') return load('dns_get_zone', { zone_id: item.id });
     if (request.tool.endsWith('_list_contracts')) return load(request.tool.replace('_list_contracts', '_list_servers'), { contract_id: String(item.id) });
     if (request.tool === 'cloud_read' && !request.args.datacenter_id) return load('cloud_read', { datacenter_id: item.id, offset: 0, limit: 100 });
     if (request.tool === 'cloud_read' && !request.args.server_id) return load('cloud_read', { datacenter_id: request.args.datacenter_id, server_id: item.id });
   }
   const entries = result ? rows(result.data) : [];
-  const canOpen = request && (request.tool === 'dns_get_zones' || request.tool.endsWith('_list_contracts') || (request.tool === 'cloud_read' && !request.args.server_id));
+  const canOpen = request && (result?.scope === 'dns_zones_only' || request.tool === 'dns_get_zones' || request.tool.endsWith('_list_contracts') || (request.tool === 'cloud_read' && !request.args.server_id));
   const paginated = request && (request.tool === 'domains_list_domains' || (request.tool === 'cloud_read' && !request.args.server_id));
   return <section className="rounded-2xl border border-border bg-card p-4 space-y-4" aria-label="Connecteur IONOS">
     <div className="flex flex-wrap justify-between gap-3">
@@ -67,7 +68,8 @@ export default function IonosPanel() {
     </div>
     {status && <p className="text-sm text-muted-foreground">{status.hosting_configured
       ? 'Identifiant Hosting configuré. Une consultation vérifie la connexion.'
-      : 'Connecteur installé. Ajoutez IONOS_PAT dans les variables Railway de cockpit-v3 pour connecter votre compte.'}
+      : status.dns_configured ? 'Clé DNS configurée : zones et enregistrements disponibles. Les VPS et serveurs dédiés nécessitent un PAT Hosting.'
+      : 'Connecteur installé. Ajoutez IONOS_PAT ou une clé DNS IONOS_DNS_API_KEY dans les variables Railway de cockpit-v3.'}
       {' '}{status.cloud_configured ? 'Public Cloud configuré.' : 'Public Cloud : connexion facultative séparée.'}</p>}
     <div className="flex flex-wrap gap-2">{tabs.map(([label, tool]) => <button key={tool} className={button}
       disabled={busy} onClick={() => load(tool, tool === 'domains_list_domains' ? { offset: 0, limit: 100 } : {})}>{label}</button>)}
@@ -76,6 +78,7 @@ export default function IonosPanel() {
     {busy && <p role="status" className="text-sm">Consultation IONOS en cours…</p>}
     {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
     {result && <>
+      {result.notice && <p className="text-sm text-muted-foreground">{result.notice}</p>}
       <p className="text-xs text-muted-foreground">Vérifié le {new Date(result.checked_at).toLocaleString('fr-BE')} · {entries.length} résultat(s) sur cette page</p>
       {!entries.length ? <p className="text-sm">Aucune ressource retournée.</p> : <div className="overflow-x-auto"><table className="w-full text-sm">
         <thead><tr className="text-left border-b border-border"><th className="p-2">Ressource</th><th className="p-2">État / type</th><th className="p-2">Valeur / ressources</th><th className="p-2"><span className="sr-only">Détails</span></th></tr></thead>
