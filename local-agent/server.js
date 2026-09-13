@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { createMusicMotionService } from './music-motion-service.mjs';
 import crypto from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
 import { appendFile, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
@@ -821,12 +822,15 @@ function toolResponse(run) {
   return `${intro} Outil: ${run.tool}. Heure: ${run.started_at}. Code de sortie: ${run.exit_code ?? 'indisponible'}. Journal: ${run.id}.\n\nSortie brute:\n\n\u0060\u0060\u0060text\n${raw}\n\u0060\u0060\u0060`;
 }
 
+const musicMotionProduction = createMusicMotionService({ root: logDir, send, headersFor, readJson, isAllowedOrigin, ollama });
+
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'OPTIONS') return send(req, res, 204, {});
     const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
     const publicReadOnlyPath = url.pathname === '/health' || url.pathname === '/api/telemetry/current' || url.pathname === '/api/telemetry/summary';
     if (TOKEN && !publicReadOnlyPath && req.headers.authorization !== `Bearer ${TOKEN}`) return send(req, res, 401, { ok: false, error: 'unauthorized' });
+    if (await musicMotionProduction(req, res, url)) return;
     if (req.method === 'GET' && url.pathname === '/health') return send(req, res, 200, await health());
     if (req.method === 'GET' && url.pathname === '/api/telemetry/current') {
       return send(req, res, 200, { ok: true, telemetry: await currentTelemetrySnapshot() });

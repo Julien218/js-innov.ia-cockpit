@@ -271,6 +271,10 @@ try {
   console.warn('⚠️ Fabrique vidéo API indisponible:', e.message);
 }
 
+// Music Motion: explicit paid consent, per-user durable jobs, local rendering kept separate.
+app.use('/api/music-motion', requireSession('admin'), requirePermission('production', 'admin'), require('./server-music-motion.cjs').router);
+
+
 // ── Companion batch : création multi-tâches + délégation ───
 try {
   const taskAutopilot = require('./server-task-autopilot.cjs');

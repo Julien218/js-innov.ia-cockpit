@@ -1,0 +1,86 @@
+name: Music Motion Production CI
+on:
+  push:
+    branches: [feat/elynea-music-motion-production-20260911]
+  pull_request:
+    paths:
+      - 'src/pages/MusicMotionStudio.jsx'
+      - 'src/components/music-motion/**'
+      - 'src/lib/music-motion/**'
+      - 'local-agent/music*'
+      - 'server-music-motion.cjs'
+      - 'server.cjs'
+      - 'tests/music*'
+      - 'tests/video-studio-audio.test.cjs'
+      - '.github/workflows/music-motion-production-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: music-motion-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install reproducible validation dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          python -m pip install 'numpy==2.3.5' 'scipy==1.17.0' 'librosa==0.11.0' 'soundfile>=0.12,<1' 'pypdf>=5,<7'
+          npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Compile and test the complete cockpit
+        env:
+          MUSIC_MOTION_TEST_ARTIFACT_DIR: ${{ github.workspace }}/music-motion-proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p music-motion-proof
+          npm run build 2>&1 | tee music-motion-proof/build.log
+          npm test 2>&1 | tee music-motion-proof/node-full-suite.log
+          python tests/music_motion_analysis_test.py 2>&1 | tee music-motion-proof/analysis-tests.log
+          python tests/whisper_fallback_test.py 2>&1 | tee music-motion-proof/whisper-tests.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: music-motion-proof-${{ github.run_id }}
+          path: music-motion-proof/
+          retention-days: 7
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install browser test dependencies
+        run: |
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          python -m pip install 'playwright>=1.50,<2'
+          python -m playwright install --with-deps chromium
+      - name: Exercise imports, persistence, audio and render safeguards in Chromium
+        env:
+          MUSIC_MOTION_TEST_ARTIFACT_DIR: ${{ github.workspace }}/music-motion-ui-proof
+        run: python tests/music_motion_browser_test.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: music-motion-ui-${{ github.run_id }}
+          path: music-motion-ui-proof/
+          retention-days: 7

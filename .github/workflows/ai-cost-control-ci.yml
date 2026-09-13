@@ -70,6 +70,18 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Setup Python for full regression suite
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install audio analysis and render test prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          python -m pip install 'numpy==2.3.5' 'scipy==1.17.0' 'librosa==0.11.0' 'soundfile>=0.12,<1' 'pypdf>=5,<7'
+
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 

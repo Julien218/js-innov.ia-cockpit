@@ -1,0 +1,18 @@
+# Serveur cockpit — définir via la configuration sécurisée de l’hébergement
+XAI_API_KEY=<clé privée fournie par l’administrateur, jamais dans le frontend>
+MUSIC_MOTION_DATA_DIR=/data/music-motion
+MUSIC_MOTION_XAI_IMAGE_MODEL=grok-imagine-image-2.0
+MUSIC_MOTION_XAI_VIDEO_MODEL=grok-imagine-video-1.5
+MUSIC_MOTION_DAILY_REQUEST_LIMIT=20
+
+# Agent local — exemples à adapter, sans aucune installation automatique
+LOCAL_AGENT_TOKEN=<secret local facultatif, recommandé sur un poste partagé>
+MUSIC_MOTION_PYTHON=C:\chemin\venv\Scripts\python.exe
+MUSIC_MOTION_WHISPER_MODEL=small
+MUSIC_MOTION_WHISPER_DEVICE=cpu
+MUSIC_MOTION_WHISPER_COMPUTE_TYPE=int8
+MUSIC_MOTION_WHISPER_LANGUAGE=fr
+COMFYUI_URL=http://127.0.0.1:8188
+MUSIC_MOTION_WORKFLOW_DIR=C:\chemin\MusicMotion-workflows
+FFMPEG_PATH=ffmpeg
+FFPROBE_PATH=ffprobe
