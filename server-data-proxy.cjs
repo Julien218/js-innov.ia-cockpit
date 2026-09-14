@@ -274,9 +274,20 @@ async function projectNotifications(tenant) {
 async function sendTwilioSms(to, body) {
   const sid = String(process.env.TWILIO_ACCOUNT_SID || '');
   const token = String(process.env.TWILIO_AUTH_TOKEN || '');
-  const from = normalizePhone(process.env.TWILIO_PHONE_NUMBER);
-  if (!sid.startsWith('AC') || !token || !from) return { configured: false, sent: false };
+  if (!sid.startsWith('AC') || !token) return { configured: false, sent: false };
   const auth = Buffer.from(`${sid}:${token}`).toString('base64');
+  let from = normalizePhone(process.env.TWILIO_PHONE_NUMBER);
+  if (!from) {
+    const numbersResponse = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/IncomingPhoneNumbers.json?PageSize=20`, {
+      headers: { Authorization: `Basic ${auth}` },
+      signal: AbortSignal.timeout(10000),
+    });
+    const numbers = await numbersResponse.json().catch(() => ({}));
+    if (!numbersResponse.ok) throw new Error(numbers.message || `Twilio numéros HTTP ${numbersResponse.status}`);
+    const candidate = (numbers.incoming_phone_numbers || []).find(item => item?.capabilities?.sms !== false);
+    from = normalizePhone(candidate?.phone_number);
+    if (!from) return { configured: true, sent: false, error: 'Aucun numéro SMS Twilio disponible' };
+  }
   const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
     method: 'POST',
     headers: {
@@ -495,7 +506,7 @@ async function collectNotifications(req) {
     critical_delivery: {
       enabled: process.env.CLIENT_ALERTS_ENABLED === 'true',
       contacts_configured: Boolean(contacts.sms.length || contacts.whatsapp.length),
-      sms_configured: Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER),
+      sms_configured: Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN),
       whatsapp_configured: Boolean(process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_TEMPLATE_CRITICAL_ALERT),
     },
   };
