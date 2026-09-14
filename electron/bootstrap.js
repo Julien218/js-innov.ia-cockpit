@@ -4,6 +4,7 @@ const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const http = require("node:http");
+const net = require("node:net");
 
 let updaterStarted = false;
 let localAgentProcess = null;
@@ -16,11 +17,14 @@ let offlineWebServer = null;
 let shuttingDown = false;
 
 const OFFLINE_WEB_PORT = 8790;
-const LOCAL_AGENT_PRIMARY_PORT = 8787;
-const LOCAL_AGENT_FALLBACK_PORT = 8788;
+// 8788 est désormais prioritaire pour l'agent Elynea actuel. 8787 reste la
+// compatibilité historique afin de ne pas casser une ancienne installation.
+const LOCAL_AGENT_PRIMARY_PORT = 8788;
+const LOCAL_AGENT_FALLBACK_PORT = 8787;
 const LOCAL_AGENT_WATCHDOG_MS = 15_000;
 const LOCAL_AGENT_STARTUP_GRACE_MS = 25_000;
 const LOCAL_AGENT_MAX_MISSES = 3;
+const MUSIC_MOTION_CONTRACT_VERSION = 2;
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -68,7 +72,7 @@ function startBundledOfflineCockpit() {
   });
 }
 
-function localAgentHealth(port, timeout = 1_500) {
+function localHttpJson(port, route, timeout = 1_500) {
   return new Promise((resolve) => {
     let settled = false;
     const finish = (result) => {
@@ -76,33 +80,77 @@ function localAgentHealth(port, timeout = 1_500) {
       settled = true;
       resolve(result);
     };
-    const request = http.get({ host: "127.0.0.1", port, path: "/health", timeout }, (response) => {
+    const request = http.get({ host: "127.0.0.1", port, path: route, timeout }, (response) => {
       let raw = "";
       response.setEncoding("utf8");
       response.on("data", (chunk) => {
-        if (raw.length < 32_768) raw += chunk;
+        if (raw.length < 64_000) raw += chunk;
       });
       response.on("end", () => {
         let payload = {};
         try { payload = raw ? JSON.parse(raw) : {}; } catch {}
         finish({
-          online: response.statusCode === 200 && payload?.ok !== false,
+          online: response.statusCode === 200,
           statusCode: response.statusCode,
           payload,
           port,
+          route,
         });
       });
     });
     request.on("timeout", () => {
       request.destroy();
-      finish({ online: false, error: "timeout", port });
+      finish({ online: false, error: "timeout", port, route });
     });
-    request.on("error", (error) => finish({ online: false, error: error.code || error.message, port }));
+    request.on("error", (error) => finish({ online: false, error: error.code || error.message, port, route }));
   });
 }
 
-function localAgentOnline(port) {
-  return localAgentHealth(port).then((result) => result.online);
+function localAgentHealth(port, timeout = 1_500) {
+  return localHttpJson(port, "/health", timeout).then((result) => ({
+    ...result,
+    online: result.online && result.payload?.ok !== false,
+  }));
+}
+
+function localMusicMotionCapabilities(port, timeout = 1_500) {
+  return localHttpJson(port, "/api/music-motion/production/capabilities", timeout);
+}
+
+async function localAgentCompatibility(port, timeout = 1_500) {
+  const [health, capabilities] = await Promise.all([
+    localAgentHealth(port, timeout),
+    localMusicMotionCapabilities(port, timeout),
+  ]);
+  const contractVersion = Number(capabilities.payload?.version || 0);
+  return {
+    port,
+    health,
+    capabilities,
+    compatible: Boolean(
+      health.online &&
+      capabilities.online &&
+      contractVersion >= MUSIC_MOTION_CONTRACT_VERSION
+    ),
+    contractVersion,
+  };
+}
+
+function portListening(port, timeout = 700) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: "127.0.0.1", port });
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(value);
+    };
+    socket.setTimeout(timeout);
+    socket.once("connect", () => finish(true));
+    socket.once("timeout", () => finish(false));
+    socket.once("error", () => finish(false));
+  });
 }
 
 function processAlive(child = localAgentProcess) {
@@ -112,16 +160,33 @@ function processAlive(child = localAgentProcess) {
 async function selectLocalAgentPort() {
   if (localAgentPort) return localAgentPort;
 
-  // Les versions historiques peuvent déjà occuper 8787. Le binaire courant est
-  // alors lancé sur 8788 afin de ne pas dépendre d'un agent ancien non maîtrisé.
-  if (await localAgentOnline(LOCAL_AGENT_FALLBACK_PORT)) {
+  const primary = await localAgentCompatibility(LOCAL_AGENT_PRIMARY_PORT);
+  if (primary.compatible) {
+    localAgentPort = LOCAL_AGENT_PRIMARY_PORT;
+    return localAgentPort;
+  }
+
+  const fallback = await localAgentCompatibility(LOCAL_AGENT_FALLBACK_PORT);
+  if (fallback.compatible) {
     localAgentPort = LOCAL_AGENT_FALLBACK_PORT;
     return localAgentPort;
   }
-  localAgentPort = await localAgentOnline(LOCAL_AGENT_PRIMARY_PORT)
-    ? LOCAL_AGENT_FALLBACK_PORT
-    : LOCAL_AGENT_PRIMARY_PORT;
-  return localAgentPort;
+
+  // Aucun agent compatible : démarrer le binaire embarqué sur un port réellement libre.
+  // 8788 est préféré pour éviter qu'une installation historique 8787 masque la version courante.
+  if (!(await portListening(LOCAL_AGENT_PRIMARY_PORT))) {
+    localAgentPort = LOCAL_AGENT_PRIMARY_PORT;
+    return localAgentPort;
+  }
+  if (!(await portListening(LOCAL_AGENT_FALLBACK_PORT))) {
+    localAgentPort = LOCAL_AGENT_FALLBACK_PORT;
+    return localAgentPort;
+  }
+
+  throw new Error(
+    "Les ports 8787 et 8788 sont occupés par des agents non compatibles avec Music Motion v2. " +
+    "Lancer repair-music-motion-windows.ps1 pour inventorier et corriger les anciennes versions."
+  );
 }
 
 function localAgentServerPath() {
@@ -132,11 +197,11 @@ function localAgentServerPath() {
 
 function scheduleLocalAgentRestart(reason, delay = 2_500) {
   if (shuttingDown || localAgentRestartTimer) return;
-  console.log(`[desktop] NOVA Local Tools restart scheduled (${reason})`);
+  console.log(`[desktop] Elynea Local Tools restart scheduled (${reason})`);
   localAgentRestartTimer = setTimeout(() => {
     localAgentRestartTimer = null;
     startBundledLocalAgent({ force: true }).catch((error) => {
-      console.log("[desktop] NOVA Local Tools restart failed:", error.message);
+      console.log("[desktop] Elynea Local Tools restart failed:", error.message);
       scheduleLocalAgentRestart("retry_after_failure", 5_000);
     });
   }, delay);
@@ -146,11 +211,18 @@ function scheduleLocalAgentRestart(reason, delay = 2_500) {
 async function startBundledLocalAgent({ force = false } = {}) {
   if (shuttingDown) return false;
   const port = await selectLocalAgentPort();
-  const health = await localAgentHealth(port);
-  if (health.online) {
+  const compatibility = await localAgentCompatibility(port);
+  if (compatibility.compatible) {
     localAgentMisses = 0;
-    console.log(`[desktop] NOVA Local Tools online on 127.0.0.1:${port} (v${health.payload?.agent?.version || "unknown"})`);
+    console.log(
+      `[desktop] Elynea Local Tools online on 127.0.0.1:${port} ` +
+      `(agent v${compatibility.health.payload?.agent?.version || "unknown"}, Music Motion v${compatibility.contractVersion})`
+    );
     return true;
+  }
+
+  if (await portListening(port)) {
+    throw new Error(`Port local ${port} occupé par un service incompatible avec Music Motion v2.`);
   }
 
   if (processAlive()) {
@@ -177,26 +249,26 @@ async function startBundledLocalAgent({ force = false } = {}) {
 
   child.once("error", (error) => {
     if (localAgentProcess === child) localAgentProcess = null;
-    console.log(`[desktop] NOVA Local Tools process error: ${error.message}`);
+    console.log(`[desktop] Elynea Local Tools process error: ${error.message}`);
     scheduleLocalAgentRestart("process_error");
   });
   child.once("exit", (code, signal) => {
     if (localAgentProcess === child) localAgentProcess = null;
     if (shuttingDown) return;
-    console.log(`[desktop] NOVA Local Tools exited (code=${code ?? "null"}, signal=${signal || "none"})`);
+    console.log(`[desktop] Elynea Local Tools exited (code=${code ?? "null"}, signal=${signal || "none"})`);
     scheduleLocalAgentRestart("process_exit");
   });
   child.unref();
-  console.log(`[desktop] NOVA Local Tools starting on 127.0.0.1:${port}`);
+  console.log(`[desktop] Elynea Local Tools starting on 127.0.0.1:${port}`);
   return true;
 }
 
 async function checkBundledLocalAgent() {
   if (shuttingDown) return;
   const port = await selectLocalAgentPort();
-  const health = await localAgentHealth(port, 2_500);
-  if (health.online) {
-    if (localAgentMisses) console.log(`[desktop] NOVA Local Tools recovered on 127.0.0.1:${port}`);
+  const compatibility = await localAgentCompatibility(port, 2_500);
+  if (compatibility.compatible) {
+    if (localAgentMisses) console.log(`[desktop] Elynea Local Tools recovered on 127.0.0.1:${port}`);
     localAgentMisses = 0;
     return;
   }
@@ -208,26 +280,26 @@ async function checkBundledLocalAgent() {
   if (Date.now() - localAgentSpawnedAt < LOCAL_AGENT_STARTUP_GRACE_MS) return;
 
   localAgentMisses += 1;
-  console.log(`[desktop] NOVA Local Tools health miss ${localAgentMisses}/${LOCAL_AGENT_MAX_MISSES} on port ${port}`);
+  console.log(`[desktop] Elynea Local Tools compatibility miss ${localAgentMisses}/${LOCAL_AGENT_MAX_MISSES} on port ${port}`);
   if (localAgentMisses < LOCAL_AGENT_MAX_MISSES) return;
 
   const unresponsive = localAgentProcess;
   localAgentProcess = null;
   localAgentMisses = 0;
   try { unresponsive.kill(); } catch {}
-  scheduleLocalAgentRestart("watchdog_unresponsive", 500);
+  scheduleLocalAgentRestart("watchdog_incompatible_or_unresponsive", 500);
 }
 
 function startLocalAgentWatchdog() {
   if (localAgentWatchdogTimer) return;
   localAgentWatchdogTimer = setInterval(() => {
     checkBundledLocalAgent().catch((error) => {
-      console.log("[desktop] NOVA Local Tools watchdog error:", error.message);
+      console.log("[desktop] Elynea Local Tools watchdog error:", error.message);
     });
   }, LOCAL_AGENT_WATCHDOG_MS);
   localAgentWatchdogTimer.unref?.();
   setTimeout(() => {
-    checkBundledLocalAgent().catch((error) => console.log("[desktop] NOVA Local Tools initial check failed:", error.message));
+    checkBundledLocalAgent().catch((error) => console.log("[desktop] Elynea Local Tools initial check failed:", error.message));
   }, 5_000).unref?.();
 }
 
@@ -330,7 +402,11 @@ function startAutoUpdater() {
 
 app.whenReady().then(async () => {
   enableWindowsStartup();
-  await startBundledLocalAgent();
+  await startBundledLocalAgent().catch((error) => {
+    console.log("[desktop] Elynea Local Tools initial start failed:", error.message);
+    notify("Elynea locale à réparer", error.message);
+    return false;
+  });
   startLocalAgentWatchdog();
   await startBundledOfflineCockpit();
   await refreshWebRuntime();
