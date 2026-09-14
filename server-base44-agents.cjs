@@ -1,9 +1,9 @@
 /**
  * Route de compatibilité historique `/api/base44-agents`.
  *
- * Le frontend conserve temporairement cet URL, mais toutes les opérations sont
- * désormais servies par les spécialistes internes NOVA. Aucune clé ni requête
- * Base44 n'est utilisée.
+ * Le frontend conserve temporairement cette URL, mais toutes les opérations sont
+ * désormais servies par les spécialistes internes d’Elynea. Aucune clé ni requête
+ * Base44 n'est utilisée dans le chemin actif.
  */
 const crypto = require('node:crypto');
 const express = require('express');
@@ -30,7 +30,7 @@ function publicAgent(agent) {
     domains: agent.domains,
     capabilities: agent.capabilities,
     status: 'active',
-    status_detail: 'Spécialiste interne NOVA — Base44 retiré du chemin actif',
+    status_detail: 'Spécialiste interne Elynea — Base44 retiré du chemin actif',
     last_check: new Date().toISOString(),
   };
 }
@@ -41,13 +41,13 @@ function findAgent(value) {
 
 function requireInternalAgent(req, res, next) {
   if (!req.user?.id || !['collaborateur', 'admin', 'superadmin'].includes(req.user.role)) return res.status(403).json({ error: 'Accès spécialiste refusé.' });
-  if (!JS_AGENT_KEY) return res.status(503).json({ error: 'JSINNOVIA_AGENT_KEY non configurée pour les spécialistes internes NOVA.' });
+  if (!JS_AGENT_KEY) return res.status(503).json({ error: 'JSINNOVIA_AGENT_KEY non configurée pour les spécialistes internes Elynea.' });
   next();
 }
 
 router.get('/', (_req, res) => {
   const agents = activeAgents().map(publicAgent);
-  res.json({ agents, total: agents.length, active: agents.length, provider: 'jsinnovia-agent', base44_active: false });
+  res.json({ agents, total: agents.length, active: agents.length, provider: 'jsinnovia-agent', assistant: 'elynea', base44_active: false });
 });
 
 router.get('/registry/routing-map', (_req, res) => {
@@ -57,19 +57,19 @@ router.get('/registry/routing-map', (_req, res) => {
       routing[domain] = { agent_key: agent.key, agent_name: agent.name, provider_agent_id: agent.key, provider: 'jsinnovia-agent', capabilities: agent.capabilities };
     }
   }
-  res.json({ routing, provider: 'jsinnovia-agent', generated_at: new Date().toISOString() });
+  res.json({ routing, provider: 'jsinnovia-agent', assistant: 'elynea', generated_at: new Date().toISOString() });
 });
 
 router.get('/:agentId/status', (req, res) => {
   const agent = findAgent(req.params.agentId);
-  if (!agent) return res.status(404).json({ error: 'Spécialiste NOVA non trouvé' });
+  if (!agent) return res.status(404).json({ error: 'Spécialiste Elynea non trouvé' });
   res.json({ agent_id: agent.key, name: agent.name, provider: 'jsinnovia-agent', status: JS_AGENT_KEY ? 'operational' : 'configuration_required', checked_at: new Date().toISOString() });
 });
 
 router.post('/:agentId/conversations', requireInternalAgent, (req, res) => {
   const agent = findAgent(req.params.agentId);
-  if (!agent) return res.status(404).json({ error: 'Spécialiste NOVA non trouvé' });
-  const id = `nova-${crypto.randomUUID()}`;
+  if (!agent) return res.status(404).json({ error: 'Spécialiste Elynea non trouvé' });
+  const id = `elynea-${crypto.randomUUID()}`;
   const item = { id, agent_key: agent.key, owner_id: req.user.id, tenant: cleanTenant(req.user.organisation) || 'jsinnovia', created_at: new Date().toISOString(), messages: [] };
   conversations.set(id, item);
   res.status(201).json(item);
@@ -77,7 +77,7 @@ router.post('/:agentId/conversations', requireInternalAgent, (req, res) => {
 
 router.get('/:agentId/conversations', requireInternalAgent, (req, res) => {
   const agent = findAgent(req.params.agentId);
-  if (!agent) return res.status(404).json({ error: 'Spécialiste NOVA non trouvé' });
+  if (!agent) return res.status(404).json({ error: 'Spécialiste Elynea non trouvé' });
   res.json([...conversations.values()].filter((item) => item.agent_key === agent.key && item.owner_id === req.user.id && item.tenant === (cleanTenant(req.user.organisation) || 'jsinnovia')).map(({ messages, requests, busy, ...item }) => ({ ...item, message_count: messages.length })));
 });
 
@@ -85,7 +85,7 @@ router.post('/:agentId/conversations/:convId/messages', requireInternalAgent, as
   const agent = findAgent(req.params.agentId);
   const conversation = conversations.get(req.params.convId);
   const tenant = cleanTenant(req.user.organisation) || 'jsinnovia';
-  if (!agent || !conversation || conversation.agent_key !== agent.key || conversation.owner_id !== req.user.id || conversation.tenant !== tenant) return res.status(404).json({ error: 'Conversation NOVA non trouvée' });
+  if (!agent || !conversation || conversation.agent_key !== agent.key || conversation.owner_id !== req.user.id || conversation.tenant !== tenant) return res.status(404).json({ error: 'Conversation Elynea non trouvée' });
   const message = String(req.body?.content || req.body?.message || '').trim();
   if (!message) return res.status(400).json({ error: 'Message requis' });
   if (message.length > 4000) return res.status(413).json({ error: 'Message limité à 4000 caractères pour conserver toutes les contraintes dans chaque tâche.' });
@@ -112,7 +112,7 @@ router.post('/:agentId/conversations/:convId/messages', requireInternalAgent, as
         user_context: { id: req.user.id, role: req.user.role, organisation: tenant, full_name: req.user.full_name },
         action_protocol: { proposed_action: { type: 'create_task_batch', payload: { tasks: [{ titre: 'Titre précis', description: 'Critères vérifiables', priorite: 'haute' }] } } },
         server_context: [
-          `Tu es ${agent.name}, spécialiste interne délégué par NOVA.`,
+          `Tu es ${agent.name}, spécialiste interne délégué par Elynea.`,
           `Rôle: ${agent.role}.`,
           `Périmètre de domaine strict: ${(agent.domains || []).join(', ') || 'interne JS-Innov.IA'}.`,
           agent.system_prompt ? `[DIRECTIVES SPÉCIALISTE]\n${agent.system_prompt}\n[/DIRECTIVES SPÉCIALISTE]` : '',
