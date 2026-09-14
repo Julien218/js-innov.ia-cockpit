@@ -3,15 +3,20 @@ const express = require('express');
 const { cleanTenant } = require('./server-tenant.cjs');
 
 const turns = new Map();
+const confirmationCache = new Map();
 const AGENT_URL = String(process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app').replace(/\/$/, '');
 const AGENT_KEY = String(process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '').trim();
 const STALE_RUNNING_MS = 30 * 60 * 1000;
 const STALE_PENDING_MS = 24 * 60 * 60 * 1000;
+const ELYNEA_NAME = 'Elynea';
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
+function conversationIdFor(req) {
+  return String(req.body?.conversation_id || req.query?.conversation_id || 'main').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'main';
+}
+
 function scopeFor(req) {
-  const conversation = String(req.body?.conversation_id || req.query?.conversation_id || 'main').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'main';
-  return `${cleanTenant(req.user?.organisation)}:${req.user?.id}:${conversation}`;
+  return `${cleanTenant(req.user?.organisation)}:${req.user?.id}:${conversationIdFor(req)}`;
 }
 
 function beginRequest(req) {
@@ -225,17 +230,108 @@ async function inspectTaskDispatches(req) {
   return summarizeTaskDispatches(tasks, runs);
 }
 
+function officialAssistantText(value) {
+  return String(value || '')
+    .replace(/\bNOVA\b/g, ELYNEA_NAME)
+    .replace(/\bNova\b/g, ELYNEA_NAME);
+}
+
+function stripUnbackedConfirmationLanguage(value) {
+  const cleaned = officialAssistantText(value)
+    .replace(/[^.!?\n]*(?:veuillez|merci de)\s+confirmer[^.!?\n]*[.!?]?/gi, '')
+    .replace(/[^.!?\n]*confirmez[- ]?vous\s+que\s+je[^.!?\n]*[.!?]?/gi, '')
+    .replace(/[^.!?\n]*cliquez[^.!?\n]*(?:bouton|confirmer)[^.!?\n]*[.!?]?/gi, '')
+    .replace(/[^.!?\n]*utilisez\s+le\s+bouton[^.!?\n]*[.!?]?/gi, '')
+    .replace(/[^.!?\n]*souhaitez[- ]?vous\s+que\s+je\s+(?:lance|ex[eé]cute|proc[eè]de)[^.!?\n]*[.!?]?/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return cleaned || 'Aucune action exécutable n’a été préparée pour cette demande. Reformulez la cible si une action doit réellement être lancée.';
+}
+
+function normalizeAssistantPayload(req, payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+  const output = { ...payload };
+  const hasConfirmation = Boolean(output.confirmation?.token);
+  const shouldStrip = req.method === 'POST' && req.path === '/chat' && !hasConfirmation;
+  for (const key of ['message', 'response', 'reply', 'content', 'text']) {
+    if (typeof output[key] === 'string') {
+      output[key] = shouldStrip ? stripUnbackedConfirmationLanguage(output[key]) : officialAssistantText(output[key]);
+    }
+  }
+  if (output.display && typeof output.display === 'object') {
+    output.display = { ...output.display };
+    if (/^nova$/i.test(String(output.display.assistant_name || ''))) output.display.assistant_name = ELYNEA_NAME;
+  }
+  if (output.confirmation && typeof output.confirmation === 'object') {
+    output.confirmation = {
+      ...output.confirmation,
+      summary: officialAssistantText(output.confirmation.summary),
+    };
+  }
+  return output;
+}
+
+function rememberConfirmation(req, confirmation) {
+  if (!confirmation?.token) return;
+  const ttl = Math.max(30, Math.min(600, Number(confirmation.expires_in || 300))) * 1000;
+  confirmationCache.set(scopeFor(req), {
+    token: String(confirmation.token),
+    request_nonce: confirmation.request_nonce || null,
+    expiresAt: Date.now() + ttl,
+  });
+}
+
+function cachedConfirmation(req) {
+  const key = scopeFor(req);
+  const item = confirmationCache.get(key);
+  if (!item) return null;
+  if (item.expiresAt < Date.now()) {
+    confirmationCache.delete(key);
+    return null;
+  }
+  return item;
+}
+
+function deleteConfirmationByToken(token) {
+  const needle = String(token || '');
+  if (!needle) return;
+  for (const [key, item] of confirmationCache) {
+    if (item.token === needle) confirmationCache.delete(key);
+  }
+}
+
 const router = express.Router();
 router.use(async (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (payload) => {
+    const normalizedPayload = normalizeAssistantPayload(req, payload);
+    if (normalizedPayload?.confirmation?.token) rememberConfirmation(req, normalizedPayload.confirmation);
+    if (req.method === 'POST' && req.path === '/confirm') deleteConfirmationByToken(req.body?.token);
+    return originalJson(normalizedPayload);
+  };
+
   if (req.method === 'POST' && req.path === '/chat' && typeof req.body?.message === 'string' && req.body.message.trim()) {
     const message = req.body.message.trim();
 
-    // Une confirmation seule ne doit jamais créer un nouveau tour et invalider la proposition active.
-    // Le pont UI ou le bouton transmet le jeton exact à /confirm.
+    // Si le bouton a disparu mais qu'une confirmation structurée existe encore,
+    // une réponse courte "oui / je confirme" consomme le vrai jeton au lieu de créer un nouveau tour.
     if (bareConfirmationSignal(message)) {
-      return res.json({ message: 'Aucune ancienne action reprise. Aucune action précise n’a été confirmée. Utilisez le bouton de la proposition encore active ou reformulez la demande avec sa cible. La proposition active n’a pas été invalidée.', confirmation: null });
+      const cached = cachedConfirmation(req);
+      if (cached?.token) {
+        req.url = '/confirm';
+        req.body = {
+          ...req.body,
+          token: cached.token,
+        };
+        return next();
+      }
+      return res.json({
+        message: 'Aucune action exécutable n’est en attente. Elynea ne vous demandera plus de confirmer sans bouton actif. Reformulez la cible si nécessaire.',
+        confirmation: null,
+      });
     }
 
+    confirmationCache.delete(scopeFor(req));
     beginRequest(req);
 
     if (ambiguousMessageSignal(message)) {
@@ -268,6 +364,7 @@ router.use(async (req, res, next) => {
 
 router.post('/cancel', (req, res) => {
   const scope = scopeFor(req);
+  confirmationCache.delete(scope);
   if (!req.body?.request_nonce || turns.get(scope)?.nonce === req.body.request_nonce) turns.delete(scope);
   res.json({ success: true, confirmation: null });
 });
@@ -283,4 +380,6 @@ module.exports = {
   dispatchVerificationSignal,
   summarizeTaskDispatches,
   dispatchReportMessage,
+  stripUnbackedConfirmationLanguage,
+  normalizeAssistantPayload,
 };
