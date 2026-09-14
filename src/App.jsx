@@ -65,7 +65,7 @@ import LocalVideoFactory from "@/pages/LocalVideoFactory";
 import ApiVideoFactory from "@/pages/ApiVideoFactory";
 import VilleConnect from "@/pages/VilleConnect";
 import ProjectData from "@/pages/ProjectData";
-import MusicMotionStudio from "@/pages/MusicMotionStudio";
+import MusicMotionWorkspace from "@/pages/MusicMotionWorkspace";
 
 const PageBoundary = ({ children }) => <AppErrorBoundary>{children}</AppErrorBoundary>;
 
@@ -125,8 +125,8 @@ const AppRoutes = () => {
           <Route path="/video-studio" element={<VideoStudio />} />
           <Route path="/video-studio/new" element={<VideoStudio />} />
           <Route path="/video-studio/:id" element={<VideoStudio />} />
-          <Route path="/music-motion" element={isAdmin ? <PageBoundary><MusicMotionStudio /></PageBoundary> : <Navigate to="/" replace />} />
-          <Route path="/music-motion-studio" element={isAdmin ? <PageBoundary><MusicMotionStudio /></PageBoundary> : <Navigate to="/" replace />} />
+          <Route path="/music-motion" element={isAdmin ? <PageBoundary><MusicMotionWorkspace /></PageBoundary> : <Navigate to="/" replace />} />
+          <Route path="/music-motion-studio" element={isAdmin ? <PageBoundary><MusicMotionWorkspace /></PageBoundary> : <Navigate to="/" replace />} />
           <Route path="/ai-video" element={<AIVideoReportGenerator />} />
           <Route path="/thumbnail" element={<ThumbnailGenerator />} />
           <Route path="/dour-campaign" element={<DourCampaignVideo />} />
