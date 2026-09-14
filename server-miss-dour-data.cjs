@@ -1,5 +1,6 @@
 // Server-to-server read-only connector. No database credentials in the browser.
 const FIELDS = Object.freeze(['id', 'source', 'first_name', 'last_name', 'email', 'phone', 'city', 'category', 'status', 'year', 'created_at', 'updated_at']);
+const SUPPORTED_YEARS = new Set([2026, 2027]);
 
 function missDourConfigured() {
   return Boolean(process.env.MISS_DOUR_REGISTRATIONS_URL && String(process.env.MISS_DOUR_REGISTRATIONS_TOKEN || '').length >= 32);
@@ -22,9 +23,9 @@ async function listMissDourRegistrations(fetcher = fetch) {
     if (!response.ok) throw new Error('La base des inscriptions Miss et Mister Dour est indisponible. Aucune liste vide n’a été substituée.');
     if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('La source des inscriptions ne renvoie pas les données attendues.');
     const payload = await response.json();
-    if (payload.collection !== 'miss-mister-dour-inscriptions' || payload.year !== 2026 || !Array.isArray(payload.records) || payload.records.length > 200) throw new Error('Réponse de la source invalide.');
+    if (payload.collection !== 'miss-mister-dour-inscriptions' || !SUPPORTED_YEARS.has(Number(payload.year)) || !Array.isArray(payload.records) || payload.records.length > 200) throw new Error('Réponse de la source invalide.');
     for (const row of payload.records) {
-      if (!row || !/^(candidate|application):[0-9]{10}$/.test(row.id) || Number(row.year) !== 2026) throw new Error('Inscription source invalide.');
+      if (!row || !/^(candidate|application):[0-9]{10}$/.test(row.id) || !SUPPORTED_YEARS.has(Number(row.year))) throw new Error('Inscription source invalide.');
       if (ids.has(row.id)) throw new Error('Pagination incohérente de la source.');
       ids.add(row.id);
       records.push(Object.fromEntries(FIELDS.map((field) => [field, row[field] ?? null])));
