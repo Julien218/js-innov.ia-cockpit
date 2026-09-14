@@ -38,9 +38,9 @@ test('pagination complète, secret uniquement serveur et projection des champs',
 test('une panne ne devient jamais une liste vide', async () => {
   await assert.rejects(listMissDourRegistrations(async () => new Response('failure', { status: 503 })), /indisponible/);
 });
-test('refuse les redirections masquées HTML et les autres éditions', async () => {
+test('refuse les redirections masquées HTML et les éditions non supportées', async () => {
   await assert.rejects(listMissDourRegistrations(async () => new Response('<iframe>', { headers: { 'content-type': 'text/html' } })), /attendues/);
-  await assert.rejects(listMissDourRegistrations(async () => response([{ ...row, year: 2027 }])), /invalide/);
+  await assert.rejects(listMissDourRegistrations(async () => response([{ ...row, year: 2028 }])), /invalide/);
 });
 test('une pagination répétée échoue au lieu de boucler ou dupliquer', async () => {
   await assert.rejects(listMissDourRegistrations(async () => response([row], row.id)), /Pagination/);

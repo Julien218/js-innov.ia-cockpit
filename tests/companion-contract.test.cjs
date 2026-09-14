@@ -52,10 +52,10 @@ test('le client consomme une confirmation existante au lieu de repartir au LLM',
   assert.match(clientCompanion, /confirmation && AFFIRMATIVE\.test\(text\)/);
   assert.match(clientCompanion, /await executeConfirmation\(text\)/);
   assert.match(clientCompanion, /Vous n’avez rien d’autre à confirmer/);
-  assert.match(clientCompanion, /Confirmer une fois/);
+  assert.match(clientCompanion, /Confirmer et exécuter/);
 });
 
-test('NOVA flottante conserve et exécute la confirmation au lieu de la renvoyer au modèle local', async () => {
+test('Elynea flottante conserve et exécute la confirmation au lieu de la renvoyer au modèle local', async () => {
   assert.match(floatingCompanion, /setConfirmation\(data\.confirmation\)/);
   assert.match(floatingCompanion, /confirmation && AFFIRMATIVE_CONFIRMATION\.test\(msg\)/);
   assert.match(floatingCompanion, /\/api\/assistant\/confirm/);
@@ -144,7 +144,7 @@ test('les nouveaux modules serveur sont présents dans l’image Docker', () => 
   assert.match(dockerfile, /server-companion-memory\.cjs/);
 });
 
-test('NOVA publie un média au portfolio uniquement après confirmation et déduplique par empreinte', () => {
+test('Elynea publie un média au portfolio uniquement après confirmation et déduplique par empreinte', () => {
   assert.match(assistantServer, /publish_portfolio_media/);
   assert.match(assistantServer, /serverAction: 'portfolio_media'/);
   assert.match(assistantServer, /public_rights_confirmed/);

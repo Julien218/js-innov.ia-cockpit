@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Bell, BellRing, CheckCircle2, CircleAlert, HelpCircle, Menu, MessageSquare, Search } from 'lucide-react';
+import { Bell, BellRing, CheckCircle2, CircleAlert, HelpCircle, Loader2, Menu, MessageSquare, Search, Wrench } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { usePermissions } from '@/lib/usePermissions';
 import { Button } from '@/components/ui/button';
@@ -71,6 +71,22 @@ function notificationTone(event) {
   };
 }
 
+function incidentDomain(event) {
+  if (event?.event_type !== 'site.down') return '';
+  const title = String(event?.title || '');
+  const match = title.match(/Incident critique\s*[—–-]\s*([^\s]+)$/i);
+  return String(match?.[1] || '').trim().toLowerCase();
+}
+
+function publicRepairMessage(result) {
+  if (result?.verified) return 'Réparation terminée et vérifiée.';
+  if (['RUNNING', 'RETRYING'].includes(result?.operational_status)) return 'Réparation prise en charge par Elynea. Le contrôle continue automatiquement.';
+  if (result?.operational_status === 'WAITING_AUTHORIZATION') return 'Une autorisation technique supplémentaire reste nécessaire.';
+  if (result?.operational_status === 'WAITING_INPUT') return 'Elynea attend une information technique avant de poursuivre.';
+  if (result?.operational_status === 'NO_EXECUTOR') return 'Diagnostic confirmé, mais aucun exécuteur automatique n’est actuellement raccordé pour cette correction.';
+  return String(result?.message || result?.reason || 'Intervention lancée.').replace(/\bNOVA\b/gi, 'Elynea');
+}
+
 export default function TopBar({ onOpenMobileMenu }) {
   const { user } = useAuth();
   const { role, canAccess } = usePermissions();
@@ -84,10 +100,12 @@ export default function TopBar({ onOpenMobileMenu }) {
   const [notificationError, setNotificationError] = useState('');
   const [notifications, setNotifications] = useState([]);
   const [notificationState, setNotificationState] = useState(() => loadNotificationState(user));
+  const [repairState, setRepairState] = useState({});
   const results = searchNavigation(allNavGroups, query, {
     role, canAccess,
     insuranceAllowed: role === 'superadmin' || user?.email?.toLowerCase() === 'olivier.trevis@pv.be',
   });
+  const canRepairDomains = role === 'admin' || role === 'superadmin';
 
   useEffect(() => {
     setSearchOpen(false);
@@ -173,6 +191,45 @@ export default function TopBar({ onOpenMobileMenu }) {
     });
   }
 
+  async function repairCriticalIncident(event) {
+    const domain = incidentDomain(event);
+    if (!domain || !canRepairDomains || repairState[event.id]?.loading) return;
+    markNotificationRead(event.id);
+    setRepairState(current => ({ ...current, [event.id]: { loading: true, message: 'Préparation de la réparation…', error: false } }));
+    try {
+      const prepareResponse = await fetch('/api/domain-ops/prepare-repair', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, kind: 'repair' }),
+      });
+      const prepared = await prepareResponse.json().catch(() => ({}));
+      if (!prepareResponse.ok) throw new Error(prepared.error || `Préparation impossible (HTTP ${prepareResponse.status})`);
+      if (!prepared?.confirmation?.token) throw new Error('Aucun jeton de réparation n’a été préparé.');
+
+      const repairResponse = await fetch('/api/domain-ops/repair', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: prepared.confirmation.token }),
+      });
+      const result = await repairResponse.json().catch(() => ({}));
+      if (!repairResponse.ok && !result?.operational_status) throw new Error(result.error || `Réparation impossible (HTTP ${repairResponse.status})`);
+      setRepairState(current => ({
+        ...current,
+        [event.id]: {
+          loading: false,
+          message: publicRepairMessage(result),
+          error: repairResponse.status >= 500 || result?.operational_status === 'TECHNICAL_ERROR',
+          verified: Boolean(result?.verified),
+        },
+      }));
+      window.setTimeout(() => refreshNotifications({ silent: true }), 1500);
+    } catch (error) {
+      setRepairState(current => ({ ...current, [event.id]: { loading: false, message: error.message || 'Réparation impossible.', error: true } }));
+    }
+  }
+
   const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
   return (
     <header className="h-14 border-b flex items-center justify-between px-3 sm:px-5 gap-2 sm:gap-4 sticky top-0 z-20 shrink-0 relative bg-background/95 backdrop-blur">
@@ -223,20 +280,32 @@ export default function TopBar({ onOpenMobileMenu }) {
               const tone = notificationTone(event);
               const Icon = tone.icon;
               const unread = unreadSet.has(event.id);
-              return <button key={event.id} type="button" onClick={() => openNotification(event)}
-                className={`w-full text-left rounded-xl border p-3 transition hover:bg-muted/60 ${unread ? tone.box : 'border-border/70 bg-muted/20'}`}>
-                <div className="flex items-start gap-2.5">
-                  <span className={`mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${tone.iconBox}`}><Icon className="w-4 h-4" /></span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-start justify-between gap-2">
-                      <span className="text-sm font-semibold">{event.title || 'Information'}</span>
-                      {unread && <span className="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0" />}
+              const domain = incidentDomain(event);
+              const repair = repairState[event.id];
+              const showRepair = Boolean(domain && canRepairDomains && event.severity === 'critical');
+              return <div key={event.id} className={`w-full rounded-xl border transition ${unread ? tone.box : 'border-border/70 bg-muted/20'}`}>
+                <button type="button" onClick={() => openNotification(event)} className="w-full text-left p-3 transition hover:bg-muted/60 rounded-xl">
+                  <div className="flex items-start gap-2.5">
+                    <span className={`mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${tone.iconBox}`}><Icon className="w-4 h-4" /></span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-start justify-between gap-2">
+                        <span className="text-sm font-semibold">{event.title || 'Information'}</span>
+                        {unread && <span className="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0" />}
+                      </span>
+                      <span className="block mt-1 text-xs text-muted-foreground leading-relaxed">{event.body || 'Une nouvelle activité concerne votre espace.'}</span>
+                      <span className="block mt-1.5 text-[10px] text-muted-foreground">{formatNotificationDate(event.created_at)}</span>
                     </span>
-                    <span className="block mt-1 text-xs text-muted-foreground leading-relaxed">{event.body || 'Une nouvelle activité concerne votre espace.'}</span>
-                    <span className="block mt-1.5 text-[10px] text-muted-foreground">{formatNotificationDate(event.created_at)}</span>
-                  </span>
-                </div>
-              </button>;
+                  </div>
+                </button>
+                {showRepair && <div className="px-3 pb-3 pl-[3.25rem]">
+                  <button type="button" onClick={() => repairCriticalIncident(event)} disabled={repair?.loading}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-400/30 bg-red-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-red-200 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60">
+                    {repair?.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : repair?.verified ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Wrench className="h-3.5 w-3.5" />}
+                    {repair?.loading ? 'Réparation en cours…' : repair?.verified ? 'Réparation vérifiée' : 'Réparer automatiquement'}
+                  </button>
+                  {repair?.message && <p className={`mt-1.5 text-[10px] leading-4 ${repair.error ? 'text-red-300' : repair.verified ? 'text-emerald-300' : 'text-muted-foreground'}`}>{repair.message}</p>}
+                </div>}
+              </div>;
             })}</div> :
               <div className="py-8 text-center">
                 <Bell className="mx-auto w-7 h-7 text-muted-foreground/50" />
@@ -251,7 +320,7 @@ export default function TopBar({ onOpenMobileMenu }) {
           <DialogHeader><DialogTitle>Se repérer dans le Cockpit</DialogTitle><DialogDescription>Choisissez une page selon ce que vous voulez faire.</DialogDescription></DialogHeader>
           <div className="space-y-3 text-sm">
             <p><strong>Rechercher une page :</strong> saisissez son nom, puis sélectionnez un résultat. Entrée ouvre le premier résultat ; Échap ferme la recherche.</p>
-            <p><strong>Notifications :</strong> la cloche rassemble automatiquement les nouvelles données, mises à jour et incidents liés à votre organisation.</p>
+            <p><strong>Notifications :</strong> la cloche rassemble automatiquement les nouvelles données, mises à jour et incidents liés à votre organisation. Les administrateurs peuvent lancer une réparation automatique depuis un incident critique de site.</p>
             <p><strong>Suivre le travail :</strong> les Demandes rassemblent les besoins ; les Projets et les Tâches servent à suivre leur réalisation.</p>
             <p><strong>Créer et gérer :</strong> le Studio regroupe la production de contenus ; Finance contient les devis et les factures.</p>
             <p><strong>Lire les états :</strong> une autorisation requise, une information manquante et une erreur technique demandent des actions différentes. « Terminée avec preuve » indique un résultat documenté.</p>
