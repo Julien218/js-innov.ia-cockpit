@@ -40,7 +40,8 @@ test('une panne ne devient jamais une liste vide', async () => {
 });
 test('refuse les redirections masquées HTML et les autres éditions', async () => {
   await assert.rejects(listMissDourRegistrations(async () => new Response('<iframe>', { headers: { 'content-type': 'text/html' } })), /attendues/);
-  await assert.rejects(listMissDourRegistrations(async () => response([{ ...row, year: 2027 }])), /invalide/);
+  // 2027 est désormais une édition supportée par le connecteur ; une année hors catalogue doit être refusée.
+  await assert.rejects(listMissDourRegistrations(async () => response([{ ...row, year: 2028 }])), /invalide/);
 });
 test('une pagination répétée échoue au lieu de boucler ou dupliquer', async () => {
   await assert.rejects(listMissDourRegistrations(async () => response([row], row.id)), /Pagination/);
