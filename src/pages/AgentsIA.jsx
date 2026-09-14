@@ -1,8 +1,8 @@
 /**
- * AgentsIA.jsx — Page de gestion des spécialistes internes NOVA
+ * AgentsIA.jsx — Page de gestion des spécialistes internes d’Elynea
  *
  * Architecture sécurisée :
- *   Frontend → /api/base44-agents (URL de compatibilité) → NOVA interne
+ *   Frontend → /api/base44-agents (alias historique) → spécialistes internes Elynea
  *
  * Aucune clé API n'est présente dans ce fichier.
  * Toutes les requêtes passent par le backend sécurisé du Cockpit.
@@ -39,7 +39,7 @@ export default function AgentsIA() {
   const [statusChecks, setStatusChecks] = useState({});
   const messagesEndRef = useRef(null);
 
-  // === Chargement du registre des agents depuis le backend ===
+  // === Chargement du registre des spécialistes depuis le backend ===
   const loadAgents = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -59,7 +59,7 @@ export default function AgentsIA() {
     loadAgents();
   }, [loadAgents]);
 
-  // === Vérification du statut d'un agent ===
+  // === Vérification du statut d'un spécialiste ===
   const checkAgentStatus = useCallback(async (agentId) => {
     setStatusChecks(prev => ({ ...prev, [agentId]: 'checking' }));
     try {
@@ -72,7 +72,7 @@ export default function AgentsIA() {
     }
   }, []);
 
-  // === Création d'une conversation avec un agent ===
+  // === Création d'une conversation avec un spécialiste ===
   const startConversation = useCallback(async (agent) => {
     setSelectedAgent(agent);
     setConversation(null);
@@ -97,7 +97,7 @@ export default function AgentsIA() {
     }
   }, []);
 
-  // === Envoi d'un message à l'agent ===
+  // === Envoi d'un message au spécialiste ===
   const sendMessage = useCallback(async () => {
     if (!input.trim() || !selectedAgent || !conversation || sending) return;
 
@@ -144,7 +144,7 @@ export default function AgentsIA() {
   if (loading) {
     return (
       <div style={{ padding: '40px', textAlign: 'center', color: COLORS.textSecondary }}>
-        Chargement du registre des agents…
+        Chargement des spécialistes d’Elynea…
       </div>
     );
   }
@@ -154,11 +154,11 @@ export default function AgentsIA() {
       {/* En-tête */}
       <div style={{ marginBottom: '32px' }}>
         <h1 style={{ fontSize: '28px', fontWeight: 700, color: COLORS.textPrimary, margin: 0 }}>
-          Spécialistes IA — NOVA
+          Spécialistes IA — Elynea
         </h1>
         <p style={{ color: COLORS.textSecondary, marginTop: '8px', fontSize: '14px' }}>
-          {agents.filter(a => a.status === 'active').length} agents actifs sur {agents.length} •
-          Communication sécurisée via backend (aucune clé exposée)
+          {agents.filter(a => a.status === 'active').length} spécialistes actifs sur {agents.length} •
+          Une seule assistante, plusieurs expertises internes • Communication sécurisée via backend
         </p>
       </div>
 
@@ -177,7 +177,7 @@ export default function AgentsIA() {
         </div>
       )}
 
-      {/* Grille des agents */}
+      {/* Grille des spécialistes */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
@@ -273,16 +273,16 @@ export default function AgentsIA() {
                 </div>
               )}
 
-              {/* Statut détaillé pour agent supprimé */}
+              {/* Statut détaillé pour spécialiste supprimé */}
               {!isActive && agent.status_detail && (
                 <p style={{ color: COLORS.red, fontSize: '11px', marginTop: '8px' }}>
                   {agent.status_detail}
                 </p>
               )}
 
-              {/* ID provider */}
+              {/* Identifiant technique conservé pour compatibilité */}
               <p style={{ color: `${COLORS.textSecondary}80`, fontSize: '10px', marginTop: '12px', fontFamily: 'monospace' }}>
-                {agent.provider_agent_id}
+                ID technique · {agent.provider_agent_id}
               </p>
             </div>
           );
@@ -324,7 +324,7 @@ export default function AgentsIA() {
           }}>
             {messages.length === 0 && (
               <p style={{ color: COLORS.textSecondary, textAlign: 'center', fontSize: '13px' }}>
-                Conversation initiée. Envoyez votre premier message à {selectedAgent.name}.
+                Expertise sélectionnée. Envoyez votre premier message à Elynea.
               </p>
             )}
             {messages.map((msg, i) => (
@@ -349,7 +349,7 @@ export default function AgentsIA() {
             ))}
             {sending && (
               <div style={{ color: COLORS.textSecondary, fontSize: '13px', fontStyle: 'italic' }}>
-                {selectedAgent.name} réfléchit…
+                Elynea réfléchit avec l’expertise sélectionnée…
               </div>
             )}
             <div ref={messagesEndRef} />
@@ -362,7 +362,7 @@ export default function AgentsIA() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-              placeholder={`Message à ${selectedAgent.name}…`}
+              placeholder={`Message à Elynea · ${selectedAgent.role}…`}
               disabled={sending}
               style={{
                 flex: 1,
@@ -405,9 +405,9 @@ export default function AgentsIA() {
         fontSize: '12px',
         color: COLORS.green
       }}>
-        🔒 Sécurité : Cette page n'utilise aucune clé API côté navigateur. Toutes les requêtes passent par
-        le moteur interne sécurisé de NOVA. L’ancienne URL technique est conservée uniquement pour compatibilité.
-        La clé <code style={{ color: COLORS.cyan }}>BASE44_API_KEY</code> est stockée uniquement côté serveur.
+        🔒 Sécurité : aucune clé API n’est exposée au navigateur. Toutes les requêtes passent par
+        le backend sécurisé d’Elynea. <code style={{ color: COLORS.cyan }}>/api/base44-agents</code> est
+        uniquement un alias historique de compatibilité ; le routage actif utilise les spécialistes internes JS-Innov.IA et n’appelle plus Base44.
       </div>
     </div>
   );
