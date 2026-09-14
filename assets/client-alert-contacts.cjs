@@ -4,8 +4,8 @@ const { createClient } = require('@supabase/supabase-js');
 
 const SYNC_ENABLED = process.env.CLIENT_ALERT_CONTACT_SYNC_ENABLED !== 'false';
 const SYNC_INTERVAL_MS = Math.max(60_000, Number(process.env.CLIENT_ALERT_CONTACT_SYNC_INTERVAL_MS || 60_000));
-const SUPABASE_URL = String(process.env.SUPABASE_URL || '').trim();
-const SUPABASE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+const SUPABASE_URL = String(process.env.SUPABASE_CRM_URL || process.env.SUPABASE_URL || '').trim();
+const SUPABASE_KEY = String(process.env.SUPABASE_CRM_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
 function cleanTenant(value) {
   return String(value || '')
