@@ -1,55 +1,70 @@
-# JS-Innov.IA AI Factory Local v1
+# JS-Innov.IA — Agent local Elynea 1.5.0
 
-Service local-first pour le Cockpit. Il écoute uniquement sur `127.0.0.1:8787` et utilise Ollama localement.
+Service local-first du Cockpit JS-Innov.IA. L’agent principal écoute normalement sur `127.0.0.1:8787`. Le Cockpit Music Motion recherche d’abord `8788`, puis `8787`, afin qu’une ancienne instance puisse rester temporairement en place sans bloquer la migration.
 
-## Démarrage
+Les services Avatar Factory `8791`, `8792` et `8793` sont indépendants et ne doivent pas être confondus avec l’agent Music Motion.
 
-```bash
-cd local-agent
-npm install
-npm start
+## Installation / réparation Windows recommandée
+
+Depuis le dossier `local-agent` :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\repair-music-motion-windows.ps1
 ```
 
-Vérification: `GET http://127.0.0.1:8787/health`.
+Le réparateur :
 
-## Contrat v1.1
+- inventorie les processus sur `8787` et `8788` ;
+- ne touche jamais aux services Avatar Factory `8791–8793` ;
+- met à niveau les dépendances Node ;
+- crée un environnement Python isolé `.venv-music-motion` ;
+- installe la pile Music Motion (NumPy, SciPy, librosa, faster-whisper, pypdf) ;
+- remplace uniquement une ancienne instance JS-Innov.IA identifiable sur `8788` ;
+- démarre l’agent actuel sur `8788` ;
+- vérifie réellement `GET /api/music-motion/production/capabilities` ;
+- installe le démarrage automatique Windows.
 
-- `POST /api/agent/chat`: conversation NOVA locale et détection déterministe des outils autorisés.
-- `GET /api/tools`: capacités réellement mesurées et dossiers autorisés.
-- `POST /api/tools/execute`: exécution d’un outil en liste blanche.
-- `GET /api/tools/runs/:id`: preuve d’exécution en mémoire.
-- `POST /architect/analyze`: analyse une demande et produit un plan structuré sans effet de bord.
-- `GET /validations`: file de validation locale.
-- `POST /validations/:id/approve`: validation humaine.
-- `POST /validations/:id/reject`: refus humain.
+## Vérifications
+
+Agent général :
+
+```text
+GET http://127.0.0.1:8788/health
+GET http://127.0.0.1:8787/health
+```
+
+Music Motion v2 :
+
+```text
+GET http://127.0.0.1:8788/api/music-motion/production/capabilities
+GET http://127.0.0.1:8787/api/music-motion/production/capabilities
+```
+
+Le Cockpit considère l’agent Music Motion disponible dès qu’un des deux ports répond avec le contrat `version: 2`.
+
+## Capacités principales
+
+- conversation Elynea locale et orchestration d’outils autorisés ;
+- FFmpeg / FFprobe ;
+- analyse audio Music Motion v2 ;
+- transcription locale via faster-whisper lorsque disponible ;
+- lecture de PDF locale ;
+- intégration ComfyUI locale ;
+- télémétrie locale CPU/GPU/coût technique ;
+- validation humaine des actions sensibles.
 
 ## Sécurité
 
-Les seuls outils exécutables sont `ffmpeg_version`, `ffprobe_file` et `list_directory`. Ils utilisent `execFile` sans shell. Les chemins doivent appartenir à `LOCAL_AGENT_ALLOWED_ROOTS` (sinon Downloads, Documents et Videos). Chaque appel produit heure, code de sortie, sortie brute et identifiant dans `%LOCALAPPDATA%\JS-InnovIA\AI-Factory\tool-runs.jsonl`. Aucune écriture GitHub/Railway/Supabase/Dropbox, suppression ou commande libre n'est acceptée.
+L’agent n’écoute que sur la boucle locale (`127.0.0.1`). Les outils système sont limités et les chemins doivent appartenir aux racines autorisées. Aucune commande shell arbitraire n’est exposée par l’API.
 
-## Production locale
+Les variables principales se trouvent dans `.env.example`, notamment :
 
-La version Electron 1.0.19 embarque et démarre ce composant automatiquement. Si un ancien agent occupe déjà 8787, le moteur embarqué démarre sur 8788 et NOVA le privilégie. Il ne doit pas être déployé sur Railway : Ollama et les outils restent sur le PC.
-
-
-## Analyse musicale — Elynea Music Motion Studio
-
-Le point POST /api/music-motion/analyze reçoit une chanson encodée localement, la transcrit avec faster-whisper et transmet uniquement le texte et les timecodes à Ollama pour construire un plan de réalisation. Le fichier audio temporaire est supprimé après l’analyse.
-
-Installation optionnelle sous Windows :
-
-    powershell -ExecutionPolicy Bypass -File .\install-music-motion-windows.ps1
-
-ou, manuellement :
-
-    python -m pip install -r .\requirements-music-motion.txt
-
-Variables utiles dans .env :
-
-- MUSIC_MOTION_PYTHON : interpréteur Python à utiliser ;
-- MUSIC_MOTION_WHISPER_MODEL : modèle, par défaut small ;
-- MUSIC_MOTION_WHISPER_DEVICE : cuda ou cpu ;
-- MUSIC_MOTION_WHISPER_COMPUTE_TYPE : par défaut int8 ;
-- MUSIC_MOTION_WHISPER_LANGUAGE : par défaut fr.
-
-Si Whisper ou librosa n’est pas installé, l’interface signale précisément le service manquant et conserve une timeline modifiable de secours.
+- `LOCAL_AGENT_PORT` ;
+- `LOCAL_AGENT_TOKEN` ;
+- `MUSIC_MOTION_PYTHON` ;
+- `MUSIC_MOTION_WHISPER_MODEL` ;
+- `MUSIC_MOTION_WHISPER_DEVICE` ;
+- `MUSIC_MOTION_WHISPER_COMPUTE_TYPE` ;
+- `MUSIC_MOTION_WHISPER_LANGUAGE` ;
+- `COMFYUI_URL` ;
+- `OLLAMA_URL`.
