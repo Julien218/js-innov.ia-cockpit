@@ -6,6 +6,10 @@ function isRetryableFailure(item) {
   return /aborted|timeout|timed out|econnreset|etimedout/.test(message);
 }
 
+/**
+ * Résilience single-agent : un échec réseau ne crée jamais une autre identité.
+ * On rejoue une seule fois Elynea avec exactement les mêmes compétences.
+ */
 async function runReadOnlyDelegations(message) {
   const results = await core.runReadOnlyDelegations(message);
   const resilient = [];
@@ -16,21 +20,22 @@ async function runReadOnlyDelegations(message) {
       continue;
     }
 
-    const originalAgent = item.agent;
-    const fallbackAgent = core.buildVirtualAgent(message, originalAgent);
+    const skills = Array.isArray(item.skills) && item.skills.length
+      ? item.skills
+      : [core.buildVirtualAgent(message)];
+
     try {
-      const fallback = await core.delegateVirtualReadOnly(fallbackAgent, message);
+      const retry = await core.delegateElyneaReadOnly(skills, message);
       resilient.push({
-        ...fallback,
-        fallback_used: true,
-        fallback_reason: String(item.error || item.reason || 'Base44 timeout').slice(0, 300),
-        original_agent: originalAgent,
+        ...retry,
+        retry_used: true,
+        retry_reason: String(item.error || item.reason || 'timeout Elynea').slice(0, 300),
       });
     } catch (error) {
       resilient.push({
         ...item,
-        fallback_used: true,
-        fallback_error: String(error.message || error).slice(0, 500),
+        retry_used: true,
+        retry_error: String(error.message || error).slice(0, 500),
       });
     }
   }
