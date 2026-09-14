@@ -10,18 +10,22 @@ const sidebar = read('src/components/layout/Sidebar.jsx');
 const audience = read('server-companion-audience.cjs');
 const assistant = read('server-assistant.cjs');
 const floating = read('src/components/FloatingAgent.jsx');
+const roleAware = read('src/components/RoleAwareFloatingAgent.jsx');
+const brandScope = read('src/components/ElyneaBrandScope.jsx');
 const { guardUnverifiedCapabilityRefusal, recentMediaFrom, recentMediaContext } = require(path.join(root, 'server-assistant.cjs'));
 
-test('NOVA est le seul Companion visible et l’ancienne route JulienAI est neutralisée', () => {
+test('Elynea est le seul Companion visible et l’ancienne route JulienAI est neutralisée', () => {
   assert.doesNotMatch(sidebar, /label:\s*["']Julien AI["']/);
   assert.doesNotMatch(sidebar, /label:\s*["']Agent Local["'][^\n]*path:\s*["']\/agent["']/);
   assert.doesNotMatch(app, /import Agent from/);
   assert.match(app, /path="\/agent" element=\{<Navigate to="\/" replace \/>\}/);
-  assert.match(audience, /assistant_name:\s*'NOVA'/);
+  assert.match(audience, /OFFICIAL_ASSISTANT_NAME = 'Elynea'/);
+  assert.match(roleAware, /ElyneaBrandScope/);
+  assert.match(brandScope, /replaceLegacyName/);
   assert.doesNotMatch(audience, /assistant_name:\s*'Julien AI Companion'/);
 });
 
-test('la même NOVA bascule automatiquement sur l’IA locale quand Internet est coupé', async () => {
+test('la même Elynea visible bascule automatiquement sur l’IA locale quand Internet est coupé', async () => {
   assert.match(floating, /navigator\.onLine === false/);
   assert.match(floating, /LOCAL_NOVA_URLS.*127\.0\.0\.1:8788.*127\.0\.0\.1:8787/);
   assert.match(floating, /await sendNovaChat/);
@@ -29,7 +33,7 @@ test('la même NOVA bascule automatiquement sur l’IA locale quand Internet est
   assert.deepEqual(await sendNovaChat({ message: 'Bonjour', offline: true,
     sendCloud: () => assert.fail('Hors connexion, ne pas appeler le cloud'), sendLocal: async () => ({ local: true }),
   }), { local: true });
-  assert.match(floating, /Tu es NOVA, l’unique assistant visible/);
+  assert.match(brandScope, /NOVA.*Elynea|replaceLegacyName/);
   assert.doesNotMatch(floating, /Julien AI Companion/);
 });
 
