@@ -48,6 +48,13 @@ test('la clé organisation est stable', () => {
   assert.equal(cleanTenant('Synergie Dour ASBL'), 'synergie-dour-asbl');
 });
 
+test('la synchronisation CRM utilise REST et ne dépend pas du WebSocket Supabase', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'assets', 'client-alert-contacts.cjs'), 'utf8');
+  assert.doesNotMatch(source, /@supabase\/supabase-js/);
+  assert.match(source, /\/rest\/v1\/Client/);
+  assert.match(source, /Authorization: `Bearer \$\{SUPABASE_KEY\}`/);
+});
+
 test('la page Clients expose les réglages Contacts & Alertes et reprend le téléphone principal', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'pages', 'Clients.jsx'), 'utf8');
   assert.match(source, /Contacts & alertes · Téléphone SMS \/ WhatsApp/);
