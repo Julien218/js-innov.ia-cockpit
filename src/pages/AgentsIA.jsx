@@ -1,128 +1,110 @@
 /**
- * AgentsIA.jsx — Page de gestion des spécialistes internes d’Elynea
- *
- * Architecture sécurisée :
- *   Frontend → /api/base44-agents (alias historique) → spécialistes internes Elynea
- *
- * Aucune clé API n'est présente dans ce fichier.
- * Toutes les requêtes passent par le backend sécurisé du Cockpit.
+ * Elynea — agent IA unique JS-Innov.IA.
+ * L'ancienne route `/api/base44-agents` est conservée comme alias backend,
+ * mais l'interface ne présente plus plusieurs agents : uniquement Elynea et
+ * ses compétences internes.
  */
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
-// === Styles (système de conception JS-Innov.IA) ===
 const COLORS = {
-  bg: '#0B0B0F',
-  card: '#14141e',
-  border: '#1e1e2e',
-  gold: '#D4AF37',
-  cyan: '#06B6D4',
-  violet: '#7C3AED',
-  textPrimary: '#f0f0f5',
-  textSecondary: '#9999aa',
-  green: '#22c55e',
-  red: '#ef4444',
-  orange: '#f59e0b',
+  bg: '#0B0B0F', card: '#14141e', border: '#1e1e2e', gold: '#D4AF37',
+  cyan: '#06B6D4', violet: '#7C3AED', textPrimary: '#f0f0f5',
+  textSecondary: '#9999aa', green: '#22c55e', red: '#ef4444', orange: '#f59e0b',
+};
+
+const buttonStyle = {
+  background: 'transparent', border: `1px solid ${COLORS.border}`, borderRadius: '8px',
+  padding: '7px 12px', color: COLORS.textSecondary, fontSize: '12px', cursor: 'pointer',
 };
 
 export default function AgentsIA() {
   const queryClient = useQueryClient();
-  const [agents, setAgents] = useState([]);
+  const [assistant, setAssistant] = useState(null);
+  const [skills, setSkills] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedAgent, setSelectedAgent] = useState(null);
+  const [selectedSkill, setSelectedSkill] = useState(null);
   const [conversation, setConversation] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [statusChecks, setStatusChecks] = useState({});
+  const [assistantStatus, setAssistantStatus] = useState('');
+  const [skillChecks, setSkillChecks] = useState({});
   const messagesEndRef = useRef(null);
 
-  // === Chargement du registre des spécialistes depuis le backend ===
-  const loadAgents = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
     try {
       const resp = await fetch('/api/base44-agents');
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
-      setAgents(data.agents || []);
+      setAssistant(data.assistant || data.agents?.[0] || { key: 'elynea', name: 'Elynea', status: 'active' });
+      // Compatibilité avec une ancienne réponse durant un déploiement progressif.
+      setSkills(data.skills || (data.agents || []).filter(item => item.key !== 'elynea').map(item => ({
+        key: item.provider_agent_id || item.key,
+        skill_id: item.provider_agent_id || item.key,
+        name: String(item.name || '').replace(/^Elynea\s*·\s*/i, ''),
+        role: item.role,
+        domains: item.domains || [],
+        capabilities: item.capabilities || [],
+        status: item.status,
+      })));
     } catch (err) {
       setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => {
-    loadAgents();
-  }, [loadAgents]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  // === Vérification du statut d'un spécialiste ===
-  const checkAgentStatus = useCallback(async (agentId) => {
-    setStatusChecks(prev => ({ ...prev, [agentId]: 'checking' }));
+  const checkAssistant = useCallback(async () => {
+    setAssistantStatus('checking');
     try {
-      const resp = await fetch(`/api/base44-agents/${agentId}/status`);
+      const resp = await fetch('/api/base44-agents/elynea/status');
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
-      setStatusChecks(prev => ({ ...prev, [agentId]: data.status }));
-    } catch (err) {
-      setStatusChecks(prev => ({ ...prev, [agentId]: 'error' }));
-    }
+      setAssistantStatus(data.status || 'operational');
+    } catch { setAssistantStatus('error'); }
   }, []);
 
-  // === Création d'une conversation avec un spécialiste ===
-  const startConversation = useCallback(async (agent) => {
-    setSelectedAgent(agent);
-    setConversation(null);
-    setMessages([]);
-    setError(null);
-
+  const checkSkill = useCallback(async (skillKey) => {
+    setSkillChecks(prev => ({ ...prev, [skillKey]: 'checking' }));
     try {
-      const resp = await fetch(`/api/base44-agents/${agent.provider_agent_id}/conversations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
+      const resp = await fetch(`/api/base44-agents/${encodeURIComponent(skillKey)}/status`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      setSkillChecks(prev => ({ ...prev, [skillKey]: data.status || 'operational' }));
+    } catch { setSkillChecks(prev => ({ ...prev, [skillKey]: 'error' })); }
+  }, []);
+
+  const startConversation = useCallback(async (skill) => {
+    setSelectedSkill(skill); setConversation(null); setMessages([]); setError(null);
+    try {
+      const key = skill.skill_id || skill.key;
+      const resp = await fetch(`/api/base44-agents/${encodeURIComponent(key)}/conversations`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
       });
-      if (!resp.ok) {
-        const errData = await resp.json();
-        throw new Error(errData.detail || errData.error || `HTTP ${resp.status}`);
-      }
-      const data = await resp.json();
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.detail || data.error || `HTTP ${resp.status}`);
       setConversation(data);
-      setMessages([]);
-    } catch (err) {
-      setError(err.message);
-    }
+    } catch (err) { setError(err.message); }
   }, []);
 
-  // === Envoi d'un message au spécialiste ===
   const sendMessage = useCallback(async () => {
-    if (!input.trim() || !selectedAgent || !conversation || sending) return;
-
-    const userMsg = { role: 'user', content: input.trim() };
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
-    setSending(true);
-
+    if (!input.trim() || !selectedSkill || !conversation || sending) return;
+    const text = input.trim();
+    setMessages(prev => [...prev, { role: 'user', content: text }]);
+    setInput(''); setSending(true);
     try {
-      const resp = await fetch(
-        `/api/base44-agents/${selectedAgent.provider_agent_id}/conversations/${conversation.id}/messages`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: userMsg.content, request_id: crypto.randomUUID() })
-        }
-      );
-
-      if (!resp.ok) {
-        const errData = await resp.json();
-        throw new Error(errData.detail || errData.error || `HTTP ${resp.status}`);
-      }
-
-      const data = await resp.json();
-      setMessages(prev => [...prev, { role: 'assistant', content: data.content, id: data.id }]);
+      const key = selectedSkill.skill_id || selectedSkill.key;
+      const resp = await fetch(`/api/base44-agents/${encodeURIComponent(key)}/conversations/${encodeURIComponent(conversation.id)}/messages`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text, request_id: crypto.randomUUID() }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.detail || data.error || `HTTP ${resp.status}`);
+      setMessages(prev => [...prev, { role: 'assistant', content: data.content || data.response || '', id: data.id }]);
       if (data.action_type === 'delete_dropbox_file') {
         queryClient.invalidateQueries({ queryKey: ['portfolio-dropbox-assets'] });
         window.dispatchEvent(new Event('cockpit-documents-changed'));
@@ -130,284 +112,88 @@ export default function AgentsIA() {
       }
     } catch (err) {
       setMessages(prev => [...prev, { role: 'system', content: `Erreur: ${err.message}` }]);
-    } finally {
-      setSending(false);
-    }
-  }, [input, selectedAgent, conversation, sending, queryClient]);
+    } finally { setSending(false); }
+  }, [input, selectedSkill, conversation, sending, queryClient]);
 
-  // Auto-scroll vers le bas
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: COLORS.textSecondary }}>Chargement d’Elynea…</div>;
 
-  // === Render ===
-  if (loading) {
-    return (
-      <div style={{ padding: '40px', textAlign: 'center', color: COLORS.textSecondary }}>
-        Chargement des spécialistes d’Elynea…
-      </div>
-    );
-  }
+  const assistantOnline = assistantStatus === 'operational';
 
   return (
     <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
-      {/* En-tête */}
-      <div style={{ marginBottom: '32px' }}>
-        <h1 style={{ fontSize: '28px', fontWeight: 700, color: COLORS.textPrimary, margin: 0 }}>
-          Spécialistes IA — Elynea
-        </h1>
-        <p style={{ color: COLORS.textSecondary, marginTop: '8px', fontSize: '14px' }}>
-          {agents.filter(a => a.status === 'active').length} spécialistes actifs sur {agents.length} •
-          Une seule assistante, plusieurs expertises internes • Communication sécurisée via backend
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700, color: COLORS.textPrimary, margin: 0 }}>Elynea</h1>
+        <p style={{ color: COLORS.textSecondary, marginTop: 8, fontSize: 14 }}>
+          Un seul agent IA • {skills.filter(skill => skill.status === 'active').length} compétences internes • Un seul moteur de conversation
         </p>
       </div>
 
-      {/* Erreur globale */}
-      {error && (
-        <div style={{
-          background: `${COLORS.red}15`,
-          border: `1px solid ${COLORS.red}40`,
-          borderRadius: '8px',
-          padding: '12px 16px',
-          marginBottom: '24px',
-          color: COLORS.red,
-          fontSize: '14px'
-        }}>
-          ⚠ {error}
+      {error && <div style={{ background: `${COLORS.red}15`, border: `1px solid ${COLORS.red}40`, borderRadius: 10, padding: '12px 16px', marginBottom: 20, color: COLORS.red, fontSize: 14 }}>⚠ {error}</div>}
+
+      <section style={{ background: `linear-gradient(135deg, ${COLORS.card}, #10182b)`, border: `1px solid ${assistantOnline ? COLORS.green : COLORS.gold}55`, borderRadius: 16, padding: 20, marginBottom: 28 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: assistantStatus === 'error' ? COLORS.red : assistantOnline ? COLORS.green : COLORS.gold }} />
+              <h2 style={{ color: COLORS.textPrimary, fontSize: 20, margin: 0 }}>{assistant?.name || 'Elynea'}</h2>
+            </div>
+            <p style={{ color: COLORS.textSecondary, margin: '7px 0 0', fontSize: 13 }}>{assistant?.role || 'Agent IA unique JS-Innov.IA'}</p>
+            <p style={{ color: COLORS.cyan, margin: '7px 0 0', fontSize: 12 }}>Architecture : 1 agent → routage automatique vers les compétences ci-dessous</p>
+          </div>
+          <button type="button" onClick={checkAssistant} style={buttonStyle}>{assistantStatus === 'checking' ? 'Vérification…' : 'Tester Elynea'}</button>
         </div>
-      )}
+      </section>
 
-      {/* Grille des spécialistes */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-        gap: '16px',
-        marginBottom: '32px'
-      }}>
-        {agents.map(agent => {
-          const status = statusChecks[agent.provider_agent_id];
-          const isActive = agent.status === 'active';
-          const isSelected = selectedAgent?.provider_agent_id === agent.provider_agent_id;
+      <div style={{ marginBottom: 12 }}>
+        <h2 style={{ color: COLORS.textPrimary, fontSize: 18, margin: 0 }}>Compétences d’Elynea</h2>
+        <p style={{ color: COLORS.textSecondary, fontSize: 12, marginTop: 5 }}>Ce ne sont pas des agents séparés. Une carte sélectionne uniquement le contexte métier utilisé par Elynea.</p>
+      </div>
 
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14, marginBottom: 28 }}>
+        {skills.map(skill => {
+          const key = skill.skill_id || skill.key;
+          const status = skillChecks[key];
+          const selected = selectedSkill && (selectedSkill.skill_id || selectedSkill.key) === key;
           return (
-            <div
-              key={agent.provider_agent_id}
-              onClick={() => isActive && startConversation(agent)}
-              style={{
-                background: isSelected ? `${COLORS.gold}10` : COLORS.card,
-                border: `1px solid ${isSelected ? COLORS.gold : COLORS.border}`,
-                borderRadius: '12px',
-                padding: '20px',
-                cursor: isActive ? 'pointer' : 'default',
-                opacity: isActive ? 1 : 0.5,
-                transition: 'all 0.2s ease',
-              }}
-            >
-              {/* Statut */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <div style={{
-                  width: '8px', height: '8px', borderRadius: '50%',
-                  background: !isActive ? COLORS.red :
-                    status === 'operational' ? COLORS.green :
-                    status === 'checking' ? COLORS.orange :
-                    status === 'error' || status === 'not_found' ? COLORS.red :
-                    COLORS.cyan
-                }} />
-                {isActive && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); checkAgentStatus(agent.provider_agent_id); }}
-                    style={{
-                      background: 'transparent',
-                      border: `1px solid ${COLORS.border}`,
-                      borderRadius: '6px',
-                      padding: '4px 10px',
-                      color: COLORS.textSecondary,
-                      fontSize: '11px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {status === 'checking' ? 'Vérification…' : 'Tester'}
-                  </button>
-                )}
+            <div key={key} onClick={() => startConversation(skill)} style={{ background: selected ? `${COLORS.gold}10` : COLORS.card, border: `1px solid ${selected ? COLORS.gold : COLORS.border}`, borderRadius: 12, padding: 18, cursor: 'pointer' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 10 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: status === 'error' ? COLORS.red : status === 'operational' ? COLORS.green : status === 'checking' ? COLORS.orange : COLORS.cyan }} />
+                <button type="button" onClick={(event) => { event.stopPropagation(); checkSkill(key); }} style={{ ...buttonStyle, padding: '4px 9px', fontSize: 11 }}>{status === 'checking' ? 'Vérification…' : 'Tester la compétence'}</button>
               </div>
-
-              {/* Nom et rôle */}
-              <h3 style={{ color: COLORS.textPrimary, fontSize: '16px', fontWeight: 600, margin: '0 0 4px 0' }}>
-                {agent.name}
-              </h3>
-              <p style={{ color: COLORS.textSecondary, fontSize: '12px', margin: '0 0 12px 0' }}>
-                {agent.role}
-              </p>
-
-              {/* Domaines */}
-              {agent.domains.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
-                  {agent.domains.map(d => (
-                    <span key={d} style={{
-                      background: `${COLORS.cyan}15`,
-                      color: COLORS.cyan,
-                      fontSize: '11px',
-                      padding: '2px 8px',
-                      borderRadius: '4px'
-                    }}>
-                      {d}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Capabilities */}
-              {agent.capabilities.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                  {agent.capabilities.slice(0, 4).map(c => (
-                    <span key={c} style={{
-                      color: COLORS.textSecondary,
-                      fontSize: '10px',
-                      padding: '1px 6px',
-                      borderRadius: '3px',
-                      background: `${COLORS.violet}10`
-                    }}>
-                      {c}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Statut détaillé pour spécialiste supprimé */}
-              {!isActive && agent.status_detail && (
-                <p style={{ color: COLORS.red, fontSize: '11px', marginTop: '8px' }}>
-                  {agent.status_detail}
-                </p>
-              )}
-
-              {/* Identifiant technique conservé pour compatibilité */}
-              <p style={{ color: `${COLORS.textSecondary}80`, fontSize: '10px', marginTop: '12px', fontFamily: 'monospace' }}>
-                ID technique · {agent.provider_agent_id}
-              </p>
+              <h3 style={{ color: COLORS.textPrimary, fontSize: 16, fontWeight: 600, margin: '0 0 5px' }}>{skill.name}</h3>
+              <p style={{ color: COLORS.textSecondary, fontSize: 12, margin: '0 0 10px' }}>{skill.role}</p>
+              {!!skill.domains?.length && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 10 }}>{skill.domains.map(domain => <span key={domain} style={{ background: `${COLORS.cyan}15`, color: COLORS.cyan, fontSize: 10, padding: '2px 7px', borderRadius: 4 }}>{domain}</span>)}</div>}
+              {!!skill.capabilities?.length && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{skill.capabilities.slice(0, 5).map(capability => <span key={capability} style={{ color: COLORS.textSecondary, fontSize: 10, padding: '1px 6px', borderRadius: 3, background: `${COLORS.violet}12` }}>{capability}</span>)}</div>}
+              <p style={{ color: `${COLORS.textSecondary}75`, fontSize: 10, marginTop: 12, fontFamily: 'monospace' }}>compétence · {key}</p>
             </div>
           );
         })}
       </div>
 
-      {/* Zone de conversation */}
-      {selectedAgent && conversation && (
-        <div style={{
-          background: COLORS.card,
-          border: `1px solid ${COLORS.border}`,
-          borderRadius: '12px',
-          padding: '20px',
-          marginTop: '24px'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ color: COLORS.textPrimary, fontSize: '16px', margin: 0 }}>
-              💬 {selectedAgent.name}
-            </h3>
-            <button
-              onClick={() => { setSelectedAgent(null); setConversation(null); setMessages([]); }}
-              style={{
-                background: 'transparent', border: 'none', color: COLORS.textSecondary,
-                cursor: 'pointer', fontSize: '14px'
-              }}
-            >
-              ✕ Fermer
-            </button>
+      {selectedSkill && conversation && <section style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 14 }}>
+          <div>
+            <h3 style={{ color: COLORS.textPrimary, fontSize: 16, margin: 0 }}>💬 Elynea</h3>
+            <p style={{ color: COLORS.cyan, fontSize: 11, margin: '4px 0 0' }}>Compétence active : {selectedSkill.name}</p>
           </div>
-
-          {/* Messages */}
-          <div style={{
-            maxHeight: '400px',
-            overflowY: 'auto',
-            marginBottom: '16px',
-            padding: '12px',
-            background: `${COLORS.bg}`,
-            borderRadius: '8px'
-          }}>
-            {messages.length === 0 && (
-              <p style={{ color: COLORS.textSecondary, textAlign: 'center', fontSize: '13px' }}>
-                Expertise sélectionnée. Envoyez votre premier message à Elynea.
-              </p>
-            )}
-            {messages.map((msg, i) => (
-              <div key={i} style={{
-                marginBottom: '12px',
-                textAlign: msg.role === 'user' ? 'right' : 'left'
-              }}>
-                <div style={{
-                  display: 'inline-block',
-                  maxWidth: '80%',
-                  padding: '10px 14px',
-                  borderRadius: msg.role === 'user' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
-                  background: msg.role === 'user' ? `${COLORS.gold}20` :
-                    msg.role === 'system' ? `${COLORS.red}20` : `${COLORS.cyan}15`,
-                  color: msg.role === 'system' ? COLORS.red : COLORS.textPrimary,
-                  fontSize: '14px',
-                  textAlign: 'left'
-                }}>
-                  {msg.content}
-                </div>
-              </div>
-            ))}
-            {sending && (
-              <div style={{ color: COLORS.textSecondary, fontSize: '13px', fontStyle: 'italic' }}>
-                Elynea réfléchit avec l’expertise sélectionnée…
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input */}
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-              placeholder={`Message à Elynea · ${selectedAgent.role}…`}
-              disabled={sending}
-              style={{
-                flex: 1,
-                background: COLORS.bg,
-                border: `1px solid ${COLORS.border}`,
-                borderRadius: '8px',
-                padding: '12px 16px',
-                color: COLORS.textPrimary,
-                fontSize: '14px',
-                outline: 'none'
-              }}
-            />
-            <button
-              onClick={sendMessage}
-              disabled={sending || !input.trim()}
-              style={{
-                background: COLORS.gold,
-                color: COLORS.bg,
-                border: 'none',
-                borderRadius: '8px',
-                padding: '0 24px',
-                fontWeight: 600,
-                cursor: sending ? 'wait' : 'pointer',
-                opacity: sending || !input.trim() ? 0.5 : 1
-              }}
-            >
-              Envoyer
-            </button>
-          </div>
+          <button type="button" onClick={() => { setSelectedSkill(null); setConversation(null); setMessages([]); }} style={buttonStyle}>✕ Fermer</button>
         </div>
-      )}
 
-      {/* Note de sécurité */}
-      <div style={{
-        marginTop: '24px',
-        padding: '12px 16px',
-        background: `${COLORS.green}10`,
-        border: `1px solid ${COLORS.green}30`,
-        borderRadius: '8px',
-        fontSize: '12px',
-        color: COLORS.green
-      }}>
-        🔒 Sécurité : aucune clé API n’est exposée au navigateur. Toutes les requêtes passent par
-        le backend sécurisé d’Elynea. <code style={{ color: COLORS.cyan }}>/api/base44-agents</code> est
-        uniquement un alias historique de compatibilité ; le routage actif utilise les spécialistes internes JS-Innov.IA et n’appelle plus Base44.
+        <div style={{ maxHeight: 420, overflowY: 'auto', marginBottom: 14, padding: 12, background: COLORS.bg, borderRadius: 9 }}>
+          {!messages.length && <p style={{ color: COLORS.textSecondary, textAlign: 'center', fontSize: 13 }}>Elynea est prête avec la compétence « {selectedSkill.name} ».</p>}
+          {messages.map((msg, index) => <div key={msg.id || index} style={{ marginBottom: 10, textAlign: msg.role === 'user' ? 'right' : 'left' }}><div style={{ display: 'inline-block', maxWidth: '82%', padding: '10px 13px', borderRadius: msg.role === 'user' ? '12px 12px 4px 12px' : '12px 12px 12px 4px', background: msg.role === 'user' ? `${COLORS.gold}20` : msg.role === 'system' ? `${COLORS.red}20` : `${COLORS.cyan}15`, color: msg.role === 'system' ? COLORS.red : COLORS.textPrimary, fontSize: 14, textAlign: 'left', whiteSpace: 'pre-wrap' }}>{msg.content}</div></div>)}
+          {sending && <div style={{ color: COLORS.textSecondary, fontSize: 13, fontStyle: 'italic' }}>Elynea réfléchit…</div>}
+          <div ref={messagesEndRef} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input type="text" value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); } }} placeholder={`Demander à Elynea · ${selectedSkill.name}…`} disabled={sending} style={{ flex: 1, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: '12px 14px', color: COLORS.textPrimary, fontSize: 14, outline: 'none' }} />
+          <button type="button" onClick={sendMessage} disabled={sending || !input.trim()} style={{ background: COLORS.gold, color: COLORS.bg, border: 'none', borderRadius: 8, padding: '0 22px', fontWeight: 700, cursor: sending ? 'wait' : 'pointer', opacity: sending || !input.trim() ? 0.5 : 1 }}>Envoyer</button>
+        </div>
+      </section>}
+
+      <div style={{ marginTop: 24, padding: '12px 16px', background: `${COLORS.green}10`, border: `1px solid ${COLORS.green}30`, borderRadius: 8, fontSize: 12, color: COLORS.green }}>
+        🔒 Une seule identité IA : Elynea. Les anciennes clés NOVA/Base44 restent uniquement des alias techniques de compatibilité côté serveur.
       </div>
     </div>
   );
