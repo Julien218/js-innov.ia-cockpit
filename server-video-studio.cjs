@@ -1,5 +1,9 @@
 const express = require('express');
 const crypto = require('crypto');
+const fs = require('node:fs');
+const fsp = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
 const { Readable } = require('stream');
 
 const router = express.Router();
@@ -13,7 +17,11 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABA
 const CRM_URL = String(process.env.SUPABASE_CRM_URL || SUPABASE_URL).replace(/\/+$/, '');
 const CRM_KEY = process.env.SUPABASE_CRM_KEY || SUPABASE_KEY;
 const STORAGE_BUCKET = 'video-studio';
-const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+const SINGLE_UPLOAD_BYTES = 100 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
+const UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
+const UPLOAD_SESSION_TTL_MS = 60 * 60 * 1000;
+const uploadSessions = new Map();
 
 let bucketReadyPromise = null;
 
@@ -82,7 +90,8 @@ async function request(baseUrl, endpoint, {
   allowError = false,
 } = {}) {
   requireConfiguration(key);
-  const response = await fetch(baseUrl + endpoint, {
+  const streamBody = body && typeof body.pipe === 'function';
+  const fetchOptions = {
     method,
     headers: {
       apikey: key,
@@ -91,7 +100,9 @@ async function request(baseUrl, endpoint, {
       ...headers,
     },
     ...(body !== undefined ? { body } : {}),
-  });
+    ...(streamBody ? { duplex: 'half' } : {}),
+  };
+  const response = await fetch(baseUrl + endpoint, fetchOptions);
   const raw = await response.text();
   let data = null;
   try {
@@ -224,8 +235,8 @@ function sendError(res, error) {
   });
 }
 
-function collectionRoutes(path, table, filters, sanitize) {
-  router.get(path, async (req, res) => {
+function collectionRoutes(routePath, table, filters, sanitize) {
+  router.get(routePath, async (req, res) => {
     try {
       return res.json(await listRows(table, req, filters));
     } catch (error) {
@@ -233,7 +244,7 @@ function collectionRoutes(path, table, filters, sanitize) {
     }
   });
 
-  router.get(path + '/:id', async (req, res) => {
+  router.get(routePath + '/:id', async (req, res) => {
     const id = validId(req.params.id);
     if (!id) return res.status(400).json({ error: 'Identifiant invalide.' });
     try {
@@ -244,7 +255,7 @@ function collectionRoutes(path, table, filters, sanitize) {
     }
   });
 
-  router.post(path, async (req, res) => {
+  router.post(routePath, async (req, res) => {
     try {
       const row = await createRow(table, sanitize(req.body, { req }));
       return row ? res.status(201).json(row) : res.status(502).json({ error: 'Création non confirmée.' });
@@ -253,7 +264,7 @@ function collectionRoutes(path, table, filters, sanitize) {
     }
   });
 
-  router.patch(path + '/:id', async (req, res) => {
+  router.patch(routePath + '/:id', async (req, res) => {
     const id = validId(req.params.id);
     if (!id) return res.status(400).json({ error: 'Identifiant invalide.' });
     try {
@@ -267,7 +278,7 @@ function collectionRoutes(path, table, filters, sanitize) {
     }
   });
 
-  router.delete(path + '/:id', async (req, res) => {
+  router.delete(routePath + '/:id', async (req, res) => {
     const id = validId(req.params.id);
     if (!id) return res.status(400).json({ error: 'Identifiant invalide.' });
     try {
@@ -331,7 +342,20 @@ async function ensureStorageBucket() {
         '/storage/v1/bucket/' + encodeURIComponent(STORAGE_BUCKET),
         { key: SUPABASE_KEY, allowError: true },
       );
-      if (existing.response.ok) return;
+      if (existing.response.ok) {
+        const update = await request(
+          SUPABASE_URL,
+          '/storage/v1/bucket/' + encodeURIComponent(STORAGE_BUCKET),
+          {
+            method: 'PUT',
+            body: jsonBody({ public: true, file_size_limit: MAX_UPLOAD_BYTES }),
+            key: SUPABASE_KEY,
+            allowError: true,
+          },
+        );
+        if (!update.response.ok) console.warn('[video-studio] limite du bucket non mise à jour:', update.response.status);
+        return;
+      }
       if (existing.response.status !== 404) {
         const error = new Error('Vérification du bucket Storage impossible.');
         error.status = 502;
@@ -376,14 +400,60 @@ function extensionOf(fileName) {
 }
 
 function validStoragePath(value) {
-  const path = String(value || '').trim();
-  return /^media\/\d{4}-\d{2}-\d{2}\/[0-9a-f-]{36}(?:\.[a-z0-9]{1,12})?$/.test(path)
-    ? path
+  const storagePath = String(value || '').trim();
+  return /^media\/\d{4}-\d{2}-\d{2}\/[0-9a-f-]{36}(?:\.[a-z0-9]{1,12})?$/.test(storagePath)
+    ? storagePath
     : null;
 }
 
 function mediaProxyUrl(storagePath, { download = false } = {}) {
   return '/api/video-studio/media?path=' + encodeURIComponent(storagePath) + (download ? '&download=1' : '');
+}
+
+function mediaResponse(storagePath, originalName, mimeType, size) {
+  const publicUrl = SUPABASE_URL
+    + '/storage/v1/object/public/'
+    + encodeURIComponent(STORAGE_BUCKET)
+    + '/'
+    + encodedStoragePath(storagePath);
+  const mediaUrl = mediaProxyUrl(storagePath);
+  return {
+    url: mediaUrl,
+    file_url: mediaUrl,
+    media_url: mediaUrl,
+    download_url: mediaProxyUrl(storagePath, { download: true }),
+    public_url: publicUrl,
+    path: storagePath,
+    bucket: STORAGE_BUCKET,
+    name: originalName,
+    mime_type: mimeType || 'application/octet-stream',
+    size,
+  };
+}
+
+async function removeUploadSession(id) {
+  const item = uploadSessions.get(id);
+  uploadSessions.delete(id);
+  if (item?.tempPath) await fsp.rm(item.tempPath, { force: true }).catch(() => null);
+}
+
+async function cleanupExpiredUploadSessions() {
+  const now = Date.now();
+  await Promise.all([...uploadSessions.entries()]
+    .filter(([, item]) => item.expiresAt < now)
+    .map(([id]) => removeUploadSession(id)));
+}
+
+function uploadSessionFor(req) {
+  const id = validId(req.params.id);
+  const item = id ? uploadSessions.get(id) : null;
+  if (!item) return { error: 'Session d’upload absente ou expirée.', status: 404 };
+  if (item.userId !== actor(req)) return { error: 'Cette session d’upload appartient à un autre compte.', status: 403 };
+  if (item.expiresAt < Date.now()) {
+    removeUploadSession(id).catch(() => null);
+    return { error: 'Session d’upload expirée. Relancez l’import.', status: 410 };
+  }
+  return { id, item };
 }
 
 router.get('/media', async (req, res) => {
@@ -429,18 +499,19 @@ router.get('/media', async (req, res) => {
   }
 });
 
+// Petit fichier : chemin historique, conservé pour compatibilité.
 router.post(
   '/upload',
-  express.raw({ type: () => true, limit: MAX_UPLOAD_BYTES }),
+  express.raw({ type: () => true, limit: SINGLE_UPLOAD_BYTES }),
   async (req, res) => {
     try {
       const body = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
       if (!body.length) return res.status(400).json({ error: 'Fichier vide.' });
-      if (body.length > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Fichier trop volumineux (100 Mo maximum).' });
+      if (body.length > SINGLE_UPLOAD_BYTES) return res.status(413).json({ error: 'Fichier supérieur à 100 Mo : utilisez l’upload segmenté du Studio.' });
 
       const originalName = decodeFileName(req.get('x-file-name'));
-      const extension = extensionOf(originalName);
-      const storagePath = 'media/' + new Date().toISOString().slice(0, 10) + '/' + crypto.randomUUID() + extension;
+      const mimeType = req.get('content-type') || 'application/octet-stream';
+      const storagePath = 'media/' + new Date().toISOString().slice(0, 10) + '/' + crypto.randomUUID() + extensionOf(originalName);
       await ensureStorageBucket();
       await request(
         SUPABASE_URL,
@@ -448,36 +519,125 @@ router.post(
         {
           method: 'POST',
           body,
-          headers: {
-            'Content-Type': req.get('content-type') || 'application/octet-stream',
-            'x-upsert': 'false',
-          },
+          headers: { 'Content-Type': mimeType, 'x-upsert': 'false' },
           key: SUPABASE_KEY,
         },
       );
-      const publicUrl = SUPABASE_URL
-        + '/storage/v1/object/public/'
-        + encodeURIComponent(STORAGE_BUCKET)
-        + '/'
-        + encodedStoragePath(storagePath);
-      const mediaUrl = mediaProxyUrl(storagePath);
-      const downloadUrl = mediaProxyUrl(storagePath, { download: true });
-      return res.status(201).json({
-        url: mediaUrl,
-        file_url: mediaUrl,
-        media_url: mediaUrl,
-        download_url: downloadUrl,
-        public_url: publicUrl,
-        path: storagePath,
-        bucket: STORAGE_BUCKET,
-        name: originalName,
-        mime_type: req.get('content-type') || 'application/octet-stream',
-        size: body.length,
-      });
+      return res.status(201).json(mediaResponse(storagePath, originalName, mimeType, body.length));
     } catch (error) {
       return sendError(res, error);
     }
   },
 );
 
+// Gros fichier : le navigateur envoie des blocs de 8 Mo. Aucun buffer géant n’est gardé en RAM.
+router.post('/upload-session', async (req, res) => {
+  try {
+    await cleanupExpiredUploadSessions();
+    const originalName = asText(req.body?.name || req.body?.file_name, 'media.bin', 240);
+    const mimeType = asText(req.body?.mime_type, 'application/octet-stream', 160);
+    const size = Number(req.body?.size || 0);
+    if (!Number.isSafeInteger(size) || size <= 0) return res.status(400).json({ error: 'Taille de fichier invalide.' });
+    if (size > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Fichier trop volumineux (1 Go maximum par import).' });
+
+    const id = crypto.randomUUID();
+    const tempPath = path.join(os.tmpdir(), `jsinnovia-video-${id}.part`);
+    await fsp.writeFile(tempPath, Buffer.alloc(0));
+    uploadSessions.set(id, {
+      userId: actor(req),
+      originalName,
+      mimeType,
+      size,
+      received: 0,
+      tempPath,
+      expiresAt: Date.now() + UPLOAD_SESSION_TTL_MS,
+    });
+    return res.status(201).json({
+      upload_id: id,
+      chunk_size: UPLOAD_CHUNK_BYTES,
+      max_size: MAX_UPLOAD_BYTES,
+      received: 0,
+      size,
+      expires_in: Math.floor(UPLOAD_SESSION_TTL_MS / 1000),
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+router.post(
+  '/upload-session/:id/chunk',
+  express.raw({ type: () => true, limit: UPLOAD_CHUNK_BYTES + 64 * 1024 }),
+  async (req, res) => {
+    const resolved = uploadSessionFor(req);
+    if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
+    try {
+      const body = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+      if (!body.length) return res.status(400).json({ error: 'Bloc vide.' });
+      if (body.length > UPLOAD_CHUNK_BYTES) return res.status(413).json({ error: 'Bloc trop volumineux.' });
+      const offset = Number(req.get('x-upload-offset') || resolved.item.received);
+      if (!Number.isSafeInteger(offset) || offset !== resolved.item.received) {
+        return res.status(409).json({ error: 'Décalage d’upload incorrect.', expected_offset: resolved.item.received });
+      }
+      if (resolved.item.received + body.length > resolved.item.size) {
+        return res.status(413).json({ error: 'Le fichier reçu dépasse la taille annoncée.' });
+      }
+      await fsp.appendFile(resolved.item.tempPath, body);
+      resolved.item.received += body.length;
+      resolved.item.expiresAt = Date.now() + UPLOAD_SESSION_TTL_MS;
+      return res.json({ upload_id: resolved.id, received: resolved.item.received, size: resolved.item.size });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  },
+);
+
+router.post('/upload-session/:id/complete', async (req, res) => {
+  const resolved = uploadSessionFor(req);
+  if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
+  const { item, id } = resolved;
+  try {
+    if (item.received !== item.size) {
+      return res.status(409).json({ error: 'Upload incomplet.', received: item.received, size: item.size });
+    }
+    const stat = await fsp.stat(item.tempPath);
+    if (stat.size !== item.size) throw new Error('La taille assemblée ne correspond pas au fichier attendu.');
+
+    await ensureStorageBucket();
+    const storagePath = 'media/' + new Date().toISOString().slice(0, 10) + '/' + crypto.randomUUID() + extensionOf(item.originalName);
+    const stream = fs.createReadStream(item.tempPath);
+    await request(
+      SUPABASE_URL,
+      '/storage/v1/object/' + encodeURIComponent(STORAGE_BUCKET) + '/' + encodedStoragePath(storagePath),
+      {
+        method: 'POST',
+        body: stream,
+        headers: {
+          'Content-Type': item.mimeType,
+          'Content-Length': String(item.size),
+          'x-upsert': 'false',
+        },
+        key: SUPABASE_KEY,
+      },
+    );
+    const payload = mediaResponse(storagePath, item.originalName, item.mimeType, item.size);
+    await removeUploadSession(id);
+    return res.status(201).json(payload);
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+router.delete('/upload-session/:id', async (req, res) => {
+  const resolved = uploadSessionFor(req);
+  if (resolved.error && resolved.status !== 404) return res.status(resolved.status).json({ error: resolved.error });
+  if (resolved.id) await removeUploadSession(resolved.id);
+  return res.status(204).end();
+});
+
 module.exports = router;
+module.exports.uploadLimits = {
+  single: SINGLE_UPLOAD_BYTES,
+  chunk: UPLOAD_CHUNK_BYTES,
+  max: MAX_UPLOAD_BYTES,
+};
