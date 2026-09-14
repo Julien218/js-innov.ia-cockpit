@@ -72,7 +72,7 @@ function startBundledOfflineCockpit() {
   });
 }
 
-function localHttpJson(port, route, timeout = 1_500) {
+function localHttpJson(port, route, timeout = 1_500, headers = {}) {
   return new Promise((resolve) => {
     let settled = false;
     const finish = (result) => {
@@ -80,7 +80,7 @@ function localHttpJson(port, route, timeout = 1_500) {
       settled = true;
       resolve(result);
     };
-    const request = http.get({ host: "127.0.0.1", port, path: route, timeout }, (response) => {
+    const request = http.get({ host: "127.0.0.1", port, path: route, timeout, headers }, (response) => {
       let raw = "";
       response.setEncoding("utf8");
       response.on("data", (chunk) => {
@@ -114,7 +114,9 @@ function localAgentHealth(port, timeout = 1_500) {
 }
 
 function localMusicMotionCapabilities(port, timeout = 1_500) {
-  return localHttpJson(port, "/api/music-motion/production/capabilities", timeout);
+  const token = String(process.env.LOCAL_AGENT_TOKEN || "").trim();
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  return localHttpJson(port, "/api/music-motion/production/capabilities", timeout, headers);
 }
 
 async function localAgentCompatibility(port, timeout = 1_500) {
