@@ -1,6 +1,6 @@
 const crypto = require('node:crypto');
 
-const { AGENT_REGISTRY } = require('./server-agent-registry.cjs');
+const { SKILL_REGISTRY } = require('./server-agent-registry.cjs');
 const { findCanonicalClient, isInternalClientRecord } = require('./server-video-generation-core.cjs');
 const { lookupBce } = require('./server-bce.cjs');
 const {
@@ -80,7 +80,7 @@ function isReadOnlySiteTask(task = {}, declaredReadOnly = false) {
 }
 
 function siteAgents() {
-  return AGENT_REGISTRY.filter((agent) => agent.status === 'active' && SITE_AGENT_KEYS.has(agent.key));
+  return SKILL_REGISTRY.filter((skill) => skill.status === 'active' && SITE_AGENT_KEYS.has(skill.key));
 }
 
 function siteExecutorForTask(task = {}) {
