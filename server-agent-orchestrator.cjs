@@ -1,104 +1,15 @@
-const { AGENT_REGISTRY } = require('./server-agent-registry.cjs');
+const { ELYNEA_AGENT, SKILL_REGISTRY } = require('./server-agent-registry.cjs');
 
 const JS_AGENT_URL = String(process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app').replace(/\/$/, '');
 const JS_AGENT_KEY = String(process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY || '').trim();
-const MAX_DELEGATES = Math.max(1, Math.min(3, Number(process.env.COMPANION_MAX_SPECIALISTS || 2)));
+const MAX_SKILLS = Math.max(1, Math.min(4, Number(process.env.COMPANION_MAX_SPECIALISTS || 2)));
 
-/* Le proxy UI et l'orchestrateur consomment exactement le même registre. */
-const SITE_AGENT_KEYS = new Set(['jsinnov-agent', 'assurances-dour', 'synergie-dour', 'site-olivier', 'dourconnect', 'villeconnect', 'fashionistart', 'miss-mister-dour', 'generatvideopro']);
-const SITE_AGENT_REGISTRY = Object.freeze(AGENT_REGISTRY.filter((agent) => agent.status === 'active' && SITE_AGENT_KEYS.has(agent.key)));
 /*
-  {
-    key: 'jsinnovia-core',
-    name: 'JsInnov-Agent',
-    provider: 'base44',
-    provider_agent_id: '6a1845e17cc526d1e44965bc',
-    role: 'architecture_devops',
-    domains: ['jsinnovia.com', 'jsinnovia.store'],
-    aliases: ['js-innov.ia', 'jsinnovia', 'cockpit', 'nova'],
-    capabilities: ['architecture', 'code', 'devops', 'github', 'railway', 'cockpit', 'debug', 'securite', 'sécurité'],
-  },
-  {
-    key: 'synergie-dour',
-    name: 'Synergie Dour Assistant',
-    provider: 'base44',
-    provider_agent_id: '6a0208edd1e235b62b4bda38',
-    role: 'site_synergie_dour',
-    domains: ['synergiedour.be'],
-    aliases: ['synergie dour', 'synergiedour', 'synergie asbl'],
-    capabilities: ['membres', 'commercants', 'commerçants', 'evenements', 'événements', 'annuaire', 'communication', 'contenu'],
-  },
-  {
-    key: 'olivier-trevis',
-    name: 'Site Olivier landing Page',
-    provider: 'base44',
-    provider_agent_id: '6a0371a87c9257126b051d5a',
-    role: 'site_olivier_trevis',
-    domains: ['oliviertrevis.be', 'letourdedour.com'],
-    aliases: ['olivier trevis', 'tour de dour', 'le tour de dour'],
-    capabilities: ['site', 'landing', 'contenu', 'communication', 'evenement', 'événement'],
-  },
-  {
-    key: 'fashionistart',
-    name: 'Agent Fashionistart',
-    provider: 'base44',
-    provider_agent_id: '6a035427dca907aa03b71398',
-    role: 'site_fashionistart',
-    domains: ['fashionistartdour.be'],
-    aliases: ["fashionist'art", 'fashionistart', 'fashionist art'],
-    capabilities: ['mode', 'art', 'evenement', 'événement', 'publication', 'communication', 'site'],
-  },
-  {
-    key: 'miss-mister-dour',
-    name: 'Agent Miss & Mister Dour',
-    provider: 'base44',
-    provider_agent_id: '69e732e1d54abfd1783f5d06',
-    role: 'site_pageant_dour',
-    domains: ['missetmisterdour.be'],
-    aliases: ['miss & mister dour', 'miss mister dour', 'missetmisterdour', 'dour pageant'],
-    capabilities: ['candidature', 'vote', 'concours', 'evenement', 'événement', 'publication', 'site'],
-  },
-  {
-    key: 'villeconnect',
-    name: 'Dourconnect2',
-    provider: 'base44',
-    provider_agent_id: '6a22f0c096ce009a943f4a05',
-    role: 'villeconnect_ops',
-    domains: [],
-    aliases: ['villeconnect', 'ville connect', 'dourconnect', 'dour connect'],
-    capabilities: ['territoire', 'citoyens', 'commerces', 'ville', 'services', 'plateforme'],
-  },
-  {
-    key: 'video-pro',
-    name: 'Agent GeneratVideoPro',
-    provider: 'base44',
-    provider_agent_id: '69e467a9d6329bb2ead81fa3',
-    role: 'video_production',
-    domains: [],
-    aliases: ['video studio', 'generateur video', 'générateur vidéo', 'minimax h3', 'h3', 'comfyui'],
-    capabilities: ['video', 'vidéo', 'montage', 'prompt video', 'prompt vidéo', 'comfyui', 'minimax', 'h3', 'ffmpeg'],
-  },
-  {
-    key: 'video-dour',
-    name: 'Agentvideomasvotedour',
-    provider: 'base44',
-    provider_agent_id: '6a199bf9a8a9f3bf17256d73',
-    role: 'video_dour_campaigns',
-    domains: ['letourdedour.com', 'missetmisterdour.be'],
-    aliases: ['mas vote dour', 'vote dour', 'video vote dour', 'vidéo vote dour'],
-    capabilities: ['vote', 'mascotte', 'video', 'vidéo', 'campagne'],
-  },
-  {
-    key: 'creative-director',
-    name: 'Js-Innov.IA Creative Director',
-    provider: 'base44',
-    provider_agent_id: '69ed0a42be17008cf11027eb',
-    role: 'creative_direction',
-    domains: [],
-    aliases: ['creative director', 'direction creative', 'direction créative'],
-    capabilities: ['branding', 'identite', 'identité', 'visuel', 'campagne', 'storyboard', 'direction artistique', 'créatif', 'creatif'],
-  },
-]); */
+ * Compatibilité : ce nom d'export est conservé pour les anciens consommateurs,
+ * mais il contient désormais des compétences et non des agents IA distincts.
+ */
+const SITE_AGENT_KEYS = new Set(['jsinnov-agent', 'assurances-dour', 'synergie-dour', 'site-olivier', 'dourconnect', 'villeconnect', 'fashionistart', 'miss-mister-dour', 'generatvideopro']);
+const SITE_AGENT_REGISTRY = Object.freeze(SKILL_REGISTRY.filter((skill) => skill.status === 'active' && SITE_AGENT_KEYS.has(skill.key)));
 
 function norm(value) {
   return String(value || '')
@@ -107,43 +18,56 @@ function norm(value) {
     .toLowerCase();
 }
 
-function scoreAgent(agent, message) {
+function scoreSkill(skill, message) {
   const text = norm(message);
   if (!text) return 0;
-  const exactDomain = (agent.domains || []).find((domain) => text.includes(norm(domain)));
-  if (!exactDomain) return 0;
   let score = 0;
-  for (const domain of agent.domains || []) {
+  for (const domain of skill.domains || []) {
     if (text.includes(norm(domain))) score += 100;
   }
-  for (const alias of agent.aliases || []) {
+  for (const alias of skill.aliases || []) {
     if (text.includes(norm(alias))) score += 30;
   }
-  for (const capability of agent.capabilities || []) {
+  for (const capability of skill.capabilities || []) {
     if (text.includes(norm(capability))) score += 7;
   }
   return score;
 }
 
-function resolveAgentPlan(message, limit = MAX_DELEGATES) {
+/**
+ * Retourne le plan historique `{ agent, score }` pour compatibilité, mais
+ * `agent` est en réalité une compétence d'Elynea.
+ */
+function resolveAgentPlan(message, limit = MAX_SKILLS) {
   const text = norm(message);
-  const mentionedDomains = [...new Set(SITE_AGENT_REGISTRY.flatMap((agent) => agent.domains || []).filter((domain) => text.includes(norm(domain))))];
-  const specificDomains = mentionedDomains.filter((domain) => !mentionedDomains.some((other) => other !== domain && norm(other).endsWith(`.${norm(domain)}`)));
-  const scored = SITE_AGENT_REGISTRY
-    .map((agent) => ({ agent, score: scoreAgent(agent, message) }))
-    .filter((item) => item.score > 0 && (item.agent.domains || []).some((domain) => specificDomains.includes(domain)))
-    .sort((a, b) => b.score - a.score || a.agent.name.localeCompare(b.agent.name));
+  const mentionedDomains = [...new Set(
+    SITE_AGENT_REGISTRY
+      .flatMap((skill) => skill.domains || [])
+      .filter((domain) => text.includes(norm(domain))),
+  )];
+  const specificDomains = mentionedDomains.filter(
+    (domain) => !mentionedDomains.some((other) => other !== domain && norm(other).endsWith(`.${norm(domain)}`)),
+  );
 
-  const picked = [];
-  const seenRoles = new Set();
-  for (const item of scored) {
-    const roleFamily = item.agent.role.startsWith('site_') ? 'site' : item.agent.role;
-    if (seenRoles.has(roleFamily)) continue;
-    picked.push(item);
-    seenRoles.add(roleFamily);
-    if (picked.length >= Math.max(1, Math.min(3, Number(limit) || MAX_DELEGATES))) break;
+  const domainMatches = SITE_AGENT_REGISTRY
+    .map((skill) => ({ agent: skill, score: scoreSkill(skill, message) }))
+    .filter((item) => item.score > 0 && (!specificDomains.length || (item.agent.domains || []).some((domain) => specificDomains.includes(domain))));
+
+  const genericMatches = SKILL_REGISTRY
+    .filter((skill) => skill.status === 'active')
+    .map((skill) => ({ agent: skill, score: scoreSkill(skill, message) }))
+    .filter((item) => item.score > 0);
+
+  const source = domainMatches.length ? domainMatches : genericMatches;
+  const deduped = [];
+  const seen = new Set();
+  for (const item of source.sort((a, b) => b.score - a.score || a.agent.name.localeCompare(b.agent.name))) {
+    if (seen.has(item.agent.key)) continue;
+    seen.add(item.agent.key);
+    deduped.push(item);
+    if (deduped.length >= Math.max(1, Math.min(4, Number(limit) || MAX_SKILLS))) break;
   }
-  return picked;
+  return deduped;
 }
 
 function inferVirtualRole(message) {
@@ -157,16 +81,25 @@ function inferVirtualRole(message) {
   return 'project_delivery_manager';
 }
 
+/**
+ * Ancien nom conservé pour compatibilité. Cette fonction crée une compétence
+ * temporaire, jamais un second agent.
+ */
 function buildVirtualAgent(message, preferred = null) {
   const role = preferred?.role || inferVirtualRole(message);
-  const label = preferred?.name ? `${preferred.name} — fallback Cockpit` : `Agent métier ${role}`;
   return {
-    key: `virtual:${role}`,
-    name: label,
-    provider: 'jsinnovia-agent',
-    provider_agent_id: null,
+    key: preferred?.key || `virtual:${role}`,
+    name: preferred?.name || `Compétence automatique · ${role}`,
+    label: preferred?.label || `Compétence automatique ${role}`,
+    kind: 'skill',
     role,
-    virtual: true,
+    domains: preferred?.domains || [],
+    aliases: preferred?.aliases || [],
+    capabilities: preferred?.capabilities || [],
+    system_prompt: preferred?.system_prompt || '',
+    assistant_key: ELYNEA_AGENT.key,
+    virtual: !preferred,
+    status: 'active',
   };
 }
 
@@ -177,20 +110,21 @@ function shouldAutoDelegate(message) {
 function buildAgentRoutingContext(message) {
   const plan = resolveAgentPlan(message);
   const lines = [
-    '[ROUTAGE AGENTS MÉTIER JS-INNOV.IA — lecture seule]',
+    '[ROUTAGE COMPÉTENCES ELYNEA — lecture seule]',
+    `Agent IA unique: ${ELYNEA_AGENT.name}.`,
     `Provider jsinnovia-agent configuré: ${JS_AGENT_KEY ? 'oui' : 'non'}.`,
-    'Politique: tous les spécialistes sont internes à NOVA. Base44 est retiré du chemin d’exécution.',
-    'Chaque spécialiste de site reste strictement limité à ses domaines enregistrés. Les tâches Windows, vidéo locale, CRM, GitHub et Railway restent sous NOVA.',
+    'Politique: aucune délégation vers une autre personnalité IA. Elynea active seulement les compétences nécessaires.',
+    'Base44 est retiré du chemin actif. Les anciennes clés servent uniquement d’alias de compatibilité.',
   ];
   if (!plan.length) {
-    const virtual = buildVirtualAgent(message);
-    lines.push(`Aucun agent existant ne correspond clairement. Agent métier virtuel prévu: ${virtual.name} | rôle=${virtual.role}.`);
+    const skill = buildVirtualAgent(message);
+    lines.push(`Compétence automatique prévue: ${skill.label} | rôle=${skill.role}.`);
   } else {
-    for (const { agent, score } of plan) {
-      lines.push(`- ${agent.name} | rôle=${agent.role} | provider=${agent.provider} | id=${agent.provider_agent_id} | score=${score}`);
+    for (const { agent: skill, score } of plan) {
+      lines.push(`- compétence=${skill.name} | rôle=${skill.role} | clé_historique=${skill.key} | score=${score}`);
     }
   }
-  lines.push('[/ROUTAGE AGENTS MÉTIER JS-INNOV.IA]');
+  lines.push('[/ROUTAGE COMPÉTENCES ELYNEA]');
   return { context: lines.join('\n'), plan };
 }
 
@@ -207,19 +141,28 @@ async function fetchJson(url, options = {}, timeoutMs = 30000) {
   }
 }
 
-function specialistPrompt(agent, message) {
+function skillPrompt(skills, message) {
+  const selected = (skills || []).filter(Boolean);
+  const descriptions = selected.map((skill) => [
+    `Compétence: ${skill.name}`,
+    `Rôle: ${skill.role}`,
+    `Domaines: ${(skill.domains || []).join(', ') || 'interne JS-Innov.IA'}`,
+    skill.system_prompt ? `Directives spécifiques:\n${skill.system_prompt}` : '',
+  ].filter(Boolean).join('\n')).join('\n\n');
+
   return [
-    `Tu es ${agent.name}, agent métier délégué par le Companion JS-Innov.IA.`,
-    `Rôle fonctionnel: ${agent.role}.`,
-    'Mission: interroger réellement les données et capacités auxquelles ton backend a accès, en lecture seule, puis produire un rapport exploitable par l’architecte principal.',
-    'Ne publie rien, n’envoie rien, ne supprime rien, ne modifie aucune donnée et ne déclenche aucun déploiement.',
-    'N’affirme jamais qu’une vérification est impossible avant d’avoir contrôlé tes capacités réelles.',
-    'Une URL documentaire, une page Wikipédia ou le nom d’un outil recommandé ne constitue jamais une preuve d’exécution ni un identifiant de journal.',
-    'Pour tout diagnostic présenté comme exécuté, fournis obligatoirement: outil ou commande réellement utilisé, heure, cible, sortie brute et identifiant de journal/tool_run. Si un de ces éléments manque, écris explicitement « diagnostic non exécuté ou non prouvé » et ne conclus pas sur l’état de la cible.',
-    'Réponds avec: état réellement observé, preuves techniques, anomalies, travail restant, dépendances et prochaines tâches recommandées.',
+    'Tu es Elynea, l’unique agent IA de JS-Innov.IA.',
+    'Tu ne changes jamais d’identité et tu ne prétends jamais déléguer à un autre agent.',
+    'Tu peux activer des compétences internes spécialisées selon le besoin.',
+    descriptions,
+    'Mission: interroger réellement les données et capacités accessibles en lecture seule puis produire un rapport exploitable.',
+    'Ne publie rien, n’envoie rien, ne supprime rien, ne modifie aucune donnée et ne déclenche aucun déploiement dans ce run.',
+    'N’affirme jamais qu’une vérification est impossible avant d’avoir contrôlé les capacités réellement disponibles.',
+    'Pour tout diagnostic présenté comme exécuté, fournis: outil ou commande utilisé, heure, cible, sortie brute et identifiant de journal/tool_run.',
+    'Si une preuve manque, écris explicitement « diagnostic non exécuté ou non prouvé » et ne conclus pas sur l’état de la cible.',
     '',
     `Demande: ${String(message || '').slice(0, 3500)}`,
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 function hasOperationalEvidence(content) {
@@ -231,11 +174,12 @@ function hasOperationalEvidence(content) {
   return hasTool && hasRawOutput && hasRunId && hasTime;
 }
 
-async function delegateVirtualReadOnly(agent, message) {
+async function delegateElyneaReadOnly(skills, message) {
+  const selectedSkills = (skills || []).filter(Boolean).slice(0, MAX_SKILLS);
   if (!JS_AGENT_KEY) {
-    return { ok: false, skipped: true, reason: 'jsinnovia_agent_key_missing', agent };
+    return { ok: false, skipped: true, reason: 'jsinnovia_agent_key_missing', agent: ELYNEA_AGENT, skills: selectedSkills };
   }
-  const sessionId = `delegated:${String(agent.role || 'specialist').replace(/[^a-zA-Z0-9_-]/g, '_')}:${Date.now()}`;
+  const sessionId = `elynea:skills:${Date.now()}`;
   const data = await fetchJson(`${JS_AGENT_URL}/chat`, {
     method: 'POST',
     headers: {
@@ -243,16 +187,20 @@ async function delegateVirtualReadOnly(agent, message) {
       'x-agent-key': JS_AGENT_KEY,
     },
     body: JSON.stringify({
-      message: specialistPrompt(agent, message),
+      message: skillPrompt(selectedSkills, message),
       session_id: sessionId,
       assistant_mode: 'owner',
       available_actions: [],
       user_context: {
         role: 'superadmin',
         organisation: 'jsinnovia',
-        full_name: 'JS-Innov.IA Companion',
+        full_name: 'Elynea',
       },
-      server_context: 'Délégation interne en lecture seule. Aucun effet métier réel n’est autorisé dans ce run.',
+      server_context: [
+        'Architecture single-agent: Elynea est la seule identité IA.',
+        `Compétences actives: ${selectedSkills.map((skill) => skill.key).join(', ') || 'générale'}.`,
+        'Aucun effet métier réel n’est autorisé dans ce run de consultation.',
+      ].join('\n'),
     }),
   }, 60000);
   const content = String(data?.response || data?.message || '').trim();
@@ -260,61 +208,66 @@ async function delegateVirtualReadOnly(agent, message) {
     ok: Boolean(content),
     skipped: false,
     provider: 'jsinnovia-agent',
-    agent,
+    agent: ELYNEA_AGENT,
+    skills: selectedSkills,
     session_id: sessionId,
     content: content.slice(0, 8000),
   };
 }
 
+// Compatibilité API historique : ces deux fonctions ne créent plus de nouvel agent.
+async function delegateVirtualReadOnly(agent, message) {
+  return delegateElyneaReadOnly([buildVirtualAgent(message, agent)], message);
+}
+
 async function delegateSpecialistReadOnly(agent, message) {
-  return delegateVirtualReadOnly(buildVirtualAgent(message, agent), message);
+  return delegateElyneaReadOnly([buildVirtualAgent(message, agent)], message);
 }
 
 async function runReadOnlyDelegations(message) {
   if (!shouldAutoDelegate(message)) return [];
   const plan = resolveAgentPlan(message);
-  const selectedAgents = plan.length ? plan.map((item) => item.agent) : [buildVirtualAgent(message)];
-  const results = [];
-  for (const agent of selectedAgents.slice(0, MAX_DELEGATES)) {
-    try {
-      results.push(await delegateSpecialistReadOnly(agent, message));
-    } catch (error) {
-      results.push({ ok: false, skipped: false, agent, error: String(error.message || error).slice(0, 500) });
-    }
+  const skills = plan.length ? plan.map((item) => item.agent) : [buildVirtualAgent(message)];
+  try {
+    // Une seule exécution IA : Elynea reçoit toutes les compétences pertinentes.
+    return [await delegateElyneaReadOnly(skills, message)];
+  } catch (error) {
+    return [{ ok: false, skipped: false, agent: ELYNEA_AGENT, skills, error: String(error.message || error).slice(0, 500) }];
   }
-  return results;
 }
 
 function buildDelegationContext(results = []) {
   if (!Array.isArray(results) || !results.length) return '';
-  const lines = ['[RÉSULTATS AGENTS MÉTIER DÉLÉGUÉS — lecture seule]'];
+  const lines = ['[RÉSULTAT ELYNEA — consultation interne en lecture seule]'];
   for (const item of results) {
-    const name = item?.agent?.name || 'Agent métier';
+    const skills = (item.skills || []).map((skill) => skill.name).join(', ') || 'générale';
     if (item.ok) {
       const runId = item.conversation_id || item.session_id || 'non fourni';
       const evidence = hasOperationalEvidence(item.content) ? 'présente' : 'non fournie';
-      lines.push(`- ${name} (${item.agent.role}) via ${item.provider || item.agent.provider} | consultation=${runId} | preuve_diagnostic=${evidence} :`);
+      lines.push(`- Elynea | compétences=${skills} | consultation=${runId} | preuve_diagnostic=${evidence} :`);
       lines.push(String(item.content || '').slice(0, 8000));
     } else if (item.skipped) {
-      lines.push(`- ${name}: non exécuté (${item.reason || 'indisponible'}).`);
+      lines.push(`- Elynea | compétences=${skills}: non exécuté (${item.reason || 'indisponible'}).`);
     } else {
-      lines.push(`- ${name}: erreur de délégation (${item.error || 'erreur inconnue'}).`);
+      lines.push(`- Elynea | compétences=${skills}: erreur (${item.error || 'erreur inconnue'}).`);
     }
   }
-  lines.push('L’identifiant de consultation prouve uniquement que l’agent a été contacté; il ne prouve pas que le diagnostic décrit a été exécuté.');
-  lines.push('Quand preuve_diagnostic=non fournie, le Companion doit annoncer « rapport agent non vérifié », ne pas reprendre ses conclusions comme des faits et ne marquer aucune tâche terminée. Une URL externe n’est jamais un journal d’exécution.');
-  lines.push('Le Companion doit synthétiser les seuls résultats prouvés, arbitrer les contradictions et ne jamais présenter une recommandation comme une action déjà exécutée.');
-  lines.push('[/RÉSULTATS AGENTS MÉTIER DÉLÉGUÉS]');
+  lines.push('L’identifiant de consultation prouve uniquement que la consultation Elynea a eu lieu; il ne prouve pas qu’un diagnostic décrit a été exécuté.');
+  lines.push('Quand preuve_diagnostic=non fournie, annoncer « rapport non vérifié » et ne marquer aucune tâche terminée.');
+  lines.push('[/RÉSULTAT ELYNEA]');
   return lines.join('\n');
 }
 
 module.exports = {
+  ELYNEA_AGENT,
+  SKILL_REGISTRY,
   SITE_AGENT_REGISTRY,
   resolveAgentPlan,
   inferVirtualRole,
   buildVirtualAgent,
   shouldAutoDelegate,
   buildAgentRoutingContext,
+  delegateElyneaReadOnly,
   delegateVirtualReadOnly,
   delegateSpecialistReadOnly,
   runReadOnlyDelegations,
