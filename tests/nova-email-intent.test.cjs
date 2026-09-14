@@ -30,7 +30,7 @@ test('la formulation exacte triller les emails est reconnue et ne désigne aucun
   assert.equal(isEmailTriage('Ajouter et compléter la liste des clients'), false);
 });
 
-test('sans boîte sélectionnée, NOVA demande laquelle au lieu de choisir une autre entreprise', async () => {
+test('sans boîte sélectionnée, Elynea demande laquelle au lieu de choisir une autre entreprise', async () => {
   const f = mailboxFixture(); const result = await f.run();
   assert.equal(result.confirmation, null); assert.equal(result.success, false);
   assert.match(result.content, /Quelle boîte/); assert.equal(f.calls.length, 0);
@@ -151,7 +151,7 @@ test('HTTP : emails sans action parasite, vieille confirmation rejetée, nouveau
   assert.equal(writes, 0);
   const bare = await post('chat', { message: 'oui' });
   assert.equal(bare.data.confirmation, null); assert.equal(modelCalls, 1);
-  assert.match(bare.data.message, /Aucune ancienne action reprise/);
+  assert.match(bare.data.message, /Aucune action exécutable n’est en attente/);
   const unrelated = await post('chat', { message: 'Bonjour' });
   assert.equal(unrelated.data.confirmation, null); assert.match(unrelated.data.message, /bloquée/);
   const fresh = await post('chat', { message: `Mets la tâche ${task.id} en cours` });
