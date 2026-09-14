@@ -49,6 +49,7 @@ jobs:
           npm run build 2>&1 | tee music-motion-proof/build.log
           npm test 2>&1 | tee music-motion-proof/node-full-suite.log
           python tests/music_motion_analysis_test.py 2>&1 | tee music-motion-proof/analysis-tests.log
+          python tests/music_motion_universal_test.py 2>&1 | tee music-motion-proof/universal-tests.log
           python tests/whisper_fallback_test.py 2>&1 | tee music-motion-proof/whisper-tests.log
       - uses: actions/upload-artifact@v4
         if: always()
