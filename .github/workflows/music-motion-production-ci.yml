@@ -1,7 +1,9 @@
 name: Music Motion Production CI
 on:
   push:
-    branches: [feat/elynea-music-motion-production-20260911]
+    branches:
+      - feat/elynea-music-motion-production-20260911
+      - feat/local-universal-music-intelligence
   pull_request:
     paths:
       - 'src/pages/MusicMotionStudio.jsx'
