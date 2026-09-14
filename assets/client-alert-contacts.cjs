@@ -1,11 +1,24 @@
 'use strict';
 
-const { createClient } = require('@supabase/supabase-js');
-
 const SYNC_ENABLED = process.env.CLIENT_ALERT_CONTACT_SYNC_ENABLED !== 'false';
 const SYNC_INTERVAL_MS = Math.max(60_000, Number(process.env.CLIENT_ALERT_CONTACT_SYNC_INTERVAL_MS || 60_000));
-const SUPABASE_URL = String(process.env.SUPABASE_CRM_URL || process.env.SUPABASE_URL || '').trim();
+const SUPABASE_URL = String(process.env.SUPABASE_CRM_URL || process.env.SUPABASE_URL || '').trim().replace(/\/$/, '');
 const SUPABASE_KEY = String(process.env.SUPABASE_CRM_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+const CLIENT_SELECT = [
+  'nom',
+  'denomination_legale',
+  'entreprise',
+  'telephone',
+  'statut',
+  'alert_tenant_key',
+  'alert_phone',
+  'alert_sms_enabled',
+  'alert_whatsapp_enabled',
+  'alert_whatsapp_opt_in',
+  'alert_site_incidents',
+  'alert_screen_incidents',
+  'alert_updated_at',
+].join(',');
 
 function cleanTenant(value) {
   return String(value || '')
@@ -91,29 +104,46 @@ function buildDbConfig(rows = []) {
   return config;
 }
 
-let supabase = null;
+async function fetchClientRows() {
+  const target = new URL(`${SUPABASE_URL}/rest/v1/Client`);
+  target.searchParams.set('select', CLIENT_SELECT);
+  const response = await fetch(target, {
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      Accept: 'application/json',
+    },
+    signal: AbortSignal.timeout(10_000),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message = payload?.message || payload?.hint || `Supabase REST HTTP ${response.status}`;
+    throw new Error(message);
+  }
+  return Array.isArray(payload) ? payload : [];
+}
+
 let refreshRunning = false;
+let lastSuccessSignature = '';
 
 async function refreshClientAlertContacts() {
   if (!SYNC_ENABLED || refreshRunning || !SUPABASE_URL || !SUPABASE_KEY) return;
   refreshRunning = true;
   try {
-    if (!supabase) {
-      supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-        auth: { persistSession: false, autoRefreshToken: false },
-      });
-    }
-    const { data, error } = await supabase
-      .from('Client')
-      .select('nom,denomination_legale,entreprise,telephone,statut,alert_tenant_key,alert_phone,alert_sms_enabled,alert_whatsapp_enabled,alert_whatsapp_opt_in,alert_site_incidents,alert_screen_incidents,alert_updated_at');
-    if (error) throw error;
-    const dbConfig = buildDbConfig(data || []);
+    const rows = await fetchClientRows();
+    const dbConfig = buildDbConfig(rows);
     process.env.CLIENT_ALERT_CONTACTS_JSON = JSON.stringify({ ...manualConfig, ...dbConfig });
+    const tenantCount = Object.keys(dbConfig).length;
     global.__clientAlertContactSync = {
       refreshedAt: new Date().toISOString(),
-      tenantCount: Object.keys(dbConfig).length,
+      tenantCount,
       error: null,
     };
+    const signature = String(tenantCount);
+    if (signature !== lastSuccessSignature) {
+      console.info(`[client-alerts] synchronisation active: ${tenantCount} organisation(s)`);
+      lastSuccessSignature = signature;
+    }
   } catch (error) {
     global.__clientAlertContactSync = {
       refreshedAt: new Date().toISOString(),
@@ -136,5 +166,6 @@ module.exports = {
   normalizePhone,
   cleanTenant,
   buildDbConfig,
+  fetchClientRows,
   refreshClientAlertContacts,
 };
