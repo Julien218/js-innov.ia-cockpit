@@ -3,15 +3,26 @@ export function isDropboxDeletionRequest(message) {
   return /supprim|effac|effec|\bdelete\b/.test(text) && /dropbox|fichier|image|photo|document|\.png|\.jpg|\.pdf|\.mp4/.test(text);
 }
 
+export function localMediaDiagnosticRequest(message) {
+  const raw = String(message || '');
+  const text = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const windowsMediaPath = /(?:^|[\s"'(<])(?:[a-z]:\\|\\\\)[^\r\n"'<>|?*]+\.(?:mp4|mov|m4v|avi|mkv|webm|mp3|wav|m4a|aac|flac)(?=$|[\s"'),>])/i.test(raw);
+  const mediaDiagnosticIntent = /\b(?:video|audio|media|fichier|montage|studio|codec|ffmpeg|ffprobe|import|importer|ajout|ajouter|integrit|corromp|lisible|lecture|diagnosti|verifi|controle|analyse)\b/.test(text);
+  return windowsMediaPath && mediaDiagnosticIntent;
+}
+
 export async function sendNovaChat({ message, offline, requiresLocalTool, sendCloud, sendLocal }) {
   const needsDropboxProof = isDropboxDeletionRequest(message);
   const text = String(message || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const needsEmailProof = /\b(tri(?:er|e|ez|ller)?|class(?:er|e|ez|ement)|rang(?:er|e|ez)|organis(?:er|e|ez))\b/.test(text) && /\b(e[- ]?mails?|courriels?|courriers?|boites? mail)\b/.test(text);
+  const needsLocalMediaDiagnostic = localMediaDiagnosticRequest(message);
   if (needsEmailProof && offline) throw Object.assign(new Error('Une connexion au Cockpit est nécessaire pour consulter la boîte mail. Aucun préclassement effectué.'), { emailVerification: true });
   if (needsDropboxProof && offline) {
     throw Object.assign(new Error('Une connexion au Cockpit est nécessaire. Aucune suppression lancée depuis ce chat.'), { dropboxVerification: true });
   }
-  if (!needsDropboxProof && !needsEmailProof && (requiresLocalTool || offline)) return sendLocal();
+  // Un chemin C:\\... appartient au poste Windows : le cloud ne peut pas lire ce fichier.
+  // Elynea bascule donc directement vers le pont local (FFprobe/FFmpeg) sans demander de confirmation.
+  if (!needsDropboxProof && !needsEmailProof && (needsLocalMediaDiagnostic || requiresLocalTool || offline)) return sendLocal();
   try {
     return await sendCloud();
   } catch (error) {
