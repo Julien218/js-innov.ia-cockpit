@@ -69,7 +69,7 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw 'Node.js est 
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { throw 'npm est requis.' }
 
 $serverSource = Get-Content -Raw -Path $Server
-$versionMatch = [regex]::Match($serverSource, "const\s+VERSION\s*=\s*'([^']+)'", 'IgnoreCase')
+$versionMatch = [regex]::Match($serverSource, "const\s+VERSION\s*=\s*'([^']+)'", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
 $ExpectedVersion = if ($versionMatch.Success) { $versionMatch.Groups[1].Value } else { 'inconnue' }
 Write-Host "Version locale attendue dans ce dossier : $ExpectedVersion" -ForegroundColor DarkGray
 
@@ -82,7 +82,7 @@ foreach ($port in 8787, 8788) {
     Write-Host "$port : libre" -ForegroundColor DarkGray
     continue
   }
-  $version = if ($health?.agent?.version) { $health.agent.version } else { 'non identifiée' }
+  $version = if ($health -and $health.agent -and $health.agent.version) { $health.agent.version } else { 'non identifiée' }
   $contract = if ($caps) { if ($caps.unauthorized) { 'v2 protégé par jeton' } else { "Music Motion v$($caps.version)" } } else { 'pas de contrat Music Motion v2' }
   Write-Host "$port : PID $($process.ProcessId) · $($process.Name) · version $version · $contract" -ForegroundColor Yellow
   Write-Host "       $($process.CommandLine)" -ForegroundColor DarkGray
@@ -117,7 +117,8 @@ if (-not $SkipPython) {
 # on le remplace. Un ancien 8787 est laissé tranquille lorsque 8788 est disponible.
 $caps8788 = Get-Capabilities 8788
 $health8788 = Get-AgentHealth 8788
-$current8788IsReady = $caps8788 -and -not $caps8788.unauthorized -and [int]$caps8788.version -ge 2 -and $health8788?.agent?.version -eq $ExpectedVersion -and $caps8788.analysis -and $caps8788.render
+$health8788Version = if ($health8788 -and $health8788.agent) { [string]$health8788.agent.version } else { '' }
+$current8788IsReady = $caps8788 -and -not $caps8788.unauthorized -and [int]$caps8788.version -ge 2 -and $health8788Version -eq $ExpectedVersion -and $caps8788.analysis -and $caps8788.render
 if (-not $current8788IsReady -and (Get-PortProcess 8788)) {
   if (-not (Stop-StaleAgentOnPort 8788)) {
     throw 'Le port 8788 est occupé par un programme qui n’est pas identifié comme agent JS-Innov.IA. Il ne sera pas arrêté automatiquement.'
@@ -140,7 +141,7 @@ $oldPython = $env:MUSIC_MOTION_PYTHON
 try {
   $env:LOCAL_AGENT_PORT = [string]$TargetPort
   if ($PythonForMotion) { $env:MUSIC_MOTION_PYTHON = $PythonForMotion }
-  Start-Process -FilePath $Node -ArgumentList @($Server) -WorkingDirectory $AgentDir -WindowStyle Hidden
+  Start-Process -FilePath $Node -ArgumentList @("`"$Server`"") -WorkingDirectory $AgentDir -WindowStyle Hidden
 } finally {
   $env:LOCAL_AGENT_PORT = $oldPort
   $env:MUSIC_MOTION_PYTHON = $oldPython
