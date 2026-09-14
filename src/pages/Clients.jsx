@@ -7,13 +7,63 @@ import DataTable from "@/components/shared/DataTable";
 import StatusBadge from "@/components/shared/StatusBadge";
 import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Building2, Landmark, Mail, MapPin, Pencil, ShieldCheck, Trash2, Users } from "lucide-react";
+import { AlertTriangle, BellRing, Building2, Landmark, Mail, MapPin, Pencil, ShieldCheck, Trash2, Users } from "lucide-react";
+
+const booleanOptions = [
+  { value: "false", label: "Non" },
+  { value: "true", label: "Oui" },
+];
+
+const ALERT_BOOLEAN_FIELDS = [
+  "alert_sms_enabled",
+  "alert_whatsapp_enabled",
+  "alert_whatsapp_opt_in",
+  "alert_site_incidents",
+  "alert_screen_incidents",
+];
+
+const alertDefaults = {
+  alert_sms_enabled: false,
+  alert_whatsapp_enabled: false,
+  alert_whatsapp_opt_in: false,
+  alert_site_incidents: true,
+  alert_screen_incidents: true,
+};
+
+function tenantKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80);
+}
+
+function clientFormData(client) {
+  const source = client || {};
+  return {
+    ...source,
+    alert_phone: source.alert_phone || source.telephone || "",
+    ...Object.fromEntries(
+      ALERT_BOOLEAN_FIELDS.map((field) => [field, String(source[field] ?? alertDefaults[field])])
+    ),
+  };
+}
 
 const formFields = [
   { name: "nom",                   label: "Nom du contact",                 type: "text", required: true },
   { name: "prenom",                label: "Prénom du contact",              type: "text" },
   { name: "email",                 label: "Email principal",                type: "email", required: true },
   { name: "telephone",             label: "Téléphone",                      type: "text" },
+  { name: "alert_phone",           label: "Contacts & alertes · Téléphone SMS / WhatsApp", type: "text", placeholder: "Reprend le téléphone principal si vide" },
+  { name: "alert_sms_enabled",     label: "Contacts & alertes · SMS urgents", type: "select", options: booleanOptions },
+  { name: "alert_whatsapp_enabled", label: "Contacts & alertes · WhatsApp urgent", type: "select", options: booleanOptions },
+  { name: "alert_whatsapp_opt_in", label: "WhatsApp · Accord explicite du client", type: "select", options: booleanOptions },
+  { name: "alert_site_incidents",  label: "Urgences · Incident site / domaine", type: "select", options: booleanOptions },
+  { name: "alert_screen_incidents", label: "Urgences · Incident écran Signelya", type: "select", options: booleanOptions },
   { name: "type_client",           label: "Type de client",                 type: "select",
     options: ["particulier", "professionnel", "entreprise", "asbl"] },
   { name: "entreprise",            label: "Nom commercial",                 type: "text" },
@@ -40,6 +90,15 @@ const columns = [
   { key: "nom",        label: "Nom",         render: (v, row) => `${v || ""} ${row.prenom || ""}`.trim() },
   { key: "email",      label: "Email" },
   { key: "entreprise", label: "Entreprise" },
+  { key: "alert_phone", label: "Alertes", render: (_v, row) => {
+    const channels = [];
+    if (row.alert_sms_enabled) channels.push("SMS");
+    if (row.alert_whatsapp_enabled && row.alert_whatsapp_opt_in) channels.push("WhatsApp");
+    if (row.alert_whatsapp_enabled && !row.alert_whatsapp_opt_in) channels.push("WhatsApp en attente");
+    return channels.length
+      ? <span className="text-cyan-300">{channels.join(" · ")}</span>
+      : <span className="text-muted-foreground">Cockpit uniquement</span>;
+  } },
   { key: "numero_tva", label: "N° TVA", render: v => v || <span className="text-amber-400">Manquant</span> },
   { key: "facturation_statut", label: "Données légales", render: v =>
     v === "verifie"
@@ -67,6 +126,24 @@ export default function Clients() {
       const payload = Object.fromEntries(
         Object.entries(data || {}).filter(([key]) => editableFields.has(key))
       );
+
+      ALERT_BOOLEAN_FIELDS.forEach((field) => {
+        if (Object.prototype.hasOwnProperty.call(payload, field)) {
+          payload[field] = payload[field] === true || String(payload[field]).toLowerCase() === "true";
+        }
+      });
+
+      if (!String(payload.alert_phone || "").trim() && String(payload.telephone || "").trim()) {
+        payload.alert_phone = String(payload.telephone).trim();
+      }
+      if (!editing?.alert_tenant_key) {
+        payload.alert_tenant_key = tenantKey(payload.entreprise || payload.denomination_legale || payload.nom);
+      }
+      payload.alert_whatsapp_opt_in_at = payload.alert_whatsapp_opt_in
+        ? (editing?.alert_whatsapp_opt_in_at || new Date().toISOString())
+        : null;
+      payload.alert_updated_at = new Date().toISOString();
+
       if (payload.facturation_statut === "verifie") {
         payload.facturation_verifiee_at = new Date().toISOString();
         payload.facturation_source = "validation-cockpit";
@@ -161,12 +238,15 @@ export default function Clients() {
     !client.numero_tva || !client.denomination_legale || client.facturation_statut !== "verifie"
   ).length;
   const activeCount = rows.filter((client) => client.statut === "actif").length;
+  const externalAlertsCount = rows.filter((client) =>
+    client.alert_sms_enabled || (client.alert_whatsapp_enabled && client.alert_whatsapp_opt_in)
+  ).length;
 
   const filteredClients = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return rows;
     return rows.filter((client) =>
-      [client.nom, client.prenom, client.email, client.entreprise, client.denomination_legale, client.numero_tva, client.ville]
+      [client.nom, client.prenom, client.email, client.entreprise, client.denomination_legale, client.numero_tva, client.ville, client.alert_phone]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(term))
     );
@@ -178,7 +258,7 @@ export default function Clients() {
         disabled={verifyBce.isPending} onClick={() => verifyBce.mutate(row)}>
         <Landmark className="w-4 h-4" />
       </Button>
-      <Button size="icon" variant="ghost" onClick={() => { setEditing(row); setOpen(true); }}>
+      <Button size="icon" variant="ghost" title="Modifier le client et ses alertes" onClick={() => { setEditing(row); setOpen(true); }}>
         <Pencil className="w-4 h-4" />
       </Button>
       <Button size="icon" variant="ghost" className="text-red-400"
@@ -206,7 +286,7 @@ export default function Clients() {
         search={search} onSearch={setSearch}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouveau client</Button>} />
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="workspace-metric">
           <div className="workspace-metric-icon text-cyan-300"><Users className="h-4 w-4" /></div>
           <div><p className="workspace-metric-value">{activeCount}</p><p className="workspace-metric-label">clients actifs</p></div>
@@ -214,6 +294,10 @@ export default function Clients() {
         <div className="workspace-metric">
           <div className="workspace-metric-icon text-emerald-300"><ShieldCheck className="h-4 w-4" /></div>
           <div><p className="workspace-metric-value">{verifiedCount}</p><p className="workspace-metric-label">fiches vérifiées</p></div>
+        </div>
+        <div className="workspace-metric">
+          <div className="workspace-metric-icon text-cyan-300"><BellRing className="h-4 w-4" /></div>
+          <div><p className="workspace-metric-value">{externalAlertsCount}</p><p className="workspace-metric-label">alertes téléphone actives</p></div>
         </div>
         <div className="workspace-metric">
           <div className="workspace-metric-icon text-amber-300"><AlertTriangle className="h-4 w-4" /></div>
@@ -230,7 +314,12 @@ export default function Clients() {
           <div className="workspace-card p-5 text-sm text-muted-foreground">Chargement des clients…</div>
         ) : filteredClients.length === 0 ? (
           <div className="workspace-card p-8 text-center text-sm text-muted-foreground">Aucun client trouvé</div>
-        ) : filteredClients.map((client) => (
+        ) : filteredClients.map((client) => {
+          const alertChannels = [];
+          if (client.alert_sms_enabled) alertChannels.push("SMS");
+          if (client.alert_whatsapp_enabled && client.alert_whatsapp_opt_in) alertChannels.push("WhatsApp");
+          if (client.alert_whatsapp_enabled && !client.alert_whatsapp_opt_in) alertChannels.push("WhatsApp en attente d’accord");
+          return (
           <article key={client.id} className="workspace-card p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="flex min-w-0 items-start gap-3">
@@ -246,17 +335,19 @@ export default function Clients() {
               <span className="flex items-center gap-2 truncate"><Mail className="h-3.5 w-3.5 shrink-0" />{client.email || "Email manquant"}</span>
               <span className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5 shrink-0" />{client.ville || "Ville manquante"}</span>
               <span className="flex items-center gap-2"><Landmark className="h-3.5 w-3.5 shrink-0" />{client.numero_tva || "TVA manquante"}</span>
+              <span className="flex items-center gap-2"><BellRing className="h-3.5 w-3.5 shrink-0" />{alertChannels.length ? alertChannels.join(" · ") : "Alertes Cockpit uniquement"}</span>
               <span className={client.facturation_statut === "verifie" ? "text-emerald-300" : "text-amber-300"}>
                 {client.facturation_statut === "verifie" ? "Données légales vérifiées" : "Données légales à vérifier"}
               </span>
             </div>
             <div className="mt-3 flex justify-end border-t border-border/70 pt-2">{actions(client)}</div>
           </article>
-        ))}
+          );
+        })}
       </div>
       <FormModal open={open} onClose={() => { setOpen(false); setEditing(null); }}
         title={editing ? "Modifier le client" : "Nouveau client"}
-        fields={formFields} initialData={editing}
+        fields={formFields} initialData={clientFormData(editing)}
         onSubmit={(data) => save.mutate(data)} loading={save.isPending} />
     </div>
   );
