@@ -212,7 +212,7 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "DENY" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    add_header Permissions-Policy "camera=(), microphone=(self), geolocation=()" always;
     client_max_body_size 260m;
 
     if ($host = documents.jsinnovia.com) {
