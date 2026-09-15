@@ -2,19 +2,28 @@ import { useAuth } from '@/lib/AuthContext';
 import FloatingAgent from '@/components/FloatingAgent';
 import ClientCompanion from '@/components/ClientCompanion';
 import LocalAgentQueueBridge from '@/components/LocalAgentQueueBridge';
-import ElyneaBrandScope from '@/components/ElyneaBrandScope';
+import ElyneaBrandScope, { ELYNEA_COMPANION, OFFICIAL_ELYNEA_AVATAR } from '@/components/ElyneaBrandScope';
 
-const OFFICIAL_JSINNOVIA_COMPANION = 'https://www.jsinnovia.com/brand/companion/companion-avatar-256.webp';
-
+/**
+ * Compatibilité visuelle transitoire pour les composants historiques qui rendent
+ * encore une balise <img alt="NOVA">. L'avatar affiché reste toujours Elynea 3D.
+ */
 function LegacyAvatarCompatibility() {
   return <style>{`
     img[alt="NOVA"], img[alt="Elynea"] {
-      content: url('${OFFICIAL_JSINNOVIA_COMPANION}');
+      content: url('${OFFICIAL_ELYNEA_AVATAR}');
     }
   `}</style>;
 }
 
-export default function RoleAwareFloatingAgent() {
+/**
+ * Companion unique du Cockpit.
+ *
+ * - client : interface conversationnelle client, toujours sous l'identité Elynea ;
+ * - équipe/admin : Elynea complète + pont vers ses outils locaux ;
+ * - aucune seconde identité IA n'est rendue par ce composant.
+ */
+export default function ElyneaCockpitCompanion() {
   const { user, authChecked } = useAuth();
   if (!authChecked || !user) return null;
 
@@ -32,6 +41,12 @@ export default function RoleAwareFloatingAgent() {
       <LocalAgentQueueBridge />
       <FloatingAgent />
       <LegacyAvatarCompatibility />
+      <span
+        aria-hidden="true"
+        data-companion-name={ELYNEA_COMPANION.name}
+        data-companion-role={ELYNEA_COMPANION.role}
+        style={{ display: 'none' }}
+      />
     </ElyneaBrandScope>
   );
 }
