@@ -12,10 +12,14 @@ on:
       - 'tests/nova-email-intent.test.cjs'
       - 'server-assistant-batch.cjs'
       - 'server-base44-agents.cjs'
+      - 'server-agent-registry.cjs'
+      - 'server-public-elynea.cjs'
+      - 'server-security.cjs'
       - 'server-specialist-tasks.cjs'
       - 'server-nova-document-delete.cjs'
       - 'server-documents.cjs'
       - 'tests/nova-document-delete.test.cjs'
+      - 'tests/public-elynea-multisite.test.cjs'
       - 'src/pages/AgentsIA.jsx'
       - 'src/pages/Documents.jsx'
       - 'tests/specialist-tasks.test.cjs'
@@ -103,6 +107,9 @@ jobs:
           node --check server-nova-email-triage.cjs
           node --check server-assistant-batch.cjs
           node --check server-base44-agents.cjs
+          node --check server-agent-registry.cjs
+          node --check server-public-elynea.cjs
+          node --check server-security.cjs
           node --check server-specialist-tasks.cjs
           node --check server-nova-document-delete.cjs
           node --check server-task-batch.cjs
@@ -119,6 +126,8 @@ jobs:
           node --check local-agent/server.js
       - name: Full Cockpit regression suite
         run: npm test
+      - name: Public Elynea multisite contract
+        run: node --test tests/public-elynea-multisite.test.cjs
       - name: Companion contract tests
         run: node --require ./tests/node-test-globals.cjs --test tests/companion-contract.test.cjs tests/companion-task-batch.test.cjs tests/nova-real-executors.test.cjs tests/task-autopilot.test.cjs tests/client-billing-integrity.test.cjs tests/local-agent-tools.test.cjs
       - name: Build web application
