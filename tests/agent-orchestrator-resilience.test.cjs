@@ -10,23 +10,25 @@ const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
 
 const { isRetryableFailure } = require(path.join(root, 'server-agent-orchestrator-resilient.cjs'));
 
-test('les timeouts et aborts Base44 sont considérés relançables', () => {
+test('les timeouts et aborts Elynea sont considérés relançables', () => {
   assert.equal(isRetryableFailure({ ok: false, error: 'This operation was aborted' }), true);
   assert.equal(isRetryableFailure({ ok: false, error: 'request timeout' }), true);
   assert.equal(isRetryableFailure({ ok: false, error: 'HTTP 403' }), false);
   assert.equal(isRetryableFailure({ ok: true }), false);
 });
 
-test('un timeout Base44 utilise le spécialiste virtuel JS-Innov.IA', () => {
-  assert.match(resilientSource, /core\.buildVirtualAgent/);
-  assert.match(resilientSource, /core\.delegateVirtualReadOnly/);
-  assert.match(resilientSource, /fallback_used:\s*true/);
-  assert.match(resilientSource, /fallback_reason/);
+test('un timeout rejoue la même Elynea avec les mêmes compétences', () => {
+  assert.match(resilientSource, /core\.delegateElyneaReadOnly/);
+  assert.match(resilientSource, /Array\.isArray\(item\.skills\)/);
+  assert.match(resilientSource, /retry_used:\s*true/);
+  assert.match(resilientSource, /retry_reason/);
+  assert.doesNotMatch(resilientSource, /delegateVirtualReadOnly/);
+  assert.match(resilientSource, /ne crée jamais une autre identité/);
 });
 
-test('la mémoire owner utilise le routeur résilient', () => {
+test('la mémoire owner utilise le routeur résilient Elynea', () => {
   assert.match(memorySource, /server-agent-orchestrator-resilient\.cjs/);
-  assert.match(memorySource, /Base44 est indisponible ou expire/);
+  assert.match(memorySource, /runReadOnlyDelegations/);
 });
 
 test('le runtime Docker embarque le wrapper résilient', () => {
