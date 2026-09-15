@@ -559,7 +559,7 @@ function requestsTaskList(message) {
 async function fetchRun({ id, tool, startedAt, url, timeout = 8000, includeJson = false }) {
   const started = Date.now();
   try {
-    const response = await fetch(url, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(timeout), headers: { 'user-agent': 'NOVA-Local-Tools/1.3' } });
+    const response = await fetch(url, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(timeout), headers: { 'user-agent': `Elynea-Local-Tools/${VERSION}` } });
     const successful = response.ok || (response.status >= 300 && response.status < 400);
     const details = { url, status: response.status, status_text: response.statusText, location: response.headers.get('location'), content_type: response.headers.get('content-type'), duration_ms: Date.now() - started };
     if (includeJson) {
@@ -696,7 +696,7 @@ function taskGroup(task) {
   const text = `${task.titre || task.title || ''} ${task.description || ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   if (/video|comfy|minimax|workflow|api/.test(text)) return 'Vidéo IA et workflows locaux';
   if (/client|facture|societe|asbl|tva/.test(text)) return 'Données clients et facturation';
-  if (/avatar|companion|nova/.test(text)) return 'Assistant et avatar local';
+  if (/avatar|companion|elynea|nova/.test(text)) return 'Assistant et avatar local';
   if (/documentation/.test(text)) return 'Documentation';
   return 'Autres tâches';
 }
@@ -813,7 +813,7 @@ async function health() {
     models = (payload.models || []).map((item) => item.name);
   } catch {}
   const [ffmpeg, ffprobe] = await Promise.all([commandStatus('ffmpeg'), commandStatus('ffprobe')]);
-  return { ok: true, agent: { name: 'NOVA Local Tools', version: VERSION, mode: 'local-first', approvalGate: true }, services: { ollama: { online: ollamaOnline, url: OLLAMA_URL, models }, ffmpeg, ffprobe }, telemetry: await currentTelemetrySnapshot(), tools: [{ name: 'ffmpeg_version', mode: 'read_only', available: ffmpeg.online }, { name: 'ffprobe_file', mode: 'read_only', available: ffprobe.online }, { name: 'list_directory', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'find_local_workflows', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'workflow_documentation_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'video_pipeline_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'comfyui_health', mode: 'read_only', available: true }, { name: 'avatar_factory_status', mode: 'read_only', available: true }, { name: 'http_diagnose', mode: 'read_only', available: true }], allowed_roots: ALLOWED_ROOTS, allowed_http_hosts: [...ALLOWED_HTTP_HOSTS] };
+  return { ok: true, agent: { name: 'Elynea Local Tools', version: VERSION, mode: 'local-first', approvalGate: true }, services: { ollama: { online: ollamaOnline, url: OLLAMA_URL, models }, ffmpeg, ffprobe }, telemetry: await currentTelemetrySnapshot(), tools: [{ name: 'ffmpeg_version', mode: 'read_only', available: ffmpeg.online }, { name: 'ffprobe_file', mode: 'read_only', available: ffprobe.online }, { name: 'list_directory', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'find_local_workflows', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'workflow_documentation_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'video_pipeline_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'comfyui_health', mode: 'read_only', available: true }, { name: 'avatar_factory_status', mode: 'read_only', available: true }, { name: 'http_diagnose', mode: 'read_only', available: true }], allowed_roots: ALLOWED_ROOTS, allowed_http_hosts: [...ALLOWED_HTTP_HOSTS] };
 }
 
 function toolResponse(run) {
@@ -882,17 +882,17 @@ const server = http.createServer(async (req, res) => {
       const recentMediaContext = body.context?.recent_media
         ? JSON.stringify(body.context.recent_media).slice(0, 5000)
         : 'Aucun média récent.';
-      const prompt = `${body.system_prompt || 'Tu es NOVA, assistant local JS-Innov.IA.'}\nOutils réels: ffmpeg_version, ffprobe_file, list_directory, find_local_workflows, workflow_documentation_audit, video_pipeline_audit, comfyui_health, avatar_factory_status, http_diagnose. N’invente jamais une exécution. Ne prétends jamais avoir exécuté un outil sans tool_run réel. Si une tâche exige un outil absent, marque-la bloquée et précise l’outil manquant.\nCopie locale des tâches: ${taskContext}\nMédia récent actif: ${recentMediaContext}. La demande suivante peut concerner ce média; ne dis pas qu’aucun média n’existe quand ce contexte est présent.\nHistorique: ${JSON.stringify(Array.isArray(body.history) ? body.history.slice(-20) : []).slice(0, 20000)}\nUtilisateur: ${String(body.message).slice(0, 4000)}\nNOVA:`;
+      const prompt = `${body.system_prompt || 'Tu es Elynea, assistante locale JS-Innov.IA.'}\nOutils réels: ffmpeg_version, ffprobe_file, list_directory, find_local_workflows, workflow_documentation_audit, video_pipeline_audit, comfyui_health, avatar_factory_status, http_diagnose. N’invente jamais une exécution. Ne prétends jamais avoir exécuté un outil sans tool_run réel. Si une tâche exige un outil absent, marque-la bloquée et précise l’outil manquant.\nCopie locale des tâches: ${taskContext}\nMédia récent actif: ${recentMediaContext}. La demande suivante peut concerner ce média; ne dis pas qu’aucun média n’existe quand ce contexte est présent.\nHistorique: ${JSON.stringify(Array.isArray(body.history) ? body.history.slice(-20) : []).slice(0, 20000)}\nUtilisateur: ${String(body.message).slice(0, 4000)}\nElynea:`;
       const response = await ollama(prompt, body.model);
       if (!response) {
-        return send(req, res, 200, { ok: true, response: 'NOVA locale n’a produit aucune réponse exploitable. Reformulez la demande ou précisez le fichier, le dossier ou l’action souhaitée.', model: body.model || DEFAULT_MODEL, mode: 'local', empty_model_response: true });
+        return send(req, res, 200, { ok: true, response: 'Elynea locale n’a produit aucune réponse exploitable. Reformulez la demande ou précisez le fichier, le dossier ou l’action souhaitée.', model: body.model || DEFAULT_MODEL, mode: 'local', empty_model_response: true });
       }
       return send(req, res, 200, { ok: true, response, model: body.model || DEFAULT_MODEL, mode: 'local' });
     }
     if (req.method === 'POST' && url.pathname === '/architect/analyze') {
       const body = await readJson(req);
       if (!body.request) return send(req, res, 400, { ok: false, error: 'request_required' });
-      const raw = await ollama(`Tu es NOVA architecte locale. Analyse sans modifier. Toute écriture exige validation.\n${body.request}\n${JSON.stringify(body.context || {}).slice(0, 20000)}`, body.model);
+      const raw = await ollama(`Tu es Elynea, architecte locale. Analyse sans modifier. Toute écriture exige validation.\n${body.request}\n${JSON.stringify(body.context || {}).slice(0, 20000)}`, body.model);
       let plan; try { plan = JSON.parse(raw); } catch { plan = { summary: raw, tasks: [] }; }
       const id = crypto.randomUUID(); approvals.set(id, { id, status: 'pending', createdAt: new Date().toISOString(), request: body.request, plan });
       return send(req, res, 200, { ok: true, analysisId: id, status: 'pending_validation', plan });
@@ -912,7 +912,7 @@ const server = http.createServer(async (req, res) => {
 
 if (process.env.LOCAL_AGENT_NO_LISTEN !== '1') {
   server.listen(PORT, '127.0.0.1', () => {
-    console.log(`NOVA Local Tools v${VERSION} http://127.0.0.1:${PORT}`);
+    console.log(`Elynea Local Tools v${VERSION} http://127.0.0.1:${PORT}`);
     void collectTelemetrySnapshot();
     const telemetryTimer = setInterval(() => void collectTelemetrySnapshot(), TELEMETRY_INTERVAL_MS);
     telemetryTimer.unref();

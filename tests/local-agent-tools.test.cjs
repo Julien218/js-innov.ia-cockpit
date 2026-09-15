@@ -6,7 +6,7 @@ const path = require('node:path');
 const floatingAgent = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'FloatingAgent.jsx'), 'utf8');
 const localAgentSource = fs.readFileSync(path.join(__dirname, '..', 'local-agent', 'server.js'), 'utf8');
 
-test('NOVA locale reconnaît uniquement les intentions d’outils autorisées', async () => {
+test('Elynea locale reconnaît uniquement les intentions d’outils autorisées', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-tools-'));
   const previous = {
     noListen: process.env.LOCAL_AGENT_NO_LISTEN,
@@ -85,7 +85,7 @@ test('le moteur local emploie execFile sans shell ni commande arbitraire', () =>
   assert.doesNotMatch(source, /exec\(|shell:\s*true|child_process[^\n]*exec[^F]/);
   assert.match(source, /tool_not_allowed/);
   assert.match(source, /tool-runs\.jsonl/);
-  assert.match(source, /NOVA locale n’a produit aucune réponse exploitable/);
+  assert.match(source, /Elynea locale n’a produit aucune réponse exploitable/);
   assert.match(source, /think: false/);
   assert.match(source, /Copie locale des tâches/);
   assert.match(source, /body\.context\.task_snapshot/);
@@ -121,7 +121,7 @@ test('les demandes d outils locaux sont routées vers NOVA Windows même avec In
   }), { local: true });
 });
 
-test('NOVA locale reçoit le dernier média actif de la conversation', () => {
+test('Elynea locale reçoit le dernier média actif de la conversation', () => {
   assert.match(floatingAgent, /recent_media: recentMedia/);
   assert.match(localAgentSource, /Média récent actif:/);
   assert.match(localAgentSource, /ne dis pas qu’aucun média n’existe/);

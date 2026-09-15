@@ -1,6 +1,6 @@
 {
   "name": "jsinnovia-cockpit",
-  "version": "1.0.42",
+  "version": "1.0.43",
   "description": "JS-Innov.IA Cockpit — Application desktop Windows",
   "main": "bootstrap.js",
   "author": "Julien Pagin <julien@jsinnovia.com>",
@@ -50,6 +50,8 @@
           "music_motion_analyzer.py",
           "requirements-music-motion.txt",
           "install-music-motion-windows.ps1",
+          "install-windows.ps1",
+          "repair-music-motion-windows.ps1",
           "music-motion-*.mjs",
           "music_motion_document.py"
         ]

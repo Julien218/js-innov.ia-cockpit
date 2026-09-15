@@ -1,9 +1,28 @@
 import { useEffect, useRef } from 'react';
 
-export const OFFICIAL_ELYNEA_AVATAR = 'https://www.jsinnovia.com/brand/companion/companion-avatar-256.webp';
+/**
+ * Identité visuelle canonique du Cockpit.
+ *
+ * Elynea est l'unique Companion visible de JS-Innov.IA. Les anciens noms/avatars
+ * NOVA restent uniquement des alias techniques de compatibilité et ne doivent
+ * jamais réapparaître dans l'interface utilisateur.
+ */
+export const ELYNEA_COMPANION = Object.freeze({
+  key: 'elynea',
+  name: 'Elynea',
+  role: 'Companion du Cockpit',
+  brand: 'JS-Innov.IA',
+  avatar: 'https://www.jsinnovia.com/brand/companion/companion-avatar-256.webp',
+});
+
+export const OFFICIAL_ELYNEA_AVATAR = ELYNEA_COMPANION.avatar;
 
 function replaceLegacyName(value) {
-  return typeof value === 'string' ? value.replace(/\bNOVA\b/g, 'Elynea').replace(/\bNova\b/g, 'Elynea') : value;
+  if (typeof value !== 'string') return value;
+  return value
+    .replace(/\bNOVA\b/g, ELYNEA_COMPANION.name)
+    .replace(/\bNova\b/g, ELYNEA_COMPANION.name)
+    .replace(/Elynea\s*[—-]\s*Assistant IA/gi, `${ELYNEA_COMPANION.name} — ${ELYNEA_COMPANION.role}`);
 }
 
 function normalizeNode(root) {
@@ -34,8 +53,9 @@ function normalizeNode(root) {
 }
 
 /**
- * Pont de migration visuelle : les routes/permissions historiques peuvent encore
- * utiliser l'identifiant technique "nova", mais le produit visible s'appelle Elynea.
+ * Pont de migration visuelle : les routes, clés de stockage et permissions
+ * historiques peuvent encore utiliser l'identifiant technique "nova", mais
+ * l'unique identité visible du produit reste Elynea 3D.
  */
 export default function ElyneaBrandScope({ children }) {
   const ref = useRef(null);
@@ -64,5 +84,14 @@ export default function ElyneaBrandScope({ children }) {
     return () => observer.disconnect();
   }, []);
 
-  return <div ref={ref} style={{ display: 'contents' }}>{children}</div>;
+  return (
+    <div
+      ref={ref}
+      data-jsinnovia-companion={ELYNEA_COMPANION.key}
+      data-companion-role={ELYNEA_COMPANION.role}
+      style={{ display: 'contents' }}
+    >
+      {children}
+    </div>
+  );
 }

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { AGENT_REGISTRY } = require('../server-agent-registry.cjs');
+const { SKILL_REGISTRY } = require('../server-agent-registry.cjs');
 const {
   LED_AD_DIRECTOR_PROMPT,
   isLedAdvertisingRequest,
@@ -14,21 +14,21 @@ const { evaluateNovaRequest, buildRoutingContext } = require('../server-nova-rou
 const { buildVideoMetadata } = require('../server-video-provenance-core.cjs');
 const { buildManagedFfmpegArgs, verifyManagedOutput } = require('../server-video-provenance.cjs');
 
-test('le spécialiste Directeur Artistique LED est enregistré dans NOVA avec sa bible métier', () => {
-  const agent = AGENT_REGISTRY.find((item) => item.key === 'led-ad-director');
-  assert.ok(agent);
-  assert.equal(agent.status, 'active');
-  assert.equal(agent.role, 'led_outdoor_ad_creative_direction');
-  assert.equal(agent.system_prompt, LED_AD_DIRECTOR_PROMPT);
-  assert.match(agent.system_prompt, /écran géant de 4 × 2 mètres situé à l’Espace C à Dour/);
-  assert.match(agent.system_prompt, /ne jamais modifier, redessiner ou réinterpréter le logo/);
-  assert.match(agent.system_prompt, /durée exacte de 8 secondes/);
-  assert.match(agent.system_prompt, /Maintiens cet écran parfaitement stable pendant les trois dernières secondes/);
-  assert.match(agent.system_prompt, /profil couleur : Rec\.709/);
-  assert.match(agent.system_prompt, /sans son, sauf demande explicite/);
+test('la compétence Direction Artistique LED d’Elynea conserve sa bible métier', () => {
+  const skill = SKILL_REGISTRY.find((item) => item.key === 'led-ad-director');
+  assert.ok(skill);
+  assert.equal(skill.status, 'active');
+  assert.equal(skill.role, 'led_outdoor_ad_creative_direction');
+  assert.equal(skill.system_prompt, LED_AD_DIRECTOR_PROMPT);
+  assert.match(skill.system_prompt, /écran géant de 4 × 2 mètres situé à l’Espace C à Dour/);
+  assert.match(skill.system_prompt, /ne jamais modifier, redessiner ou réinterpréter le logo/);
+  assert.match(skill.system_prompt, /durée exacte de 8 secondes/);
+  assert.match(skill.system_prompt, /Maintiens cet écran parfaitement stable pendant les trois dernières secondes/);
+  assert.match(skill.system_prompt, /profil couleur : Rec\.709/);
+  assert.match(skill.system_prompt, /sans son, sauf demande explicite/);
 });
 
-test('NOVA route automatiquement une publicité écran géant vers led-ad-director', () => {
+test('Elynea route automatiquement une publicité écran géant vers la compétence led-ad-director', () => {
   const message = 'Créer une vidéo publicitaire pour l’écran géant LED de l’Espace C à Dour.';
   assert.equal(isLedAdvertisingRequest(message), true);
   assert.equal(isLedAdvertisingRequest('Vérifie une facture client.'), false);
@@ -93,8 +93,9 @@ test('la vérification finale refuse un flux audio ou un profil couleur non Rec.
   assert.ok(invalid.mismatches.includes('audio_stream'));
 });
 
-test('la route de conversation transmet réellement le prompt propre au spécialiste', () => {
+test('la route de conversation transmet réellement les directives de la compétence à Elynea', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'server-base44-agents.cjs'), 'utf8');
-  assert.match(source, /agent\.system_prompt/);
-  assert.match(source, /DIRECTIVES SPÉCIALISTE/);
+  assert.match(source, /skill\.system_prompt/);
+  assert.match(source, /DIRECTIVES COMPÉTENCE/);
+  assert.match(source, /Tu es Elynea, l’unique agent IA de JS-Innov\.IA/);
 });

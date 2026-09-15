@@ -1,9 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { processSpecialistMessage, taskIntent } = require('../server-specialist-tasks.cjs');
-const { AGENT_REGISTRY } = require('../server-agent-registry.cjs');
+const { SKILL_REGISTRY } = require('../server-agent-registry.cjs');
 const { executeSiteTask, siteExecutorForTask } = require('../server-nova-executors.cjs');
-const agent = AGENT_REGISTRY.find(item => item.key === 'fashionistart');
+const agent = SKILL_REGISTRY.find(item => item.key === 'fashionistart');
 const user = { id: 'owner', role: 'superadmin', organisation: 'jsinnovia' };
 const original = "hello, analyse le depot pour comprendre la structure du site nous devons apporter au site une galeries connecter ou les exposants pourrais a titre gratuits mettre leurs oeuvres en vente et nous serions charger de cree du contenus sur facebook instagramme et tik tok linnkeding afin de faire decouvrire la plateforme; avec paiement en ligne dispatché directement aux bonne personne artiste 80% - 10 a Starligth asbl et 10 a Js-Innov.IA automatiser le maximum de processus le tout relier a mon cockpit et espace clients starligth + artiste membre fashionist'ART - Artistes non membre artiste 70% - 15 a starligth 15 a js-innov.ia";
 
@@ -31,7 +31,7 @@ function storage() {
   return { state, agentFetch };
 }
 
-test('la demande réelle produit quatre tâches assignées et journalisées même si le modèle ne fournit que du texte', async () => {
+test('la compétence Fashionistart d’Elynea produit quatre tâches assignées et journalisées même si le modèle ne fournit que du texte', async () => {
   const { state, agentFetch } = storage();
   const args = { agent, user, tenant: 'jsinnovia', conversationId: 'session', requestId: 'request-1', message: original, agentFetch,
     chat: async actions => { assert.deepEqual(actions, ['create_task_batch']); return { response: 'Je vais créer les tâches maintenant.' }; } };
@@ -78,7 +78,7 @@ test('un lot invalide ne produit aucune fausse confirmation', async () => {
   assert.match(result.content, /Aucune tâche créée/);
 });
 
-test('le modèle ne peut ni choisir un autre agent ni modifier une tâche existante par son identifiant', async () => {
+test('le modèle ne peut ni choisir une autre compétence ni modifier une tâche existante par son identifiant', async () => {
   const { state, agentFetch } = storage();
   await processSpecialistMessage({ agent, user, tenant: 'jsinnovia', conversationId: 'session', requestId: 'request', message: 'Crée une tâche pour la galerie', agentFetch,
     chat: async () => ({ proposed_action: { type: 'create_task_batch', payload: { tasks: [{ titre: 'Nouvelle galerie', description: 'Autre référence cockpit.jsinnovia.com', task_id: 'victim', projet_id: 'secret-project', provider: 'remote', agent_name: 'other' }] } } }) });
@@ -101,7 +101,7 @@ test('une panne de stockage ne se transforme pas en promesse de travail en arri�
     chat: async () => ({ response: 'Je vais créer' }), agentFetch: async () => new Response('{"error":"database unavailable"}', { status: 503 }) }), /database unavailable/);
 });
 
-test('le chat HTTP crée réellement le lot, isole les conversations et rejoue la preuve sans doublon', async t => {
+test('le chat HTTP utilise Elynea avec la compétence choisie, isole les conversations et rejoue la preuve sans doublon', async t => {
   process.env.JSINNOVIA_AGENT_KEY = 'test-only';
   const express = require('express');
   const { router } = require('../server-base44-agents.cjs');
@@ -122,6 +122,8 @@ test('le chat HTTP crée réellement le lot, isole les conversations et rejoue l
       const body = JSON.parse(options.body);
       assert.deepEqual(body.available_actions, ['create_task_batch']);
       assert.equal(body.user_context.id, user.id);
+      assert.match(body.server_context, /Tu es Elynea, l’unique agent IA/);
+      assert.match(body.server_context, /Compétence active: Fashionist'art/);
       return new Response(JSON.stringify({ response: 'Je vais créer les tâches.' }));
     }
     assert.equal(options.headers['x-organisation-id'], 'jsinnovia');
@@ -130,6 +132,8 @@ test('le chat HTTP crée réellement le lot, isole les conversations et rejoue l
   t.after(() => { global.fetch = networkFetch; server.closeAllConnections(); server.close(); });
   const base = `http://127.0.0.1:${server.address().port}/fashionistart/conversations`;
   const created = await networkFetch(base, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then(r => r.json());
+  assert.equal(created.assistant_key, 'elynea');
+  assert.equal(created.skill_key, 'fashionistart');
   const send = (id = user.id) => networkFetch(`${base}/${created.id}/messages`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-test-user': id }, body: JSON.stringify({ content: original, request_id: 'stable-request' }) });
   assert.equal((await send('another-user')).status, 404);
   const first = await send().then(r => r.json());
@@ -138,5 +142,7 @@ test('le chat HTTP crée réellement le lot, isole les conversations et rejoue l
   assert.equal(chatCalls, 1);
   assert.equal(state.tasks.length, 4);
   assert.equal(first.execution_result.results.length, 4);
+  assert.equal(first.assistant_key, 'elynea');
+  assert.equal(first.skill_key, 'fashionistart');
   assert.match(first.content, /run-1/);
 });

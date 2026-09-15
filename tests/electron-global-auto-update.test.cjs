@@ -14,16 +14,20 @@ test('desktop starts through the global bootstrap', () => {
   assert.ok(pkg.build?.files?.includes('bootstrap.js'));
 });
 
-test('desktop bundles and starts NOVA Local Tools without a second assistant UI', () => {
-  assert.equal(pkg.version, '1.0.42');
+test('desktop bundles and starts Elynea Local Tools with Music Motion v2', () => {
+  assert.equal(pkg.version, '1.0.43');
   const localAgentResource = pkg.build?.extraResources?.find((item) => item.to === 'local-agent');
   assert.ok(localAgentResource);
   assert.ok(localAgentResource.filter.includes('server.js'));
   assert.ok(localAgentResource.filter.includes('package.json'));
+  assert.ok(localAgentResource.filter.includes('repair-music-motion-windows.ps1'));
   assert.match(bootstrap, /startBundledLocalAgent/);
   assert.match(bootstrap, /ELECTRON_RUN_AS_NODE:\s*"1"/);
-  assert.match(bootstrap, /LOCAL_AGENT_PRIMARY_PORT\s*=\s*8787/);
-  assert.match(bootstrap, /LOCAL_AGENT_FALLBACK_PORT\s*=\s*8788/);
+  assert.match(bootstrap, /LOCAL_AGENT_PRIMARY_PORT\s*=\s*8788/);
+  assert.match(bootstrap, /LOCAL_AGENT_FALLBACK_PORT\s*=\s*8787/);
+  assert.match(bootstrap, /MUSIC_MOTION_CONTRACT_VERSION\s*=\s*2/);
+  assert.match(bootstrap, /\/api\/music-motion\/production\/capabilities/);
+  assert.match(bootstrap, /localAgentCompatibility/);
   assert.match(bootstrap, /selectLocalAgentPort/);
   const offlineWebResource = pkg.build?.extraResources?.find((item) => item.to === 'offline-web');
   assert.ok(offlineWebResource);
@@ -73,7 +77,7 @@ test('packaged desktop enables startup with Windows', () => {
   assert.match(bootstrap, /app\.whenReady\(\)\.then\(async \(\) => \{\s*enableWindowsStartup\(\)/);
 });
 
-test('desktop release runs when NOVA local capabilities change', () => {
+test('desktop release runs when Elynea local capabilities change', () => {
   assert.match(workflow, /- "local-agent\/\*\*"/);
   assert.match(workflow, /- "src\/components\/FloatingAgent\.jsx"/);
   assert.match(workflow, /- "src\/components\/LocalAgentQueueBridge\.jsx"/);
