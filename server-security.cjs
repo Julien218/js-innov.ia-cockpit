@@ -5,6 +5,34 @@ const { effectivePermissions, hasPermission } = require('./server-permission-pol
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://rzvvwcwyaddzsaattwqt.supabase.co';
 const SUPABASE_SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
+// Elynea publique est consommée par plusieurs sites JS-Innov.IA. On autorise
+// uniquement leurs origines explicites : jamais de CORS global ni de wildcard.
+const DEFAULT_ELYNEA_PUBLIC_ORIGINS = Object.freeze([
+  'https://cockpit.jsinnovia.com',
+  'https://jsinnovia.com',
+  'https://www.jsinnovia.com',
+  'https://missetmisterdour.be',
+  'https://www.missetmisterdour.be',
+  'https://miss-mister-dour.be',
+  'https://www.miss-mister-dour.be',
+  'https://miss-mister-dour-web-production.up.railway.app',
+  'https://fashionistartdour.be',
+  'https://www.fashionistartdour.be',
+  'https://signelya.jsinnovia.com',
+  'https://app.signelya.jsinnovia.com',
+  'https://signage.jsinnovia.com',
+  'http://localhost:5173',
+  'http://localhost:3000',
+]);
+
+function elyneaPublicOrigins() {
+  const configured = String(process.env.ELYNEA_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return new Set([...DEFAULT_ELYNEA_PUBLIC_ORIGINS, ...configured]);
+}
+
 async function select(path) {
   if (!SUPABASE_SECRET) throw new Error('Supabase server secret not configured');
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -58,6 +86,26 @@ function requirePermission(permissionCode, minRole = 'client') {
 }
 
 function requireSameOrigin(req, res, next) {
+  const pathname = String(req.originalUrl || req.url || '');
+
+  // Le chat public doit pouvoir être appelé depuis les sites gérés, mais cette
+  // exception reste confinée au namespace public Elynea et à une allowlist.
+  if (pathname.startsWith('/api/public/elynea')) {
+    const origin = String(req.headers.origin || '').trim();
+    if (!origin) return next(); // appels serveur-à-serveur / probes internes
+    if (!elyneaPublicOrigins().has(origin)) {
+      return res.status(403).json({ error: 'Origine Elynea non autorisée' });
+    }
+
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Elynea-Site-Key');
+    res.setHeader('Access-Control-Max-Age', '600');
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    return next();
+  }
+
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
   const origin = req.headers.origin;
   if (!origin) return next();
@@ -66,4 +114,11 @@ function requireSameOrigin(req, res, next) {
   return res.status(403).json({ error: 'Origine non autorisée' });
 }
 
-module.exports = { requireSession, requirePermission, requireSameOrigin, resolveSession, ROLE_LEVEL };
+module.exports = {
+  requireSession,
+  requirePermission,
+  requireSameOrigin,
+  resolveSession,
+  ROLE_LEVEL,
+  elyneaPublicOrigins,
+};
