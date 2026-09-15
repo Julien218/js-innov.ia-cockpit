@@ -31,10 +31,12 @@ test('Docker runtime contains the direct video executor', () => {
   assert.match(docker, /node --check \/app\/server-nova-video-direct\.cjs/);
 });
 
-test('Cockpit Elynea uses one official JS-Innov.IA companion avatar with legacy NOVA compatibility', () => {
+test('Cockpit Elynea uses one canonical JS-Innov.IA 3D companion avatar with legacy NOVA compatibility', () => {
   const roleAware = read('src/components/RoleAwareFloatingAgent.jsx');
   const scope = read('src/components/ElyneaBrandScope.jsx');
-  assert.match(roleAware, /https:\/\/www\.jsinnovia\.com\/brand\/companion\/companion-avatar-256\.webp/);
+  assert.match(scope, /avatar:\s*'https:\/\/www\.jsinnovia\.com\/brand\/companion\/companion-avatar-256\.webp'/);
+  assert.match(scope, /export const OFFICIAL_ELYNEA_AVATAR = ELYNEA_COMPANION\.avatar/);
+  assert.match(roleAware, /OFFICIAL_ELYNEA_AVATAR/);
   assert.match(roleAware, /img\[alt="NOVA"\], img\[alt="Elynea"\]/);
   assert.match(roleAware, /ElyneaBrandScope/);
   assert.match(scope, /replaceLegacyName/);
