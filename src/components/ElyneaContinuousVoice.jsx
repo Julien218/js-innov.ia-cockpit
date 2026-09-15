@@ -3,6 +3,9 @@ import { useAuth } from '@/lib/AuthContext';
 
 const ENABLED_KEY = 'elynea_continuous_voice_enabled';
 const CONVERSATION_KEY = 'agent_conversation_id';
+const WAKE_TIMEOUT_MS = 10000;
+const WAKE_WORD_ALIASES = ['elynea', 'elyna', 'elina', 'elena'];
+const STANDBY_STATUS = 'En veille — dites « Elynea »';
 
 function getSpeechRecognition() {
   if (typeof window === 'undefined') return null;
@@ -21,13 +24,43 @@ function cleanForSpeech(text) {
     .slice(0, 800);
 }
 
+function normalizeWakeText(text) {
+  return String(text || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s'-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractWakeCommand(text) {
+  const original = String(text || '').trim();
+  const normalized = normalizeWakeText(original);
+  if (!normalized) return { matched: false, command: '' };
+
+  const words = normalized.split(' ');
+  const wakeIndex = words.findIndex((word) => WAKE_WORD_ALIASES.includes(word));
+  if (wakeIndex < 0) return { matched: false, command: '' };
+
+  // La commande est extraite depuis la version normalisée afin d'éviter qu'une
+  // variation de ponctuation du moteur vocal soit renvoyée comme mot de réveil.
+  return {
+    matched: true,
+    command: words.slice(wakeIndex + 1).join(' ').trim(),
+  };
+}
+
 export default function ElyneaContinuousVoice() {
   const { user } = useAuth();
   const recognitionRef = useRef(null);
   const activeRef = useRef(false);
+  const awakeRef = useRef(false);
   const restartingRef = useRef(false);
   const speakingRef = useRef(false);
   const sendingRef = useRef(false);
+  const wakeTimeoutRef = useRef(null);
+  const autoRestoreAttemptedRef = useRef(false);
   const [supported, setSupported] = useState(false);
   const [active, setActive] = useState(false);
   const [status, setStatus] = useState('Prêt');
@@ -35,6 +68,50 @@ export default function ElyneaContinuousVoice() {
 
   useEffect(() => {
     setSupported(Boolean(getSpeechRecognition()) && typeof window !== 'undefined' && 'speechSynthesis' in window);
+  }, []);
+
+  const clearWakeTimeout = useCallback(() => {
+    if (wakeTimeoutRef.current) {
+      window.clearTimeout(wakeTimeoutRef.current);
+      wakeTimeoutRef.current = null;
+    }
+  }, []);
+
+  const returnToStandby = useCallback(() => {
+    clearWakeTimeout();
+    awakeRef.current = false;
+    if (activeRef.current) setStatus(STANDBY_STATUS);
+    else setStatus('Prêt');
+  }, [clearWakeTimeout]);
+
+  const armWakeTimeout = useCallback(() => {
+    clearWakeTimeout();
+    wakeTimeoutRef.current = window.setTimeout(() => {
+      awakeRef.current = false;
+      if (activeRef.current && !speakingRef.current && !sendingRef.current) {
+        setStatus(STANDBY_STATUS);
+      }
+    }, WAKE_TIMEOUT_MS);
+  }, [clearWakeTimeout]);
+
+  const playWakeChime = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+      const context = new AudioContextClass();
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.frequency.value = 880;
+      gain.gain.setValueAtTime(0.0001, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.11);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.12);
+      oscillator.onended = () => context.close().catch(() => {});
+    } catch {}
   }, []);
 
   const stopRecognition = useCallback(() => {
@@ -68,9 +145,12 @@ export default function ElyneaContinuousVoice() {
     window.speechSynthesis.speak(utterance);
   }, []);
 
+  const startRecognitionRef = useRef(null);
+
   const sendTranscript = useCallback(async (transcript) => {
     const text = String(transcript || '').trim();
     if (!text || sendingRef.current) return;
+    clearWakeTimeout();
     sendingRef.current = true;
     setStatus('Elynea réfléchit…');
     setError('');
@@ -84,7 +164,7 @@ export default function ElyneaContinuousVoice() {
         body: JSON.stringify({
           message: text,
           conversation_id: conversationId,
-          source: 'elynea-continuous-voice',
+          source: 'elynea-wake-voice',
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -94,33 +174,28 @@ export default function ElyneaContinuousVoice() {
 
       speak(answer, () => {
         sendingRef.current = false;
-        if (activeRef.current) {
-          setStatus('Écoute…');
-          window.setTimeout(() => startRecognitionRef.current?.(), 250);
-        } else {
-          setStatus('Prêt');
-        }
+        returnToStandby();
+        if (activeRef.current) window.setTimeout(() => startRecognitionRef.current?.(), 250);
       });
     } catch (err) {
       sendingRef.current = false;
       setError(err?.message || 'Dialogue vocal indisponible');
+      returnToStandby();
       if (activeRef.current) {
         setStatus('Reconnexion du micro…');
         window.setTimeout(() => startRecognitionRef.current?.(), 800);
-      } else {
-        setStatus('Prêt');
       }
     }
-  }, [speak, user]);
+  }, [clearWakeTimeout, returnToStandby, speak, user]);
 
-  const startRecognitionRef = useRef(null);
   const startRecognition = useCallback(() => {
     if (!activeRef.current || speakingRef.current || sendingRef.current || restartingRef.current) return;
     const SR = getSpeechRecognition();
     if (!SR) {
-      setError('La reconnaissance vocale continue n’est pas disponible dans ce navigateur.');
+      setError('La reconnaissance vocale n’est pas disponible dans ce navigateur.');
       setStatus('Indisponible');
       activeRef.current = false;
+      awakeRef.current = false;
       setActive(false);
       return;
     }
@@ -131,27 +206,48 @@ export default function ElyneaContinuousVoice() {
     recognition.continuous = true;
     recognition.interimResults = true;
     recognitionRef.current = recognition;
-    let finalTranscript = '';
 
     recognition.onstart = () => {
       restartingRef.current = false;
-      setStatus('Écoute…');
+      setStatus(awakeRef.current ? 'Je vous écoute…' : STANDBY_STATUS);
       setError('');
     };
 
     recognition.onresult = (event) => {
-      let interim = '';
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        const transcript = event.results[i]?.[0]?.transcript || '';
-        if (event.results[i].isFinal) finalTranscript += transcript;
-        else interim += transcript;
-      }
-      if (interim.trim()) setStatus('Je vous écoute…');
-      if (finalTranscript.trim()) {
-        const complete = finalTranscript.trim();
-        finalTranscript = '';
+        const transcript = String(event.results[i]?.[0]?.transcript || '').trim();
+        if (!transcript) continue;
+
+        if (!event.results[i].isFinal) {
+          if (awakeRef.current) setStatus('Je vous écoute…');
+          else if (extractWakeCommand(transcript).matched) setStatus('Réveil d’Elynea…');
+          continue;
+        }
+
+        if (!awakeRef.current) {
+          const wake = extractWakeCommand(transcript);
+          if (!wake.matched) {
+            setStatus(STANDBY_STATUS);
+            continue;
+          }
+
+          awakeRef.current = true;
+          setStatus('Je vous écoute…');
+          playWakeChime();
+
+          if (wake.command) {
+            clearWakeTimeout();
+            stopRecognition();
+            void sendTranscript(wake.command);
+          } else {
+            armWakeTimeout();
+          }
+          continue;
+        }
+
+        clearWakeTimeout();
         stopRecognition();
-        void sendTranscript(complete);
+        void sendTranscript(transcript);
       }
     };
 
@@ -160,10 +256,12 @@ export default function ElyneaContinuousVoice() {
       const code = String(event?.error || 'unknown');
       if (code === 'not-allowed' || code === 'service-not-allowed') {
         activeRef.current = false;
+        awakeRef.current = false;
         setActive(false);
         localStorage.setItem(ENABLED_KEY, 'false');
+        clearWakeTimeout();
         setStatus('Micro bloqué');
-        setError('Autorisez le microphone pour utiliser le dialogue continu avec Elynea.');
+        setError('Autorisez le microphone pour pouvoir appeler Elynea à la voix.');
         return;
       }
       if (code !== 'no-speech' && code !== 'aborted') setError(`Micro : ${code}`);
@@ -173,7 +271,7 @@ export default function ElyneaContinuousVoice() {
       restartingRef.current = false;
       recognitionRef.current = null;
       if (activeRef.current && !speakingRef.current && !sendingRef.current) {
-        setStatus('Reprise de l’écoute…');
+        setStatus(awakeRef.current ? 'Je vous écoute…' : 'Reprise de la veille vocale…');
         window.setTimeout(() => startRecognitionRef.current?.(), 350);
       }
     };
@@ -186,7 +284,7 @@ export default function ElyneaContinuousVoice() {
       setError(err?.message || 'Impossible de démarrer le microphone');
       if (activeRef.current) window.setTimeout(() => startRecognitionRef.current?.(), 800);
     }
-  }, [sendTranscript, stopRecognition]);
+  }, [armWakeTimeout, clearWakeTimeout, playWakeChime, sendTranscript, stopRecognition]);
 
   useEffect(() => {
     startRecognitionRef.current = startRecognition;
@@ -194,22 +292,25 @@ export default function ElyneaContinuousVoice() {
 
   const disable = useCallback(() => {
     activeRef.current = false;
+    awakeRef.current = false;
     setActive(false);
     localStorage.setItem(ENABLED_KEY, 'false');
+    clearWakeTimeout();
     stopRecognition();
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
     speakingRef.current = false;
     sendingRef.current = false;
     setStatus('Prêt');
-  }, [stopRecognition]);
+  }, [clearWakeTimeout, stopRecognition]);
 
   const enable = useCallback(() => {
     if (!supported) return;
     setError('');
     activeRef.current = true;
+    awakeRef.current = false;
     setActive(true);
     localStorage.setItem(ENABLED_KEY, 'true');
-    setStatus('Activation du micro…');
+    setStatus('Activation de la veille vocale…');
     startRecognition();
   }, [startRecognition, supported]);
 
@@ -218,11 +319,25 @@ export default function ElyneaContinuousVoice() {
     else enable();
   }, [disable, enable]);
 
+  useEffect(() => {
+    if (!supported || !user || autoRestoreAttemptedRef.current) return;
+    autoRestoreAttemptedRef.current = true;
+    if (localStorage.getItem(ENABLED_KEY) !== 'true') return;
+
+    activeRef.current = true;
+    awakeRef.current = false;
+    setActive(true);
+    setStatus('Réactivation de la veille vocale…');
+    window.setTimeout(() => startRecognitionRef.current?.(), 300);
+  }, [supported, user]);
+
   useEffect(() => () => {
     activeRef.current = false;
+    awakeRef.current = false;
+    clearWakeTimeout();
     stopRecognition();
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
-  }, [stopRecognition]);
+  }, [clearWakeTimeout, stopRecognition]);
 
   if (!user || !supported) return null;
 
@@ -243,7 +358,7 @@ export default function ElyneaContinuousVoice() {
         type="button"
         onClick={toggle}
         aria-pressed={active}
-        title={active ? 'Arrêter le dialogue vocal continu' : 'Activer le dialogue vocal continu avec Elynea'}
+        title={active ? 'Désactiver l’appel vocal « Elynea »' : 'Activer l’appel vocal « Elynea »'}
         style={{
           height: 38, padding: '0 12px', borderRadius: 20,
           border: `1px solid ${active ? '#06B6D4' : 'rgba(212,175,55,.45)'}`,
@@ -253,8 +368,8 @@ export default function ElyneaContinuousVoice() {
           boxShadow: '0 5px 22px rgba(0,0,0,.38)', backdropFilter: 'blur(8px)',
         }}
       >
-        <span aria-hidden="true">{active ? '🔴' : '🎙️'}</span>
-        <span>{active ? status : 'Dialogue continu'}</span>
+        <span aria-hidden="true">{active ? '🟢' : '🎙️'}</span>
+        <span>{active ? status : 'Activer « Elynea »'}</span>
       </button>
     </div>
   );
