@@ -22,6 +22,7 @@ const AUDIO_MIME = {
 };
 const PLAYLIST_LIMIT = 100;
 const TRACKS_PER_PLAYLIST_LIMIT = 500;
+const MAX_AUDIO_UPLOAD_BYTES = 80 * 1024 * 1024;
 
 function normalizeRoot(env = process.env) {
   const explicit = String(env.ELYNEA_AUDIO_DROPBOX_PATH || '').trim();
@@ -70,6 +71,23 @@ function assertAudioFilename(filename) {
 function isInside(folder, candidate) {
   const prefix = `${String(folder || '').replace(/\/+$/, '').toLowerCase()}/`;
   return String(candidate || '').toLowerCase().startsWith(prefix);
+}
+
+async function readRequestBuffer(req, maximum = MAX_AUDIO_UPLOAD_BYTES) {
+  if (Buffer.isBuffer(req.body)) {
+    if (req.body.length > maximum) throw Object.assign(new Error('Fichier audio supérieur à 80 Mo.'), { status: 413 });
+    return req.body;
+  }
+
+  const chunks = [];
+  let bytes = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.length;
+    if (bytes > maximum) throw Object.assign(new Error('Fichier audio supérieur à 80 Mo.'), { status: 413 });
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks, bytes);
 }
 
 async function dropboxJson(endpoint, body, fetchImpl = (...args) => fetch(...args)) {
@@ -169,22 +187,26 @@ function createAudioLibraryRouter({ fetchImpl = (...args) => fetch(...args), env
     res.json({ tracks, count: tracks.length, root, library: libraryFolder });
   }));
 
-  router.post('/upload', express.raw({ type: ['audio/*', 'application/octet-stream'], limit: '80mb' }), wrap(async (req, res) => {
+  router.post('/upload', wrap(async (req, res) => {
     await ensureAudioTree(root);
-    const original = assertAudioFilename(req.query.filename || req.get('x-file-name') || 'audio.mp3');
-    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
-      throw Object.assign(new Error('Fichier audio vide.'), { status: 400 });
+    const contentType = String(req.headers?.['content-type'] || '').split(';', 1)[0].toLowerCase();
+    if (!contentType.startsWith('audio/') && contentType !== 'application/octet-stream') {
+      throw Object.assign(new Error('Type de fichier audio non pris en charge.'), { status: 415 });
     }
+    const original = assertAudioFilename(req.query.filename || req.get?.('x-file-name') || 'audio.mp3');
+    const body = await readRequestBuffer(req);
+    if (!body.length) throw Object.assign(new Error('Fichier audio vide.'), { status: 400 });
+
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const destination = `${libraryFolder}/${stamp}-${original}`;
-    const uploaded = await uploadFile(destination, req.body);
+    const uploaded = await uploadFile(destination, body);
     if (uploaded?.error) throw Object.assign(new Error(uploaded.error), { status: 502 });
     const entry = {
       '.tag': 'file',
       id: uploaded.id,
       name: uploaded.name || path.basename(destination),
       path_display: uploaded.path || destination,
-      size: uploaded.size || req.body.length,
+      size: uploaded.size || body.length,
       server_modified: new Date().toISOString(),
     };
     res.status(201).json({ track: trackFromEntry(entry, root) });
