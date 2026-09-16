@@ -1,0 +1,1 @@
+const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');const h=fs.readFileSync(path.resolve(__dirname,'../server-dropbox-helper.cjs'),'utf8');test('archive extensions map to Archives',()=>{assert.ok(h.includes("docType = 'Archives'"));assert.ok(h.includes('zip|rar|7z|tar|gz|tgz|bz2|xz|cab|iso'));});
