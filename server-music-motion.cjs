@@ -7,11 +7,29 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const { createReadStream } = require('node:fs');
-const { createAudioLibraryRouter } = require('./server-audio-library.cjs');
+
+// Audio Studio is an optional Cockpit feature. It must never prevent the core API
+// (CRM, documents, projects, billing, tasks...) from starting if a deployment image
+// temporarily misses the new module.
+let createAudioLibraryRouter = null;
+try {
+  ({ createAudioLibraryRouter } = require('./server-audio-library.cjs'));
+} catch (error) {
+  const detail = error?.code === 'MODULE_NOT_FOUND'
+    ? 'module server-audio-library.cjs non embarqué dans ce déploiement'
+    : (error?.message || 'erreur inconnue');
+  console.warn(`⚠️ Elynea Audio Studio désactivé sans bloquer le Cockpit : ${detail}`);
+}
 
 function createRouter({ fetchImpl = (...args) => fetch(...args), env = process.env } = {}) {
   const router = express.Router();
-  if (typeof router.use === 'function') router.use('/audio', createAudioLibraryRouter({ fetchImpl, env }));
+  if (createAudioLibraryRouter && typeof router.use === 'function') {
+    try {
+      router.use('/audio', createAudioLibraryRouter({ fetchImpl, env }));
+    } catch (error) {
+      console.warn(`⚠️ Elynea Audio Studio indisponible, Cockpit conservé actif : ${error?.message || 'erreur inconnue'}`);
+    }
+  }
   const spaces = new Map(), active = new Set(), pollLocks = new Set();
   const models = { image: env.MUSIC_MOTION_XAI_IMAGE_MODEL || 'grok-imagine-image-2.0', video: env.MUSIC_MOTION_XAI_VIDEO_MODEL || 'grok-imagine-video-1.5' };
   const ready = () => Boolean(env.XAI_API_KEY && env.MUSIC_MOTION_DATA_DIR);
