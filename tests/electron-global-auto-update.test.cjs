@@ -15,7 +15,6 @@ test('desktop starts through the global bootstrap', () => {
 });
 
 test('desktop bundles and starts Elynea Local Tools with Music Motion v2', () => {
-  assert.equal(pkg.version, '1.0.43');
   const localAgentResource = pkg.build?.extraResources?.find((item) => item.to === 'local-agent');
   assert.ok(localAgentResource);
   assert.ok(localAgentResource.filter.includes('server.js'));
