@@ -27,7 +27,7 @@ const MAX_AUDIO_UPLOAD_BYTES = 80 * 1024 * 1024;
 function normalizeRoot(env = process.env) {
   const explicit = String(env.ELYNEA_AUDIO_DROPBOX_PATH || '').trim();
   if (explicit) return `/${explicit.split('/').filter(Boolean).join('/')}`;
-  const base = String(env.DROPBOX_ROOT_PATH || '/JS-Innov.IA/Cockpit').replace(/\/+$/, '');
+  const base = String(env.DROPBOX_ROOT_PATH || '/Cockpit').replace(/\/+$/, '');
   return `${base}/Elynea Audio Studio`;
 }
 
