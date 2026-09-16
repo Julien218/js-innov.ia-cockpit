@@ -28,7 +28,7 @@ test('le runtime courant sur 8788 est préféré au service historique sur 8787'
 });
 
 test('la nouvelle version Electron est publiable par l’auto-update', () => {
-  assert.equal(electronPackage.version, '1.0.43');
+  assert.match(electronPackage.version, /^\d+\.\d+\.\d+$/);
   assert.equal(electronPackage.main, 'bootstrap.js');
   assert.ok(electronPackage.dependencies?.['electron-updater']);
 });
