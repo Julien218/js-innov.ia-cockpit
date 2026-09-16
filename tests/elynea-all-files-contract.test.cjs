@@ -1,0 +1,1 @@
+const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');const h=fs.readFileSync(path.resolve(__dirname,'../server-dropbox-helper.cjs'),'utf8');test('all-file helper still exposes compatibility predicate',()=>assert.ok(h.includes('function isSupportedMedia(fileName, mimeType)')));
