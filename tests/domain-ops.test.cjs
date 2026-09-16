@@ -14,6 +14,25 @@ test('domain ops refuse tout domaine hors inventaire géré', () => {
   assert.ok(MANAGED_DOMAINS['missetmisterdour.be']);
 });
 
+test('jsinnovia.store est un domaine email réservé tant que la vitrine WebXR n’est pas activée', () => {
+  const store = MANAGED_DOMAINS['jsinnovia.store'];
+  assert.equal(store.purpose, 'email_reserved');
+  assert.equal(store.web_required, false);
+  assert.equal(store.mail_required, true);
+  assert.equal(store.future_use, 'immersive_webxr_store');
+  assert.match(store.future_label, /WebXR/i);
+});
+
+test('un domaine email réservé surveille MX SPF DMARC sans incident HTTPS obligatoire', () => {
+  const source = fs.readFileSync(path.join(root, 'server-domain-ops.cjs'), 'utf8');
+  assert.match(source, /inspectMailDns/);
+  assert.match(source, /mail_mx_missing/);
+  assert.match(source, /mail_spf_missing/);
+  assert.match(source, /mail_dmarc_missing/);
+  assert.match(source, /web_not_required/);
+  assert.match(source, /Aucune réparation web à lancer/);
+});
+
 test('chaque diagnostic de domaine reçoit un outil et un journal vérifiables', () => {
   const source = fs.readFileSync(path.join(root, 'server-domain-ops.cjs'), 'utf8');
   assert.match(source, /tool:\s*'cockpit_domain_probe'/);
@@ -34,6 +53,7 @@ test('une réparation n’est déclarée réussie que si une amélioration est m
   assert.equal(verifiedImprovement('repair', before, after), true);
   assert.equal(verifiedImprovement('seo', before, after), false);
   assert.equal(verifiedImprovement('seo', before, { ...after, seo: { score: 75 } }), true);
+  assert.equal(verifiedImprovement('repair', { ...before, web_required: false }, { ...after, web_required: false }), false);
 });
 
 test('la route réparation exige un jeton préparé et le consomme avant effet réel', () => {
@@ -45,15 +65,16 @@ test('la route réparation exige un jeton préparé et le consomme avant effet r
   assert.match(source, /runDomainRepair/);
 });
 
-test('la réparation crée une tâche et la transmet au moteur interne NOVA', () => {
+test('la réparation crée une tâche et la transmet au moteur interne NOVA uniquement quand une réparation web est requise', () => {
   const source = fs.readFileSync(path.join(root, 'server-domain-ops.cjs'), 'utf8');
   assert.match(source, /executeTaskBatch/);
   assert.match(source, /domain-objective-/);
+  assert.match(source, /before\?\.web_required === false/);
   assert.doesNotMatch(source, /status: 'queued_internal'/);
   assert.doesNotMatch(source, /executeBase44Agent/);
 });
 
-test('l’onglet Domaines utilise des mesures live et expose les trois actions IA', () => {
+test('l’onglet Domaines utilise des mesures live et expose les actions IA seulement pour les sites web', () => {
   const page = fs.readFileSync(path.join(root, 'src/pages/Domaines.jsx'), 'utf8');
   assert.match(page, /\/api\/domain-ops\/analyze/);
   assert.match(page, /\/api\/domain-ops\/prepare-repair/);
@@ -61,6 +82,9 @@ test('l’onglet Domaines utilise des mesures live et expose les trois actions I
   assert.match(page, />Analyser</);
   assert.match(page, />Réparer IA</);
   assert.match(page, />SEO auto</);
+  assert.match(page, /Email actif · Web réservé/);
+  assert.match(page, /Vitrine 3D immersive \/ WebXR/);
+  assert.match(page, /disabled=\{webReserved\}/);
   assert.doesNotMatch(page, /http:\s*200,\s*www:/);
   assert.match(page, /Confirmer et lancer/);
 });
