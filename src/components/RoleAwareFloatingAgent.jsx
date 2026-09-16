@@ -3,7 +3,7 @@ import FloatingAgent from '@/components/FloatingAgent';
 import ClientCompanion from '@/components/ClientCompanion';
 import LocalAgentQueueBridge from '@/components/LocalAgentQueueBridge';
 import ElyneaContinuousVoice from '@/components/ElyneaContinuousVoice';
-import ElyneaAudioDock from '@/components/audio/ElyneaAudioDock';
+import ElyneaAudioDockSynced from '@/components/audio/ElyneaAudioDockSynced';
 import ElyneaBrandScope, { ELYNEA_COMPANION, OFFICIAL_ELYNEA_AVATAR } from '@/components/ElyneaBrandScope';
 
 /**
@@ -48,7 +48,7 @@ export default function ElyneaCockpitCompanion() {
       <LocalAgentQueueBridge />
       <FloatingAgent />
       <ElyneaContinuousVoice />
-      {audioEnabled && <ElyneaAudioDock />}
+      {audioEnabled && <ElyneaAudioDockSynced />}
       <LegacyAvatarCompatibility />
       <span
         aria-hidden="true"
