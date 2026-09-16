@@ -47,10 +47,12 @@ test('une image sans contexte explicite reste dans A_Classer', async () => {
   assert.match(result.folderPath, /\/A_Classer\/Images$/);
 });
 
-test('NOVA refuse les formats non médias et neutralise les chemins de fichier', () => {
+test('Elynea accepte les pièces jointes de tout type et neutralise les chemins de fichier', () => {
   assert.equal(isSupportedMedia('clip.mov', 'application/octet-stream'), true);
-  assert.equal(isSupportedMedia('facture.pdf', 'application/pdf'), false);
-  assert.equal(isSupportedMedia('programme.exe', 'image/png'), false);
+  assert.equal(isSupportedMedia('facture.pdf', 'application/pdf'), true);
+  assert.equal(isSupportedMedia('archive.zip', 'application/zip'), true);
+  assert.equal(isSupportedMedia('programme.exe', 'application/octet-stream'), true);
+  assert.equal(isSupportedMedia('', 'application/octet-stream'), false);
   assert.equal(safeUploadFilename('../secret/video.mp4'), 'video.mp4');
 });
 
@@ -110,29 +112,28 @@ test('un dossier Dropbox déjà existant est un succès idempotent', () => {
   }), false);
 });
 
-test('le Companion expose un dépôt média binaire sécurisé et indexé', () => {
+test('le Companion expose un dépôt binaire sécurisé, générique et indexé', () => {
   const server = fs.readFileSync(path.join(root, 'server-assistant.cjs'), 'utf8');
   const ui = fs.readFileSync(path.join(root, 'src/components/FloatingAgent.jsx'), 'utf8');
   const docker = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
   assert.match(server, /router\.post\('\/upload-media', express\.raw/);
   assert.match(server, /MAX_NOVA_MEDIA_BYTES = 100 \* 1024 \* 1024/);
-  assert.match(server, /Le dépôt média interne n’est pas accessible depuis un espace client/);
   assert.match(server, /indexDocument\(/);
   assert.match(server, /crypto\.createHash\('sha256'\)/);
   assert.match(server, /referenceManifest/);
   assert.match(server, /reference\.referenceFilename/);
   assert.match(server, /appendSessionMessages\(req/);
-  assert.match(server, /La prochaine demande de cette conversation peut faire référence à ce média/);
   assert.match(server, /journalId: `dropbox-\$\{crypto\.randomUUID\(\)\}`/);
   assert.match(ui, /\/api\/assistant\/upload-media/);
   assert.match(ui, /inspectMediaFile\(file\)/);
   assert.match(ui, /nova_recent_media_v1/);
   assert.match(ui, /recent_media: recentMedia/);
   assert.match(ui, /upload-media\?conversation_id=/);
-  assert.match(ui, /Média archivé et référencé dans Dropbox/);
+  assert.match(ui, /Fichier archivé, classé et référencé dans Dropbox/);
   assert.match(ui, /type="file"/);
-  assert.match(ui, /image\/jpeg/);
-  assert.match(ui, /video\/mp4/);
+  assert.match(ui, /multiple/);
+  assert.doesNotMatch(ui, /accept="image\/jpeg,image\/png,image\/webp,video\/mp4,video\/webm,video\/quicktime"/);
+  assert.match(ui, /n’importe quel fichier/);
   assert.match(docker, /client_max_body_size 260m/);
   assert.match(docker, /proxy_request_buffering off/);
 });
