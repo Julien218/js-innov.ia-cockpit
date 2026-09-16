@@ -231,8 +231,8 @@ BEGIN
     'social_brands','social_accounts','social_campaigns','social_assets','social_posts',
     'social_publish_jobs','social_post_metrics','social_conversions','social_ai_decisions','social_webhook_events'
   ] LOOP
-    EXECUTE format('DROP POLICY IF EXISTS %I_service_role_all ON public.%I', t, t);
-    EXECUTE format('CREATE POLICY %I_service_role_all ON public.%I FOR ALL TO service_role USING (true) WITH CHECK (true)', t, t);
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_service_role_all', t);
+    EXECUTE format('CREATE POLICY %I ON public.%I FOR ALL TO service_role USING (true) WITH CHECK (true)', t || '_service_role_all', t);
   END LOOP;
 END $$;
 
