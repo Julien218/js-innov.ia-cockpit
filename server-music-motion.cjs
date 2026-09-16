@@ -11,7 +11,7 @@ const { createAudioLibraryRouter } = require('./server-audio-library.cjs');
 
 function createRouter({ fetchImpl = (...args) => fetch(...args), env = process.env } = {}) {
   const router = express.Router();
-  router.use('/audio', createAudioLibraryRouter({ fetchImpl, env }));
+  if (typeof router.use === 'function') router.use('/audio', createAudioLibraryRouter({ fetchImpl, env }));
   const spaces = new Map(), active = new Set(), pollLocks = new Set();
   const models = { image: env.MUSIC_MOTION_XAI_IMAGE_MODEL || 'grok-imagine-image-2.0', video: env.MUSIC_MOTION_XAI_VIDEO_MODEL || 'grok-imagine-video-1.5' };
   const ready = () => Boolean(env.XAI_API_KEY && env.MUSIC_MOTION_DATA_DIR);
