@@ -61,22 +61,18 @@ const FloatingAgent = () => {
   const ttsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
   const sttSupported = typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
 
-  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Focus on open
   useEffect(() => {
     if (isOpen) setTimeout(() => inputRef.current?.focus(), 100);
   }, [isOpen]);
 
-  // Persist messages
   useEffect(() => {
     try { localStorage.setItem('agent_chat_messages', JSON.stringify(messages.slice(-50))); } catch {}
   }, [messages]);
 
-  // Persist TTS preference
   useEffect(() => {
     localStorage.setItem('agent_tts_enabled', String(ttsEnabled));
   }, [ttsEnabled]);
@@ -85,7 +81,6 @@ const FloatingAgent = () => {
     if (ttsVoiceName) localStorage.setItem(TTS_VOICE_KEY, ttsVoiceName);
   }, [ttsVoiceName]);
 
-  // Conserve une copie minimale des tâches pour que NOVA puisse les consulter hors connexion.
   useEffect(() => {
     let stopped = false;
     let syncing = false;
@@ -126,7 +121,6 @@ const FloatingAgent = () => {
           }
         }
       } catch {
-        // La copie précédente reste disponible hors connexion.
       } finally {
         syncing = false;
       }
@@ -142,7 +136,6 @@ const FloatingAgent = () => {
     };
   }, []);
 
-  // Preload TTS voices
   useEffect(() => {
     if (ttsSupported) {
       const refreshVoices = () => {
@@ -164,7 +157,6 @@ const FloatingAgent = () => {
     };
   }, [ttsSupported, ttsVoiceName]);
 
-  // === Text-to-Speech ===
   const speak = useCallback((text) => {
     if (!ttsSupported || !ttsEnabled || !text) return;
     const cleanText = text
@@ -195,7 +187,6 @@ const FloatingAgent = () => {
     if (ttsSupported) { window.speechSynthesis.cancel(); setSpeaking(false); }
   }, [ttsSupported]);
 
-  // === Speech Recognition ===
   const startListening = useCallback(() => {
     if (!sttSupported) return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -284,10 +275,9 @@ const FloatingAgent = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ conversation_id: conversationId, request_nonce: confirmation.request_nonce }),
       });
-    } catch { /* A new cloud request also invalidates the previous token. */ }
+    } catch {}
   }, [confirmation, conversationId]);
 
-  // === Chat ===
   const doSend = useCallback(async (text) => {
     const msg = (text || input).trim();
     if (!msg || loading) return;
@@ -410,7 +400,6 @@ const FloatingAgent = () => {
     } catch {}
   }, [stopSpeaking, conversationId, cancelPendingConfirmation]);
 
-  // === File Upload → Classify → Dropbox ===
   const handleFileUpload = useCallback(async (incomingFiles) => {
     const files = Array.from(incomingFiles || []);
     if (!files.length || uploading) return;
@@ -427,7 +416,7 @@ const FloatingAgent = () => {
       const sizeLabel = file.size >= 1024 * 1024 ? `${(file.size / 1024 / 1024).toFixed(1)} Mo` : `${(file.size / 1024).toFixed(0)} Ko`;
       setMessages(prev => [...prev,
         { role: 'user', content: `📎 ${file.name} (${sizeLabel})${context ? `\n${context}` : ''}`, ts: Date.now(), isFile: true },
-        { role: 'assistant', content: '🔄 NOVA classe et archive le média dans Dropbox…', ts: Date.now(), isSystem: true, uploadId },
+        { role: 'assistant', content: '🔄 Elynea classe, référence et archive le fichier dans Dropbox…', ts: Date.now(), isSystem: true, uploadId },
       ]);
       try {
         const mediaMetadata = await inspectMediaFile(file);
@@ -452,10 +441,10 @@ const FloatingAgent = () => {
         const indexInfo = data.indexed ? `\n🗂️ Index Cockpit: ${data.documentId}` : `\n🗂️ Index Cockpit: non créé${data.indexWarning ? ` (${data.indexWarning})` : ''}`;
         const reference = data.reference || {};
         const referenceInfo = reference.dropboxPath
-          ? `\n🏷️ Référencement: ${reference.title || 'contenu'}${reference.keywords?.length ? `\n🔎 Mots-clés: ${reference.keywords.join(', ')}` : ''}\n🧾 Fiche média: ${reference.dropboxPath}`
+          ? `\n🏷️ Référencement: ${reference.title || 'contenu'}${reference.keywords?.length ? `\n🔎 Mots-clés: ${reference.keywords.join(', ')}` : ''}\n🧾 Fiche fichier: ${reference.dropboxPath}`
           : '';
         const renamedInfo = data.originalFileName && data.originalFileName !== data.fileName ? `\n↪️ Nom original: ${data.originalFileName}` : '';
-        const memoryInfo = data.memorySynced ? '\n🧠 Média relié à cette conversation' : `\n🧠 Mémoire: non synchronisée${data.memoryWarning ? ` (${data.memoryWarning})` : ''}`;
+        const memoryInfo = data.memorySynced ? '\n🧠 Fichier relié à cette conversation' : `\n🧠 Mémoire: non synchronisée${data.memoryWarning ? ` (${data.memoryWarning})` : ''}`;
         try {
           localStorage.setItem(RECENT_MEDIA_KEY, JSON.stringify({
             originalFileName: data.originalFileName,
@@ -469,12 +458,14 @@ const FloatingAgent = () => {
             storedAt: data.storedAt,
           }));
         } catch {}
+        window.dispatchEvent(new Event('cockpit-documents-changed'));
+        queryClient.invalidateQueries({ queryKey: ['portfolio-dropbox-assets'] });
         setMessages(prev => prev.filter((message) => message.uploadId !== uploadId).concat({
           role: 'assistant',
-          content: `✅ Média archivé et référencé dans Dropbox\n\n📄 ${data.fileName}${renamedInfo}\n🎞️ Type: ${cl.mediaType || 'Média'}${clientInfo}${projectInfo}\n📂 ${data.dropboxPath}${referenceInfo}${indexInfo}${memoryInfo}\n🧾 Journal: ${data.journalId}\n🕒 ${data.storedAt}`,
+          content: `✅ Fichier archivé, classé et référencé dans Dropbox\n\n📄 ${data.fileName}${renamedInfo}\n🏷️ Type: ${cl.mediaType || 'Fichier'}${clientInfo}${projectInfo}\n📂 ${data.dropboxPath}${referenceInfo}${indexInfo}${memoryInfo}\n🧾 Journal: ${data.journalId}\n🕒 ${data.storedAt}`,
           ts: Date.now(),
         }));
-        speak(`Média ${data.fileName} classé et sauvegardé dans Dropbox`);
+        speak(`Fichier ${data.fileName} classé et sauvegardé dans Dropbox`);
       } catch (err) {
         setMessages(prev => prev.filter((message) => message.uploadId !== uploadId).concat({ role: 'assistant', content: '⚠️ ' + err.message, ts: Date.now(), isError: true }));
       }
@@ -482,7 +473,7 @@ const FloatingAgent = () => {
     setUploading(false);
     setInput('');
     if (fileInputRef.current) fileInputRef.current.value = '';
-  }, [uploading, input, speak, conversationId]);
+  }, [uploading, input, speak, conversationId, queryClient]);
 
   const toggleVoice = useCallback(() => {
     if (isListening) stopListening();
@@ -499,57 +490,36 @@ const FloatingAgent = () => {
 
   return (
     <>
-      {/* Bulle flottante */}
       {!isOpen && (
-        <div style={{
-          position: 'fixed', bottom: '20px', right: '20px', zIndex: 99999,
-          fontFamily: 'Inter, -apple-system, sans-serif',
-        }}>
+        <div style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 99999, fontFamily: 'Inter, -apple-system, sans-serif' }}>
           <div
             onClick={() => setIsOpen(true)}
             onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.08)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
             title="NOVA — Assistant IA"
             style={{
-              width: '60px', height: '60px', borderRadius: '50%',
-              cursor: 'pointer', overflow: 'hidden', position: 'relative',
-              boxShadow: '0 4px 20px rgba(212,175,55,0.3), 0 0 0 2px rgba(212,175,55,0.5)',
-              transition: 'transform 0.2s ease',
+              width: '60px', height: '60px', borderRadius: '50%', cursor: 'pointer', overflow: 'hidden', position: 'relative',
+              boxShadow: '0 4px 20px rgba(212,175,55,0.3), 0 0 0 2px rgba(212,175,55,0.5)', transition: 'transform 0.2s ease',
             }}
           >
             <img src={novaAvatar} alt="NOVA" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-            <span style={{
-              position: 'absolute', top: '-2px', right: '-2px',
-              width: '12px', height: '12px', borderRadius: '50%',
-              background: '#06B6D4', border: '2px solid #0B0B0F',
-            }} />
+            <span style={{ position: 'absolute', top: '-2px', right: '-2px', width: '12px', height: '12px', borderRadius: '50%', background: '#06B6D4', border: '2px solid #0B0B0F' }} />
           </div>
         </div>
       )}
 
-      {/* Panel de chat */}
       {isOpen && (
         <div style={{
-          position: 'fixed', bottom: '20px', right: '20px',
-          width: '380px', height: '540px', maxHeight: 'calc(100vh - 40px)',
-          background: '#0B0B0F', borderRadius: '16px',
-          border: '1px solid rgba(212,175,55,0.4)',
-          boxShadow: '0 8px 40px rgba(0,0,0,0.7)',
-          display: 'flex', flexDirection: 'column', zIndex: 99999, overflow: 'hidden',
-          fontFamily: 'Inter, -apple-system, sans-serif',
+          position: 'fixed', bottom: '20px', right: '20px', width: '380px', height: '540px', maxHeight: 'calc(100vh - 40px)',
+          background: '#0B0B0F', borderRadius: '16px', border: '1px solid rgba(212,175,55,0.4)', boxShadow: '0 8px 40px rgba(0,0,0,0.7)',
+          display: 'flex', flexDirection: 'column', zIndex: 99999, overflow: 'hidden', fontFamily: 'Inter, -apple-system, sans-serif',
         }}>
-          {/* Header */}
           <div style={{
-            padding: '12px 16px',
-            background: 'linear-gradient(135deg, #0F172A 0%, #1e293b 100%)',
-            borderBottom: '1px solid rgba(212,175,55,0.3)',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '12px 16px', background: 'linear-gradient(135deg, #0F172A 0%, #1e293b 100%)',
+            borderBottom: '1px solid rgba(212,175,55,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <img src={novaAvatar} alt="NOVA" style={{
-                width: '36px', height: '36px', borderRadius: '50%',
-                objectFit: 'cover', border: '1px solid rgba(212,175,55,0.4)',
-              }} />
+              <img src={novaAvatar} alt="NOVA" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(212,175,55,0.4)' }} />
               <div>
                 <p style={{ color: '#D4AF37', fontSize: '14px', fontWeight: 600, margin: 0 }}>NOVA</p>
                 <p style={{ color: '#64748b', fontSize: '11px', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -560,78 +530,34 @@ const FloatingAgent = () => {
             </div>
             <div style={{ display: 'flex', gap: '4px' }}>
               {ttsEnabled && ttsVoices.length > 0 && (
-                <select
-                  aria-label="Voix de NOVA"
-                  title="Choisir la voix française de NOVA"
-                  value={ttsVoiceName}
-                  onChange={(event) => setTtsVoiceName(event.target.value)}
-                  style={{
-                    maxWidth: '104px', background: '#0F172A', border: '1px solid rgba(100,116,139,0.35)',
-                    borderRadius: '6px', color: '#cbd5e1', fontSize: '10px', padding: '3px 5px',
-                  }}
-                >
+                <select aria-label="Voix de NOVA" title="Choisir la voix française de NOVA" value={ttsVoiceName} onChange={(event) => setTtsVoiceName(event.target.value)} style={{ maxWidth: '104px', background: '#0F172A', border: '1px solid rgba(100,116,139,0.35)', borderRadius: '6px', color: '#cbd5e1', fontSize: '10px', padding: '3px 5px' }}>
                   {ttsVoices.map((voice) => <option key={`${voice.name}-${voice.lang}`} value={voice.name}>{voice.name}</option>)}
                 </select>
               )}
-              <button
-                onClick={toggleTts}
-                title={ttsEnabled ? 'Lecture vocale ON' : 'Lecture vocale OFF'}
-                style={{
-                  background: 'transparent', border: 'none', cursor: 'pointer',
-                  color: ttsEnabled ? '#D4AF37' : '#64748b', fontSize: '16px', padding: '4px 8px', borderRadius: '6px',
-                }}
-              >
-                {ttsEnabled ? '🔊' : '🔇'}
-              </button>
-              <button onClick={resetConversation} title="Nouvelle conversation" style={{
-                background: 'transparent', border: 'none', cursor: 'pointer',
-                color: '#64748b', fontSize: '16px', padding: '4px 8px', borderRadius: '6px',
-              }}>↻</button>
-              <button onClick={() => { stopSpeaking(); setIsOpen(false); }} title="Fermer" style={{
-                background: 'transparent', border: 'none', cursor: 'pointer',
-                color: '#64748b', fontSize: '16px', padding: '4px 8px', borderRadius: '6px',
-              }}>✕</button>
+              <button onClick={toggleTts} title={ttsEnabled ? 'Lecture vocale ON' : 'Lecture vocale OFF'} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: ttsEnabled ? '#D4AF37' : '#64748b', fontSize: '16px', padding: '4px 8px', borderRadius: '6px' }}>{ttsEnabled ? '🔊' : '🔇'}</button>
+              <button onClick={resetConversation} title="Nouvelle conversation" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '16px', padding: '4px 8px', borderRadius: '6px' }}>↻</button>
+              <button onClick={() => { stopSpeaking(); setIsOpen(false); }} title="Fermer" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '16px', padding: '4px 8px', borderRadius: '6px' }}>✕</button>
             </div>
           </div>
 
-          {/* Messages */}
-          <div style={{
-            flex: 1, overflowY: 'auto', padding: '16px',
-            display: 'flex', flexDirection: 'column', gap: '12px',
-          }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {messages.length === 0 && !loading && (
               <div style={{ textAlign: 'center', color: '#475569', fontSize: '13px', padding: '30px 20px' }}>
-                <img src={novaAvatar} alt="NOVA" style={{
-                  width: '64px', height: '64px', borderRadius: '50%',
-                  margin: '0 auto 12px', display: 'block', opacity: 0.8,
-                }} />
+                <img src={novaAvatar} alt="NOVA" style={{ width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 12px', display: 'block', opacity: 0.8 }} />
                 <p style={{ margin: 0 }}>Salut Julien !</p>
-                <p style={{ marginTop: '8px' }}>Pose ta question, parle-moi, ou joins une image/vidéo à classer dans Dropbox.</p>
-                <p style={{ marginTop: '12px', fontSize: '11px', color: '#334155' }}>
-                  {sttSupported ? '🎤 Micro disponible' : 'Micro non supporté'} · {ttsSupported ? '🔊 Voix disponible' : 'Voix non supportée'}
-                </p>
+                <p style={{ marginTop: '8px' }}>Pose ta question, parle-moi, ou joins n’importe quel fichier à classer dans Dropbox.</p>
+                <p style={{ marginTop: '12px', fontSize: '11px', color: '#334155' }}>{sttSupported ? '🎤 Micro disponible' : 'Micro non supporté'} · {ttsSupported ? '🔊 Voix disponible' : 'Voix non supportée'}</p>
               </div>
             )}
 
             {messages.map((msg, i) => (
               <div key={i} style={msg.role === 'user' ? {
-                alignSelf: 'flex-end',
-                background: 'rgba(212,175,55,0.12)',
-                border: '1px solid rgba(212,175,55,0.25)',
-                borderRadius: '12px 12px 4px 12px',
-                padding: '10px 14px', maxWidth: '85%',
-                color: '#e2e8f0', fontSize: '13px', lineHeight: 1.5, whiteSpace: 'pre-wrap',
+                alignSelf: 'flex-end', background: 'rgba(212,175,55,0.12)', border: '1px solid rgba(212,175,55,0.25)',
+                borderRadius: '12px 12px 4px 12px', padding: '10px 14px', maxWidth: '85%', color: '#e2e8f0', fontSize: '13px', lineHeight: 1.5, whiteSpace: 'pre-wrap',
               } : {
-                alignSelf: 'flex-start',
-                background: 'rgba(15,23,42,0.6)',
-                border: `1px solid ${msg.isError ? 'rgba(239,68,68,0.4)' : 'rgba(100,116,139,0.2)'}`,
-                borderRadius: '12px 12px 12px 4px',
-                padding: '10px 14px', maxWidth: '85%',
-                color: msg.isError ? '#fca5a5' : '#cbd5e1',
-                fontSize: '13px', lineHeight: 1.5, whiteSpace: 'pre-wrap',
-              }}>
-                {msg.content}
-              </div>
+                alignSelf: 'flex-start', background: 'rgba(15,23,42,0.6)', border: `1px solid ${msg.isError ? 'rgba(239,68,68,0.4)' : 'rgba(100,116,139,0.2)'}`,
+                borderRadius: '12px 12px 12px 4px', padding: '10px 14px', maxWidth: '85%', color: msg.isError ? '#fca5a5' : '#cbd5e1', fontSize: '13px', lineHeight: 1.5, whiteSpace: 'pre-wrap',
+              }}>{msg.content}</div>
             ))}
 
             {loading && (
@@ -643,10 +569,7 @@ const FloatingAgent = () => {
           </div>
 
           {confirmation && (
-            <div style={{
-              margin: '0 12px 8px', padding: '10px 12px', borderRadius: '10px',
-              border: '1px solid rgba(245,158,11,0.45)', background: 'rgba(245,158,11,0.08)',
-            }}>
+            <div style={{ margin: '0 12px 8px', padding: '10px 12px', borderRadius: '10px', border: '1px solid rgba(245,158,11,0.45)', background: 'rgba(245,158,11,0.08)' }}>
               <p style={{ margin: 0, color: '#fbbf24', fontSize: '11px', fontWeight: 600 }}>Confirmation sécurisée requise</p>
               <p style={{ margin: '5px 0 9px', color: '#cbd5e1', fontSize: '11px' }}>{confirmation.summary || confirmation.type || 'Action Cockpit'}</p>
               <div style={{ display: 'flex', gap: '6px' }}>
@@ -658,28 +581,21 @@ const FloatingAgent = () => {
             </div>
           )}
 
-          {/* Zone de saisie */}
-          <div style={{
-            padding: '10px 12px', borderTop: '1px solid rgba(212,175,55,0.2)',
-            display: 'flex', gap: '6px', alignItems: 'flex-end',
-          }}>
+          <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(212,175,55,0.2)', display: 'flex', gap: '6px', alignItems: 'flex-end' }}>
             <input
               ref={fileInputRef}
               type="file"
               multiple
-              accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,video/mp4,video/quicktime,video/webm,video/x-msvideo,video/x-matroska,.m4v"
               onChange={(event) => handleFileUpload(event.target.files)}
               style={{ display: 'none' }}
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              title="Envoyer des images ou vidéos à NOVA"
+              title="Joindre un fichier à classer dans Dropbox"
               disabled={loading || uploading}
               style={{
-                background: '#1e293b', border: '1px solid rgba(100,116,139,0.3)',
-                borderRadius: '10px', padding: '10px', cursor: (loading || uploading) ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                minWidth: '40px', height: '40px', fontSize: '16px', opacity: (loading || uploading) ? 0.5 : 1,
+                background: '#1e293b', border: '1px solid rgba(100,116,139,0.3)', borderRadius: '10px', padding: '10px', cursor: (loading || uploading) ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '40px', height: '40px', fontSize: '16px', opacity: (loading || uploading) ? 0.5 : 1,
               }}
             >
               {uploading ? '⏳' : '📎'}
@@ -690,11 +606,8 @@ const FloatingAgent = () => {
                 title={isListening ? 'Arrêt écoute' : 'Parler à NOVA'}
                 disabled={loading}
                 style={{
-                  background: isListening ? 'rgba(6,182,212,0.15)' : '#1e293b',
-                  border: `1px solid ${isListening ? '#06B6D4' : 'rgba(100,116,139,0.3)'}`,
-                  borderRadius: '10px', padding: '10px', cursor: loading ? 'not-allowed' : 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  minWidth: '40px', height: '40px', fontSize: '16px',
+                  background: isListening ? 'rgba(6,182,212,0.15)' : '#1e293b', border: `1px solid ${isListening ? '#06B6D4' : 'rgba(100,116,139,0.3)'}`,
+                  borderRadius: '10px', padding: '10px', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '40px', height: '40px', fontSize: '16px',
                 }}
               >
                 {isListening ? '⏹' : '🎤'}
@@ -709,25 +622,17 @@ const FloatingAgent = () => {
               rows={1}
               disabled={loading || isListening}
               style={{
-                flex: 1, background: '#0F172A',
-                border: '1px solid rgba(100,116,139,0.3)',
-                borderRadius: '10px', padding: '10px 14px',
-                color: '#e2e8f0', fontSize: '13px', outline: 'none',
-                resize: 'none', fontFamily: 'inherit',
-                maxHeight: '80px', minHeight: '40px',
+                flex: 1, background: '#0F172A', border: '1px solid rgba(100,116,139,0.3)', borderRadius: '10px', padding: '10px 14px',
+                color: '#e2e8f0', fontSize: '13px', outline: 'none', resize: 'none', fontFamily: 'inherit', maxHeight: '80px', minHeight: '40px',
               }}
             />
             <button
               onClick={() => doSend()}
               disabled={loading || !input.trim()}
               style={{
-                background: 'linear-gradient(135deg, #D4AF37 0%, #b8941f 100%)',
-                border: 'none', borderRadius: '10px', padding: '0 14px',
-                cursor: (loading || !input.trim()) ? 'not-allowed' : 'pointer',
-                color: '#0B0B0F', fontSize: '16px', fontWeight: 600,
-                minWidth: '40px', height: '40px', display: 'flex',
-                alignItems: 'center', justifyContent: 'center',
-                opacity: (loading || !input.trim()) ? 0.5 : 1,
+                background: 'linear-gradient(135deg, #D4AF37 0%, #b8941f 100%)', border: 'none', borderRadius: '10px', padding: '0 14px',
+                cursor: (loading || !input.trim()) ? 'not-allowed' : 'pointer', color: '#0B0B0F', fontSize: '16px', fontWeight: 600,
+                minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: (loading || !input.trim()) ? 0.5 : 1,
               }}
             >
               ➤

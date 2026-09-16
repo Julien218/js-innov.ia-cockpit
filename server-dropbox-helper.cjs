@@ -311,10 +311,11 @@ function safeUploadFilename(value) {
 
 function fileExtension(fileName, mimeType) {
   const safe = safeUploadFilename(fileName);
-  const match = safe.match(/(\.[a-z0-9]{2,5})$/i);
+  const match = safe.match(/(\.[a-z0-9]{1,16})$/i);
   if (match) return match[1].toLowerCase();
   if (/^video\//i.test(mimeType)) return '.mp4';
   if (/^image\//i.test(mimeType)) return '.jpg';
+  if (/^audio\//i.test(mimeType)) return '.audio';
   return '';
 }
 
@@ -395,7 +396,10 @@ function buildMediaReference({ fileName, mimeType, message, classification, meta
   const extension = fileExtension(fileName, mimeType);
   const day = new Date(now).toISOString().slice(0, 10);
   const hash = String(contentHash || '').toLowerCase().replace(/[^a-f0-9]/g, '').slice(0, 10) || crypto.randomUUID().slice(0, 8);
-  const kind = classification.docType === 'Videos' ? 'Video' : 'Image';
+  const kind = classification.docType === 'Videos' ? 'Video'
+    : classification.docType === 'Images' ? 'Image'
+      : classification.docType === 'Audio' ? 'Audio'
+        : 'Fichier';
   const nameParts = [
     classification.matchedClient?.name,
     classification.matchedProject?.name,
@@ -417,7 +421,7 @@ function buildMediaReference({ fileName, mimeType, message, classification, meta
   ]);
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     originalFilename: safeUploadFilename(fileName),
     archivedFilename,
     referenceFilename: `${stem}.reference.json`,
@@ -456,20 +460,27 @@ function bestEntityMatch(rows, nameFor, context) {
   return scored[0]?.score > 0 ? scored[0].row : null;
 }
 
+// Nom historique conservé pour compatibilité : la route accepte désormais tout fichier.
+// Les formats potentiellement exécutables sont stockés/indexés comme des pièces jointes,
+// jamais exécutés ou interprétés par le serveur.
 function isSupportedMedia(fileName, mimeType) {
-  const lower = String(fileName || '').toLowerCase();
-  const ext = lower.includes('.') ? `.${lower.split('.').pop()}` : '';
-  const type = String(mimeType || 'application/octet-stream');
-  return MEDIA_EXTENSIONS.has(ext) && (/^(image|video)\//i.test(type) || type === 'application/octet-stream');
+  const raw = String(fileName || '').trim();
+  if (!raw || raw.length > 220 || /[\u0000-\u001f]/.test(raw)) return false;
+  const safe = safeUploadFilename(raw);
+  const type = String(mimeType || 'application/octet-stream').trim();
+  return Boolean(safe) && type.length <= 160;
 }
 
 async function classifyDocument(fileName, mimeType, fileSize, clients, message, projects = []) {
   const safeFileName = safeUploadFilename(fileName);
   const lowerName = safeFileName.toLowerCase();
+  const lowerMime = String(mimeType || 'application/octet-stream').toLowerCase();
   const context = `${safeFileName}\n${message || ''}`;
-  let docType = 'document';
-  if (/^video\//i.test(mimeType) || /\.(mp4|mov|webm|avi|mkv|m4v)$/.test(lowerName)) docType = 'Videos';
-  else if (/^image\//i.test(mimeType) || /\.(jpe?g|png|webp|gif|heic|heif)$/.test(lowerName)) docType = 'Images';
+  let docType = 'Fichiers';
+
+  if (/^video\//i.test(lowerMime) || /\.(mp4|mov|webm|avi|mkv|m4v)$/.test(lowerName)) docType = 'Videos';
+  else if (/^image\//i.test(lowerMime) || /\.(jpe?g|png|webp|gif|heic|heif|svg)$/.test(lowerName)) docType = 'Images';
+  else if (/^audio\//i.test(lowerMime) || /\.(mp3|wav|m4a|aac|ogg|oga|flac|opus|aiff?|wma)$/.test(lowerName)) docType = 'Audio';
   else if (lowerName.includes('facture') || lowerName.includes('invoice')) docType = 'Factures';
   else if (lowerName.includes('devis') || lowerName.includes('quote')) docType = 'Devis';
   else if (lowerName.includes('contrat') || lowerName.includes('contract')) docType = 'Contrats';
@@ -477,6 +488,10 @@ async function classifyDocument(fileName, mimeType, fileSize, clients, message, 
   else if (lowerName.includes('logo') || lowerName.includes('brand')) docType = 'Branding';
   else if (lowerName.includes('video') || lowerName.includes('spot')) docType = 'Videos';
   else if (lowerName.includes('rapport') || lowerName.includes('report')) docType = 'Rapports';
+  else if (/\.(zip|rar|7z|tar|gz|tgz|bz2|xz|cab|iso)$/.test(lowerName)) docType = 'Archives';
+  else if (/\.(pdf|doc|docx|odt|rtf|txt|md|csv|xls|xlsx|ods|ppt|pptx|odp|pages|numbers|key)$/.test(lowerName)) docType = 'Documents';
+  else if (/\.(json|xml|yaml|yml|sql|db|sqlite|sqlite3)$/.test(lowerName)) docType = 'Donnees';
+  else if (/\.(js|jsx|ts|tsx|mjs|cjs|py|php|rb|go|rs|java|kt|swift|c|h|cpp|hpp|cs|css|scss|sass|less|html|htm|vue|svelte|sh|ps1|bat|cmd)$/.test(lowerName)) docType = 'Code';
 
   let matchedClient = bestEntityMatch(clients, clientName, context);
   let matchedProject = bestEntityMatch(projects, projectName, context);
@@ -485,12 +500,11 @@ async function classifyDocument(fileName, mimeType, fileSize, clients, message, 
   }
   if (matchedClient && matchedProject?.client_id && String(matchedProject.client_id) !== String(matchedClient.id)) matchedProject = null;
 
-  // Build the suggested path
   let folderPath;
   if (matchedClient) {
     const clientFolder = safePathSegment(clientName(matchedClient));
     if (matchedProject) folderPath = `${ROOT_PATH}/Clients/${clientFolder}/Projets/${safePathSegment(projectName(matchedProject))}/${docType}`;
-    else if (['Images', 'Videos'].includes(docType)) folderPath = `${ROOT_PATH}/Clients/${clientFolder}/Media/${docType}`;
+    else if (['Images', 'Videos', 'Audio'].includes(docType)) folderPath = `${ROOT_PATH}/Clients/${clientFolder}/Media/${docType}`;
     else folderPath = `${ROOT_PATH}/Clients/${clientFolder}/${docType}`;
   } else if (matchedProject) {
     folderPath = `${ROOT_PATH}/Projets/${safePathSegment(projectName(matchedProject))}/${docType}`;
@@ -514,7 +528,6 @@ async function classifyDocument(fileName, mimeType, fileSize, clients, message, 
   };
 }
 
-
 // === Extract text from PDF buffer ===
 async function extractTextFromPDF(buffer) {
   try {
@@ -531,15 +544,22 @@ async function extractTextFromPDF(buffer) {
   }
 }
 
-// === Extract text from plain text / CSV ===
+// === Extract text only from clearly textual formats. Never execute file content. ===
 function extractTextFromBuffer(buffer, mimeType) {
   if (!buffer) return '';
-  if (mimeType === 'text/plain' || mimeType === 'text/csv' || mimeType === 'application/json') {
-    return buffer.toString('utf-8').slice(0, 5000);
+  const type = String(mimeType || '').toLowerCase();
+  if (type.startsWith('text/') || [
+    'application/json',
+    'application/ld+json',
+    'application/xml',
+    'application/x-yaml',
+    'application/yaml',
+    'application/javascript',
+  ].includes(type)) {
+    return buffer.toString('utf-8').replace(/\u0000/g, '').slice(0, 5000);
   }
   return '';
 }
-
 
 module.exports = {
   getAccessToken,
