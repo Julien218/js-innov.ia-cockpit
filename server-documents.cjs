@@ -7,7 +7,7 @@ const { dropboxApiArg } = require('./server-dropbox-helper.cjs');
 const router = express.Router();
 
 const DROPBOX_ROOT_PATH = process.env.DROPBOX_ROOT_PATH || '/JS-Innov.IA/Cockpit';
-const MAX_FILE_BYTES = 20 * 1024 * 1024;
+const MAX_FILE_BYTES = 100 * 1024 * 1024;
 const MAX_LIST_LIMIT = 200;
 
 const SUPABASE_URL = process.env.SUPABASE_CRM_URL || process.env.SUPABASE_URL || '';
@@ -15,10 +15,6 @@ const SUPABASE_KEY = process.env.SUPABASE_CRM_KEY || process.env.SUPABASE_SECRET
 const AGENT_URL = process.env.VITE_AGENT_URL || process.env.JSINNOVIA_AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
 const AGENT_KEY = process.env.AGENT_API_KEY || process.env.JSINNOVIA_AGENT_KEY || '';
 
-const ALLOWED_EXTENSIONS = new Set([
-  '.pdf', '.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif',
-  '.doc', '.docx', '.xls', '.xlsx', '.csv', '.txt'
-]);
 const PORTFOLIO_MEDIA_EXTENSIONS = new Set([
   '.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif',
   '.mp4', '.mov', '.webm', '.avi', '.mkv', '.m4v',
@@ -51,19 +47,19 @@ function sanitizeSegment(value, fallback = 'general') {
   return clean || fallback;
 }
 
+// Tous les types de fichiers peuvent être archivés. La sécurité repose sur le
+// stockage passif : aucun fichier n'est exécuté et les aperçus restent limités
+// aux médias explicitement reconnus par isPortfolioMedia().
 function sanitizeFilename(filename) {
   const base = path.basename(String(filename || 'document'));
-  const clean = sanitizeSegment(base, 'document');
-  const ext = path.extname(clean).toLowerCase();
-  if (!ALLOWED_EXTENSIONS.has(ext)) {
-    throw new Error(`Type de fichier non autorisé (${ext || 'sans extension'})`);
-  }
-  return clean.slice(0, 180);
+  const clean = sanitizeSegment(base, 'document').slice(0, 180);
+  if (!clean || clean === '.' || clean === '..') throw new Error('Nom de fichier invalide');
+  return clean;
 }
 
 function validateBuffer(filename, buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) throw new Error('Fichier vide ou invalide');
-  if (buffer.length > MAX_FILE_BYTES) throw new Error('Fichier trop volumineux (maximum 20 Mo)');
+  if (buffer.length > MAX_FILE_BYTES) throw new Error('Fichier trop volumineux (maximum 100 Mo)');
   sanitizeFilename(filename);
 }
 
