@@ -1,0 +1,1 @@
+const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');const p=fs.readFileSync(path.resolve(__dirname,'../src/pages/Documents.jsx'),'utf8');test('download button remains in Centre Documents',()=>assert.ok(p.includes('Télécharger')));
