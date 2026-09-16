@@ -1,0 +1,1 @@
+const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');const a=fs.readFileSync(path.resolve(__dirname,'../server-assistant.cjs'),'utf8');test('upload route remains mounted',()=>assert.ok(a.includes("router.post('/upload-media'")));
