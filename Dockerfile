@@ -75,6 +75,7 @@ COPY --from=builder /app/server-ionos.cjs ./server-ionos.cjs
 COPY --from=builder /app/server-ionos-connector.cjs ./server-ionos-connector.cjs
 COPY --from=builder /app/ionos-read-tools.json ./ionos-read-tools.json
 COPY --from=builder /app/server-settings.cjs ./server-settings.cjs
+COPY --from=builder /app/server-social-command.cjs ./server-social-command.cjs
 COPY --from=builder /app/server-signage.cjs ./server-signage.cjs
 COPY --from=builder /app/server-villeconnect.cjs ./server-villeconnect.cjs
 COPY --from=builder /app/server-video-provenance-core.cjs ./server-video-provenance-core.cjs
@@ -137,6 +138,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-domain-ops.cjs \
  && test -f /app/server-ionos-dns.cjs \
  && test -f /app/server-settings.cjs \
+ && test -f /app/server-social-command.cjs \
  && test -f /app/server-signage.cjs \
  && test -f /app/server-villeconnect.cjs \
  && test -f /app/server-video-provenance-core.cjs \
@@ -181,6 +183,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-domain-ops.cjs \
  && node --check /app/server-ionos-dns.cjs \
  && node --check /app/server-settings.cjs \
+ && node --check /app/server-social-command.cjs \
  && node --check /app/server-signage.cjs \
  && node --check /app/server-villeconnect.cjs \
  && node --check /app/server-video-provenance-core.cjs \
@@ -198,7 +201,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-bce.cjs \
  && node --check /app/server-public-elynea.cjs \
  && node --check /app/lib/governance-export.cjs \
- && node -e "require('/app/server-led-ad-director.cjs'); require('/app/server-agent-registry.cjs'); require('/app/server-nova-routing.cjs')" \
+ && node -e "require('/app/server-led-ad-director.cjs'); require('/app/server-agent-registry.cjs'); require('/app/server-nova-routing.cjs'); require('/app/server-social-command.cjs')" \
  && node -e "require('/app/server-task-context.cjs'); require('/app/server-assistant-batch.cjs'); require('/app/server-specialist-tasks.cjs')" \
  && echo "Required runtime modules check OK"
 
