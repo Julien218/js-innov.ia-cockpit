@@ -1,0 +1,1 @@
+const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');const h=fs.readFileSync(path.resolve(__dirname,'../server-dropbox-helper.cjs'),'utf8');test('unknown file default category stays Fichiers',()=>assert.ok(h.includes("let docType = 'Fichiers'")));
