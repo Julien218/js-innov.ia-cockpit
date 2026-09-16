@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { allNavGroups } from './Sidebar';
 import { searchNavigation } from '@/lib/navigation';
+import { filterActiveNotifications } from '@/lib/notificationLifecycle';
 
 function notificationStorageKey(user) {
   const identity = user?.id || user?.email || 'anonymous';
@@ -128,7 +129,7 @@ export default function TopBar({ onOpenMobileMenu }) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Notifications indisponibles');
-      setNotifications(Array.isArray(data.events) ? data.events : []);
+      setNotifications(filterActiveNotifications(Array.isArray(data.events) ? data.events : []));
       setNotificationError('');
     } catch (error) {
       setNotificationError(error.message || 'Notifications indisponibles');
