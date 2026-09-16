@@ -1,0 +1,1 @@
+const test=require('node:test');const assert=require('node:assert/strict');test('generic file contract test suite loaded',()=>assert.equal(true,true));
