@@ -51,6 +51,27 @@ function extractWakeCommand(text) {
   };
 }
 
+function parseAudioCommand(text) {
+  const command = normalizeWakeText(text);
+  if (!command) return null;
+
+  if (/^(?:musique|mets? la musique|lance la musique|joue la musique|reprends? la musique)$/.test(command)) {
+    return { action: 'play' };
+  }
+  if (/^(?:pause musique|pause la musique|mets? la musique en pause|coupe la musique|arrete la musique|stop musique)$/.test(command)) {
+    return { action: 'pause' };
+  }
+  if (/^(?:musique suivante|morceau suivant|titre suivant|prochaine musique)$/.test(command)) {
+    return { action: 'next' };
+  }
+  if (/^(?:musique precedente|morceau precedent|titre precedent|musique d avant)$/.test(command)) {
+    return { action: 'previous' };
+  }
+  const playlist = command.match(/^(?:(?:mets?|lance|joue)\s+)?(?:la\s+)?playlist\s+(.+)$/);
+  if (playlist?.[1]) return { action: 'playlist', name: playlist[1].trim() };
+  return null;
+}
+
 export default function ElyneaContinuousVoice() {
   const { user } = useAuth();
   const recognitionRef = useRef(null);
@@ -150,6 +171,26 @@ export default function ElyneaContinuousVoice() {
   const sendTranscript = useCallback(async (transcript) => {
     const text = String(transcript || '').trim();
     if (!text || sendingRef.current) return;
+
+    const audioCommand = ['admin', 'superadmin'].includes(user?.role) ? parseAudioCommand(text) : null;
+    if (audioCommand && typeof window !== 'undefined') {
+      clearWakeTimeout();
+      window.dispatchEvent(new CustomEvent('elynea:audio-command', { detail: audioCommand }));
+      const labels = {
+        play: 'Musique lancée',
+        pause: 'Musique en pause',
+        next: 'Morceau suivant',
+        previous: 'Morceau précédent',
+        playlist: `Playlist ${audioCommand.name || ''}`.trim(),
+      };
+      setStatus(labels[audioCommand.action] || 'Commande musique');
+      window.setTimeout(() => {
+        returnToStandby();
+        if (activeRef.current) window.setTimeout(() => startRecognitionRef.current?.(), 250);
+      }, 350);
+      return;
+    }
+
     clearWakeTimeout();
     sendingRef.current = true;
     setStatus('Elynea réfléchit…');
