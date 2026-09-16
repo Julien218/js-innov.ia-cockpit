@@ -37,3 +37,25 @@ test('la top bar propose une recherche de pages, les demandes et une aide access
   assert.match(topbar, /setHelpOpen\(true\)/);
   assert.match(topbar, /user\?\.full_name/);
 });
+
+test('la top bar retire une panne critique du flux actif après son rétablissement', async () => {
+  const { filterActiveNotifications } = await import('../src/lib/notificationLifecycle.js');
+  assert.match(topbar, /filterActiveNotifications/);
+  const visible = filterActiveNotifications([
+    {
+      id: 'down',
+      event_type: 'site.down',
+      severity: 'critical',
+      title: 'Incident critique — jsinnovia.com',
+      created_at: '2026-09-16T18:00:00.000Z',
+    },
+    {
+      id: 'restored',
+      event_type: 'site.restored',
+      severity: 'success',
+      title: 'Service rétabli — jsinnovia.com',
+      created_at: '2026-09-16T18:05:00.000Z',
+    },
+  ]);
+  assert.deepEqual(visible.map(event => event.id), ['restored']);
+});
