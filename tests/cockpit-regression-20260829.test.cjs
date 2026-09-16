@@ -86,8 +86,8 @@ test('un audit SEO standard indique explicitement que les concurrents sont facul
   assert.match(context, /Ne bloque jamais un audit SEO standard/);
 });
 
-test('le plafond documentaire permet les images Grok jusqu’à 20 MiB', () => {
-  assert.equal(documents.MAX_FILE_BYTES, 20 * 1024 * 1024);
+test('le coffre documentaire accepte les fichiers Elynea jusqu’à 100 MiB', () => {
+  assert.equal(documents.MAX_FILE_BYTES, 100 * 1024 * 1024);
 });
 
 test('le runtime Docker embarque réellement la politique d’exécution immédiate', () => {
