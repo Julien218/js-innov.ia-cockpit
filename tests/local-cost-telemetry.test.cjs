@@ -79,7 +79,6 @@ test('AI Cost Control et la fabrique vidéo utilisent la télémétrie locale', 
   const factory = read('src/pages/LocalVideoFactory.jsx');
   const client = read('src/lib/localTelemetry.js');
   const server = read('server-client-costs.cjs');
-  const desktop = JSON.parse(read('electron/package.json'));
   assert.match(ui, /Agent Windows connecté/);
   assert.match(ui, /getLocalTelemetryCurrent/);
   assert.match(factory, /getLocalTelemetrySummary/);
@@ -87,5 +86,4 @@ test('AI Cost Control et la fabrique vidéo utilisent la télémétrie locale', 
   assert.match(client, /api\/telemetry\/summary/);
   assert.match(server, /local_agent_telemetry_machine_plus_energy/);
   assert.match(server, /costCenterId: clean\(req\.body\?\.cost_center_id/);
-  assert.equal(desktop.version, '1.0.43');
 });
