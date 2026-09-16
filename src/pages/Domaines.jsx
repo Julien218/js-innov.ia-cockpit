@@ -12,6 +12,7 @@ import {
   ExternalLink,
   Globe,
   Loader2,
+  Mail,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -31,15 +32,23 @@ const DOMAINS = [
     app: "js-innovia-site",
     email: "IONOS (DNS)",
     agent: "JsInnov-Agent",
+    webRequired: true,
   },
-  { name: "cockpit.jsinnovia.com", dest: "Railway", app: "cockpit-v3", email: "—", agent: "JsInnov-Agent" },
-  { name: "jsinnovia.store", dest: "IONOS / web", app: "JS-INNOV.IA", email: "IONOS", agent: "JsInnov-Agent" },
-  { name: "assurances-dour.be", dest: "Base44", app: "assurances-dour.be", email: "IONOS", agent: "JsInnov-Agent" },
-  { name: "letourdedour.com", dest: "Base44", app: "Multi site", email: "—", agent: "Site Olivier landing Page" },
-  { name: "oliviertrevis.be", dest: "Base44", app: "Multi site", email: "—", agent: "Site Olivier landing Page" },
-  { name: "synergiedour.be", dest: "Base44", app: "SynergieDour.be", email: "—", agent: "Synergie Dour Assistant" },
-  { name: "missetmisterdour.be", dest: "Base44", app: "Miss DOUR", email: "—", agent: "Agent Miss & Mister Dour" },
-  { name: "fashionistartdour.be", dest: "Base44", app: "Fashionist'ART", email: "—", agent: "Agent Fashionistart" },
+  { name: "cockpit.jsinnovia.com", dest: "Railway", app: "cockpit-v3", email: "—", agent: "JsInnov-Agent", webRequired: true },
+  {
+    name: "jsinnovia.store",
+    dest: "IONOS · Email / domaine réservé",
+    app: "Future vitrine 3D immersive / WebXR",
+    email: "IONOS · actif",
+    agent: "JsInnov-Agent",
+    webRequired: false,
+  },
+  { name: "assurances-dour.be", dest: "Base44", app: "assurances-dour.be", email: "IONOS", agent: "JsInnov-Agent", webRequired: true },
+  { name: "letourdedour.com", dest: "Base44", app: "Multi site", email: "—", agent: "Site Olivier landing Page", webRequired: true },
+  { name: "oliviertrevis.be", dest: "Base44", app: "Multi site", email: "—", agent: "Site Olivier landing Page", webRequired: true },
+  { name: "synergiedour.be", dest: "Base44", app: "SynergieDour.be", email: "—", agent: "Synergie Dour Assistant", webRequired: true },
+  { name: "missetmisterdour.be", dest: "Base44", app: "Miss DOUR", email: "—", agent: "Agent Miss & Mister Dour", webRequired: true },
+  { name: "fashionistartdour.be", dest: "Base44", app: "Fashionist'ART", email: "—", agent: "Agent Fashionistart", webRequired: true },
 ];
 
 async function api(path, body) {
@@ -67,6 +76,10 @@ function StatusPill({ state, goodLabel, badLabel, unknownLabel = "Non analysé" 
     return <span className="inline-flex items-center gap-1 text-red-600 text-xs"><XCircle className="w-3.5 h-3.5" />{badLabel}</span>;
   }
   return <span className="inline-flex items-center gap-1 text-muted-foreground text-xs"><AlertCircle className="w-3.5 h-3.5" />{unknownLabel}</span>;
+}
+
+function ReservedPill({ children = "Non requis" }) {
+  return <span className="inline-flex items-center gap-1 text-blue-600 text-xs"><ShieldCheck className="w-3.5 h-3.5" />{children}</span>;
 }
 
 function SeoPill({ score }) {
@@ -166,6 +179,11 @@ export default function Domaines() {
       const prepared = await api("/api/domain-ops/prepare-repair", { domain, kind });
       setDiagnostics((previous) => ({ ...previous, [domain]: prepared.before }));
       setSelectedDomain(domain);
+      if (prepared.no_action_required || !prepared.confirmation?.token) {
+        setConfirmation(null);
+        setBanner({ type: "info", text: `${domain} : ${prepared.message || "Aucune action web requise."}` });
+        return;
+      }
       setConfirmation(prepared);
     } catch (error) {
       setBanner({ type: "error", text: `${domain} : ${error.message}` });
@@ -205,7 +223,7 @@ export default function Domaines() {
     <div className="p-4 md:p-6 space-y-6 max-w-[1500px] mx-auto">
       <PageHeader
         title="Domaines"
-        subtitle="Monitoring live · diagnostic IA · réparation confirmée · SEO automatique"
+        subtitle="Monitoring live · sites web · domaines email · réparation confirmée · SEO automatique"
       />
 
       <IonosPanel />
@@ -240,33 +258,19 @@ export default function Domaines() {
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700">
           À corriger chez le fournisseur DNS : <strong>jsinnovia.com</strong> (sans www) pointe encore vers IONOS et son TLS échoue. Le site officiel fonctionnel est <strong>www.jsinnovia.com</strong>.
         </div>
+        <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 px-3 py-2 text-xs text-blue-700">
+          <strong>jsinnovia.store</strong> est actuellement un domaine email / réservé. Le HTTPS web n’est pas requis. Il pourra être basculé plus tard en <strong>vitrine 3D immersive / WebXR</strong> pour lunettes compatibles.
+        </div>
       </section>
 
       <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-1">
-          <div className="rounded-xl border border-border bg-card p-3">
-            <p className="text-[10px] uppercase text-muted-foreground">Domaines</p>
-            <p className="text-xl font-bold mt-1">{stats.total}</p>
-          </div>
-          <div className="rounded-xl border border-border bg-card p-3">
-            <p className="text-[10px] uppercase text-muted-foreground">Analysés live</p>
-            <p className="text-xl font-bold mt-1">{stats.analyzed}</p>
-          </div>
-          <div className="rounded-xl border border-border bg-card p-3">
-            <p className="text-[10px] uppercase text-muted-foreground">Sains</p>
-            <p className="text-xl font-bold mt-1 text-emerald-600">{stats.healthy}</p>
-          </div>
-          <div className="rounded-xl border border-border bg-card p-3">
-            <p className="text-[10px] uppercase text-muted-foreground">Critiques</p>
-            <p className="text-xl font-bold mt-1 text-red-600">{stats.critical}</p>
-          </div>
+          <div className="rounded-xl border border-border bg-card p-3"><p className="text-[10px] uppercase text-muted-foreground">Domaines</p><p className="text-xl font-bold mt-1">{stats.total}</p></div>
+          <div className="rounded-xl border border-border bg-card p-3"><p className="text-[10px] uppercase text-muted-foreground">Analysés live</p><p className="text-xl font-bold mt-1">{stats.analyzed}</p></div>
+          <div className="rounded-xl border border-border bg-card p-3"><p className="text-[10px] uppercase text-muted-foreground">Sains</p><p className="text-xl font-bold mt-1 text-emerald-600">{stats.healthy}</p></div>
+          <div className="rounded-xl border border-border bg-card p-3"><p className="text-[10px] uppercase text-muted-foreground">Critiques</p><p className="text-xl font-bold mt-1 text-red-600">{stats.critical}</p></div>
         </div>
-        <button
-          onClick={analyzeAll}
-          className="h-10 px-4 rounded-xl border border-border bg-card hover:border-primary/40 text-sm font-medium inline-flex items-center justify-center gap-2"
-        >
-          <RefreshCw className="w-4 h-4" /> Analyser tous
-        </button>
+        <button onClick={analyzeAll} className="h-10 px-4 rounded-xl border border-border bg-card hover:border-primary/40 text-sm font-medium inline-flex items-center justify-center gap-2"><RefreshCw className="w-4 h-4" /> Analyser tous</button>
       </div>
 
       {banner && (
@@ -276,19 +280,12 @@ export default function Domaines() {
           banner.type === "error" ? "border-red-500/30 bg-red-500/10 text-red-700" :
           banner.type === "warning" ? "border-amber-500/30 bg-amber-500/10 text-amber-700" :
           "border-blue-500/30 bg-blue-500/10 text-blue-700"
-        )}>
-          {banner.text}
-        </div>
+        )}>{banner.text}</div>
       )}
 
       <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-card">
         <Search className="w-4 h-4 text-muted-foreground" />
-        <input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Rechercher domaine, app ou agent métier…"
-          className="flex-1 bg-transparent outline-none text-sm"
-        />
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rechercher domaine, app ou agent métier…" className="flex-1 bg-transparent outline-none text-sm" />
       </div>
 
       <div className="bg-card rounded-xl border border-border overflow-hidden overflow-x-auto">
@@ -306,53 +303,32 @@ export default function Domaines() {
               const http = status?.http?.apex;
               const www = status?.http?.www;
               const tls = status?.tls;
+              const webReserved = status?.web_required === false || domain.webRequired === false;
               const isAnalyzing = loading[`${domain.name}:analyze`];
               return (
                 <tr key={domain.name} className="border-b border-border hover:bg-muted/20 align-top">
                   <td className="py-3 px-3">
                     <button onClick={() => status && setSelectedDomain(domain.name)} className="text-left flex items-start gap-2">
-                      <Globe className="w-4 h-4 mt-0.5 text-muted-foreground" />
+                      {webReserved ? <Mail className="w-4 h-4 mt-0.5 text-blue-500" /> : <Globe className="w-4 h-4 mt-0.5 text-muted-foreground" />}
                       <span>
                         <span className="block text-sm font-semibold">{domain.name}</span>
                         <span className="block text-[10px] text-muted-foreground">{domain.app} · {domain.dest}</span>
                         {domain.publicUrl && <span className="mt-1 block text-[10px] text-primary">Site officiel : www</span>}
+                        {webReserved && <span className="mt-1 block text-[10px] text-blue-600">Email actif · Web réservé</span>}
                       </span>
                     </button>
                   </td>
-                  <td className="py-3 px-3">
-                    <StatusPill
-                      state={status ? Boolean(http?.ok) : null}
-                      goodLabel={`${http?.status || 200} · ${http?.response_ms || 0} ms`}
-                      badLabel={http?.error || `${http?.status || 0}`}
-                    />
-                  </td>
-                  <td className="py-3 px-3">
-                    <StatusPill state={status ? Boolean(www?.ok) : null} goodLabel={`${www?.status || 200}`} badLabel={www?.error || `${www?.status || 0}`} />
-                  </td>
-                  <td className="py-3 px-3">
-                    <StatusPill
-                      state={status ? Boolean(tls?.ok) : null}
-                      goodLabel={Number.isFinite(tls?.days_remaining) ? `${tls.days_remaining} j` : 'OK'}
-                      badLabel={tls?.error || 'TLS invalide'}
-                    />
-                  </td>
-                  <td className="py-3 px-3"><SeoPill score={status?.seo?.score} /></td>
-                  <td className="py-3 px-3">
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <Bot className="w-3.5 h-3.5 text-violet-500" />
-                      <span className="font-medium">{status?.agent_hint || domain.agent}</span>
-                    </div>
-                  </td>
-                  <td className="py-3 px-3 text-xs text-muted-foreground">
-                    {status?.checked_at ? (
-                      <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{new Date(status.checked_at).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}</span>
-                    ) : '—'}
-                  </td>
+                  <td className="py-3 px-3">{webReserved ? <ReservedPill /> : <StatusPill state={status ? Boolean(http?.ok) : null} goodLabel={`${http?.status || 200} · ${http?.response_ms || 0} ms`} badLabel={http?.error || `${http?.status || 0}`} />}</td>
+                  <td className="py-3 px-3">{webReserved ? <ReservedPill /> : <StatusPill state={status ? Boolean(www?.ok) : null} goodLabel={`${www?.status || 200}`} badLabel={www?.error || `${www?.status || 0}`} />}</td>
+                  <td className="py-3 px-3">{webReserved ? <ReservedPill /> : <StatusPill state={status ? Boolean(tls?.ok) : null} goodLabel={Number.isFinite(tls?.days_remaining) ? `${tls.days_remaining} j` : 'OK'} badLabel={tls?.error || 'TLS invalide'} />}</td>
+                  <td className="py-3 px-3">{webReserved ? <ReservedPill>Web réservé</ReservedPill> : <SeoPill score={status?.seo?.score} />}</td>
+                  <td className="py-3 px-3"><div className="flex items-center gap-1.5 text-xs"><Bot className="w-3.5 h-3.5 text-violet-500" /><span className="font-medium">{status?.agent_hint || domain.agent}</span></div></td>
+                  <td className="py-3 px-3 text-xs text-muted-foreground">{status?.checked_at ? <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{new Date(status.checked_at).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}</span> : '—'}</td>
                   <td className="py-3 px-3">
                     <div className="flex flex-wrap gap-1.5">
                       <ActionButton onClick={() => analyze(domain.name)} busy={isAnalyzing} icon={Activity}>Analyser</ActionButton>
-                      <ActionButton onClick={() => prepareAction(domain.name, 'repair')} busy={loading[`${domain.name}:repair`]} icon={Wrench} variant="repair">Réparer IA</ActionButton>
-                      <ActionButton onClick={() => prepareAction(domain.name, 'seo')} busy={loading[`${domain.name}:seo`]} icon={Sparkles} variant="seo">SEO auto</ActionButton>
+                      <ActionButton onClick={() => prepareAction(domain.name, 'repair')} busy={loading[`${domain.name}:repair`]} icon={Wrench} variant="repair" disabled={webReserved}>Réparer IA</ActionButton>
+                      <ActionButton onClick={() => prepareAction(domain.name, 'seo')} busy={loading[`${domain.name}:seo`]} icon={Sparkles} variant="seo" disabled={webReserved}>SEO auto</ActionButton>
                     </div>
                   </td>
                 </tr>
@@ -368,6 +344,7 @@ export default function Domaines() {
             <div>
               <p className="text-sm font-semibold">Diagnostic live — {selected.domain}</p>
               <p className="text-xs text-muted-foreground">Agent : {selected.agent_hint} · contrôle {new Date(selected.checked_at).toLocaleString('fr-BE')}</p>
+              {selected.status_note && <p className="text-xs text-blue-600 mt-1">{selected.status_note}</p>}
             </div>
             <button onClick={() => setSelectedDomain(null)} className="p-2 rounded-lg hover:bg-muted"><X className="w-4 h-4" /></button>
           </div>
@@ -377,9 +354,7 @@ export default function Domaines() {
               {selected.issues?.length ? (
                 <div className="space-y-2">
                   {selected.issues.map((issue) => (
-                    <div key={issue.code} className={cn("text-xs rounded-lg px-2.5 py-2 border", issue.severity === 'critical' ? "border-red-500/30 bg-red-500/5 text-red-700" : "border-amber-500/30 bg-amber-500/5 text-amber-700")}>
-                      {issue.label}
-                    </div>
+                    <div key={issue.code} className={cn("text-xs rounded-lg px-2.5 py-2 border", issue.severity === 'critical' ? "border-red-500/30 bg-red-500/5 text-red-700" : "border-amber-500/30 bg-amber-500/5 text-amber-700")}>{issue.label}</div>
                   ))}
                 </div>
               ) : <p className="text-xs text-emerald-600">Aucune anomalie détectée par les contrôles actuels.</p>}
@@ -387,22 +362,33 @@ export default function Domaines() {
 
             <div className="rounded-xl border border-border p-3">
               <div className="flex items-center gap-2 mb-2"><ShieldCheck className="w-4 h-4" /><p className="text-sm font-semibold">Infrastructure</p></div>
-              <div className="space-y-1.5 text-xs text-muted-foreground">
-                <p>HTTP apex : <span className="text-foreground">{selected.http?.apex?.status || 0}</span></p>
-                <p>Temps réponse : <span className="text-foreground">{selected.http?.apex?.response_ms ?? '—'} ms</span></p>
-                <p>URL finale : <span className="text-foreground break-all">{selected.http?.apex?.final_url || '—'}</span></p>
-                <p>TLS : <span className="text-foreground">{selected.tls?.ok ? `OK · ${selected.tls.days_remaining ?? '—'} jours` : selected.tls?.error || 'invalide'}</span></p>
-                <p>DNS A : <span className="text-foreground">{selected.dns?.apex?.a?.join(', ') || '—'}</span></p>
-                <p>DNS CNAME : <span className="text-foreground">{selected.dns?.apex?.cname?.join(', ') || '—'}</span></p>
-              </div>
+              {selected.web_required === false ? (
+                <div className="space-y-1.5 text-xs text-muted-foreground">
+                  <p>Usage : <span className="text-foreground">Email actif · Web réservé</span></p>
+                  <p>MX : <span className="text-foreground">{selected.mail?.mx?.length ? `${selected.mail.mx.length} détecté(s)` : 'absent'}</span></p>
+                  <p>SPF : <span className={selected.mail?.spf?.ok ? "text-emerald-600" : "text-amber-600"}>{selected.mail?.spf?.ok ? 'OK' : 'à vérifier'}</span></p>
+                  <p>DMARC : <span className={selected.mail?.dmarc?.ok ? "text-emerald-600" : "text-amber-600"}>{selected.mail?.dmarc?.ok ? 'OK' : 'à vérifier'}</span></p>
+                  <p>DKIM : <span className="text-foreground">sélecteur fournisseur requis</span></p>
+                  <p>Future utilisation : <span className="text-foreground">{selected.future_label || 'Vitrine 3D immersive / WebXR'}</span></p>
+                </div>
+              ) : (
+                <div className="space-y-1.5 text-xs text-muted-foreground">
+                  <p>HTTP apex : <span className="text-foreground">{selected.http?.apex?.status || 0}</span></p>
+                  <p>Temps réponse : <span className="text-foreground">{selected.http?.apex?.response_ms ?? '—'} ms</span></p>
+                  <p>URL finale : <span className="text-foreground break-all">{selected.http?.apex?.final_url || '—'}</span></p>
+                  <p>TLS : <span className="text-foreground">{selected.tls?.ok ? `OK · ${selected.tls.days_remaining ?? '—'} jours` : selected.tls?.error || 'invalide'}</span></p>
+                  <p>DNS A : <span className="text-foreground">{selected.dns?.apex?.a?.join(', ') || '—'}</span></p>
+                  <p>DNS CNAME : <span className="text-foreground">{selected.dns?.apex?.cname?.join(', ') || '—'}</span></p>
+                </div>
+              )}
             </div>
 
             <div className="rounded-xl border border-border p-3">
-              <div className="flex items-center gap-2 mb-2"><Sparkles className="w-4 h-4" /><p className="text-sm font-semibold">SEO · {selected.seo?.score ?? 0}/100</p></div>
-              {selected.seo?.recommendations?.length ? (
-                <ul className="space-y-1.5 text-xs text-muted-foreground list-disc pl-4">
-                  {selected.seo.recommendations.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
-                </ul>
+              <div className="flex items-center gap-2 mb-2"><Sparkles className="w-4 h-4" /><p className="text-sm font-semibold">{selected.web_required === false ? 'Web futur' : `SEO · ${selected.seo?.score ?? 0}/100`}</p></div>
+              {selected.web_required === false ? (
+                <p className="text-xs text-blue-600">Aucun audit SEO web requis aujourd’hui. Il sera réactivé lorsque jsinnovia.store deviendra la vitrine immersive 3D / WebXR.</p>
+              ) : selected.seo?.recommendations?.length ? (
+                <ul className="space-y-1.5 text-xs text-muted-foreground list-disc pl-4">{selected.seo.recommendations.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>
               ) : <p className="text-xs text-emerald-600">Aucune recommandation SEO technique prioritaire.</p>}
             </div>
           </div>
@@ -421,7 +407,7 @@ export default function Domaines() {
         </div>
       )}
 
-      {confirmation && (
+      {confirmation?.confirmation?.token && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="w-full max-w-lg rounded-2xl border border-border bg-background shadow-xl overflow-hidden">
             <div className="px-5 py-4 border-b border-border">
@@ -436,17 +422,11 @@ export default function Domaines() {
                 <p><strong>Incidents détectés :</strong> {confirmation.before?.issues?.length || 0}</p>
                 <p><strong>Score SEO :</strong> {confirmation.before?.seo?.score ?? '—'}/100</p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Après confirmation, une tâche est créée, l’agent métier du site est appelé, puis le Cockpit refait l’analyse. La tâche n’est clôturée que si l’amélioration est réellement mesurée.
-              </p>
+              <p className="text-xs text-muted-foreground">Après confirmation, une tâche est créée, l’agent métier du site est appelé, puis le Cockpit refait l’analyse. La tâche n’est clôturée que si l’amélioration est réellement mesurée.</p>
             </div>
             <div className="px-5 py-4 border-t border-border flex justify-end gap-2">
               <button onClick={() => setConfirmation(null)} className="h-9 px-3 rounded-lg border border-border text-sm">Annuler</button>
-              <button
-                onClick={confirmAction}
-                disabled={loading[`${confirmation.domain}:confirm`]}
-                className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50"
-              >
+              <button onClick={confirmAction} disabled={loading[`${confirmation.domain}:confirm`]} className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50">
                 {loading[`${confirmation.domain}:confirm`] ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
                 Confirmer et lancer
               </button>
@@ -456,7 +436,7 @@ export default function Domaines() {
       )}
 
       <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-muted-foreground">
-        Les analyses DNS/HTTP/TLS/SEO sont en lecture seule. Toute réparation ou optimisation qui peut modifier un site exige un jeton de confirmation serveur à usage unique, crée une tâche et est recontrôlée automatiquement après intervention.
+        Les sites web sont contrôlés en DNS/HTTP/TLS/SEO. Les domaines réservés à la messagerie sont contrôlés en MX/SPF/DMARC. Toute réparation qui peut modifier un service exige une confirmation serveur à usage unique.
       </div>
     </div>
   );

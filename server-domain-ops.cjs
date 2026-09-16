@@ -18,15 +18,27 @@ const MANAGED_DOMAINS = Object.freeze({
     hosting: 'Railway',
     primary_url: 'https://www.jsinnovia.com',
     repository: 'Julien218/jsinnovia',
+    purpose: 'website',
+    web_required: true,
   },
-  'cockpit.jsinnovia.com': { app: 'cockpit-v3', agent_hint: 'NOVA Sites JS-Innov.IA', hosting: 'Railway', repository: 'Julien218/js-innov.ia-cockpit' },
-  'jsinnovia.store': { app: 'JS-INNOV.IA', agent_hint: 'NOVA Sites JS-Innov.IA', hosting: 'Railway', repository: 'Julien218/jsinnovia' },
-  'assurances-dour.be': { app: 'assurances-dour.be', agent_hint: 'NOVA Site Assurances-Dour.be', hosting: 'Railway', repository: 'Julien218/PV_Agence_de_Dour' },
-  'letourdedour.com': { app: 'letourdedour-site', agent_hint: 'NOVA Site Olivier Trévis', hosting: 'Railway', repository: 'Julien218/letourdedour-site' },
-  'oliviertrevis.be': { app: 'oliviertrevis-site', agent_hint: 'NOVA Site Olivier Trévis', hosting: 'Railway', repository: 'Julien218/oliviertrevis-site' },
-  'synergiedour.be': { app: 'SynergieDour.be', agent_hint: 'NOVA Site Synergie Dour', hosting: 'Railway', repository: 'Julien218/synergie-dour' },
-  'missetmisterdour.be': { app: 'Miss DOUR', agent_hint: 'NOVA Site Miss & Mister Dour', hosting: 'Railway', repository: 'Julien218/miss-mister-dour-web' },
-  'fashionistartdour.be': { app: "fashionist-art", agent_hint: "NOVA Site Fashionist'art", hosting: 'Railway', repository: 'Julien218/fashionist-art' },
+  'cockpit.jsinnovia.com': { app: 'cockpit-v3', agent_hint: 'NOVA Sites JS-Innov.IA', hosting: 'Railway', repository: 'Julien218/js-innov.ia-cockpit', purpose: 'website', web_required: true },
+  'jsinnovia.store': {
+    app: 'JS-INNOV.IA Store',
+    agent_hint: 'NOVA Sites JS-Innov.IA',
+    hosting: 'Email / domaine réservé',
+    repository: 'Julien218/jsinnovia',
+    purpose: 'email_reserved',
+    web_required: false,
+    mail_required: true,
+    future_use: 'immersive_webxr_store',
+    future_label: 'Future vitrine 3D immersive / WebXR',
+  },
+  'assurances-dour.be': { app: 'assurances-dour.be', agent_hint: 'NOVA Site Assurances-Dour.be', hosting: 'Railway', repository: 'Julien218/PV_Agence_de_Dour', purpose: 'website', web_required: true },
+  'letourdedour.com': { app: 'letourdedour-site', agent_hint: 'NOVA Site Olivier Trévis', hosting: 'Railway', repository: 'Julien218/letourdedour-site', purpose: 'website', web_required: true },
+  'oliviertrevis.be': { app: 'oliviertrevis-site', agent_hint: 'NOVA Site Olivier Trévis', hosting: 'Railway', repository: 'Julien218/oliviertrevis-site', purpose: 'website', web_required: true },
+  'synergiedour.be': { app: 'SynergieDour.be', agent_hint: 'NOVA Site Synergie Dour', hosting: 'Railway', repository: 'Julien218/synergie-dour', purpose: 'website', web_required: true },
+  'missetmisterdour.be': { app: 'Miss DOUR', agent_hint: 'NOVA Site Miss & Mister Dour', hosting: 'Railway', repository: 'Julien218/miss-mister-dour-web', purpose: 'website', web_required: true },
+  'fashionistartdour.be': { app: "fashionist-art", agent_hint: "NOVA Site Fashionist'art", hosting: 'Railway', repository: 'Julien218/fashionist-art', purpose: 'website', web_required: true },
 });
 
 function safeDomain(value) {
@@ -50,6 +62,33 @@ async function settleDns(domain) {
     }
   }));
   return result;
+}
+
+async function resolveTxtRecords(name) {
+  try {
+    const records = await dns.resolveTxt(name);
+    return records.map((parts) => parts.join('')).filter(Boolean);
+  } catch (error) {
+    if (['ENODATA', 'ENOTFOUND', 'ENODOMAIN'].includes(error?.code)) return [];
+    return [];
+  }
+}
+
+async function inspectMailDns(domain, dnsApex = null) {
+  const apex = dnsApex || await settleDns(domain);
+  const [txt, dmarcTxt] = await Promise.all([
+    resolveTxtRecords(domain),
+    resolveTxtRecords(`_dmarc.${domain}`),
+  ]);
+  const spf = txt.find((record) => /^v=spf1\b/i.test(record)) || null;
+  const dmarc = dmarcTxt.find((record) => /^v=dmarc1\b/i.test(record)) || null;
+  return {
+    required: true,
+    mx: apex.mx || [],
+    spf: { ok: Boolean(spf), record: spf },
+    dmarc: { ok: Boolean(dmarc), record: dmarc },
+    dkim: { checked: false, status: 'selector_required', note: 'DKIM nécessite le sélecteur du fournisseur mail pour un contrôle exact.' },
+  };
 }
 
 function tlsCertificate(domain) {
@@ -160,8 +199,52 @@ function auditSeo(html, domain, finalUrl) {
   };
 }
 
+function skippedWebProbe(reason = 'web_not_required') {
+  return { ok: null, skipped: true, required: false, reason };
+}
+
+function skippedSeo(reason = 'web_not_required') {
+  return { skipped: true, required: false, reason, score: null, recommendations: [] };
+}
+
 async function analyzeDomain(domain) {
   const meta = MANAGED_DOMAINS[domain];
+  if (!meta) throw new Error('Domaine non géré par le Cockpit.');
+  const webRequired = meta.web_required !== false;
+
+  if (!webRequired) {
+    const dnsApex = await settleDns(domain);
+    const mail = await inspectMailDns(domain, dnsApex);
+    const issues = [];
+    if (meta.mail_required && !mail.mx.length) issues.push({ severity: 'critical', code: 'mail_mx_missing', label: 'Aucun enregistrement MX détecté pour le domaine email.' });
+    if (meta.mail_required && !mail.spf.ok) issues.push({ severity: 'warning', code: 'mail_spf_missing', label: 'SPF non détecté : vérifier la protection anti-usurpation du domaine email.' });
+    if (meta.mail_required && !mail.dmarc.ok) issues.push({ severity: 'warning', code: 'mail_dmarc_missing', label: 'DMARC non détecté : vérifier la politique de protection du domaine email.' });
+    return {
+      tool: 'cockpit_domain_probe',
+      run_id: `domain-${crypto.randomUUID()}`,
+      domain,
+      app: meta.app,
+      agent_hint: meta.agent_hint,
+      hosting: meta.hosting || null,
+      primary_url: meta.primary_url || null,
+      repository: meta.repository || null,
+      purpose: meta.purpose || 'email_reserved',
+      web_required: false,
+      mail_required: Boolean(meta.mail_required),
+      future_use: meta.future_use || null,
+      future_label: meta.future_label || null,
+      checked_at: new Date().toISOString(),
+      healthy: issues.every((item) => item.severity !== 'critical'),
+      dns: { apex: dnsApex, www: { skipped: true, required: false, reason: 'web_not_required' } },
+      http: { apex: skippedWebProbe(), www: skippedWebProbe() },
+      tls: skippedWebProbe(),
+      seo: skippedSeo(),
+      mail,
+      issues,
+      status_note: 'Email actif / domaine réservé. HTTPS, TLS et SEO web ne sont pas requis tant que la vitrine immersive WebXR n’est pas activée.',
+    };
+  }
+
   const [dnsApex, dnsWww, httpsApex, httpsWww, tlsInfo] = await Promise.all([
     settleDns(domain),
     settleDns(`www.${domain}`),
@@ -191,12 +274,18 @@ async function analyzeDomain(domain) {
     hosting: meta.hosting || null,
     primary_url: meta.primary_url || `https://${domain}`,
     repository: meta.repository || null,
+    purpose: meta.purpose || 'website',
+    web_required: true,
+    mail_required: Boolean(meta.mail_required),
+    future_use: meta.future_use || null,
+    future_label: meta.future_label || null,
     checked_at: new Date().toISOString(),
     healthy: issues.every((item) => item.severity !== 'critical'),
     dns: { apex: dnsApex, www: dnsWww },
     http: { apex: httpsApex, www: httpsWww },
     tls: tlsInfo,
     seo,
+    mail: null,
     issues,
   };
 }
@@ -236,6 +325,23 @@ async function domainAgentFetch(path, options = {}) {
 }
 
 async function runDomainRepair({ domain, kind, before, user, agentFetch = domainAgentFetch, executionHandlers = {} }) {
+  if (before?.web_required === false) {
+    return {
+      success: true,
+      verified: true,
+      domain,
+      kind,
+      before,
+      task: null,
+      run_id: null,
+      status: 'completed',
+      operational_status: 'NO_ACTION_REQUIRED',
+      reused: false,
+      reason: 'web_not_required',
+      message: 'Aucune réparation web à lancer : ce domaine est actuellement réservé à la messagerie.',
+      execution: null,
+    };
+  }
   const tenant = user?.organisation || 'jsinnovia';
   const objective = `${tenant}:${domain}:${kind}`;
   if (domainRepairsInFlight.has(objective)) return domainRepairsInFlight.get(objective);
@@ -273,6 +379,7 @@ async function runDomainRepair({ domain, kind, before, user, agentFetch = domain
 }
 
 function verifiedImprovement(kind, before, after) {
+  if (before?.web_required === false || after?.web_required === false) return false;
   const beforeCritical = (before.issues || []).filter((item) => item.severity === 'critical').length;
   const afterCritical = (after.issues || []).filter((item) => item.severity === 'critical').length;
   if (kind === 'seo') {
@@ -308,7 +415,7 @@ router.get('/ionos/status', (_req, res) => {
   });
 });
 
-// Lecture IONOS limitée aux domaines déclarés dans l'inventaire Cockpit.
+// Lecture IONOS limitée aux domaines déclarés dans l’inventaire Cockpit.
 router.post('/ionos/records', async (req, res) => {
   const domain = safeDomain(req.body?.domain);
   if (!domain) return res.status(400).json({ error: 'Domaine non géré par le Cockpit.' });
@@ -351,7 +458,7 @@ router.post('/ionos/prepare-change', async (req, res) => {
   }
 });
 
-// Consomme la confirmation avant l'écriture, puis relit IONOS pour vérifier le résultat.
+// Consomme la confirmation avant l’écriture, puis relit IONOS pour vérifier le résultat.
 router.post('/ionos/apply-change', async (req, res) => {
   const token = String(req.body?.token || '');
   const item = pendingDnsActions.get(token);
@@ -382,17 +489,30 @@ router.post('/seo', async (req, res) => {
   if (!domain) return res.status(400).json({ error: 'Domaine non géré par le Cockpit.' });
   try {
     const result = await analyzeDomain(domain);
+    if (result.web_required === false) {
+      return res.json({ domain, checked_at: result.checked_at, skipped: true, reason: 'web_not_required', seo: result.seo, agent_hint: result.agent_hint, status_note: result.status_note });
+    }
     res.json({ domain, checked_at: result.checked_at, http: result.http.apex, seo: result.seo, agent_hint: result.agent_hint });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// Prépare l'intervention et émet un jeton à usage unique. Aucun effet réel ici.
+// Prépare l’intervention et émet un jeton à usage unique. Aucun effet réel ici.
 router.post('/prepare-repair', async (req, res) => {
   const domain = safeDomain(req.body?.domain);
   const kind = req.body?.kind === 'seo' ? 'seo' : 'repair';
   if (!domain) return res.status(400).json({ error: 'Domaine non géré par le Cockpit.' });
   try {
     const before = await analyzeDomain(domain);
+    if (before.web_required === false) {
+      return res.json({
+        domain,
+        kind,
+        no_action_required: true,
+        before,
+        confirmation: null,
+        message: 'Aucune réparation web à lancer : ce domaine est actuellement réservé à la messagerie. Les contrôles utiles sont MX, SPF et DMARC.',
+      });
+    }
     const agent = agentForDomain(domain);
     const token = crypto.randomBytes(24).toString('hex');
     pendingDomainActions.set(token, {
@@ -441,5 +561,6 @@ module.exports.safeDomain = safeDomain;
 module.exports.MANAGED_DOMAINS = MANAGED_DOMAINS;
 module.exports.verifiedImprovement = verifiedImprovement;
 module.exports.agentForDomain = agentForDomain;
+module.exports.inspectMailDns = inspectMailDns;
 
 module.exports.runDomainRepair = runDomainRepair;
