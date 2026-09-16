@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Activity, CalendarDays, CheckCircle2, Cloud, Database, Globe2, Instagram,
+  Activity, CalendarDays, Cloud, Database, Globe2, Instagram,
   Loader2, Megaphone, RefreshCw, Send, ShieldCheck, Sparkles, UploadCloud,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
