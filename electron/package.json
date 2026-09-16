@@ -1,6 +1,6 @@
 {
   "name": "jsinnovia-cockpit",
-  "version": "1.0.43",
+  "version": "1.0.44",
   "description": "JS-Innov.IA Cockpit — Application desktop Windows",
   "main": "bootstrap.js",
   "author": "Julien Pagin <julien@jsinnovia.com>",
