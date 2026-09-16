@@ -41,6 +41,7 @@ import AgentsIA from "@/pages/AgentsIA";
 import AICostControl from "@/pages/AICostControl";
 import Invitations from "@/pages/Invitations";
 import Gouvernance from "@/pages/Gouvernance";
+import SocialCommand from "@/pages/SocialCommand";
 import RoleAwareFloatingAgent from "@/components/RoleAwareFloatingAgent";
 
 // ── Studio Vidéo
@@ -141,6 +142,7 @@ const AppRoutes = () => {
           <Route path="/emails" element={<PageBoundary><Emails /></PageBoundary>} />
           <Route path="/emails-core" element={<PageBoundary><EmailCore /></PageBoundary>} />
           <Route path="/email-accounting" element={isAdmin ? <PageBoundary><EmailAccounting /></PageBoundary> : <Navigate to="/" replace />} />
+          <Route path="/social-command" element={isAdmin ? <PageBoundary><SocialCommand /></PageBoundary> : <Navigate to="/" replace />} />
           <Route path="/twilio" element={<PageBoundary><Twilio /></PageBoundary>} />
           <Route path="/amails" element={<Navigate to="/emails?folder=sent" replace />} />
 
