@@ -3,6 +3,8 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { MAIL_CATEGORIES, mailCategory, mailCategoryCounts, filterMailboxEmails } from '@/lib/mailboxCategories';
 import { useSearchParams } from "react-router-dom";
 import { setNovaMailboxContext } from '@/lib/novaMailboxContext';
+import { readApiJson } from '@/lib/safeApiJson';
+import { readMailboxCache, writeMailboxCache, formatMailboxSyncTime } from '@/lib/mailboxCache';
 import {
   Mail, RefreshCw, Paperclip, Search, ArrowLeft, User, Calendar,
   Shield, Store, Send, Loader2, Reply, Trash2, Archive, Check, AlertCircle,
@@ -176,8 +178,8 @@ function DropboxPicker({ open, onClose, brand, selected, onChange }) {
     setLoading(true); setError('');
     fetch(`/api/documents?brand=${encodeURIComponent(brand)}&limit=100`, { credentials: 'same-origin' })
       .then(async r => {
-        const data = await r.json().catch(() => ({}));
-        if (!r.ok || !data.success) throw new Error(data.error || 'Coffre Dropbox indisponible');
+        const data = await readApiJson(r, { label: 'Coffre Dropbox' });
+        if (!data.success) throw new Error(data.error || 'Coffre Dropbox indisponible');
         setDocuments(data.documents || []);
       })
       .catch(err => setError(err.message))
@@ -265,6 +267,10 @@ function ComposeModal({ open, onClose, mailbox, replyTo, onSend }) {
   const handleSend = async () => {
     if (!to.trim() || !subject.trim() || !body.trim()) { setError('Destinataire, objet et message requis.'); return; }
     if (localFiles.length + dropboxDocs.length > MAX_ATTACHMENTS) { setError(`Maximum ${MAX_ATTACHMENTS} pièces jointes.`); return; }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setError('Mode hors ligne : l’email n’a pas été envoyé. Le brouillon reste ouvert pour éviter toute fausse confirmation.');
+      return;
+    }
     setSending(true); setError(null);
     try {
       const attachments = await Promise.all(localFiles.map(async file => ({
@@ -317,7 +323,7 @@ function ComposeModal({ open, onClose, mailbox, replyTo, onSend }) {
 
               {(localFiles.length > 0 || dropboxDocs.length > 0) && (
                 <div className="space-y-1.5">
-                  {localFiles.map((file, index) => <div key={`${file.name}-${file.size}`} className="flex items-center gap-2 text-xs p-2 rounded-lg bg-white/5"><Paperclip className="w-3.5 h-3.5 text-[#D4AF37]" /><span className="truncate flex-1 text-gray-300">{file.name}</span><span className="text-gray-600">{formatBytes(file.size)}</span><button onClick={() => setLocalFiles(localFiles.filter((_, i) => i !== index))} className="text-gray-500 hover:text-red-400"><X className="w-3.5 h-3.5" /></button></div>)}
+                  {localFiles.map((file, index) => <div key={`${file.name}-${file.size}`} className="flex items-center gap-2 text-xs p-2 rounded-lg bg-white/5"><Paperclip className="w-3.5 h-3.5 text-[#D4AF37]" /><span className="truncate flex-1 text-gray-300">{file.name}</span><span className="text-gray-600">{formatBytes(file.size)}</span><button onClick={() => setLocalFiles(localFiles.filter((_, i) => i !== index)} className="text-gray-500 hover:text-red-400"><X className="w-3.5 h-3.5" /></button></div>)}
                   {dropboxDocs.map(doc => <div key={doc.id} className="flex items-center gap-2 text-xs p-2 rounded-lg bg-cyan-500/5 border border-cyan-500/10"><FolderOpen className="w-3.5 h-3.5 text-cyan-400" /><span className="truncate flex-1 text-gray-300">{doc.filename}</span><span className="text-gray-600">Dropbox</span><button onClick={() => setDropboxDocs(dropboxDocs.filter(d => d.id !== doc.id))} className="text-gray-500 hover:text-red-400"><X className="w-3.5 h-3.5" /></button></div>)}
                 </div>
               )}
@@ -348,6 +354,8 @@ export default function Emails() {
   const detailRequest = useRef(null);
   const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [dataState, setDataState] = useState('loading');
+  const [lastSyncAt, setLastSyncAt] = useState(null);
   const [error, setError] = useState(null);
   const [selectedUid, setSelectedUid] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -368,6 +376,8 @@ export default function Emails() {
     })),
   ], [googleAccounts, ionosMailboxes]);
   const activeMailboxCfg = mailboxes.find(m => m.id === activeMailbox) || mailboxes[1];
+  const cacheFolder = isSentFolder ? 'sent' : 'inbox';
+
   useEffect(() => {
     setNovaMailboxContext({ id: activeMailbox });
     return () => setNovaMailboxContext(null);
@@ -375,14 +385,14 @@ export default function Emails() {
 
   useEffect(() => {
     fetch('/api/emails/mailboxes/list', { credentials: 'same-origin' })
-      .then(response => response.json())
+      .then(response => readApiJson(response, { label: 'Configuration des boîtes mail' }))
       .then(data => { if (data.success) setIonosMailboxes(IONOS_MAILBOXES.map(box => {
         const configured = data.mailboxes?.find(item => item.id === box.id);
         return configured ? { ...box, email: configured.email, label: configured.label, isAlias: configured.isAlias } : box;
       })); })
       .catch(() => {});
     fetch('/api/google-mail/accounts', { credentials: 'same-origin' })
-      .then((response) => response.json())
+      .then((response) => readApiJson(response, { label: 'Comptes Google' }))
       .then((data) => { if (data.success) setGoogleAccounts(data.accounts || []); })
       .catch(() => {});
   }, []);
@@ -392,12 +402,37 @@ export default function Emails() {
     window.setTimeout(() => setActionMsg(null), 3000);
   };
 
+  const applyCache = useCallback(() => {
+    const cached = readMailboxCache(activeMailbox, cacheFolder);
+    if (!cached) return false;
+    setEmails(cached.emails || []);
+    setLastSyncAt(cached.syncedAt || null);
+    setDataState('cache');
+    return true;
+  }, [activeMailbox, cacheFolder]);
+
   const fetchList = useCallback(async () => {
     listRequest.current?.abort();
     const controller = new AbortController();
     listRequest.current = controller;
-    if (activeMailboxCfg?.isAlias) { setEmails([]); setLoading(false); setError(null); return; }
-    setLoading(true); setError(null);
+    if (activeMailboxCfg?.isAlias) { setEmails([]); setLoading(false); setDataState('alias'); setError(null); return; }
+
+    const hasCache = applyCache();
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setLoading(false);
+      if (hasCache) {
+        setError(null);
+        setDataState('cache');
+      } else {
+        setDataState('offline-empty');
+        setError('Mode hors ligne : aucune copie locale de cette boîte n’est encore disponible.');
+      }
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    if (!hasCache) setDataState('loading');
     try {
       const endpoint = activeMailboxCfg?.provider === 'google'
         ? `${API_BASE}/api/google-mail/messages?account_id=${encodeURIComponent(activeMailboxCfg.accountId)}&folder=${isSentFolder ? 'sent' : 'inbox'}&limit=50`
@@ -405,15 +440,33 @@ export default function Emails() {
           ? `${API_BASE}/api/emails/sent?mailbox=${activeMailbox}&limit=50`
           : `${API_BASE}/api/emails?mailbox=${activeMailbox}&limit=50`);
       const res = await fetch(endpoint, { credentials: 'same-origin', signal: controller.signal });
-      const data = await res.json();
+      const data = await readApiJson(res, { label: 'Boîtes mail' });
       if (!data.success) throw new Error(data.error || 'Erreur de chargement');
-      if (!controller.signal.aborted) setEmails(data.emails || []);
+      if (!controller.signal.aborted) {
+        const nextEmails = data.emails || [];
+        const cached = writeMailboxCache(activeMailbox, cacheFolder, nextEmails);
+        setEmails(nextEmails);
+        setLastSyncAt(cached?.syncedAt || new Date().toISOString());
+        setDataState('live');
+      }
     } catch (err) {
-      if (!controller.signal.aborted) { setError(mailboxErrorMessage(err)); setEmails([]); }
+      if (!controller.signal.aborted) {
+        const cached = readMailboxCache(activeMailbox, cacheFolder);
+        if (cached) {
+          setEmails(cached.emails || []);
+          setLastSyncAt(cached.syncedAt || null);
+          setDataState('cache');
+          setError(mailboxErrorMessage(err));
+        } else {
+          setError(mailboxErrorMessage(err));
+          setEmails([]);
+          setDataState('error');
+        }
+      }
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [activeMailbox, activeMailboxCfg?.isAlias, activeMailboxCfg?.provider, activeMailboxCfg?.accountId, isSentFolder]);
+  }, [activeMailbox, activeMailboxCfg?.isAlias, activeMailboxCfg?.provider, activeMailboxCfg?.accountId, isSentFolder, cacheFolder, applyCache]);
 
   const fetchDetail = useCallback(async (email) => {
     detailRequest.current?.abort();
@@ -421,6 +474,11 @@ export default function Emails() {
     detailRequest.current = controller;
     setSelectedUid(email.uid);
     setDetail(null);
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setDetail({ ...email, text: email.preview || email.body || '' });
+      flash('error', 'Mode hors ligne : aperçu local affiché. Le corps complet sera disponible après reconnexion.');
+      return;
+    }
     if (isSentFolder && activeMailboxCfg?.provider !== 'google') {
       setDetail({ ...email, text: email.preview || email.body || '' });
       return;
@@ -431,75 +489,106 @@ export default function Emails() {
         ? `${API_BASE}/api/google-mail/messages/${encodeURIComponent(email.uid)}?account_id=${encodeURIComponent(activeMailboxCfg.accountId)}`
         : `${API_BASE}/api/emails/${email.uid}?mailbox=${activeMailbox}`;
       const res = await fetch(endpoint, { credentials: 'same-origin', signal: controller.signal });
-      const data = await res.json();
+      const data = await readApiJson(res, { label: 'Détail email' });
       if (!data.success) throw new Error(data.error || 'Erreur');
       if (controller.signal.aborted) return;
       setDetail(data.email);
       setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: true } : e));
     } catch (err) {
-      if (!controller.signal.aborted) flash('error', err.message);
+      if (!controller.signal.aborted) flash('error', mailboxErrorMessage(err));
     } finally {
       if (!controller.signal.aborted) setLoadingDetail(false);
     }
   }, [activeMailbox, activeMailboxCfg?.provider, activeMailboxCfg?.accountId, isSentFolder]);
 
   const handleDelete = async (uid) => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      flash('error', 'Mode hors ligne : aucune suppression n’a été exécutée.');
+      return;
+    }
     try {
       const endpoint = activeMailboxCfg?.provider === 'google'
         ? `${API_BASE}/api/google-mail/messages/${encodeURIComponent(uid)}/trash?account_id=${encodeURIComponent(activeMailboxCfg.accountId)}`
         : `${API_BASE}/api/emails/${uid}?mailbox=${activeMailbox}`;
       const res = await fetch(endpoint, { method: activeMailboxCfg?.provider === 'google' ? 'POST' : 'DELETE', credentials: 'same-origin' });
-      const data = await res.json();
+      const data = await readApiJson(res, { label: 'Suppression email' });
       if (!data.success) throw new Error(data.error);
       setEmails(prev => prev.filter(e => e.uid !== uid));
       if (selectedUid === uid) { setSelectedUid(null); setDetail(null); }
       flash('success', activeMailboxCfg?.provider === 'google' ? 'Email déplacé vers la corbeille Gmail.' : 'Email déplacé vers la corbeille.');
-    } catch (err) { flash('error', `Suppression impossible : ${err.message}`); }
+    } catch (err) { flash('error', `Suppression impossible : ${mailboxErrorMessage(err)}`); }
   };
 
   const handleArchive = async (uid) => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      flash('error', 'Mode hors ligne : aucun archivage n’a été exécuté.');
+      return;
+    }
     try {
       const endpoint = activeMailboxCfg?.provider === 'google'
         ? `${API_BASE}/api/google-mail/messages/${encodeURIComponent(uid)}/archive?account_id=${encodeURIComponent(activeMailboxCfg.accountId)}`
         : `${API_BASE}/api/emails/${uid}/archive?mailbox=${activeMailbox}`;
       const res = await fetch(endpoint, { method: 'POST', credentials: 'same-origin' });
-      const data = await res.json();
+      const data = await readApiJson(res, { label: 'Archivage email' });
       if (!data.success) throw new Error(data.error);
       setEmails(prev => activeMailboxCfg?.provider === 'google' ? prev.filter(e => e.uid !== uid) : prev.map(e => e.uid === uid ? { ...e, seen: true } : e));
       flash('success', 'Email archivé.');
-    } catch (err) { flash('error', `Archivage impossible : ${err.message}`); }
+    } catch (err) { flash('error', `Archivage impossible : ${mailboxErrorMessage(err)}`); }
   };
 
   const handleSend = async (payload) => {
     if (!activeMailboxCfg?.canSend) throw new Error('Envoi non disponible pour cette boîte.');
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Mode hors ligne : aucun email n’a été envoyé.');
     const res = await fetch(`${API_BASE}/api/email-compose/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
       body: JSON.stringify({ mailbox: activeMailbox, ...payload }),
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success) throw new Error(data.error || "Erreur d'envoi");
+    const data = await readApiJson(res, { label: 'Envoi email' });
+    if (!data.success) throw new Error(data.error || "Erreur d'envoi");
     flash('success', `Email envoyé${data.attachmentCount ? ` avec ${data.attachmentCount} pièce(s) jointe(s)` : ''}.`);
     fetchList();
   };
 
   useEffect(() => {
-    setEmails([]); setCategory('all'); setSelectedUid(null); setDetail(null); setLoadingDetail(false);
+    setCategory('all'); setSelectedUid(null); setDetail(null); setLoadingDetail(false); setError(null);
+    const cached = readMailboxCache(activeMailbox, cacheFolder);
+    if (cached) {
+      setEmails(cached.emails || []);
+      setLastSyncAt(cached.syncedAt || null);
+      setDataState('cache');
+    } else {
+      setEmails([]);
+      setLastSyncAt(null);
+      setDataState('loading');
+    }
     fetchList();
-    const interval = window.setInterval(() => { if (!document.hidden) fetchList(); }, 60000);
-    return () => { window.clearInterval(interval); listRequest.current?.abort(); detailRequest.current?.abort(); };
-  }, [fetchList]);
+    const interval = window.setInterval(() => { if (!document.hidden && navigator.onLine !== false) fetchList(); }, 60000);
+    const online = () => fetchList();
+    window.addEventListener('online', online);
+    return () => { window.clearInterval(interval); window.removeEventListener('online', online); listRequest.current?.abort(); detailRequest.current?.abort(); };
+  }, [fetchList, activeMailbox, cacheFolder]);
 
   const filtered = filterMailboxEmails(emails, isSentFolder ? 'all' : category, search);
   const categoryCounts = mailCategoryCounts(emails);
   const unreadCount = isSentFolder ? 0 : emails.filter(e => !e.seen).length;
+  const countsAvailable = dataState === 'live' || dataState === 'cache';
+  const syncLabel = dataState === 'live'
+    ? `Synchronisé${lastSyncAt ? ` · ${formatMailboxSyncTime(lastSyncAt)}` : ''}`
+    : dataState === 'cache'
+      ? `Mode hors ligne / cache local${lastSyncAt ? ` · dernière synchro ${formatMailboxSyncTime(lastSyncAt)}` : ''}`
+      : dataState === 'offline-empty'
+        ? 'Mode hors ligne · aucune donnée locale'
+        : dataState === 'error'
+          ? 'Boîte non chargée'
+          : 'Chargement…';
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem-env(safe-area-inset-top))] sm:h-[calc(100vh-4rem)] bg-[#0B0B0F]">
       <div className="px-3 sm:px-6 py-3 border-b border-white/8 bg-[#0F0F14] shrink-0">
         <div className="flex items-center justify-between mb-3">
-          <h1 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2"><Mail className="w-5 h-5 text-[#D4AF37]" />{isSentFolder ? 'Emails envoyés' : 'Boîtes mail'}{unreadCount > 0 && <span className="ml-1 bg-[#D4AF37] text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full">{unreadCount}</span>}</h1>
+          <h1 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2"><Mail className="w-5 h-5 text-[#D4AF37]" />{isSentFolder ? 'Emails envoyés' : 'Boîtes mail'}{unreadCount > 0 && countsAvailable && <span className="ml-1 bg-[#D4AF37] text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full">{unreadCount}</span>}</h1>
           <div className="flex items-center gap-2">
             <button onClick={() => { setReplyTo(null); setComposeOpen(true); }} disabled={!activeMailboxCfg?.canSend} className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg min-h-[36px] border ${!activeMailboxCfg?.canSend ? 'bg-white/5 text-gray-600 border-white/10 cursor-not-allowed' : 'bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30 hover:bg-[#D4AF37]/25'}`}><Send className="w-3.5 h-3.5" /><span className="hidden sm:inline">Écrire</span></button>
             <button onClick={fetchList} disabled={loading} className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/5 min-h-[36px]"><RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /><span className="hidden sm:inline">Actualiser</span></button>
@@ -518,10 +607,10 @@ export default function Emails() {
           <div className="flex gap-1.5 overflow-x-auto pb-1" aria-label="Catégories des emails">
             {Object.entries(MAIL_CATEGORIES).map(([key, label]) => <button key={key} onClick={() => setCategory(key)} aria-pressed={category === key}
               className={`whitespace-nowrap rounded-lg px-2.5 py-2 text-xs border ${category === key ? 'border-[#D4AF37]/50 text-[#D4AF37] bg-[#D4AF37]/10' : 'border-white/10 text-gray-400 hover:text-white'}`}>
-              {label} <span className="ml-1">{categoryCounts[key]}</span>
+              {label} <span className="ml-1">{countsAvailable ? categoryCounts[key] : '—'}</span>
             </button>)}
           </div>
-          <p className="text-[10px] text-gray-400 mt-1">Classement automatique indicatif · {emails.length} messages chargés (50 maximum) · aucun déplacement ni suppression</p>
+          <p className="text-[10px] text-gray-400 mt-1">Classement automatique indicatif · {syncLabel} · {countsAvailable ? `${emails.length} derniers messages affichés` : 'données non disponibles'} · aucun déplacement ni suppression automatique</p>
         </div>}
       </div>
 
@@ -532,9 +621,10 @@ export default function Emails() {
       ) : (
         <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[360px_1fr]">
           <div className={`${selectedUid ? 'hidden md:block' : 'block'} border-r border-white/8 overflow-y-auto`}>
-            {loading && <div className="p-8 text-center text-gray-500 text-sm"><Loader2 className="w-5 h-5 animate-spin inline mr-2" />Chargement...</div>}
-            {error && <div role="alert" className="m-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">{error}</div>}
-            {!loading && !error && filtered.length === 0 && <div className="p-8 text-center text-gray-600 text-sm">Aucun email.</div>}
+            {loading && emails.length === 0 && <div className="p-8 text-center text-gray-500 text-sm"><Loader2 className="w-5 h-5 animate-spin inline mr-2" />Chargement...</div>}
+            {error && <div role="alert" className={`m-3 p-3 rounded-lg border text-xs ${dataState === 'cache' ? 'bg-amber-500/10 border-amber-500/20 text-amber-300' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>{error}</div>}
+            {!loading && countsAvailable && filtered.length === 0 && <div className="p-8 text-center text-gray-600 text-sm">Aucun email dans cette vue.</div>}
+            {!loading && !countsAvailable && !error && <div className="p-8 text-center text-gray-600 text-sm">Boîte mail non chargée.</div>}
             {filtered.map(email => <EmailListItem key={email.uid} email={email} isSelected={selectedUid === email.uid} sentFolder={isSentFolder} onClick={() => fetchDetail(email)} onDelete={handleDelete} onArchive={handleArchive} />)}
           </div>
           <div className={`${selectedUid ? 'block' : 'hidden md:flex'} min-w-0 bg-[#0D0D11]`}>
