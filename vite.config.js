@@ -20,8 +20,22 @@ export default defineConfig(({ mode }) => ({
   },
   server: {
     allowedHosts: 'all',
+    proxy: {
+      '/api': {
+        target: process.env.COCKPIT_LOCAL_API_URL || 'http://127.0.0.1:3001',
+        changeOrigin: false,
+        secure: false,
+      },
+    },
   },
   preview: {
     allowedHosts: 'all',
+    proxy: {
+      '/api': {
+        target: process.env.COCKPIT_LOCAL_API_URL || 'http://127.0.0.1:3001',
+        changeOrigin: false,
+        secure: false,
+      },
+    },
   },
 }))
