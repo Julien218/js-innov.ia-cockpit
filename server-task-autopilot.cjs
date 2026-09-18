@@ -160,7 +160,7 @@ async function recordRun(task, classification, result, status = 'completed', err
 
 function proofNote(result) {
   return [
-    'Autopilote Cockpit — diagnostic réellement exécuté.',
+    'Elynea Cockpit — diagnostic réellement exécuté.',
     `Outil: ${result.tool}`,
     `Heure: ${result.checked_at}`,
     `Cible: ${result.domain || 'clients, projets et factures du Cockpit'}`,
@@ -208,6 +208,8 @@ async function closeVerifiedDuplicates(canonicalTask, copies, proofIds = []) {
 function safeScheduledTask(task, executor) {
   const text = norm(taskText(task));
   if (executor.kind === 'local') return true;
+  if (executor.kind === 'registration') return true;
+  if (executor.kind === 'document') return true;
   if (executor.kind === 'business') return /(analys|audit|verifi|control)/.test(text);
   if (executor.kind === 'site') return isReadOnlySiteTask(task);
   return false;
@@ -391,7 +393,7 @@ router.post('/local-results', async (req, res) => {
       const log = pendingRun?.id
         ? await agentRequest(`/agent-runs/${encodeURIComponent(pendingRun.id)}`, { method: 'PATCH', body: runPayload })
         : await agentRequest('/agent-runs', { method: 'POST', body: { task_id: taskId, agent_id: 'nova-local-tools', functional_role: 'windows_local_diagnostics', provider_name: 'local-agent', status: 'completed', execution_mode: 'autonomous', input: { title: String(item.title || '').slice(0, 240), tools: evidence.map((run) => run.tool) }, ...runPayload, idempotency_key: `local-autopilot:${taskId}:${evidence.map((run) => run.id).join(':')}`.slice(0, 500), requested_by: String(req.user?.email || req.user?.id || 'desktop-companion').slice(0, 180), started_at: evidence[0].started_at } });
-      await patchTask(taskId, { statut: 'terminee', notes: `${canonicalTask.notes || ''}\nNOVA locale — diagnostic terminé avec preuve.\nOutils: ${evidence.map((run) => run.tool).join(', ')}\nJournaux: ${evidence.map((run) => run.id).join(', ')}` });
+      await patchTask(taskId, { statut: 'terminee', notes: `${canonicalTask.notes || ''}\nElynea locale — diagnostic terminé avec preuve.\nOutils: ${evidence.map((run) => run.tool).join(', ')}\nJournaux: ${evidence.map((run) => run.id).join(', ')}` });
       const duplicateTaskIds = await closeVerifiedDuplicates(
         canonicalTask,
         duplicateTasksForCanonical(allTasks, canonicalTask),
