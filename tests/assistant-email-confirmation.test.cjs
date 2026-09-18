@@ -49,3 +49,21 @@ test('retrouve seulement un brouillon assistant récent', () => {
   ]);
   assert.deepEqual(draft, { to: 'test@example.com', subject: 'Test', text: 'Bonjour,\nMessage.' });
 });
+
+
+test('saute les messages de confirmation fantômes et retrouve le brouillon juste avant', () => {
+  const draft = latestDraftEmail([
+    { role: 'assistant', content: '**À :** test@example.com\n**Objet :** Test\n\nBonjour,\nMessage.' },
+    { role: 'assistant', content: "L'email est prêt à être envoyé. Veux-tu que je le fasse maintenant ?" },
+    { role: 'assistant', content: "L'envoi de l'email est en attente de votre confirmation." },
+  ]);
+  assert.deepEqual(draft, { to: 'test@example.com', subject: 'Test', text: 'Bonjour,\nMessage.' });
+});
+
+test('ne reprend pas un ancien brouillon après une réponse assistant sans rapport', () => {
+  const draft = latestDraftEmail([
+    { role: 'assistant', content: '**À :** test@example.com\n**Objet :** Test\n\nBonjour,\nMessage.' },
+    { role: 'assistant', content: "Voici l'état actuel des tâches du projet." },
+  ]);
+  assert.equal(draft, null);
+});
