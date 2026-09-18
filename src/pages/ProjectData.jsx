@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, CheckCircle2, Database, Download, Filter, RefreshCw, Search, ShieldCheck, XCircle } from 'lucide-react';
+import { Archive, CheckCircle2, Database, Download, FileText, Filter, RefreshCw, Search, ShieldCheck, XCircle } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -96,6 +96,14 @@ export default function ProjectData() {
     });
   }, [records, search, status]);
 
+  const exportSuffix = useMemo(() => {
+    const params = new URLSearchParams();
+    if (search.trim()) params.set('q', search.trim());
+    if (status !== 'all') params.set('status', status);
+    const value = params.toString();
+    return value ? `?${value}` : '';
+  }, [search, status]);
+
   const updateStatus = async (record, nextStatus) => {
     setSavingId(record.id); setMessage(''); setError('');
     try {
@@ -124,7 +132,10 @@ export default function ProjectData() {
 
   const actions = <div className="flex flex-wrap gap-2">
     <Button variant="outline" size="sm" onClick={() => loadRecords()} disabled={loading}><RefreshCw className={loading ? 'animate-spin' : ''} /> Actualiser</Button>
-    {selectedKey && !loading && !error && <Button variant="outline" size="sm" asChild><a href={`/api/project-data/${encodeURIComponent(selectedKey)}/export.csv`}><Download /> Export CSV</a></Button>}
+    {selectedKey && !loading && !error && <>
+      <Button variant="outline" size="sm" asChild><a href={`/api/project-data/${encodeURIComponent(selectedKey)}/export.csv${exportSuffix}`}><Download /> CSV Excel</a></Button>
+      <Button variant="outline" size="sm" asChild><a href={`/api/project-data/${encodeURIComponent(selectedKey)}/export.pdf${exportSuffix}`}><FileText /> PDF propre</a></Button>
+    </>}
     {selectedCollection?.canManage && <Button size="sm" onClick={saveDropbox} disabled={backingUp || !selectedCollection.dropboxBackupConfigured}><Archive /> {backingUp ? 'Sauvegarde…' : 'Sauvegarder Dropbox'}</Button>}
   </div>;
 
@@ -170,7 +181,7 @@ export default function ProjectData() {
         </div>
       </div>
 
-      <div className="mt-4 flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-xs text-blue-900"><ShieldCheck className="mt-0.5 h-4 w-4 flex-none" /><div><strong>Données protégées :</strong> seules les personnes rattachées à ce projet voient ces réponses. Les adresses IP techniques ne sont jamais affichées. {isRegistration ? 'Lecture directe de la base Miss et Mister Dour, édition 2026. Actualisation chaque minute lorsque cette page est visible. La validation reste sur le site; aucune sauvegarde Dropbox automatique de ces coordonnées.' : backup.configured ? `Une sauvegarde CSV Dropbox est active${backup.lastRunAt ? ` (dernière : ${formatDate(backup.lastRunAt)})` : ''}.` : 'La sauvegarde Dropbox sera activée dès que les trois identifiants Dropbox seront présents sur Railway.'}{lastReadAt && <div className="mt-1">Dernière lecture réussie : {formatDate(lastReadAt)}</div>}</div></div>
+      <div className="mt-4 flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-xs text-blue-900"><ShieldCheck className="mt-0.5 h-4 w-4 flex-none" /><div><strong>Données protégées :</strong> seules les personnes rattachées à ce projet voient ces réponses. Les adresses IP techniques ne sont jamais affichées. {isRegistration ? 'Lecture directe de la base Miss et Mister Dour, édition 2026. Actualisation chaque minute lorsque cette page est visible. Les exports CSV et PDF respectent les filtres affichés. La validation reste sur le site; aucune sauvegarde Dropbox automatique de ces coordonnées.' : backup.configured ? `Une sauvegarde CSV Dropbox est active${backup.lastRunAt ? ` (dernière : ${formatDate(backup.lastRunAt)})` : ''}.` : 'La sauvegarde Dropbox sera activée dès que les trois identifiants Dropbox seront présents sur Railway.'}{lastReadAt && <div className="mt-1">Dernière lecture réussie : {formatDate(lastReadAt)}</div>}</div></div>
     </>}
   </div>;
 }
