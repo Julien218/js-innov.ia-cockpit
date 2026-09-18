@@ -10,7 +10,7 @@ const {
   MANAGED_DOMAINS,
   verifiedImprovement,
 } = require('./server-domain-ops.cjs');
-// Les spécialistes de domaine sont désormais des profils internes NOVA.
+// Les spécialistes de domaine sont désormais des profils internes Elynea.
 const SITE_AGENT_KEYS = new Set([
   'jsinnov-agent',
   'assurances-dour',
@@ -169,7 +169,7 @@ function resolveNovaExecutor(task = {}) {
   return {
     kind: 'unsupported',
     id: 'nova-architect',
-    name: 'NOVA Architecte',
+    name: 'Elynea Architecte',
     provider: 'cockpit-server',
     role: 'orchestration',
     execution_mode: 'prepare_only',
@@ -386,7 +386,7 @@ async function executeVideoTask(task, agentRequest, createJob = null, context = 
     client_name: clientName(client),
     project_id: task.projet_id || null,
     cost_center_id: task.cost_center_id || null,
-    campaign_name: clean(task.titre || task.title, 180) || 'Production vidéo NOVA',
+    campaign_name: clean(task.titre || task.title, 180) || 'Production vidéo Elynea',
     prompt,
     source_document_id: sourceDocumentIds[0] || null,
     end_source_document_id: sourceDocumentIds[1] || null,
