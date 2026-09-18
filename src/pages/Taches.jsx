@@ -25,6 +25,18 @@ const formFields = [
   { name: "notes",         label: "Notes",         type: "textarea" },
 ];
 
+function taskDocumentId(task = {}) {
+  const direct = String(task.source_document_id || '').trim();
+  if (/^[A-Za-z0-9_-]{8,180}$/.test(direct)) return direct;
+  const source = `${task.description || ''}\n${task.notes || ''}`;
+  const match = source.match(/(?:source_document_id|document source|index cockpit|m[eé]dia source)\s*[:=]\s*([A-Za-z0-9_-]{8,180})/i);
+  return match?.[1] || null;
+}
+
+function isDownloadTask(task = {}) {
+  return /(t[eé]l[eé]charg|download)/i.test(`${task.titre || task.title || ''} ${task.description || ''}`);
+}
+
 const columns = [
   { key: "titre",         label: "Tâche", render: (value, row) => (
     <div className="flex max-w-sm items-center gap-2 whitespace-normal">
@@ -64,7 +76,7 @@ export default function Taches() {
     queryFn: async () => {
       const response = await fetch("/api/task-autopilot/status", { credentials: "same-origin" });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "État NOVA indisponible");
+      if (!response.ok) throw new Error(data.error || "État Elynea indisponible");
       return data;
     },
     refetchInterval: 30_000,
@@ -89,7 +101,7 @@ export default function Taches() {
         body: JSON.stringify({ allow_writes: allowWrites }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Exécution NOVA impossible");
+      if (!response.ok) throw new Error(data.error || "Exécution Elynea impossible");
       return data;
     },
     onSuccess: (data) => {
@@ -97,11 +109,11 @@ export default function Taches() {
       refetchAutopilot();
       const result = data || {};
       toast({
-        title: "NOVA a terminé le passage",
+        title: "Elynea a terminé le passage",
         description: `${result.executed?.length || 0} terminée(s), ${result.queued?.length || 0} en traitement, ${result.blocked?.length || 0} blocage(s) réel(s).`,
       });
     },
-    onError: (mutationError) => toast({ title: "Exécution NOVA impossible", description: mutationError.message, variant: "destructive" }),
+    onError: (mutationError) => toast({ title: "Exécution Elynea impossible", description: mutationError.message, variant: "destructive" }),
   });
 
   const save = useMutation({
@@ -186,8 +198,17 @@ export default function Taches() {
     { id: "toutes", label: "Toutes", count: displayRows.length, icon: CircleDot },
   ];
 
-  const actions = (row) => (
+  const actions = (row) => {
+    const documentId = taskDocumentId(row);
+    return (
     <div className="flex gap-2">
+      {documentId && isDownloadTask(row) && (
+        <Button size="sm" variant="outline" asChild>
+          <a href={`/api/documents/${encodeURIComponent(documentId)}/download`} download>
+            Télécharger
+          </a>
+        </Button>
+      )}
       <Button size="icon" variant="ghost" aria-label={`Modifier ${row.titre || 'la tâche'}`} title="Modifier la tâche" onClick={() => { setEditing(row); setOpen(true); }}>
         <Pencil className="w-4 h-4" />
       </Button>
@@ -196,7 +217,8 @@ export default function Taches() {
         <Trash2 className="w-4 h-4" />
       </Button>
     </div>
-  );
+    );
+  };
 
   if (isError) {
     return (
@@ -216,10 +238,10 @@ export default function Taches() {
         search={search} onSearch={(value) => { setSearch(value); setVisibleCount(25); }}
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}>+ Nouvelle tâche</Button>} />
 
-      {runsUnavailable && <p role="alert" className="text-sm text-amber-600">Les états NOVA ne peuvent pas être actualisés. Les tâches et leurs historiques restent conservés.</p>}
-      <details className="rounded-xl border border-border/70 bg-card p-4" aria-label="Pilotage des exécutions NOVA">
+      {runsUnavailable && <p role="alert" className="text-sm text-amber-600">Les états Elynea ne peuvent pas être actualisés. Les tâches et leurs historiques restent conservés.</p>}
+      <details className="rounded-xl border border-border/70 bg-card p-4" aria-label="Pilotage des exécutions Elynea">
         <summary className="cursor-pointer text-sm font-semibold focus-visible:outline-primary">
-          Pilotage NOVA <span className="ml-2 font-normal text-muted-foreground">{autopilotStatus?.last_result ? `${awaitingAuthorization.length} autorisation(s) · ${queuedExecutions.length} en cours · ${actualBlockers.length} blocage(s)` : 'État en cours de vérification'} — détails et actions</span>
+          Pilotage Elynea <span className="ml-2 font-normal text-muted-foreground">{autopilotStatus?.last_result ? `${awaitingAuthorization.length} autorisation(s) · ${queuedExecutions.length} en cours · ${actualBlockers.length} blocage(s)` : 'État en cours de vérification'} — détails et actions</span>
         </summary>
         <div className="mt-4 border-t border-border pt-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -227,7 +249,7 @@ export default function Taches() {
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-primary" />
               <div>
-                <p className="text-sm font-semibold">Pilotage NOVA</p>
+                <p className="text-sm font-semibold">Pilotage Elynea</p>
                 <p className="text-xs text-muted-foreground">Les attentes d’autorisation sont séparées des pannes techniques.</p>
               </div>
             </div>
@@ -256,7 +278,7 @@ export default function Taches() {
               type="button"
               disabled={runAutopilot.isPending || awaitingAuthorization.length === 0}
               onClick={() => {
-                const approved = confirm("Autoriser NOVA à exécuter les tâches supportées en attente ? Cela peut mettre à jour les fiches métier et demander aux agents responsables de modifier uniquement leurs sites. Aucune suppression ni facturation ne sera effectuée.");
+                const approved = confirm("Autoriser Elynea à exécuter les tâches supportées en attente ? Cela peut mettre à jour les fiches métier et demander aux agents responsables de modifier uniquement leurs sites. Aucune suppression ni facturation ne sera effectuée.");
                 if (approved) runAutopilot.mutate({ allowWrites: true });
               }}
             >
