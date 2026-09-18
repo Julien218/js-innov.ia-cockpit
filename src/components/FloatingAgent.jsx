@@ -22,7 +22,7 @@ const LOCAL_AUTOPILOT_LAST_RUN_KEY = 'nova_local_autopilot_last_run_v1';
 const RECENT_MEDIA_KEY = 'nova_recent_media_v1';
 const TTS_VOICE_KEY = 'nova_tts_voice_name';
 const LOCAL_TOOL_REQUEST = /\b(?:find_local_workflows|comfyui_health|avatar_factory_status|ffmpeg_version|ffprobe_file|list_directory|http_diagnose)\b|(?:ex[eé]cut|diagnosti|contr[oô]l|v[eé]rifi|recherch).*(?:comfyui|port\s*(?:8188|8791)|workflow|minimax|avatar|ffmpeg|ffprobe|dossier\s+local)/i;
-const LOCAL_NOVA_PROMPT = `Tu es NOVA, l’unique assistant visible du Cockpit JS-Innov.IA. Tu conserves le même nom et le même rôle en mode cloud et en mode local. Vérifie les outils réellement disponibles avant toute affirmation de capacité. Ne dis jamais que tu es une simple IA textuelle ni que tu ne peux rien exécuter uniquement parce qu’Internet est coupé.`;
+const LOCAL_NOVA_PROMPT = `Tu es Elynea, l’unique assistante visible du Cockpit JS-Innov.IA. Tu conserves le même nom et le même rôle en mode cloud et en mode local. Vérifie les outils réellement disponibles avant toute affirmation de capacité. Ne dis jamais que tu es une simple IA textuelle ni que tu ne peux rien exécuter uniquement parce qu’Internet est coupé.`;
 const AFFIRMATIVE_CONFIRMATION = /^(oui|ok|oki|okay|confirme|je confirme|vas[- ]?y|go|ex[eé]cute)(?:\b|[,.!])/i;
 const NEGATIVE_CONFIRMATION = /^(non|annule|annuler|stop)(?:\b|[,.!])/i;
 
@@ -384,13 +384,13 @@ const FloatingAgent = () => {
               signal: AbortSignal.timeout(90000),
             });
             const data = await resp.json().catch(() => ({}));
-            if (!resp.ok) throw new Error(data.error || `NOVA locale indisponible (${resp.status})`);
+            if (!resp.ok) throw new Error(data.error || `Elynea locale indisponible (${resp.status})`);
             return { ...data, local_fallback: true, local_endpoint: localUrl };
           } catch (error) {
             lastError = error;
           }
         }
-        throw lastError || new Error('NOVA locale indisponible');
+        throw lastError || new Error('Elynea locale indisponible');
       };
 
       const data = await sendNovaChat({ message: msg, requiresLocalTool,
@@ -414,7 +414,7 @@ const FloatingAgent = () => {
     } catch (err) {
       const prefix = err?.emailVerification ? 'Préclassement emails non vérifié : ' : err?.dropboxVerification ? 'Suppression Dropbox non vérifiée : ' : err?.cockpitResponse
         ? 'Le Cockpit a répondu : '
-        : requiresLocalTool ? 'L’agent local requis est injoignable : ' : 'NOVA cloud et locale sont injoignables : ';
+        : requiresLocalTool ? 'L’agent local requis est injoignable : ' : 'Elynea cloud et locale sont injoignables : ';
       setMessages(prev => [...prev, { role: 'assistant', content: prefix + err.message, ts: Date.now(), isError: true }]);
     } finally {
       setLoading(false);
@@ -544,13 +544,13 @@ const FloatingAgent = () => {
             onClick={() => setIsOpen(true)}
             onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.08)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-            title="NOVA — Assistant IA"
+            title="Elynea — Assistante IA"
             style={{
               width: '60px', height: '60px', borderRadius: '50%', cursor: 'pointer', overflow: 'hidden', position: 'relative',
               boxShadow: '0 4px 20px rgba(212,175,55,0.3), 0 0 0 2px rgba(212,175,55,0.5)', transition: 'transform 0.2s ease',
             }}
           >
-            <img src={novaAvatar} alt="NOVA" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+            <img src={novaAvatar} alt="Elynea" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
             <span style={{ position: 'absolute', top: '-2px', right: '-2px', width: '12px', height: '12px', borderRadius: '50%', background: '#06B6D4', border: '2px solid #0B0B0F' }} />
           </div>
         </div>
@@ -567,9 +567,9 @@ const FloatingAgent = () => {
             borderBottom: '1px solid rgba(212,175,55,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <img src={novaAvatar} alt="NOVA" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(212,175,55,0.4)' }} />
+              <img src={novaAvatar} alt="Elynea" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(212,175,55,0.4)' }} />
               <div>
-                <p style={{ color: '#D4AF37', fontSize: '14px', fontWeight: 600, margin: 0 }}>NOVA</p>
+                <p style={{ color: '#D4AF37', fontSize: '14px', fontWeight: 600, margin: 0 }}>Elynea</p>
                 <p style={{ color: '#64748b', fontSize: '11px', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', display: 'inline-block', background: statusColor }} />
                   {statusText}
@@ -591,7 +591,7 @@ const FloatingAgent = () => {
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {messages.length === 0 && !loading && (
               <div style={{ textAlign: 'center', color: '#475569', fontSize: '13px', padding: '30px 20px' }}>
-                <img src={novaAvatar} alt="NOVA" style={{ width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 12px', display: 'block', opacity: 0.8 }} />
+                <img src={novaAvatar} alt="Elynea" style={{ width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 12px', display: 'block', opacity: 0.8 }} />
                 <p style={{ margin: 0 }}>Salut Julien !</p>
                 <p style={{ marginTop: '8px' }}>Pose ta question, parle-moi, ou joins n’importe quel fichier — MP3, audio, image, vidéo, PDF, ZIP… — quand la connexion est disponible.</p>
                 <p style={{ marginTop: '12px', fontSize: '11px', color: '#334155' }}>{localSttSupported ? 'Micro Whisper local disponible' : sttSupported ? 'Micro navigateur disponible' : 'Micro non supporté'} · {ttsSupported ? 'Voix disponible' : 'Voix non supportée'}</p>
@@ -610,7 +610,7 @@ const FloatingAgent = () => {
 
             {loading && (
               <div style={{ alignSelf: 'flex-start', color: '#64748b', fontSize: '12px', fontStyle: 'italic', padding: '8px 14px' }}>
-                <span style={{ animation: 'pulse 1.5s infinite' }}>●</span> NOVA réfléchit...
+                <span style={{ animation: 'pulse 1.5s infinite' }}>●</span> Elynea réfléchit...
               </div>
             )}
             <div ref={messagesEndRef} />
