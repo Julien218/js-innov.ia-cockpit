@@ -541,6 +541,7 @@ router.get('/:id/download', async (req, res) => {
 module.exports = router;
 module.exports.storeBuffer = storeBuffer;
 module.exports.getDocumentBufferForUser = getDocumentBufferForUser;
+module.exports.getDocumentRecord = getDocumentRecord;
 module.exports.isDropboxConfigured = isDropboxConfigured;
 module.exports.MAX_FILE_BYTES = MAX_FILE_BYTES;
 module.exports.firstDocumentRecord = firstDocumentRecord;
