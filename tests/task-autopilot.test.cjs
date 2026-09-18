@@ -111,3 +111,21 @@ test('l’ancien défaut de colonne Projet corrigé ne bloque plus une relance',
     null,
   );
 });
+
+
+test('un ancien blocage sans exécuteur est ignoré dès qu’Elynea sait désormais router la tâche', () => {
+  assert.equal(
+    autopilot.recordedExecutionFailure({
+      titre: 'Effacer les doublons dans les tâches en cours',
+      notes: 'Blocage d’exécution réel: aucun_executeur_reel_enregistre_pour_ce_type_de_tache',
+    }),
+    null,
+  );
+});
+
+test('WAITING_INPUT est suivi comme action requise et non comme panne technique', () => {
+  const source = fs.readFileSync(path.join(root, 'server-task-autopilot.cjs'), 'utf8');
+  assert.match(source, /awaitingInput\.push/);
+  assert.match(source, /awaiting_input: awaitingInput/);
+  assert.match(source, /operational_status === 'WAITING_INPUT'/);
+});
