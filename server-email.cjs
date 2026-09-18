@@ -92,6 +92,55 @@ function requireApiKey(req, res, next) {
 
 // ── Transport SMTP (créé à la demande, mis en cache) ─────────
 const smtpCache = {};
+const assistantSendIdempotency = new Map();
+const ASSISTANT_SEND_IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
+
+function assistantSendFingerprint(body = {}) {
+  return JSON.stringify({
+    mailbox: body.mailbox || 'jsinnovia',
+    to: body.to,
+    cc: body.cc,
+    bcc: body.bcc,
+    subject: body.subject,
+    text: body.text,
+    html: body.html,
+    replyToUid: body.replyToUid,
+    attachments: Array.isArray(body.attachments)
+      ? body.attachments.map((item) => [item?.filename || '', String(item?.content_base64 || '').length])
+      : [],
+  });
+}
+
+function reserveAssistantSend(key, body) {
+  if (!key) return { action: 'proceed', reserved: false };
+  const now = Date.now();
+  for (const [cacheKey, entry] of assistantSendIdempotency) {
+    if (now - entry.createdAt > ASSISTANT_SEND_IDEMPOTENCY_TTL_MS) assistantSendIdempotency.delete(cacheKey);
+  }
+  const fingerprint = assistantSendFingerprint(body);
+  const existing = assistantSendIdempotency.get(key);
+  if (existing) {
+    if (existing.fingerprint !== fingerprint) return { action: 'conflict', reserved: false };
+    if (existing.status === 'completed') return { action: 'replay', reserved: false, response: existing.response };
+    return { action: 'pending', reserved: false };
+  }
+  assistantSendIdempotency.set(key, { status: 'pending', fingerprint, createdAt: now, response: null });
+  return { action: 'proceed', reserved: true };
+}
+
+function completeAssistantSend(key, response) {
+  if (!key) return;
+  const entry = assistantSendIdempotency.get(key);
+  if (!entry) return;
+  entry.status = 'completed';
+  entry.response = response;
+  entry.createdAt = Date.now();
+}
+
+function releaseAssistantSend(key) {
+  if (key) assistantSendIdempotency.delete(key);
+}
+
 function getSmtpTransport(mailboxKey) {
   const cfg = getMailboxConfig(mailboxKey);
   if (!cfg || !cfg.password) return null;
@@ -696,9 +745,23 @@ router.get('/:uid', requireApiKey, async (req, res) => {
 
 // POST /api/emails/send
 router.post('/send', requireApiKey, async (req, res) => {
+  let reservedIdempotencyKey = '';
   try {
-    const { mailbox, to, subject, text, html, cc, bcc, replyToUid, attachments } = req.body;
+    const body = req.body || {};
+    const { mailbox, to, subject, text, html, cc, bcc, replyToUid, attachments } = body;
     const mailboxKey = mailbox || 'jsinnovia';
+    const idempotencyKey = String(body.idempotencyKey || req.get('Idempotency-Key') || '').trim().slice(0, 160);
+    const idempotency = reserveAssistantSend(idempotencyKey, body);
+    if (idempotency.action === 'conflict') {
+      return res.status(409).json({ success: false, error: 'Idempotency key already used with a different email payload' });
+    }
+    if (idempotency.action === 'pending') {
+      return res.status(409).json({ success: false, error: 'Email send already in progress for this action' });
+    }
+    if (idempotency.action === 'replay') {
+      return res.json({ ...idempotency.response, duplicate: true });
+    }
+    if (idempotency.reserved) reservedIdempotencyKey = idempotencyKey;
 
     // Si replyToUid est fourni, récupérer le messageId original pour le threading
     let replyToMessageId = null;
@@ -710,8 +773,11 @@ router.post('/send', requireApiKey, async (req, res) => {
     }
 
     const info = await sendEmail(mailboxKey, { to, subject, text, html, cc, bcc, replyToMessageId, attachments });
-    res.json({ success: true, ...info });
+    const responsePayload = { success: true, ...info };
+    completeAssistantSend(reservedIdempotencyKey, responsePayload);
+    res.json(responsePayload);
   } catch (err) {
+    releaseAssistantSend(reservedIdempotencyKey);
     console.error('[SMTP] Envoi:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
