@@ -42,6 +42,10 @@ function recordedExecutionFailure(task) {
   const matches = [...notes.matchAll(/Blocage d[’']exécution réel\s*:\s*([^\n]+)/gi)];
   const latest = matches.length ? matches[matches.length - 1][1].trim().slice(0, 500) : null;
   if (/could not find.*['’]priorite['’].*['’]projet['’].*schema cache/i.test(String(latest || ''))) return null;
+  if (/aucun_executeur_(?:media_enregistre|reel_enregistre_pour_ce_type_de_tache)/i.test(String(latest || ''))) {
+    const currentExecutor = resolveNovaExecutor(task);
+    if (currentExecutor.kind !== 'unsupported') return null;
+  }
   return latest;
 }
 
@@ -236,6 +240,7 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
     const executableTasks = [];
     const blocked = [];
     const awaitingAuthorization = [];
+    const awaitingInput = [];
     const ready = [];
     const duplicates = [];
     for (const group of groups.values()) {
@@ -247,6 +252,7 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
         for (const run of groupRuns) {
           const item = { task_id: run.task_id, title: group.find(task => String(task.id) === String(run.task_id))?.titre, run_id: run.id, status: 'already_running', operational_status: run.operational_status || (run.status === 'awaiting_approval' ? 'WAITING_AUTHORIZATION' : run.status === 'awaiting_review' ? 'WAITING_INPUT' : 'RUNNING'), reason: 'reservation_existante_conservee' };
           if (item.operational_status === 'WAITING_AUTHORIZATION') awaitingAuthorization.push(item);
+          else if (item.operational_status === 'WAITING_INPUT') awaitingInput.push(item);
           else if (['RUNNING', 'RETRYING'].includes(item.operational_status)) existingExecutions.push(item);
           else if (!blocked.some(entry => entry.task_id === task.id)) blocked.push({ ...item, task_id: task.id, title: task.titre || task.title, reason: run.reason || 'confirmation_execution_absente', run_ids: groupRuns.map(entry => entry.id) });
         }
@@ -319,8 +325,13 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
       return { ...item, title: item.title || task?.titre || task?.title, executor: item.executor || executor?.id || null };
     };
     const executed = batch.results.filter((item) => item.status === 'completed').map(decorate);
-    const queued = [...existingExecutions, ...batch.results.filter((item) => ['queued_local', 'already_running', 'awaiting_review'].includes(item.status))].map(decorate);
-    blocked.push(...batch.results.filter((item) => !item.success).map((item) => {
+    awaitingInput.push(...batch.results
+      .filter((item) => item.operational_status === 'WAITING_INPUT' || item.status === 'awaiting_review')
+      .map(decorate));
+    const queued = [...existingExecutions, ...batch.results
+      .filter((item) => ['queued_local', 'already_running'].includes(item.status) && item.operational_status !== 'WAITING_INPUT')
+    ].map(decorate);
+    blocked.push(...batch.results.filter((item) => !item.success && !['WAITING_INPUT', 'WAITING_AUTHORIZATION'].includes(item.operational_status)).map((item) => {
       const decorated = decorate(item);
       return { task_id: decorated.task_id, title: decorated.title, executor: decorated.executor, run_id: decorated.run_id, operational_status: decorated.operational_status, reason: decorated.error || decorated.status };
     }));
@@ -328,7 +339,7 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
       const canonicalTask = tasks.find((task) => String(task.id) === String(execution.task_id));
       if (canonicalTask) execution.duplicate_task_ids = await closeVerifiedDuplicates(canonicalTask, duplicateTasksForCanonical(tasks, canonicalTask), [execution.run_id].filter(Boolean));
     }
-    const result = { run_id: `autopilot-${crypto.randomUUID()}`, examined: tasks.length, unique: groups.size, executed, queued, ready, blocked, awaiting_authorization: awaitingAuthorization, duplicates, allow_writes: allowWrites, inspection_only: inspectOnly };
+    const result = { run_id: `autopilot-${crypto.randomUUID()}`, examined: tasks.length, unique: groups.size, executed, queued, ready, blocked, awaiting_authorization: awaitingAuthorization, awaiting_input: awaitingInput, duplicates, allow_writes: allowWrites, inspection_only: inspectOnly };
     state.last_result = result;
     return result;
   } catch (error) {
