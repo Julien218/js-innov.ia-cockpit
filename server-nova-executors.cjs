@@ -3,6 +3,8 @@ const crypto = require('node:crypto');
 const { SKILL_REGISTRY } = require('./server-agent-registry.cjs');
 const { findCanonicalClient, isInternalClientRecord } = require('./server-video-generation-core.cjs');
 const { lookupBce } = require('./server-bce.cjs');
+const { missDourConfigured, listMissDourRegistrations } = require('./server-miss-dour-data.cjs');
+const { getDocumentRecord } = require('./server-documents.cjs');
 const {
   analyzeDomain,
   MANAGED_DOMAINS,
@@ -24,38 +26,59 @@ const SITE_AGENT_KEYS = new Set([
 const INTERNAL_EXECUTORS = Object.freeze({
   local_windows: {
     id: 'nova-windows-local',
-    name: 'NOVA Windows Local',
+    name: 'Elynea Windows Local',
     provider: 'local-agent',
     role: 'windows_local_execution',
     execution_mode: 'autonomous',
   },
   business_data: {
     id: 'nova-business-data',
-    name: 'NOVA Données Métier',
+    name: 'Elynea Données Métier',
     provider: 'cockpit-server',
     role: 'business_data_execution',
     execution_mode: 'autonomous',
   },
   project_data: {
     id: 'nova-project-data',
-    name: 'NOVA Projets',
+    name: 'Elynea Projets',
     provider: 'cockpit-server',
     role: 'project_data_execution',
     execution_mode: 'autonomous',
   },
   video_production: {
     id: 'nova-video-production',
-    name: 'NOVA Production Vidéo',
+    name: 'Elynea Production Vidéo',
     provider: 'cockpit-server',
     role: 'video_generation_execution',
     execution_mode: 'autonomous',
   },
   site_ops: {
     id: 'nova-site-ops',
-    name: 'NOVA Sites · GitHub + Railway',
+    name: 'Elynea Sites · GitHub + Railway',
     provider: 'cockpit-server',
     role: 'site_repository_operations',
     execution_mode: 'autonomous',
+  },
+  registration_audit: {
+    id: 'elynea-registration-audit',
+    name: 'Elynea · Inscriptions Miss & Mister Dour',
+    provider: 'cockpit-server',
+    role: 'registration_data_audit',
+    execution_mode: 'autonomous',
+  },
+  document_download: {
+    id: 'elynea-document-download',
+    name: 'Elynea · Téléchargement document',
+    provider: 'cockpit-server',
+    role: 'document_download_preparation',
+    execution_mode: 'assisted',
+  },
+  task_maintenance: {
+    id: 'elynea-task-maintenance',
+    name: 'Elynea · Maintenance des tâches',
+    provider: 'cockpit-server',
+    role: 'task_deduplication',
+    execution_mode: 'confirmed_write',
   },
 });
 
@@ -106,6 +129,20 @@ function siteExecutorForTask(task = {}) {
 
 function resolveNovaExecutor(task = {}) {
   const text = normalized(taskText(task));
+  const sourceIds = sourceDocumentIdsFromTask(task);
+  const registrationAudit = /(miss.*mister.*dour|mister.*dour).*(inscription|candidat|donnee)|(inscription|candidat|donnee).*(miss.*mister.*dour)/.test(text)
+    && /(verifi|control|audit|analys)/.test(text);
+  if (registrationAudit) {
+    return { kind: 'registration', ...INTERNAL_EXECUTORS.registration_audit };
+  }
+  const duplicateMaintenance = /(?:effac|supprim|nettoy|regroup|fusion).*(?:doublon).*(?:tache)|(?:doublon).*(?:tache).*(?:effac|supprim|nettoy|regroup|fusion)/.test(text);
+  if (duplicateMaintenance) {
+    return { kind: 'task_maintenance', ...INTERNAL_EXECUTORS.task_maintenance };
+  }
+  const documentDownload = /(?:telecharg|download).*(?:media|audio|mp3|fichier)|(?:media|audio|mp3|fichier).*(?:telecharg|download)/.test(text);
+  if (documentDownload && sourceIds.length) {
+    return { kind: 'document', ...INTERNAL_EXECUTORS.document_download, source_document_id: sourceIds[0] };
+  }
   const explicitVideo = /(creer|creation|generer|generation|produire|production).*(video|ecran geant)/.test(text);
   const imageTransition = /(image|media).*(vers|jusqu|finir|transition|morph).*(image|media)|(?:transition|morph).*(image|media)|start.?image|end.?image/.test(text);
   const hasVideoMediaContract = sourceDocumentIdsFromTask(task).length >= 2 && /(video|transition|animation|morph|grok|imagine)/.test(text);
@@ -474,6 +511,138 @@ function bcePatch(client, record) {
     .map((field) => [field, record[field]]));
 }
 
+async function executeRegistrationAuditTask() {
+  if (!missDourConfigured()) {
+    return {
+      completed: false,
+      awaiting_review: true,
+      provider: 'cockpit-server',
+      result: { requires_user_action: true, missing_fields: ['MISS_DOUR_REGISTRATIONS_URL', 'MISS_DOUR_REGISTRATIONS_TOKEN'] },
+      report: 'La liaison des inscriptions Miss & Mister Dour n’est pas configurée.',
+      reason: 'liaison_inscriptions_miss_dour_non_configuree',
+    };
+  }
+  const records = await listMissDourRegistrations();
+  const required = ['first_name', 'last_name', 'email', 'category', 'status', 'year'];
+  const missing = records.map((record) => ({
+    id: record.id,
+    fields: required.filter((field) => !clean(record[field], 500)),
+  })).filter((item) => item.fields.length);
+  const emails = new Map();
+  for (const record of records) {
+    const email = normalized(record.email);
+    if (!email) continue;
+    emails.set(email, [...(emails.get(email) || []), record.id]);
+  }
+  const duplicateEmailGroups = [...emails.values()].filter((ids) => ids.length > 1);
+  const countBy = (field) => records.reduce((acc, record) => {
+    const key = clean(record[field], 100) || 'non_renseigne';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const result = {
+    audit_id: `miss-dour-${crypto.randomUUID()}`,
+    checked_at: new Date().toISOString(),
+    total: records.length,
+    by_year: countBy('year'),
+    by_category: countBy('category'),
+    by_status: countBy('status'),
+    missing_required_count: missing.length,
+    missing_required: missing.slice(0, 200),
+    duplicate_email_group_count: duplicateEmailGroups.length,
+    duplicate_email_record_ids: duplicateEmailGroups.slice(0, 100),
+    read_only: true,
+  };
+  return { completed: true, provider: 'cockpit-server', result, report: JSON.stringify(result) };
+}
+
+async function executeDocumentDownloadTask(task = {}) {
+  const documentId = sourceDocumentIdFromTask(task);
+  if (!documentId) {
+    return {
+      completed: false,
+      awaiting_review: true,
+      provider: 'cockpit-server',
+      result: { requires_user_action: true, missing_fields: ['source_document_id'] },
+      report: 'Document source absent.',
+      reason: 'media_source_absente_ou_non_exploitable',
+    };
+  }
+  const record = await getDocumentRecord(documentId);
+  if (!record?.id) {
+    return {
+      completed: false,
+      awaiting_review: true,
+      provider: 'cockpit-server',
+      result: { requires_user_action: true, document_id: documentId, missing_fields: ['document'] },
+      report: 'Document introuvable dans l’index Cockpit.',
+      reason: 'document_source_introuvable',
+    };
+  }
+  return {
+    completed: false,
+    awaiting_review: true,
+    provider: 'cockpit-server',
+    result: {
+      requires_user_action: true,
+      action: 'download',
+      document_id: record.id,
+      filename: record.filename,
+      mime_type: record.mime_type,
+      download_url: `/api/documents/${encodeURIComponent(record.id)}/download`,
+    },
+    report: `Le fichier ${record.filename} est prêt au téléchargement via le Cockpit.`,
+    reason: 'telechargement_utilisateur_requis',
+  };
+}
+
+async function executeTaskMaintenance(task, agentRequest) {
+  const text = normalized(taskText(task));
+  if (!/doublon/.test(text)) {
+    return { completed: false, awaiting_review: true, provider: 'cockpit-server', result: { requires_user_action: true }, report: 'Maintenance non reconnue.', reason: 'maintenance_taches_non_reconnue' };
+  }
+  const tasks = rowsFrom(await agentRequest('/data/Tache?limit=500'));
+  const done = (item) => ['termine', 'terminee', 'terminée', 'completed', 'done', 'annule', 'annulee', 'annulée', 'cancelled'].includes(normalized(item.statut || item.status));
+  const keyFor = (item) => [
+    normalized(item.titre || item.title).replace(/\b(delegation automatique|duplicata|copie)\b/g, '').replace(/[^a-z0-9]+/g, ' ').trim(),
+    clean(item.client_id || item.client_nom, 180),
+    clean(item.projet_id || item.projet_nom, 180),
+  ].join('|');
+  const groups = new Map();
+  for (const item of tasks.filter((item) => !done(item) && String(item.id) !== String(task.id))) {
+    const key = keyFor(item);
+    if (!key) continue;
+    groups.set(key, [...(groups.get(key) || []), item]);
+  }
+  const closed = [];
+  const canonical = [];
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    group.sort((a, b) => String(a.created_at || a.id).localeCompare(String(b.created_at || b.id)));
+    const [keep, ...duplicates] = group;
+    canonical.push(keep.id);
+    for (const duplicate of duplicates) {
+      const note = [
+        duplicate.notes || '',
+        `Doublon regroupé avec la tâche ${keep.id} par Elynea.`,
+        'Clôture non destructive : l’historique est conservé et peut être restauré manuellement.',
+      ].filter(Boolean).join('\n').slice(0, 4000);
+      await agentRequest(`/data/Tache/${encodeURIComponent(duplicate.id)}`, { method: 'PATCH', body: { statut: 'terminee', notes: note } });
+      closed.push(duplicate.id);
+    }
+  }
+  const result = {
+    maintenance_id: `tasks-${crypto.randomUUID()}`,
+    checked_at: new Date().toISOString(),
+    duplicate_groups: canonical.length,
+    closed_duplicate_count: closed.length,
+    closed_duplicate_ids: closed.slice(0, 250),
+    canonical_task_ids: canonical.slice(0, 250),
+    destructive_delete: false,
+  };
+  return { completed: true, provider: 'cockpit-server', result, report: JSON.stringify(result) };
+}
+
 async function executeBusinessTask(task, agentRequest) {
   const text = normalized(taskText(task));
   const clients = rowsFrom(await agentRequest('/data/Client?limit=500'));
@@ -547,6 +716,9 @@ module.exports = {
   clientName,
   executeBusinessTask,
   executeProjectTask,
+  executeRegistrationAuditTask,
+  executeDocumentDownloadTask,
+  executeTaskMaintenance,
   executeSiteTask,
   executeVideoTask,
   isReadOnlySiteTask,
