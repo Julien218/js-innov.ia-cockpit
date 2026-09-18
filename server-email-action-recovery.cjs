@@ -105,13 +105,22 @@ function parseDraftEmail(content) {
   return { to, subject: subject.slice(0, 240), text: body.slice(0, 10000) };
 }
 
+function isConfirmationBoilerplate(content) {
+  const text = normalize(content);
+  return /(?:email|mail|message).*(?:pret.*envoy|attente.*confirm)/.test(text)
+    || /(?:souhaites vous|souhaites-tu|veux-tu).*(?:fasse|envoie|envoyer)/.test(text)
+    || /(?:confirmation|confirmer).*(?:envoi|envoyer)/.test(text);
+}
+
 function latestDraftEmail(messages) {
   const list = Array.isArray(messages) ? messages.slice(-8) : [];
   for (let index = list.length - 1; index >= 0; index -= 1) {
     const item = list[index];
     if (String(item?.role || '').toLowerCase() !== 'assistant') continue;
-    const parsed = parseDraftEmail(item?.content || item?.message || item?.text || '');
+    const content = item?.content || item?.message || item?.text || '';
+    const parsed = parseDraftEmail(content);
     if (parsed) return parsed;
+    if (!isConfirmationBoilerplate(content)) return null;
   }
   return null;
 }
