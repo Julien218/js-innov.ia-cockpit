@@ -1,5 +1,5 @@
 /**
- * FloatingAgent.jsx — Widget flottant NOVA pour le cockpit
+ * FloatingAgent.jsx — Widget flottant Elynea pour le cockpit
  *
  * Bulle de chat persistante en bas à droite, accessible sur toutes les pages.
  * Communique avec l'assistant local /api/assistant/chat (Railway, zéro Base44).
@@ -578,7 +578,7 @@ const FloatingAgent = () => {
             </div>
             <div style={{ display: 'flex', gap: '4px' }}>
               {ttsEnabled && ttsVoices.length > 0 && (
-                <select aria-label="Voix de NOVA" title="Choisir la voix française de NOVA" value={ttsVoiceName} onChange={(event) => setTtsVoiceName(event.target.value)} style={{ maxWidth: '104px', background: '#0F172A', border: '1px solid rgba(100,116,139,0.35)', borderRadius: '6px', color: '#cbd5e1', fontSize: '10px', padding: '3px 5px' }}>
+                <select aria-label="Voix d’Elynea" title="Choisir la voix française d’Elynea" value={ttsVoiceName} onChange={(event) => setTtsVoiceName(event.target.value)} style={{ maxWidth: '104px', background: '#0F172A', border: '1px solid rgba(100,116,139,0.35)', borderRadius: '6px', color: '#cbd5e1', fontSize: '10px', padding: '3px 5px' }}>
                   {ttsVoices.map((voice) => <option key={`${voice.name}-${voice.lang}`} value={voice.name}>{voice.name}</option>)}
                 </select>
               )}
