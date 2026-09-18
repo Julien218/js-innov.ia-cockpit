@@ -22,12 +22,16 @@ import { inspectMediaFile } from '@/lib/mediaReference';
 import { executeNovaClientAction } from '@/lib/novaClientAction';
 import { isDropboxDeletionRequest, sendNovaChat } from '@/lib/novaChatTransport';
 import { getNovaMailboxContext } from '@/lib/novaMailboxContext';
+import { extractElyneaWakeCommand } from '@/lib/elyneaWakeWord';
 
 const LOCAL_NOVA_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
 const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
 const LOCAL_AUTOPILOT_LAST_RUN_KEY = 'nova_local_autopilot_last_run_v1';
 const RECENT_MEDIA_KEY = 'nova_recent_media_v1';
 const TTS_VOICE_KEY = 'nova_tts_voice_name';
+const ELYNEA_WAKE_MODE_KEY = 'elynea_wake_mode_enabled';
+const WAKE_RESTART_DELAY_MS = 650;
+const WAKE_COMMAND_TIMEOUT_MS = 10000;
 const LOCAL_TOOL_REQUEST = /\b(?:find_local_workflows|comfyui_health|avatar_factory_status|ffmpeg_version|ffprobe_file|list_directory|http_diagnose)\b|(?:ex[eé]cut|diagnosti|contr[oô]l|v[eé]rifi|recherch).*(?:comfyui|port\s*(?:8188|8791)|workflow|minimax|avatar|ffmpeg|ffprobe|dossier\s+local)/i;
 const LOCAL_NOVA_PROMPT = `Tu es NOVA, l’unique assistant visible du Cockpit JS-Innov.IA. Tu conserves le même nom et le même rôle en mode cloud et en mode local. Vérifie les outils réellement disponibles avant toute affirmation de capacité. Ne dis jamais que tu es une simple IA textuelle ni que tu ne peux rien exécuter uniquement parce qu’Internet est coupé.`;
 const AFFIRMATIVE_CONFIRMATION = /^(oui|ok|oki|okay|confirme|confirmer|je confirme|envoie|envoyer|vas[- ]?y|go|ex[eé]cute|ex[eé]cuter)(?:\b|[,.!])/i;
@@ -52,11 +56,23 @@ const FloatingAgent = () => {
   const [speaking, setSpeaking] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
+  const [wakeEnabled, setWakeEnabled] = useState(() => {
+    try { return localStorage.getItem(ELYNEA_WAKE_MODE_KEY) === 'true'; } catch { return false; }
+  });
+  const [wakeStatus, setWakeStatus] = useState('off');
+  const [wakeError, setWakeError] = useState('');
   const fileInputRef = useRef(null);
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const recognitionRef = useRef(null);
+  const wakeRecognitionRef = useRef(null);
+  const wakeCommandRecognitionRef = useRef(null);
+  const wakeRestartTimerRef = useRef(null);
+  const wakeEnabledRef = useRef(wakeEnabled);
+  const wakeBusyRef = useRef(false);
+  const wakeStartRef = useRef(null);
+  const doSendRef = useRef(null);
 
   const ttsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
   const sttSupported = typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
@@ -80,6 +96,11 @@ const FloatingAgent = () => {
   useEffect(() => {
     if (ttsVoiceName) localStorage.setItem(TTS_VOICE_KEY, ttsVoiceName);
   }, [ttsVoiceName]);
+
+  useEffect(() => {
+    wakeEnabledRef.current = wakeEnabled;
+    try { localStorage.setItem(ELYNEA_WAKE_MODE_KEY, String(wakeEnabled)); } catch {}
+  }, [wakeEnabled]);
 
   useEffect(() => {
     let stopped = false;
@@ -186,6 +207,202 @@ const FloatingAgent = () => {
   const stopSpeaking = useCallback(() => {
     if (ttsSupported) { window.speechSynthesis.cancel(); setSpeaking(false); }
   }, [ttsSupported]);
+
+  const clearWakeRestartTimer = useCallback(() => {
+    if (wakeRestartTimerRef.current) {
+      clearTimeout(wakeRestartTimerRef.current);
+      wakeRestartTimerRef.current = null;
+    }
+  }, []);
+
+  const abortWakeRecognitions = useCallback(() => {
+    clearWakeRestartTimer();
+    for (const ref of [wakeRecognitionRef, wakeCommandRecognitionRef]) {
+      try { ref.current?.abort?.(); } catch {}
+      ref.current = null;
+    }
+  }, [clearWakeRestartTimer]);
+
+  const rearmWakeWhenQuiet = useCallback(() => {
+    clearWakeRestartTimer();
+    if (!wakeEnabledRef.current) {
+      wakeBusyRef.current = false;
+      setWakeStatus('off');
+      return;
+    }
+    const attempt = () => {
+      if (!wakeEnabledRef.current) return;
+      if (typeof window !== 'undefined' && window.speechSynthesis?.speaking) {
+        wakeRestartTimerRef.current = setTimeout(attempt, 500);
+        return;
+      }
+      wakeBusyRef.current = false;
+      setWakeStatus('armed');
+      wakeRestartTimerRef.current = setTimeout(() => wakeStartRef.current?.(), WAKE_RESTART_DELAY_MS);
+    };
+    wakeRestartTimerRef.current = setTimeout(attempt, WAKE_RESTART_DELAY_MS);
+  }, [clearWakeRestartTimer]);
+
+  const speakWakeAcknowledgement = useCallback(() => new Promise((resolve) => {
+    if (!ttsSupported) {
+      resolve();
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance('Oui Julien ?');
+    const voices = window.speechSynthesis.getVoices();
+    const selectedVoice = chooseNovaVoice(voices, ttsVoiceName);
+    utter.lang = selectedVoice?.lang || 'fr-BE';
+    utter.rate = 0.98;
+    utter.pitch = 1.0;
+    if (selectedVoice) utter.voice = selectedVoice;
+    utter.onstart = () => setSpeaking(true);
+    utter.onend = () => { setSpeaking(false); resolve(); };
+    utter.onerror = () => { setSpeaking(false); resolve(); };
+    window.speechSynthesis.speak(utter);
+  }), [ttsSupported, ttsVoiceName]);
+
+  const startWakeCommandListening = useCallback(() => {
+    if (!wakeEnabledRef.current || !sttSupported) {
+      rearmWakeWhenQuiet();
+      return;
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SR();
+    recognition.lang = 'fr-BE';
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    wakeCommandRecognitionRef.current = recognition;
+    setWakeStatus('command');
+    let finalTranscript = '';
+    const timeout = setTimeout(() => {
+      try { recognition.stop(); } catch {}
+    }, WAKE_COMMAND_TIMEOUT_MS);
+
+    recognition.onresult = (event) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) finalTranscript += transcript;
+        else interim += transcript;
+      }
+      setInput((finalTranscript + interim).trim());
+    };
+    recognition.onerror = () => {};
+    recognition.onend = () => {
+      clearTimeout(timeout);
+      if (wakeCommandRecognitionRef.current === recognition) wakeCommandRecognitionRef.current = null;
+      const command = finalTranscript.trim();
+      setInput('');
+      if (!command) {
+        rearmWakeWhenQuiet();
+        return;
+      }
+      setWakeStatus('working');
+      Promise.resolve(doSendRef.current?.(command)).finally(rearmWakeWhenQuiet);
+    };
+
+    try { recognition.start(); }
+    catch { rearmWakeWhenQuiet(); }
+  }, [sttSupported, rearmWakeWhenQuiet]);
+
+  const startWakeListening = useCallback(() => {
+    if (!wakeEnabledRef.current || !sttSupported || wakeBusyRef.current || wakeRecognitionRef.current) return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SR();
+    recognition.lang = 'fr-BE';
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    wakeRecognitionRef.current = recognition;
+    setWakeError('');
+    setWakeStatus('armed');
+
+    recognition.onresult = (event) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (!event.results[i].isFinal) continue;
+        const heard = String(event.results[i][0].transcript || '').trim();
+        const wake = extractElyneaWakeCommand(heard);
+        if (!wake.detected) continue;
+
+        wakeBusyRef.current = true;
+        setIsOpen(true);
+        setWakeStatus('woken');
+        try { recognition.abort(); } catch {}
+        if (wakeRecognitionRef.current === recognition) wakeRecognitionRef.current = null;
+
+        if (wake.command) {
+          setWakeStatus('working');
+          Promise.resolve(doSendRef.current?.(wake.command)).finally(rearmWakeWhenQuiet);
+        } else {
+          speakWakeAcknowledgement().finally(() => startWakeCommandListening());
+        }
+        return;
+      }
+    };
+
+    recognition.onerror = (event) => {
+      if (['not-allowed', 'service-not-allowed'].includes(String(event?.error || ''))) {
+        setWakeError('Autorisation microphone requise pour Appel Elynea.');
+        wakeEnabledRef.current = false;
+        setWakeEnabled(false);
+        setWakeStatus('blocked');
+      } else if (wakeEnabledRef.current && !wakeBusyRef.current) {
+        setWakeStatus('reconnecting');
+      }
+    };
+
+    recognition.onend = () => {
+      if (wakeRecognitionRef.current === recognition) wakeRecognitionRef.current = null;
+      if (wakeEnabledRef.current && !wakeBusyRef.current) {
+        clearWakeRestartTimer();
+        wakeRestartTimerRef.current = setTimeout(() => wakeStartRef.current?.(), WAKE_RESTART_DELAY_MS);
+      }
+    };
+
+    try { recognition.start(); }
+    catch (error) {
+      wakeRecognitionRef.current = null;
+      setWakeError(String(error?.message || 'Impossible d’activer le microphone.'));
+      setWakeStatus('blocked');
+    }
+  }, [sttSupported, clearWakeRestartTimer, rearmWakeWhenQuiet, speakWakeAcknowledgement, startWakeCommandListening]);
+
+  useEffect(() => {
+    wakeStartRef.current = startWakeListening;
+    if (wakeEnabled) {
+      wakeRestartTimerRef.current = setTimeout(() => startWakeListening(), 900);
+    }
+    return () => clearWakeRestartTimer();
+  }, [wakeEnabled, startWakeListening, clearWakeRestartTimer]);
+
+  useEffect(() => () => {
+    try { wakeRecognitionRef.current?.abort?.(); } catch {}
+    try { wakeCommandRecognitionRef.current?.abort?.(); } catch {}
+    if (wakeRestartTimerRef.current) clearTimeout(wakeRestartTimerRef.current);
+  }, []);
+
+  const toggleWakeMode = useCallback(() => {
+    if (!sttSupported) {
+      setWakeError('La reconnaissance vocale n’est pas disponible dans ce navigateur.');
+      return;
+    }
+    if (wakeEnabledRef.current) {
+      wakeEnabledRef.current = false;
+      setWakeEnabled(false);
+      setWakeStatus('off');
+      setWakeError('');
+      abortWakeRecognitions();
+      return;
+    }
+    setWakeError('');
+    setTtsEnabled(true);
+    wakeEnabledRef.current = true;
+    setWakeEnabled(true);
+    setWakeStatus('starting');
+    setIsOpen(true);
+    clearWakeRestartTimer();
+    setTimeout(() => wakeStartRef.current?.(), 0);
+  }, [sttSupported, abortWakeRecognitions, clearWakeRestartTimer]);
 
   const startListening = useCallback(() => {
     if (!sttSupported) return;
@@ -381,6 +598,10 @@ const FloatingAgent = () => {
     }
   }, [input, loading, confirmation, executeConfirmation, conversationId, messages, speak, stopSpeaking, queryClient, cancelPendingConfirmation]);
 
+  useEffect(() => {
+    doSendRef.current = doSend;
+  }, [doSend]);
+
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -485,8 +706,23 @@ const FloatingAgent = () => {
     else setTtsEnabled(true);
   }, [ttsEnabled, stopSpeaking]);
 
-  const statusColor = speaking ? '#D4AF37' : isListening ? '#06B6D4' : loading ? '#f59e0b' : '#22c55e';
-  const statusText = speaking ? 'Parle...' : isListening ? 'Écoute...' : loading ? 'Réfléchit...' : 'En ligne';
+  const wakeActive = wakeEnabled && ['starting', 'armed', 'woken', 'command', 'working', 'reconnecting'].includes(wakeStatus);
+  const statusColor = speaking ? '#D4AF37' : isListening || wakeStatus === 'command' ? '#06B6D4' : wakeActive ? '#22D3EE' : loading ? '#f59e0b' : '#22c55e';
+  const statusText = speaking
+    ? 'Parle...'
+    : wakeStatus === 'command'
+      ? 'Je t’écoute...'
+      : wakeStatus === 'armed'
+        ? 'À l’écoute de « Elynea »'
+        : wakeStatus === 'woken'
+          ? 'Appel détecté'
+          : wakeStatus === 'reconnecting'
+            ? 'Réactivation micro...'
+            : isListening
+              ? 'Écoute...'
+              : loading || wakeStatus === 'working'
+                ? 'Réfléchit...'
+                : 'En ligne';
 
   return (
     <>
@@ -496,13 +732,13 @@ const FloatingAgent = () => {
             onClick={() => setIsOpen(true)}
             onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.08)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-            title="NOVA — Assistant IA"
+            title="Elynea — Assistante IA"
             style={{
               width: '60px', height: '60px', borderRadius: '50%', cursor: 'pointer', overflow: 'hidden', position: 'relative',
               boxShadow: '0 4px 20px rgba(212,175,55,0.3), 0 0 0 2px rgba(212,175,55,0.5)', transition: 'transform 0.2s ease',
             }}
           >
-            <img src={novaAvatar} alt="NOVA" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+            <img src={novaAvatar} alt="Elynea" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
             <span style={{ position: 'absolute', top: '-2px', right: '-2px', width: '12px', height: '12px', borderRadius: '50%', background: '#06B6D4', border: '2px solid #0B0B0F' }} />
           </div>
         </div>
@@ -519,9 +755,9 @@ const FloatingAgent = () => {
             borderBottom: '1px solid rgba(212,175,55,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <img src={novaAvatar} alt="NOVA" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(212,175,55,0.4)' }} />
+              <img src={novaAvatar} alt="Elynea" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(212,175,55,0.4)' }} />
               <div>
-                <p style={{ color: '#D4AF37', fontSize: '14px', fontWeight: 600, margin: 0 }}>NOVA</p>
+                <p style={{ color: '#D4AF37', fontSize: '14px', fontWeight: 600, margin: 0 }}>Elynea</p>
                 <p style={{ color: '#64748b', fontSize: '11px', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', display: 'inline-block', background: statusColor }} />
                   {statusText}
@@ -535,6 +771,23 @@ const FloatingAgent = () => {
                 </select>
               )}
               <button onClick={toggleTts} title={ttsEnabled ? 'Lecture vocale ON' : 'Lecture vocale OFF'} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: ttsEnabled ? '#D4AF37' : '#64748b', fontSize: '16px', padding: '4px 8px', borderRadius: '6px' }}>{ttsEnabled ? '🔊' : '🔇'}</button>
+              <button
+                onClick={toggleWakeMode}
+                title={wakeEnabled ? 'Désactiver Appel Elynea' : 'Activer Appel Elynea'}
+                style={{
+                  background: wakeEnabled ? 'rgba(34,211,238,0.12)' : 'transparent',
+                  border: wakeEnabled ? '1px solid rgba(34,211,238,0.45)' : '1px solid rgba(100,116,139,0.25)',
+                  cursor: 'pointer',
+                  color: wakeEnabled ? '#22D3EE' : '#64748b',
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  padding: '5px 7px',
+                  borderRadius: '6px',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {wakeEnabled ? 'Appel ON' : 'Appel OFF'}
+              </button>
               <button onClick={resetConversation} title="Nouvelle conversation" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '16px', padding: '4px 8px', borderRadius: '6px' }}>↻</button>
               <button onClick={() => { stopSpeaking(); setIsOpen(false); }} title="Fermer" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '16px', padding: '4px 8px', borderRadius: '6px' }}>✕</button>
             </div>
@@ -543,10 +796,14 @@ const FloatingAgent = () => {
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {messages.length === 0 && !loading && (
               <div style={{ textAlign: 'center', color: '#475569', fontSize: '13px', padding: '30px 20px' }}>
-                <img src={novaAvatar} alt="NOVA" style={{ width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 12px', display: 'block', opacity: 0.8 }} />
+                <img src={novaAvatar} alt="Elynea" style={{ width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 12px', display: 'block', opacity: 0.8 }} />
                 <p style={{ margin: 0 }}>Salut Julien !</p>
                 <p style={{ marginTop: '8px' }}>Pose ta question, parle-moi, ou joins n’importe quel fichier à classer dans Dropbox.</p>
                 <p style={{ marginTop: '12px', fontSize: '11px', color: '#334155' }}>{sttSupported ? '🎤 Micro disponible' : 'Micro non supporté'} · {ttsSupported ? '🔊 Voix disponible' : 'Voix non supportée'}</p>
+                <p style={{ marginTop: '8px', fontSize: '11px', color: wakeEnabled ? '#22D3EE' : '#475569' }}>
+                  {wakeEnabled ? 'Appel Elynea actif : dis « Elynea », puis ta commande.' : 'Active « Appel OFF » une fois pour autoriser le micro et m’appeler par mon nom.'}
+                </p>
+                {wakeError && <p style={{ marginTop: '6px', fontSize: '11px', color: '#fca5a5' }}>{wakeError}</p>}
               </div>
             )}
 
@@ -562,7 +819,7 @@ const FloatingAgent = () => {
 
             {loading && (
               <div style={{ alignSelf: 'flex-start', color: '#64748b', fontSize: '12px', fontStyle: 'italic', padding: '8px 14px' }}>
-                <span style={{ animation: 'pulse 1.5s infinite' }}>●</span> NOVA réfléchit...
+                <span style={{ animation: 'pulse 1.5s infinite' }}>●</span> Elynea réfléchit...
               </div>
             )}
             <div ref={messagesEndRef} />
@@ -603,11 +860,11 @@ const FloatingAgent = () => {
             {sttSupported && (
               <button
                 onClick={toggleVoice}
-                title={isListening ? 'Arrêt écoute' : 'Parler à NOVA'}
-                disabled={loading}
+                title={wakeEnabled ? 'Appel Elynea écoute déjà le micro' : isListening ? 'Arrêt écoute' : 'Parler à Elynea'}
+                disabled={loading || wakeEnabled}
                 style={{
-                  background: isListening ? 'rgba(6,182,212,0.15)' : '#1e293b', border: `1px solid ${isListening ? '#06B6D4' : 'rgba(100,116,139,0.3)'}`,
-                  borderRadius: '10px', padding: '10px', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '40px', height: '40px', fontSize: '16px',
+                  background: isListening ? 'rgba(6,182,212,0.15)' : wakeEnabled ? 'rgba(34,211,238,0.08)' : '#1e293b', border: `1px solid ${isListening ? '#06B6D4' : wakeEnabled ? 'rgba(34,211,238,0.35)' : 'rgba(100,116,139,0.3)'}`,
+                  borderRadius: '10px', padding: '10px', cursor: (loading || wakeEnabled) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '40px', height: '40px', fontSize: '16px', opacity: wakeEnabled ? 0.7 : 1,
                 }}
               >
                 {isListening ? '⏹' : '🎤'}
