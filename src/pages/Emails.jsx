@@ -378,7 +378,7 @@ export default function Emails() {
       .then(response => response.json())
       .then(data => { if (data.success) setIonosMailboxes(IONOS_MAILBOXES.map(box => {
         const configured = data.mailboxes?.find(item => item.id === box.id);
-        return configured ? { ...box, email: configured.email, label: configured.label, isAlias: configured.isAlias } : box;
+        return configured ? { ...box, email: configured.email, label: configured.label, isAlias: configured.isAlias, canSend: box.canSend && !configured.isAlias } : box;
       })); })
       .catch(() => {});
     fetch('/api/google-mail/accounts', { credentials: 'same-origin' })
