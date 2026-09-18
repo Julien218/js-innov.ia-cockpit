@@ -60,3 +60,11 @@ test('la page tâches propose un vrai téléchargement pour un document référe
   assert.match(tasks, /\/api\/documents\/\$\{encodeURIComponent\(documentId\)\}\/download/);
   assert.match(tasks, />\s*Télécharger\s*</);
 });
+
+
+test('le pilotage Elynea affiche les actions requises séparément des blocages', () => {
+  const tasks = fs.readFileSync(path.join(root, 'src/pages/Taches.jsx'), 'utf8');
+  assert.match(tasks, /awaiting_input/);
+  assert.match(tasks, /action\(s\) requise\(s\)/);
+  assert.match(tasks, /blocage\(s\) réel\(s\)/);
+});
