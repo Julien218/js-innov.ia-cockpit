@@ -593,7 +593,7 @@ const FloatingAgent = () => {
               <div style={{ textAlign: 'center', color: '#475569', fontSize: '13px', padding: '30px 20px' }}>
                 <img src={novaAvatar} alt="NOVA" style={{ width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 12px', display: 'block', opacity: 0.8 }} />
                 <p style={{ margin: 0 }}>Salut Julien !</p>
-                <p style={{ marginTop: '8px' }}>Pose ta question, parle-moi, ou joins un fichier quand la connexion est disponible.</p>
+                <p style={{ marginTop: '8px' }}>Pose ta question, parle-moi, ou joins n’importe quel fichier — MP3, audio, image, vidéo, PDF, ZIP… — quand la connexion est disponible.</p>
                 <p style={{ marginTop: '12px', fontSize: '11px', color: '#334155' }}>{localSttSupported ? 'Micro Whisper local disponible' : sttSupported ? 'Micro navigateur disponible' : 'Micro non supporté'} · {ttsSupported ? 'Voix disponible' : 'Voix non supportée'}</p>
               </div>
             )}
@@ -633,6 +633,7 @@ const FloatingAgent = () => {
             <input
               ref={fileInputRef}
               type="file"
+              accept="*/*,audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac,.opus"
               multiple
               onChange={(event) => handleFileUpload(event.target.files)}
               style={{ display: 'none' }}
