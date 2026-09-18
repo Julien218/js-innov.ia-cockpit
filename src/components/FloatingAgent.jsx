@@ -633,7 +633,6 @@ const FloatingAgent = () => {
             <input
               ref={fileInputRef}
               type="file"
-              accept="*/*,audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac,.opus"
               multiple
               onChange={(event) => handleFileUpload(event.target.files)}
               style={{ display: 'none' }}
