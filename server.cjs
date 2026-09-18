@@ -225,6 +225,17 @@ try {
   console.warn('⚠️ Route settings indisponible:', e.message);
 }
 
+// ── Elynea Social Command : marques, campagnes, calendrier, backup Dropbox ──
+try {
+  const socialCommand = require('./server-social-command.cjs');
+  app.use('/api/public/social', socialCommand.publicRouter);
+  app.use('/api/social', requireSession('admin'), requirePermission('social_command', 'admin'), socialCommand.router);
+  const worker = socialCommand.startSocialCommandSchedulers();
+  console.log(`✅ Elynea Social Command activé (publication ${worker.publish_enabled ? 'autorisée' : 'verrouillée'}, backup chiffré ${worker.encrypted_backup_ready ? 'prêt' : 'à configurer'})`);
+} catch (e) {
+  console.warn('⚠️ Elynea Social Command indisponible:', e.message);
+}
+
 // ── Pilotage Signelya ─────────────────────────────────────
 try {
   const signageRouter = require('./server-signage.cjs');

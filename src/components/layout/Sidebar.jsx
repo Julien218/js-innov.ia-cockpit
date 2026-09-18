@@ -6,7 +6,7 @@ import {
   CheckSquare, MessageSquare, Shield,
   Network, Smartphone, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
-  PlayCircle, GalleryHorizontalEnd, Send, Gauge, Workflow, Factory, MonitorPlay, Building2, Database, Music2,
+  PlayCircle, GalleryHorizontalEnd, Send, Gauge, Workflow, Factory, MonitorPlay, Building2, Database, Music2, Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -42,7 +42,6 @@ const useEmailBadge = (enabled) => {
         const response = await fetch('/api/emails?limit=1', { credentials: 'same-origin', signal: controller.signal });
         const data = await response.json();
         if (!response.ok || !data.success) {
-          // Repeated IMAP logins cannot repair rejected credentials.
           retry = ![401, 403].includes(response.status) && !/authenticat|invalid.credentials|login.failed/i.test(data.error || '');
           if (!stopped) setUnread(null);
         } else if (!stopped) setUnread(Number.isFinite(Number(data.unread)) ? Number(data.unread) : null);
@@ -131,6 +130,7 @@ export const allNavGroups = [
       { label: "Emails", icon: Mail, path: "/emails", badge: "emails", minRole: "admin" },
       { label: "Email Core", icon: Send, path: "/emails-core", minRole: "admin" },
       { label: "NOVA — Tri comptable", icon: Receipt, path: "/email-accounting", minRole: "admin" },
+      { label: "Elynea Social Command", icon: Megaphone, path: "/social-command", minRole: "admin" },
     ]
   },
   {
