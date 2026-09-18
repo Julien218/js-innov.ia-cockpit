@@ -6,6 +6,7 @@ const { cleanTenant } = require('./server-tenant.cjs');
 const { hasPermission } = require('./server-permission-policy.cjs');
 const { beginRequest, isCurrentTurn, requestedTaskStatus, taskStatusMatches } = require('./server-assistant-intent.cjs');
 const { isEmailTriage, triageEmails } = require('./server-nova-email-triage.cjs');
+const { isExplicitEmailSendRequest, normalizeEmailMailbox, latestDraftEmail } = require('./server-email-action-recovery.cjs');
 const { buildAdaptiveAudienceContext, assistantModeFor } = require('./server-companion-audience.cjs');
 const { buildHistoricalMemoryContext, searchHistoricalMemory, getMemoryStatus } = require('./server-companion-memory.cjs');
 const {
@@ -252,6 +253,17 @@ async function appendSessionMessages(req, messages) {
   return data;
 }
 
+async function recentSessionMessages(sessionId, limit = 12) {
+  try {
+    const response = await agentFetch(`/chat/session/${encodeURIComponent(sessionId)}?limit=${Math.max(1, Math.min(20, Number(limit) || 12))}`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return [];
+    return Array.isArray(data.messages) ? data.messages : [];
+  } catch {
+    return [];
+  }
+}
+
 function recentMediaFrom(req) {
   const raw = req.body?.recent_media;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
@@ -430,8 +442,7 @@ function sanitizeAction(raw, user) {
 
   if (raw.type === 'send_email') {
     if (!validEmail(payload.to) || !payload.subject || !payload.text) return null;
-    if (payload.mailbox && !['contact', 'julien'].includes(payload.mailbox)) return null;
-    payload.mailbox = payload.mailbox || 'julien';
+    payload.mailbox = normalizeEmailMailbox(payload.mailbox);
   }
   if (raw.type === 'set_auto_publish') payload.value = payload.value === true || payload.value === 'true' ? 'true' : 'false';
   if (raw.type === 'manage_dns_records') {
@@ -578,6 +589,57 @@ router.post('/chat', async (req, res) => {
   const availableActions = availableActionsFor(req.user).filter(type => type !== 'update_task_status' || (hasPermission(req.user, 'tasks') && requestedTaskStatus(message)));
   const sessionId = sessionIdFor(req);
   try {
+    if (availableActions.includes('send_email') && isExplicitEmailSendRequest(message)) {
+      const draft = latestDraftEmail(await recentSessionMessages(sessionId, 12));
+      if (draft) {
+        const action = sanitizeAction({
+          type: 'send_email',
+          payload: {
+            mailbox: normalizeEmailMailbox(req.body?.mailbox),
+            to: draft.to,
+            subject: draft.subject,
+            text: draft.text,
+          },
+        }, req.user);
+        if (action) {
+          const token = crypto.randomBytes(24).toString('hex');
+          const mailboxLabel = action.payload.mailbox === 'assurances'
+            ? 'Assurances Dour'
+            : action.payload.mailbox === 'store'
+              ? 'JS-Innov.IA Store'
+              : 'JS-Innov.IA';
+          const summary = `Envoyer « ${action.payload.subject} » à ${action.payload.to} depuis ${mailboxLabel}.`;
+          pending.set(token, {
+            action,
+            summary,
+            turn,
+            userId: req.user.id,
+            expiresAt: Date.now() + 5 * 60_000,
+          });
+          const confirmation = {
+            token,
+            request_nonce: turn.nonce,
+            type: action.type,
+            summary,
+            expires_in: 300,
+          };
+          const assistantMessage = `Email prêt pour ${action.payload.to}. Une seule confirmation suffit pour l’envoyer.`;
+          appendSessionMessages(req, [
+            { role: 'user', content: message },
+            { role: 'assistant', content: assistantMessage },
+          ]).catch((error) => console.warn('[assistant] email recovery history append failed:', error.message));
+          await logAction(req.user, 'conversation assistant', 'succes', 'Action send_email reconstruite depuis le dernier brouillon affiché.');
+          return res.json({
+            message: assistantMessage,
+            confirmation,
+            conversation_id: conversationIdFrom(req),
+            model_used: 'deterministic-email-recovery',
+            assistant_mode: assistantModeFor(req.user),
+          });
+        }
+      }
+    }
+
     const audience = await buildAdaptiveAudienceContext(req.user);
     const recentMedia = recentMediaFrom(req);
     const routingDecision = evaluateNovaRequest(message);
@@ -699,6 +761,7 @@ router.post('/chat', async (req, res) => {
           immutable_after_proposal: true,
           requirements: {
             create_task: 'payload.titre est obligatoire et doit reprendre exactement le titre annoncé à l’utilisateur.',
+            send_email: 'Ne proposer send_email que si le dernier message demande explicitement l’envoi. Utiliser une vraie boîte serveur: store pour JS-Innov.IA Store, assurances pour Assurances Dour, jsinnovia uniquement si cette boîte n’est pas un alias. Ne jamais demander une confirmation uniquement en prose: proposed_action est obligatoire.',
             create_video_generation: 'Pour créer une vidéo depuis le média récent, utiliser payload { provider:"auto", client_name ou client_id, campaign_name, prompt, source_document_id }. Durée 8 s et 16:9 sont imposés par le serveur.',
             assign_media_client: 'Pour rattacher le média actif, utiliser son document id avec payload { clientId, clientName }. Le client doit provenir du contexte intégrité Cockpit.',
             publish_portfolio_media: 'Uniquement sur demande explicite de publication. Utiliser le média récent et payload { title, client_name, description, media_type, dropbox_path, integrity_hash, category, technologies, featured, public_rights_confirmed:true }. La confirmation doit mentionner la diffusion publique et les droits.',
@@ -737,7 +800,10 @@ router.post('/chat', async (req, res) => {
       }, req.user.email).catch((error) => console.warn('[assistant] AI cost logging failed:', error.message));
     }
 
-    const rawAction = recoverProposedAction(data.proposed_action || data.action, data, recentMedia);
+    let rawAction = recoverProposedAction(data.proposed_action || data.action, data, recentMedia);
+    if (rawAction?.type === 'send_email' && !isExplicitEmailSendRequest(message)) {
+      rawAction = null;
+    }
     let action = sanitizeAction(rawAction, req.user);
     let blockedAction = rawAction?.type === 'update_task_status' && !action;
     let taskTitle;
@@ -885,7 +951,9 @@ router.post('/confirm', async (req, res) => {
         kind: action.definition.clientActionKind || 'http',
         method: action.definition.clientMethod || 'POST',
         ...(action.definition.clientAction ? { url: action.definition.clientAction.replace(':id', action.id || '') } : {}),
-        body: action.payload,
+        body: action.type === 'send_email'
+          ? { ...action.payload, idempotencyKey: `assistant-${token}` }
+          : action.payload,
       },
       completion_token: completionToken,
     });
