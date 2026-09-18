@@ -131,6 +131,7 @@ export default function Taches() {
   const autopilotResult = autopilotStatus?.last_result || {};
   const awaitingAuthorization = Array.isArray(autopilotResult.awaiting_authorization) ? autopilotResult.awaiting_authorization : [];
   const actualBlockers = Array.isArray(autopilotResult.blocked) ? autopilotResult.blocked : [];
+  const awaitingInput = Array.isArray(autopilotResult.awaiting_input) ? autopilotResult.awaiting_input : [];
   const queuedExecutions = Array.isArray(autopilotResult.queued) ? autopilotResult.queued : [];
   const waitingTaskIds = useMemo(() => new Set(awaitingAuthorization.map((item) => String(item.task_id))), [awaitingAuthorization]);
   const displayRows = useMemo(() => {
@@ -241,7 +242,7 @@ export default function Taches() {
       {runsUnavailable && <p role="alert" className="text-sm text-amber-600">Les états Elynea ne peuvent pas être actualisés. Les tâches et leurs historiques restent conservés.</p>}
       <details className="rounded-xl border border-border/70 bg-card p-4" aria-label="Pilotage des exécutions Elynea">
         <summary className="cursor-pointer text-sm font-semibold focus-visible:outline-primary">
-          Pilotage Elynea <span className="ml-2 font-normal text-muted-foreground">{autopilotStatus?.last_result ? `${awaitingAuthorization.length} autorisation(s) · ${queuedExecutions.length} en cours · ${actualBlockers.length} blocage(s)` : 'État en cours de vérification'} — détails et actions</span>
+          Pilotage Elynea <span className="ml-2 font-normal text-muted-foreground">{autopilotStatus?.last_result ? `${awaitingAuthorization.length} autorisation(s) · ${awaitingInput.length} action(s) requise(s) · ${queuedExecutions.length} en cours · ${actualBlockers.length} blocage(s)` : 'État en cours de vérification'} — détails et actions</span>
         </summary>
         <div className="mt-4 border-t border-border pt-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -255,9 +256,15 @@ export default function Taches() {
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
               <span className="rounded-full bg-amber-500/10 px-2.5 py-1 font-medium text-amber-600">{awaitingAuthorization.length} en attente d’autorisation</span>
+              <span className="rounded-full bg-violet-500/10 px-2.5 py-1 font-medium text-violet-600">{awaitingInput.length} action(s) requise(s)</span>
               <span className="rounded-full bg-blue-500/10 px-2.5 py-1 font-medium text-blue-600">{queuedExecutions.length} en traitement</span>
               <span className="rounded-full bg-red-500/10 px-2.5 py-1 font-medium text-red-600">{actualBlockers.length} blocage(s) réel(s)</span>
             </div>
+            {awaitingInput.slice(0, 3).map((item) => (
+              <p key={`input-${item.task_id}-${item.run_id || item.reason}`} className="text-xs text-violet-500">
+                {item.title || item.task_id} — {taskBlockerMessage(item.reason || 'telechargement_utilisateur_requis')}
+              </p>
+            ))}
             {actualBlockers.slice(0, 3).map((item) => (
               <p key={`${item.task_id}-${item.reason}`} className="text-xs text-red-500">
                 {item.title || item.task_id} — {taskBlockerMessage(item.reason)}
