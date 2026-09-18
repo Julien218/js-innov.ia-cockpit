@@ -15,8 +15,9 @@ const MAPPING_OPTIONS = [
   ['openai_project', 'Projet OpenAI'], ['railway_project', 'Projet Railway'], ['railway_service', 'Service Railway'],
   ['github_repo', 'Dépôt GitHub'], ['github_org', 'Organisation GitHub'], ['github_user', 'Compte GitHub'],
   ['twilio_account', 'Compte Twilio'], ['supabase_project', 'Projet Supabase'],
-  ['dropbox_account', 'Compte Dropbox'], ['media_provider', 'Fournisseur vidéo / image'],
-  ['api_provider', 'Autre API'],
+  ['dropbox_account', 'Compte Dropbox'], ['storage_account', 'Stockage / sauvegarde'],
+  ['media_provider', 'Fournisseur vidéo / image'], ['communications_provider', 'Fournisseur communications'],
+  ['api_provider', 'Autre API'], ['other_provider', 'Autre fournisseur technique'],
 ];
 
 function currentMonth() {
@@ -250,7 +251,7 @@ export default function AICostControl() {
       });
       setNotice({
         type: result.blocked_sources > 0 ? 'error' : 'success',
-        text: `${result.imported_events || 0} nouvelle(s) dépense(s) importée(s) · ${result.blocked_sources || 0} source(s) bloquée(s).`,
+        text: `${result.imported_events || 0} nouvelle(s) dépense(s) importée(s) · ${result.coverage_checks_recorded || 0} contrôle(s) de période enregistré(s) · ${result.blocked_sources || 0} source(s) bloquée(s).`,
       });
       await accountingQuery.refetch();
     } catch (error) {
@@ -452,27 +453,33 @@ export default function AICostControl() {
         </div>
       ) : accountingQuery.data && (
         <div className="space-y-4">
-          {!accountingQuery.data.completeness?.complete && (
+          {!accountingQuery.data.completeness?.complete ? (
             <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-800">
               <div className="flex items-center gap-2 font-semibold"><AlertTriangle className="w-4 h-4" /> Total comptable incomplet</div>
-              <p className="mt-1">{accountingQuery.data.completeness?.warning || 'AI Cost Control ne doit pas être utilisé comme total comptable complet.'}</p>
-              <p className="mt-1 text-xs">{accountingQuery.data.completeness?.gaps?.length || 0} source(s) restent à connecter ou à justifier.</p>
+              <p className="mt-1">{accountingQuery.data.completeness?.warning || 'Certaines sources actives demandent encore une synchronisation ou un justificatif.'}</p>
+              <p className="mt-1 text-xs">{accountingQuery.data.completeness?.gaps?.length || 0} source(s) active(s) restent à synchroniser ou à justifier.</p>
             </div>
-          )}
+          ) : Number(accountingQuery.data.completeness?.applicable_sources || 0) > 0 ? (
+            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-800">
+              <div className="flex items-center gap-2 font-semibold"><CheckCircle2 className="w-4 h-4" /> Couverture comptable complète</div>
+              <p className="mt-1">Toutes les sources actives de la période sont synchronisées ou justifiées. Les dépenses non vérifiées restent toujours bloquées avant facturation.</p>
+            </div>
+          ) : null}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
+            <KpiCard icon={CircleDollarSign} label="Total dépenses enregistrées" value={eurMinor(accountingQuery.data.accounting?.recorded_cost_minor)} detail="Réel + manuel + estimé + non vérifié" />
             <KpiCard icon={ShieldCheck} label="Réel API" value={eurMinor(accountingQuery.data.accounting?.actual_cost_minor)} detail="Preuves fournisseur" tone="emerald" />
             <KpiCard icon={Database} label="Manuel vérifié" value={eurMinor(accountingQuery.data.accounting?.manual_verified_minor)} detail="Factures et justificatifs" />
             <KpiCard icon={TrendingUp} label="Coûts estimés" value={eurMinor(accountingQuery.data.accounting?.estimated_cost_minor)} detail="Calculs internes, séparés du réel" tone="violet" />
             <KpiCard icon={CircleDollarSign} label="Montant facturable" value={eurMinor(accountingQuery.data.accounting?.billable_minor)} detail={`${eurMinor(accountingQuery.data.accounting?.unbilled_billable_minor)} reste à facturer`} />
-            <KpiCard icon={AlertTriangle} label="Non vérifié" value={eurMinor(accountingQuery.data.accounting?.unverified_cost_minor)} detail={`${accountingQuery.data.accounting?.unverified_events || 0} élément(s), exclus des factures`} tone="amber" />
+            <KpiCard icon={AlertTriangle} label="Non vérifié" value={eurMinor(accountingQuery.data.accounting?.unverified_cost_minor)} detail={`${accountingQuery.data.accounting?.unverified_events || 0} élément(s), visibles mais exclus des factures`} tone="amber" />
           </div>
 
           <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
               <div>
                 <h2 className="font-semibold">Couverture comptable par fournisseur</h2>
-                <p className="text-xs text-muted-foreground">Une source absente ou non connectée n’est jamais comptée comme 0 €.</p>
+                <p className="text-xs text-muted-foreground">Une source non utilisée n’est pas considérée comme une dépense manquante. Une source automatique active doit avoir été synchronisée pour la période ; une dépense sans preuve reste à justifier.</p>
               </div>
               <button onClick={syncAccounting} disabled={saving === 'sync'} className="h-10 px-3 rounded-xl bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 text-sm font-medium">
                 <RefreshCw className={`w-4 h-4 ${saving === 'sync' ? 'animate-spin' : ''}`} /> {saving === 'sync' ? 'Synchronisation…' : 'Synchroniser les coûts'}
@@ -483,7 +490,7 @@ export default function AICostControl() {
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground border-b border-border">
                     <th className="py-2 pr-3 font-medium">Source</th>
-                    <th className="py-2 pr-3 font-medium">Connexion</th>
+                    <th className="py-2 pr-3 font-medium">Couverture</th>
                     <th className="py-2 pr-3 font-medium text-right">Réel API</th>
                     <th className="py-2 pr-3 font-medium text-right">Manuel vérifié</th>
                     <th className="py-2 pr-3 font-medium text-right">Estimé</th>
@@ -493,19 +500,42 @@ export default function AICostControl() {
                 </thead>
                 <tbody>
                   {(accountingQuery.data.sources || []).map((source) => {
+                    const statusLabel = !source.applicable
+                      ? 'Non utilisé'
+                      : source.has_unverified
+                        ? 'Justificatif requis'
+                        : source.covered
+                          ? 'Couvert'
+                          : source.accounting_state === 'invoice_required'
+                            ? 'Facture à importer'
+                            : source.accounting_state === 'sync_required'
+                              ? 'À synchroniser'
+                              : 'À configurer';
+                    const statusClass = !source.applicable
+                      ? 'bg-muted text-muted-foreground'
+                      : source.has_unverified
+                        ? 'bg-amber-500/10 text-amber-700'
+                        : source.covered
+                          ? 'bg-emerald-500/10 text-emerald-700'
+                          : source.accounting_state === 'invoice_required'
+                            ? 'bg-blue-500/10 text-blue-700'
+                            : 'bg-amber-500/10 text-amber-700';
+                    const action = !source.applicable
+                      ? 'Aucune — source non utilisée'
+                      : source.has_unverified
+                        ? `${source.unverified_events || 0} dépense(s) sans justificatif`
+                        : source.covered
+                          ? 'Aucune'
+                          : (source.missing_configuration || []).join(' · ') || (source.accounting_state === 'sync_required' ? 'Lancer la synchronisation de la période' : 'Justificatif ou remontée d’usage requis');
                     return (
                       <tr key={source.id} className="border-b border-border/50 last:border-0">
                         <td className="py-2.5 pr-3 font-medium">{source.label}</td>
-                        <td className="py-2.5 pr-3">
-                          <span className={`text-[11px] px-2 py-1 rounded-full ${source.ready ? 'bg-emerald-500/10 text-emerald-700' : source.accounting_state === 'invoice_required' ? 'bg-blue-500/10 text-blue-700' : 'bg-amber-500/10 text-amber-700'}`}>
-                            {source.ready ? 'Configuré' : source.accounting_state === 'invoice_required' ? 'Facture à importer' : 'À configurer'}
-                          </span>
-                        </td>
+                        <td className="py-2.5 pr-3"><span className={`text-[11px] px-2 py-1 rounded-full ${statusClass}`}>{statusLabel}</span></td>
                         <td className="py-2.5 pr-3 text-right font-semibold tabular-nums">{eurMinor(source.actual_cost_minor)}</td>
                         <td className="py-2.5 pr-3 text-right tabular-nums">{eurMinor(source.manual_verified_minor)}</td>
                         <td className="py-2.5 pr-3 text-right tabular-nums">{eurMinor(source.estimated_cost_minor)}</td>
                         <td className="py-2.5 pr-3 text-right tabular-nums text-amber-700">{eurMinor(source.unverified_cost_minor)}</td>
-                        <td className="py-2.5 text-xs text-muted-foreground">{(source.missing_configuration || []).join(' · ') || 'Aucune'}</td>
+                        <td className="py-2.5 text-xs text-muted-foreground">{action}</td>
                       </tr>
                     );
                   })}
@@ -513,11 +543,12 @@ export default function AICostControl() {
               </table>
             </div>
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-muted-foreground">
+              <p><strong className="text-foreground">Enregistré :</strong> toutes les dépenses détectées, quel que soit leur niveau de preuve.</p>
               <p><strong className="text-foreground">Réel :</strong> montant reçu d’une API fournisseur avec preuve.</p>
               <p><strong className="text-foreground">Manuel vérifié :</strong> facture ou justificatif identifiable.</p>
               <p><strong className="text-foreground">Estimé :</strong> temps machine, énergie ou tarification par tokens documentée.</p>
               <p><strong className="text-foreground">Facturable :</strong> règle client appliquée sans modifier le coût interne.</p>
-              <p><strong className="text-foreground">Non vérifié :</strong> bloqué avant facturation.</p>
+              <p><strong className="text-foreground">Non vérifié :</strong> visible dans le total enregistré, bloqué avant facturation.</p>
             </div>
 
             <div className="mt-5 pt-5 border-t border-border">
@@ -560,11 +591,11 @@ export default function AICostControl() {
 
                 <div className="rounded-xl border border-border p-4">
                   <h3 className="font-semibold text-sm">Importer une facture ou un justificatif</h3>
-                  <p className="text-xs text-muted-foreground mt-1">Pour Supabase, Dropbox, Railway, Twilio ou un générateur vidéo lorsque l’API monétaire n’est pas disponible.</p>
+                  <p className="text-xs text-muted-foreground mt-1">Toutes les familles de dépenses peuvent être comptabilisées manuellement lorsqu’une API monétaire fiable n’est pas disponible.</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
                     <select value={manualCostForm.client_id} onChange={(event) => setManualCostForm((value) => ({ ...value, client_id: event.target.value, cost_center_id: '' }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm"><option value="">Client</option>{(clientsQuery.data?.clients || []).map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>
                     <select value={manualCostForm.cost_center_id} onChange={(event) => setManualCostForm((value) => ({ ...value, cost_center_id: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm"><option value="">Projet / centre de coût (optionnel)</option>{(centersQuery.data?.centers || []).filter((center) => !manualCostForm.client_id || String(center.client_id) === String(manualCostForm.client_id)).map((center) => <option key={center.id} value={center.id}>{center.product_code}</option>)}</select>
-                    <select value={manualCostForm.source_type} onChange={(event) => setManualCostForm((value) => ({ ...value, source_type: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm"><option value="railway">Railway</option><option value="github">GitHub</option><option value="supabase">Supabase</option><option value="dropbox">Dropbox</option><option value="twilio">Twilio</option><option value="media_ai">Générateur vidéo / image</option><option value="other">Autre</option></select>
+                    <select value={manualCostForm.source_type} onChange={(event) => setManualCostForm((value) => ({ ...value, source_type: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm"><option value="llm_api">LLM / API IA</option><option value="railway">Railway</option><option value="github">GitHub</option><option value="local_ai">IA locale</option><option value="storage">Stockage / sauvegardes</option><option value="communications">Communications</option><option value="api">Autres API</option><option value="supabase">Supabase</option><option value="dropbox">Dropbox</option><option value="twilio">Twilio</option><option value="media_ai">Générateur vidéo / image</option><option value="other">Autre frais technique</option></select>
                     <input type="number" min="0" step="0.01" value={manualCostForm.amount_eur} onChange={(event) => setManualCostForm((value) => ({ ...value, amount_eur: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm" placeholder="Montant comptabilisé selon justificatif (€)" />
                     <input value={manualCostForm.verification_ref} onChange={(event) => setManualCostForm((value) => ({ ...value, verification_ref: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm" placeholder="N° facture ou référence vérifiable" />
                     <input value={manualCostForm.description} onChange={(event) => setManualCostForm((value) => ({ ...value, description: event.target.value }))} className="h-10 px-3 rounded-xl border border-border bg-background text-sm" placeholder="Description" />
