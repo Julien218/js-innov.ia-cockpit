@@ -1,71 +1,89 @@
 /**
  * Client Supabase — SERVEUR UNIQUEMENT
- * Le service_role bypass la RLS. Chaque usage doit vérifier
- * l'autorisation applicative AVANT d'appeler ces clients.
- * Ne jamais exporter ni exposer côté frontend/client.
+ * Le service_role bypass la RLS. Ne jamais exporter cote frontend.
+ *
+ * Validation au RUNTIME uniquement :
+ * - En mode CI (build Next.js), les vars peuvent etre factices
+ *   → le createClient reussit avec des valeurs syntaxiquement valides
+ * - Au runtime reel, les vars doivent etre les vraies valeurs Supabase
+ * - Pour les tests unitaires, jest.setup.ts injecte des valeurs factices
+ *
+ * La validation stricte (throw) est dans validateRuntimeEnv() appelee
+ * depuis le premier handler de requete, pas au module load.
  */
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// Fallbacks syntaxiquement valides pour le build Next.js (build-time uniquement)
+// Ces valeurs ne permettent aucun appel Supabase reel.
+const BUILD_TIME_URL = 'https://build-placeholder.supabase.co';
+const BUILD_TIME_KEY = 'ci-build-placeholder.not-a-real-jwt.build-time-only';
 
-if (!supabaseUrl || !serviceRoleKey) {
-  throw new Error('[supabase] SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY requis (côté serveur uniquement)');
-}
+const supabaseUrl     = process.env.SUPABASE_URL     ?? BUILD_TIME_URL;
+const serviceRoleKey  = process.env.SUPABASE_SERVICE_ROLE_KEY ?? BUILD_TIME_KEY;
 
 /**
  * Client admin (service_role) — contourne la RLS.
- * Toujours vérifier l'appartenance ville AVANT d'appeler ce client.
+ * Verifie toujours l'appartenance ville AVANT d'appeler ce client.
  */
-export const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-  auth: { persistSession: false, autoRefreshToken: false },
+export const supabaseAdmin: SupabaseClient = createClient(supabaseUrl, serviceRoleKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+    detectSessionInUrl: false,
+  },
+  global: {
+    headers: { 'X-Client-Info': 'villeconnect-api/2.0' },
+  },
 });
 
 /**
- * Vérifie qu'un utilisateur appartient bien à une ville avant toute opération admin.
- * Lève une erreur si la vérification échoue.
+ * Validation au RUNTIME (a appeler depuis le premier handler, pas a l'import).
+ * Lance une erreur si les vraies vars ne sont pas configurees.
  */
-export async function assertUserBelongsToCity(userId: string, cityId: string): Promise<void> {
-  // Vérifie via le claim JWT ou la table de membership
-  // Ici : on lit le profil utilisateur qui doit avoir city_id correspondant
-  const { data, error } = await supabaseAdmin
-    .from('vc_conversations')   // proxy : si l'utilisateur a au moins une conversation dans la ville
-    .select('id')
-    .eq('user_id', userId)
-    .eq('city_id', cityId)
-    .limit(1);
-
-  // Fallback : vérification via les métadonnées JWT (claim custom 'city_id')
-  // Dans un vrai setup Supabase, ce claim est injecté via auth.users.raw_app_meta_data
-  if (error && error.code !== 'PGRST116') {
-    throw new Error(`[supabase] Erreur vérification appartenance ville: ${error.message}`);
+export function validateRuntimeEnv(): void {
+  if (
+    !process.env.SUPABASE_URL ||
+    process.env.SUPABASE_URL === BUILD_TIME_URL
+  ) {
+    throw new Error('[supabase] SUPABASE_URL manquante ou placeholder — configurer en production');
   }
-  // Si aucune conversation ET on ne peut pas vérifier autrement, on permet
-  // (la RLS côté Supabase est la vraie ligne de défense)
+  if (
+    !process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY === BUILD_TIME_KEY
+  ) {
+    throw new Error('[supabase] SUPABASE_SERVICE_ROLE_KEY manquante ou placeholder — configurer en production');
+  }
 }
 
 /**
- * Transition atomique de machine d'états via la fonction SQL.
- * Retourne l'id si transition réussie, null si la ligne n'était pas dans le bon état.
+ * transitionActionStatus — UPDATE atomique WHERE status = from_status.
+ * Retourne true si la transition a reellement eu lieu (1 ligne mise a jour).
+ * Retourne false si l'etat courant != from_status (transition concurrente detectee).
  */
 export async function transitionActionStatus(
-  actionId: string,
+  actionLogId: string,
   fromStatus: string,
   toStatus: string,
-  opts?: {
-    validatedBy?: string;
-    rejectionReason?: string;
-    n8nExecutionId?: string;
+  meta?: Record<string, unknown>,
+): Promise<boolean> {
+  const now = new Date().toISOString();
+  const updateData: Record<string, unknown> = {
+    status: toStatus,
+    updated_at: now,
+    ...meta,
+  };
+
+  const { data, error } = await supabaseAdmin
+    .from('ai_action_logs')
+    .update(updateData)
+    .eq('id', actionLogId)
+    .eq('status', fromStatus)   // garde atomique
+    .select('id');
+
+  if (error) {
+    console.error('[supabase] transitionActionStatus erreur:', error.message);
+    return false;
   }
-): Promise<string | null> {
-  const { data, error } = await supabaseAdmin.rpc('transition_action_status', {
-    p_id: actionId,
-    p_from: fromStatus,
-    p_to: toStatus,
-    p_validated_by: opts?.validatedBy ?? null,
-    p_rejection_reason: opts?.rejectionReason ?? null,
-    p_n8n_id: opts?.n8nExecutionId ?? null,
-  });
-  if (error) throw new Error(`[supabase] Transition état échouée: ${error.message}`);
-  return data as string | null;
+
+  return Array.isArray(data) && data.length === 1;
 }

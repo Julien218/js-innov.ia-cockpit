@@ -29,7 +29,7 @@ function simulateAgentRun(hasInterruption: boolean): MockRunResult {
   return { finalOutput: 'Voici votre réponse.', interruptions: [], state: undefined };
 }
 
-function processRunResult(result: MockRunResult, actionLogId: string): { response: string; pendingValidation: boolean; runState?: string } {
+function processRunResult(result: MockRunResult, _actionLogId: string): { response: string; pendingValidation: boolean; runState?: string } {
   if (result.interruptions.length > 0) {
     const runStateSerialized = JSON.stringify(result.state ?? {});
     return {

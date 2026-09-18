@@ -10,7 +10,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authenticate, assertCityAccess, authErrorResponse, AuthError } from '@/lib/auth';
+import { authenticate, assertCityAccess, authErrorResponse } from '@/lib/auth';
 import { checkRateLimits } from '@/lib/rate-limit';
 import { supabaseAdmin } from '@/lib/supabase';
 import { logRunStart } from '@/lib/action-logger';
@@ -19,7 +19,13 @@ import type { AgentServerContext } from '@/agents/server-context';
 import type { ApiResponse, ChatRequest, ChatResponse } from '@/lib/types';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// Lazy getter — openai v6 valide apiKey à l'instanciation.
+// Ne pas instancier au niveau module (échoue au build sans OPENAI_API_KEY réelle).
+let _openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return _openai;
+}
 
 // ── Validation Zod ────────────────────────────────────────────────────────────
 const ChatBodySchema = z.object({
@@ -87,7 +93,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   });
 
   // 8. Stocke le message utilisateur
-  const { data: userMsg } = await supabaseAdmin.from('vc_messages').insert({
+  await supabaseAdmin.from('vc_messages').insert({
     conversation_id: conversationId, city_id: authCtx.cityId,
     user_id: authCtx.userId, role: 'user', content: body.message,
   }).select('id').single();
@@ -114,7 +120,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // Vectorisation asynchrone (non-bloquant)
   if (assistantMsg?.id) {
-    openai.embeddings.create({ model: 'text-embedding-3-small', input: agentResult.response })
+    getOpenAI().embeddings.create({ model: 'text-embedding-3-small', input: agentResult.response })
       .then(emb => supabaseAdmin.from('vc_messages').update({ embedding: emb.data[0].embedding }).eq('id', assistantMsg.id))
       .catch(e => console.error('[chat] Erreur vectorisation:', e));
   }
