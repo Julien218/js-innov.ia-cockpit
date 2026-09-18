@@ -964,7 +964,7 @@ router.post('/upload-media', express.raw({ type: () => true, limit: MAX_NOVA_MED
       return res.status(400).json({ error: 'Fichier média vide ou nom absent.' });
     }
     if (buffer.length > MAX_NOVA_MEDIA_BYTES) return res.status(413).json({ error: 'Fichier trop volumineux (maximum 100 Mo).' });
-    if (!isSupportedMedia(fileName, mimeType)) return res.status(415).json({ error: 'Format non autorisé. Utilisez une image ou une vidéo prise en charge.' });
+    if (!isSupportedMedia(fileName, mimeType)) return res.status(415).json({ error: 'Fichier non autorisé ou nom de fichier invalide.' });
 
     const [clients, projects] = await Promise.all([
       fetchTableRows('Client').catch((error) => { console.warn('[assistant] Client fetch failed:', error.message); return []; }),
