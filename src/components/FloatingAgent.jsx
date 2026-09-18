@@ -732,13 +732,13 @@ const FloatingAgent = () => {
             onClick={() => setIsOpen(true)}
             onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.08)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-            title="NOVA — Assistant IA"
+            title="Elynea — Assistante IA"
             style={{
               width: '60px', height: '60px', borderRadius: '50%', cursor: 'pointer', overflow: 'hidden', position: 'relative',
               boxShadow: '0 4px 20px rgba(212,175,55,0.3), 0 0 0 2px rgba(212,175,55,0.5)', transition: 'transform 0.2s ease',
             }}
           >
-            <img src={novaAvatar} alt="NOVA" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+            <img src={novaAvatar} alt="Elynea" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
             <span style={{ position: 'absolute', top: '-2px', right: '-2px', width: '12px', height: '12px', borderRadius: '50%', background: '#06B6D4', border: '2px solid #0B0B0F' }} />
           </div>
         </div>
@@ -755,9 +755,9 @@ const FloatingAgent = () => {
             borderBottom: '1px solid rgba(212,175,55,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <img src={novaAvatar} alt="NOVA" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(212,175,55,0.4)' }} />
+              <img src={novaAvatar} alt="Elynea" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(212,175,55,0.4)' }} />
               <div>
-                <p style={{ color: '#D4AF37', fontSize: '14px', fontWeight: 600, margin: 0 }}>NOVA</p>
+                <p style={{ color: '#D4AF37', fontSize: '14px', fontWeight: 600, margin: 0 }}>Elynea</p>
                 <p style={{ color: '#64748b', fontSize: '11px', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', display: 'inline-block', background: statusColor }} />
                   {statusText}
@@ -796,7 +796,7 @@ const FloatingAgent = () => {
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {messages.length === 0 && !loading && (
               <div style={{ textAlign: 'center', color: '#475569', fontSize: '13px', padding: '30px 20px' }}>
-                <img src={novaAvatar} alt="NOVA" style={{ width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 12px', display: 'block', opacity: 0.8 }} />
+                <img src={novaAvatar} alt="Elynea" style={{ width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 12px', display: 'block', opacity: 0.8 }} />
                 <p style={{ margin: 0 }}>Salut Julien !</p>
                 <p style={{ marginTop: '8px' }}>Pose ta question, parle-moi, ou joins n’importe quel fichier à classer dans Dropbox.</p>
                 <p style={{ marginTop: '12px', fontSize: '11px', color: '#334155' }}>{sttSupported ? '🎤 Micro disponible' : 'Micro non supporté'} · {ttsSupported ? '🔊 Voix disponible' : 'Voix non supportée'}</p>
@@ -819,7 +819,7 @@ const FloatingAgent = () => {
 
             {loading && (
               <div style={{ alignSelf: 'flex-start', color: '#64748b', fontSize: '12px', fontStyle: 'italic', padding: '8px 14px' }}>
-                <span style={{ animation: 'pulse 1.5s infinite' }}>●</span> NOVA réfléchit...
+                <span style={{ animation: 'pulse 1.5s infinite' }}>●</span> Elynea réfléchit...
               </div>
             )}
             <div ref={messagesEndRef} />
