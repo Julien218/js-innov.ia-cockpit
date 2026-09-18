@@ -38,7 +38,7 @@ export const isTaskCompleted = (taskOrStatus) => {
 };
 
 export const isTaskBlocked = (taskOrStatus) => {
-  if (taskOrStatus?.operational_status) return ["NO_EXECUTOR", "TECHNICAL_ERROR", "FAILED", "WAITING_INPUT"].includes(taskOrStatus.operational_status);
+  if (taskOrStatus?.operational_status) return ["NO_EXECUTOR", "TECHNICAL_ERROR", "FAILED"].includes(taskOrStatus.operational_status);
   const value = typeof taskOrStatus === "object" && taskOrStatus !== null
     ? taskOrStatus.statut ?? taskOrStatus.status
     : taskOrStatus;
@@ -70,5 +70,9 @@ export function taskBlockerMessage(reason) {
     source_ou_information_requise: 'Source média ou informations nécessaires à compléter.',
     correction_repertoire_interne_a_executer: 'Diagnostic disponible ; exécuteur de correction du dépôt non raccordé.',
     plusieurs_runs_actifs_sur_un_objectif_regroupe: 'Plusieurs exécutions déclarées actives pour cet objectif ; relance suspendue.',
+    aucun_executeur_media_enregistre: 'Ancien blocage média : Elynea sait maintenant préparer le téléchargement si le document source est référencé.',
+    aucun_executeur_reel_enregistre_pour_ce_type_de_tache: 'Ancien type de tâche non routé ; Elynea doit réévaluer cette tâche avec les nouveaux exécuteurs.',
+    telechargement_utilisateur_requis: 'Le fichier est prêt. Utilisez le bouton Télécharger pour l’enregistrer sur votre appareil.',
+    liaison_inscriptions_miss_dour_non_configuree: 'La liaison des inscriptions Miss & Mister Dour doit être configurée avant vérification.',
   })[reason] || reason || 'Exécuteur indisponible';
 }

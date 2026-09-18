@@ -51,9 +51,17 @@ test('Elynea accepte les pièces jointes de tout type et neutralise les chemins 
   assert.equal(isSupportedMedia('clip.mov', 'application/octet-stream'), true);
   assert.equal(isSupportedMedia('facture.pdf', 'application/pdf'), true);
   assert.equal(isSupportedMedia('archive.zip', 'application/zip'), true);
+  assert.equal(isSupportedMedia('chanson.mp3', 'audio/mpeg'), true);
   assert.equal(isSupportedMedia('programme.exe', 'application/octet-stream'), true);
   assert.equal(isSupportedMedia('', 'application/octet-stream'), false);
   assert.equal(safeUploadFilename('../secret/video.mp4'), 'video.mp4');
+});
+
+test('Elynea classe explicitement un MP3 dans Audio', async () => {
+  const result = await classifyDocument('ma-chanson.mp3', 'audio/mpeg', 4096, [], '', []);
+  assert.equal(result.docType, 'Audio');
+  assert.match(result.folderPath, /\/A_Classer\/Audio$/);
+  assert.match(result.suggestedPath, /ma-chanson\.mp3$/);
 });
 
 test('NOVA renomme un média avec le client, le projet, le sujet et une empreinte stable', async () => {
@@ -134,6 +142,8 @@ test('le Companion expose un dépôt binaire sécurisé, générique et indexé'
   assert.match(ui, /multiple/);
   assert.doesNotMatch(ui, /accept="image\/jpeg,image\/png,image\/webp,video\/mp4,video\/webm,video\/quicktime"/);
   assert.match(ui, /n’importe quel fichier/);
+  assert.doesNotMatch(ui, /accept=/);
+  assert.match(ui, /MP3, audio, image, vidéo, PDF, ZIP/);
   assert.match(docker, /client_max_body_size 260m/);
   assert.match(docker, /proxy_request_buffering off/);
 });

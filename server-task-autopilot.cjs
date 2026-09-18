@@ -42,6 +42,10 @@ function recordedExecutionFailure(task) {
   const matches = [...notes.matchAll(/Blocage d[’']exécution réel\s*:\s*([^\n]+)/gi)];
   const latest = matches.length ? matches[matches.length - 1][1].trim().slice(0, 500) : null;
   if (/could not find.*['’]priorite['’].*['’]projet['’].*schema cache/i.test(String(latest || ''))) return null;
+  if (/aucun_executeur_(?:media_enregistre|reel_enregistre_pour_ce_type_de_tache)/i.test(String(latest || ''))) {
+    const currentExecutor = resolveNovaExecutor(task);
+    if (currentExecutor.kind !== 'unsupported') return null;
+  }
   return latest;
 }
 
@@ -160,7 +164,7 @@ async function recordRun(task, classification, result, status = 'completed', err
 
 function proofNote(result) {
   return [
-    'Autopilote Cockpit — diagnostic réellement exécuté.',
+    'Elynea Cockpit — diagnostic réellement exécuté.',
     `Outil: ${result.tool}`,
     `Heure: ${result.checked_at}`,
     `Cible: ${result.domain || 'clients, projets et factures du Cockpit'}`,
@@ -208,6 +212,8 @@ async function closeVerifiedDuplicates(canonicalTask, copies, proofIds = []) {
 function safeScheduledTask(task, executor) {
   const text = norm(taskText(task));
   if (executor.kind === 'local') return true;
+  if (executor.kind === 'registration') return true;
+  if (executor.kind === 'document') return true;
   if (executor.kind === 'business') return /(analys|audit|verifi|control)/.test(text);
   if (executor.kind === 'site') return isReadOnlySiteTask(task);
   return false;
@@ -234,6 +240,7 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
     const executableTasks = [];
     const blocked = [];
     const awaitingAuthorization = [];
+    const awaitingInput = [];
     const ready = [];
     const duplicates = [];
     for (const group of groups.values()) {
@@ -245,6 +252,7 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
         for (const run of groupRuns) {
           const item = { task_id: run.task_id, title: group.find(task => String(task.id) === String(run.task_id))?.titre, run_id: run.id, status: 'already_running', operational_status: run.operational_status || (run.status === 'awaiting_approval' ? 'WAITING_AUTHORIZATION' : run.status === 'awaiting_review' ? 'WAITING_INPUT' : 'RUNNING'), reason: 'reservation_existante_conservee' };
           if (item.operational_status === 'WAITING_AUTHORIZATION') awaitingAuthorization.push(item);
+          else if (item.operational_status === 'WAITING_INPUT') awaitingInput.push(item);
           else if (['RUNNING', 'RETRYING'].includes(item.operational_status)) existingExecutions.push(item);
           else if (!blocked.some(entry => entry.task_id === task.id)) blocked.push({ ...item, task_id: task.id, title: task.titre || task.title, reason: run.reason || 'confirmation_execution_absente', run_ids: groupRuns.map(entry => entry.id) });
         }
@@ -317,8 +325,13 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
       return { ...item, title: item.title || task?.titre || task?.title, executor: item.executor || executor?.id || null };
     };
     const executed = batch.results.filter((item) => item.status === 'completed').map(decorate);
-    const queued = [...existingExecutions, ...batch.results.filter((item) => ['queued_local', 'already_running', 'awaiting_review'].includes(item.status))].map(decorate);
-    blocked.push(...batch.results.filter((item) => !item.success).map((item) => {
+    awaitingInput.push(...batch.results
+      .filter((item) => item.operational_status === 'WAITING_INPUT' || item.status === 'awaiting_review')
+      .map(decorate));
+    const queued = [...existingExecutions, ...batch.results
+      .filter((item) => ['queued_local', 'already_running'].includes(item.status) && item.operational_status !== 'WAITING_INPUT')
+    ].map(decorate);
+    blocked.push(...batch.results.filter((item) => !item.success && !['WAITING_INPUT', 'WAITING_AUTHORIZATION'].includes(item.operational_status)).map((item) => {
       const decorated = decorate(item);
       return { task_id: decorated.task_id, title: decorated.title, executor: decorated.executor, run_id: decorated.run_id, operational_status: decorated.operational_status, reason: decorated.error || decorated.status };
     }));
@@ -326,7 +339,7 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
       const canonicalTask = tasks.find((task) => String(task.id) === String(execution.task_id));
       if (canonicalTask) execution.duplicate_task_ids = await closeVerifiedDuplicates(canonicalTask, duplicateTasksForCanonical(tasks, canonicalTask), [execution.run_id].filter(Boolean));
     }
-    const result = { run_id: `autopilot-${crypto.randomUUID()}`, examined: tasks.length, unique: groups.size, executed, queued, ready, blocked, awaiting_authorization: awaitingAuthorization, duplicates, allow_writes: allowWrites, inspection_only: inspectOnly };
+    const result = { run_id: `autopilot-${crypto.randomUUID()}`, examined: tasks.length, unique: groups.size, executed, queued, ready, blocked, awaiting_authorization: awaitingAuthorization, awaiting_input: awaitingInput, duplicates, allow_writes: allowWrites, inspection_only: inspectOnly };
     state.last_result = result;
     return result;
   } catch (error) {
@@ -391,7 +404,7 @@ router.post('/local-results', async (req, res) => {
       const log = pendingRun?.id
         ? await agentRequest(`/agent-runs/${encodeURIComponent(pendingRun.id)}`, { method: 'PATCH', body: runPayload })
         : await agentRequest('/agent-runs', { method: 'POST', body: { task_id: taskId, agent_id: 'nova-local-tools', functional_role: 'windows_local_diagnostics', provider_name: 'local-agent', status: 'completed', execution_mode: 'autonomous', input: { title: String(item.title || '').slice(0, 240), tools: evidence.map((run) => run.tool) }, ...runPayload, idempotency_key: `local-autopilot:${taskId}:${evidence.map((run) => run.id).join(':')}`.slice(0, 500), requested_by: String(req.user?.email || req.user?.id || 'desktop-companion').slice(0, 180), started_at: evidence[0].started_at } });
-      await patchTask(taskId, { statut: 'terminee', notes: `${canonicalTask.notes || ''}\nNOVA locale — diagnostic terminé avec preuve.\nOutils: ${evidence.map((run) => run.tool).join(', ')}\nJournaux: ${evidence.map((run) => run.id).join(', ')}` });
+      await patchTask(taskId, { statut: 'terminee', notes: `${canonicalTask.notes || ''}\nElynea locale — diagnostic terminé avec preuve.\nOutils: ${evidence.map((run) => run.tool).join(', ')}\nJournaux: ${evidence.map((run) => run.id).join(', ')}` });
       const duplicateTaskIds = await closeVerifiedDuplicates(
         canonicalTask,
         duplicateTasksForCanonical(allTasks, canonicalTask),

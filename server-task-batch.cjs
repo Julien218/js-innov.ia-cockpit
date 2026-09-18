@@ -1,6 +1,9 @@
 const {
   executeBusinessTask,
   executeProjectTask,
+  executeRegistrationAuditTask,
+  executeDocumentDownloadTask,
+  executeTaskMaintenance,
   executeSiteTask,
   executeVideoTask,
   resolveNovaExecutor,
@@ -50,6 +53,7 @@ function operationalStatus(outcome = {}) {
   if (outcome.requires_authorization) return 'WAITING_AUTHORIZATION';
   if (outcome.completed) return 'DONE';
   if (outcome.technical_error) return 'TECHNICAL_ERROR';
+  if (outcome.awaiting_review || outcome.result?.requires_user_action) return 'WAITING_INPUT';
   if (/executeur|developpement_non_execute|correction_repertoire_interne_a_executer/.test(outcome.reason || '')) return 'NO_EXECUTOR';
   if (outcome.result?.missing_fields?.length || /absent|manquant|ambigu|incomplete|cible_site/.test(outcome.reason || '')) return 'WAITING_INPUT';
   return 'FAILED';
@@ -255,6 +259,9 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
     site: executionHandlers.site || executeSiteTask,
     business: executionHandlers.business || executeBusinessTask,
     project: executionHandlers.project || executeProjectTask,
+    registration: executionHandlers.registration || executeRegistrationAuditTask,
+    document: executionHandlers.document || executeDocumentDownloadTask,
+    taskMaintenance: executionHandlers.taskMaintenance || executeTaskMaintenance,
     video: executionHandlers.video || executeVideoTask,
   };
   const existingResponse = await agentFetch('/data/Tache?limit=250', {
@@ -348,7 +355,7 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
           continue;
         }
         await patchRun(agentFetch, run.id, { status: 'failed', result: { operational_status: op }, error: executor.reason, completed_at: new Date().toISOString() }, organisation);
-        await patchTask(agentFetch, task.id, { statut: 'bloquee', notes: taskNotes(item, `Blocage NOVA: ${executor.reason}.`) }, organisation);
+        await patchTask(agentFetch, task.id, { statut: 'bloquee', notes: taskNotes(item, `Blocage Elynea: ${executor.reason}.`) }, organisation);
         results.push({ index, success: false, task_id: task.id, run_id: run.id, executor: executor.id, status: 'blocked', operational_status: op, error: executor.reason });
         continue;
       }
@@ -380,9 +387,15 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
         ? await handlers.site(executor, item.record, { readOnly: item.read_only })
         : executor.kind === 'project'
           ? await handlers.project(item.record, agentRequest)
-          : executor.kind === 'video'
-            ? await handlers.video(item.record, agentRequest, null, { user, organisation, taskId: task.id, runId: run.id })
-            : await handlers.business(item.record, agentRequest);
+          : executor.kind === 'registration'
+            ? await handlers.registration(item.record)
+            : executor.kind === 'document'
+              ? await handlers.document(item.record)
+              : executor.kind === 'task_maintenance'
+                ? await handlers.taskMaintenance(item.record, agentRequest)
+                : executor.kind === 'video'
+                  ? await handlers.video(item.record, agentRequest, null, { user, organisation, taskId: task.id, runId: run.id })
+                  : await handlers.business(item.record, agentRequest);
 
       if (outcome.completed) {
         await patchRun(agentFetch, run.id, { status: 'completed', result: completionResult(outcome, executor), completed_at: new Date().toISOString(), base44_conv_id: outcome.conversation_id || null }, organisation);
@@ -394,7 +407,12 @@ async function executeTaskBatch({ payload, token, user, tenant, agentFetch, exec
         const op = operationalStatus(outcome);
         const status = ['RUNNING', 'RETRYING'].includes(op) ? 'running' : op === 'WAITING_AUTHORIZATION' ? 'awaiting_approval' : op === 'WAITING_INPUT' ? 'awaiting_review' : 'failed';
         await patchRun(agentFetch, run.id, { status, result: { ...(outcome.result || { report: outcome.report }), operational_status: op }, error: reason, base44_conv_id: outcome.conversation_id || null }, organisation);
-        await patchTask(agentFetch, task.id, { statut: ['RUNNING', 'RETRYING'].includes(op) ? 'en_cours' : 'bloquee', notes: taskNotes(item, `Résultat reçu mais non finalisé: ${reason}; run_id=${run.id}.`) }, organisation);
+        const taskStatus = ['RUNNING', 'RETRYING'].includes(op)
+          ? 'en_cours'
+          : ['WAITING_INPUT', 'WAITING_AUTHORIZATION'].includes(op)
+            ? 'en_attente'
+            : 'bloquee';
+        await patchTask(agentFetch, task.id, { statut: taskStatus, notes: taskNotes(item, `Résultat reçu mais non finalisé: ${reason}; run_id=${run.id}.`) }, organisation);
         results.push({ index, success: status !== 'failed', task_id: task.id, run_id: run.id, executor: executor.id, status: outcome.blocked ? 'blocked' : 'awaiting_review', operational_status: op, reused, reason });
       }
     } catch (error) {

@@ -1,17 +1,8 @@
 /**
- * FloatingAgent.jsx — Widget flottant NOVA pour le cockpit
- * 
+ * FloatingAgent.jsx — Widget flottant Elynea pour le cockpit
+ *
  * Bulle de chat persistante en bas à droite, accessible sur toutes les pages.
  * Communique avec l'assistant local /api/assistant/chat (Railway, zéro Base44).
- * 
- * Fonctionnalités:
- * - Avatar NOVA (phoenix gold/cyan)
- * - Reconnaissance vocale (Web Speech API) — parler à NOVA
- * - Synthèse vocale (speechSynthesis) — NOVA lit à voix haute
- * - Persistance localStorage (50 derniers messages)
- * - Actions CRM avec confirmation
- * 
- * Design: dark theme cockpit — noir profond + or premium + cyan
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -22,6 +13,8 @@ import { inspectMediaFile } from '@/lib/mediaReference';
 import { executeNovaClientAction } from '@/lib/novaClientAction';
 import { isDropboxDeletionRequest, sendNovaChat } from '@/lib/novaChatTransport';
 import { getNovaMailboxContext } from '@/lib/novaMailboxContext';
+import { speakAll } from '@/lib/speechText';
+import { createLocalVoiceRecorder, localMicroSupported } from '@/lib/localVoiceTranscriber';
 
 const LOCAL_NOVA_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
 const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
@@ -29,7 +22,7 @@ const LOCAL_AUTOPILOT_LAST_RUN_KEY = 'nova_local_autopilot_last_run_v1';
 const RECENT_MEDIA_KEY = 'nova_recent_media_v1';
 const TTS_VOICE_KEY = 'nova_tts_voice_name';
 const LOCAL_TOOL_REQUEST = /\b(?:find_local_workflows|comfyui_health|avatar_factory_status|ffmpeg_version|ffprobe_file|list_directory|http_diagnose)\b|(?:ex[eé]cut|diagnosti|contr[oô]l|v[eé]rifi|recherch).*(?:comfyui|port\s*(?:8188|8791)|workflow|minimax|avatar|ffmpeg|ffprobe|dossier\s+local)/i;
-const LOCAL_NOVA_PROMPT = `Tu es NOVA, l’unique assistant visible du Cockpit JS-Innov.IA. Tu conserves le même nom et le même rôle en mode cloud et en mode local. Vérifie les outils réellement disponibles avant toute affirmation de capacité. Ne dis jamais que tu es une simple IA textuelle ni que tu ne peux rien exécuter uniquement parce qu’Internet est coupé.`;
+const LOCAL_NOVA_PROMPT = `Tu es Elynea, l’unique assistante visible du Cockpit JS-Innov.IA. Tu conserves le même nom et le même rôle en mode cloud et en mode local. Vérifie les outils réellement disponibles avant toute affirmation de capacité. Ne dis jamais que tu es une simple IA textuelle ni que tu ne peux rien exécuter uniquement parce qu’Internet est coupé.`;
 const AFFIRMATIVE_CONFIRMATION = /^(oui|ok|oki|okay|confirme|je confirme|vas[- ]?y|go|ex[eé]cute)(?:\b|[,.!])/i;
 const NEGATIVE_CONFIRMATION = /^(non|annule|annuler|stop)(?:\b|[,.!])/i;
 
@@ -46,6 +39,7 @@ const FloatingAgent = () => {
   const [loading, setLoading] = useState(false);
   const [conversationId] = useState(() => localStorage.getItem('agent_conversation_id') || 'floating');
   const [isListening, setIsListening] = useState(false);
+  const [voicePhase, setVoicePhase] = useState('idle');
   const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('agent_tts_enabled') === 'true');
   const [ttsVoices, setTtsVoices] = useState([]);
   const [ttsVoiceName, setTtsVoiceName] = useState(() => localStorage.getItem(TTS_VOICE_KEY) || '');
@@ -57,9 +51,13 @@ const FloatingAgent = () => {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const recognitionRef = useRef(null);
+  const localVoiceRef = useRef(null);
+  const speechCancelRef = useRef(null);
 
   const ttsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
-  const sttSupported = typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
+  const browserSttSupported = typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
+  const localSttSupported = localMicroSupported();
+  const sttSupported = localSttSupported || browserSttSupported;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -151,6 +149,8 @@ const FloatingAgent = () => {
     }
     return () => {
       if (ttsSupported) {
+        speechCancelRef.current?.();
+        speechCancelRef.current = null;
         window.speechSynthesis.cancel();
         window.speechSynthesis.onvoiceschanged = null;
       }
@@ -159,36 +159,60 @@ const FloatingAgent = () => {
 
   const speak = useCallback((text) => {
     if (!ttsSupported || !ttsEnabled || !text) return;
-    const cleanText = text
-      .replace(/\[Contexte Dropbox[^\]]*\]/gi, '')
-      .replace(/[#*_~`]/g, '')
-      .replace(/⚠️/g, '')
-      .replace(/https?:\/\/\S+/gi, 'lien internet')
-      .replace(/\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/gi, 'identifiant du journal')
-      .replace(/\n{2,}/g, '. ')
-      .replace(/\n/g, ' ')
-      .slice(0, 500);
-
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(cleanText);
+    speechCancelRef.current?.();
     const voices = window.speechSynthesis.getVoices();
     const selectedVoice = chooseNovaVoice(voices, ttsVoiceName);
-    utter.lang = selectedVoice?.lang || 'fr-BE';
-    utter.rate = 0.96;
-    utter.pitch = 1.0;
-    if (selectedVoice) utter.voice = selectedVoice;
-    utter.onstart = () => setSpeaking(true);
-    utter.onend = () => setSpeaking(false);
-    utter.onerror = () => setSpeaking(false);
-    window.speechSynthesis.speak(utter);
+    speechCancelRef.current = speakAll({
+      text,
+      voice: selectedVoice,
+      lang: 'fr-BE',
+      rate: 0.96,
+      pitch: 1,
+      onStart: () => setSpeaking(true),
+      onDone: () => { setSpeaking(false); speechCancelRef.current = null; },
+      onError: () => setSpeaking(false),
+    });
   }, [ttsSupported, ttsEnabled, ttsVoiceName]);
 
   const stopSpeaking = useCallback(() => {
-    if (ttsSupported) { window.speechSynthesis.cancel(); setSpeaking(false); }
+    speechCancelRef.current?.();
+    speechCancelRef.current = null;
+    if (ttsSupported) window.speechSynthesis.cancel();
+    setSpeaking(false);
   }, [ttsSupported]);
 
   const startListening = useCallback(() => {
-    if (!sttSupported) return;
+    if (localSttSupported) {
+      if (localVoiceRef.current?.active) return;
+      const recorder = createLocalVoiceRecorder({
+        onState: (state) => {
+          setVoicePhase(state);
+          setIsListening(state === 'recording');
+        },
+        onTranscript: (transcript) => {
+          const value = String(transcript || '').trim();
+          setVoicePhase('idle');
+          setIsListening(false);
+          if (!value) return;
+          setInput(value);
+          setTimeout(() => doSend(value), 100);
+        },
+        onError: (error) => {
+          setVoicePhase('error');
+          setIsListening(false);
+          setMessages(prev => [...prev, { role: 'assistant', content: `Micro local : ${error?.message || 'transcription indisponible'}`, ts: Date.now(), isError: true }]);
+        },
+      });
+      localVoiceRef.current = recorder;
+      recorder.start().catch((error) => {
+        setVoicePhase('error');
+        setIsListening(false);
+        setMessages(prev => [...prev, { role: 'assistant', content: `Micro local : ${error?.message || 'activation impossible'}`, ts: Date.now(), isError: true }]);
+      });
+      return;
+    }
+
+    if (!browserSttSupported) return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SR();
     recognition.lang = 'fr-BE';
@@ -197,6 +221,7 @@ const FloatingAgent = () => {
     recognitionRef.current = recognition;
 
     let finalTranscript = '';
+    recognition.onstart = () => { setVoicePhase('recording'); setIsListening(true); };
     recognition.onresult = (event) => {
       let interim = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -207,19 +232,34 @@ const FloatingAgent = () => {
       setInput(finalTranscript + interim);
     };
     recognition.onend = () => {
+      setVoicePhase('idle');
       setIsListening(false);
       if (finalTranscript.trim()) {
         setInput(finalTranscript.trim());
         setTimeout(() => doSend(finalTranscript.trim()), 100);
       }
     };
-    recognition.onerror = () => setIsListening(false);
+    recognition.onerror = (event) => {
+      setVoicePhase('error');
+      setIsListening(false);
+      const code = String(event?.error || 'unknown');
+      setMessages(prev => [...prev, { role: 'assistant', content: `Micro navigateur : ${code}. Le micro local Whisper est recommandé.`, ts: Date.now(), isError: true }]);
+    };
     recognition.start();
-    setIsListening(true);
-  }, [sttSupported]);
+  }, [localSttSupported, browserSttSupported]);
 
   const stopListening = useCallback(() => {
-    if (recognitionRef.current) { recognitionRef.current.stop(); setIsListening(false); }
+    if (localVoiceRef.current?.active) {
+      setIsListening(false);
+      setVoicePhase('transcribing');
+      void localVoiceRef.current.stop().catch(() => {});
+      return;
+    }
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+      setVoicePhase('idle');
+    }
   }, []);
 
   const executeConfirmation = useCallback(async (userMessage = '') => {
@@ -255,11 +295,11 @@ const FloatingAgent = () => {
       }
 
       const target = data.execution?.target ? ` · cible=${data.execution.target}` : '';
-      const success = `✅ Action ${data.action_type || confirmation.type || 'Cockpit'} réellement exécutée et journalisée${target}.`;
+      const success = `Action ${data.action_type || confirmation.type || 'Cockpit'} réellement exécutée et journalisée${target}.`;
       setMessages(prev => [...prev, { role: 'assistant', content: success, ts: Date.now() }]);
       speak(success);
     } catch (error) {
-      const failure = `❌ ${error.message}`;
+      const failure = `${error.message}`;
       setMessages(prev => [...prev, { role: 'assistant', content: failure, ts: Date.now(), isError: true }]);
     } finally {
       setConfirmation(null);
@@ -344,13 +384,13 @@ const FloatingAgent = () => {
               signal: AbortSignal.timeout(90000),
             });
             const data = await resp.json().catch(() => ({}));
-            if (!resp.ok) throw new Error(data.error || `NOVA locale indisponible (${resp.status})`);
+            if (!resp.ok) throw new Error(data.error || `Elynea locale indisponible (${resp.status})`);
             return { ...data, local_fallback: true, local_endpoint: localUrl };
           } catch (error) {
             lastError = error;
           }
         }
-        throw lastError || new Error('NOVA locale indisponible');
+        throw lastError || new Error('Elynea locale indisponible');
       };
 
       const data = await sendNovaChat({ message: msg, requiresLocalTool,
@@ -365,16 +405,16 @@ const FloatingAgent = () => {
       let content = data.message || data.response || data.reply || data.content || data.text || 'Réponse vide';
       if (data.local_fallback) content = `Mode local · ${content}`;
       if (data.confirmation) {
-        content += '\n\n⚠️ Action proposée: ' + (data.confirmation.type || 'Action') + '. Confirme pour exécuter.';
+        content += '\n\nAction proposée: ' + (data.confirmation.type || 'Action') + '. Confirme pour exécuter.';
         setConfirmation(data.confirmation);
       } else setConfirmation(null);
 
       setMessages(prev => [...prev, { role: 'assistant', content, ts: Date.now() }]);
       speak(content);
     } catch (err) {
-      const prefix = err?.emailVerification ? '⚠️ Préclassement emails non vérifié : ' : err?.dropboxVerification ? '⚠️ Suppression Dropbox non vérifiée : ' : err?.cockpitResponse
-        ? '⚠️ Le Cockpit a répondu : '
-        : requiresLocalTool ? '⚠️ L’agent local requis est injoignable : ' : '⚠️ NOVA cloud et locale sont injoignables : ';
+      const prefix = err?.emailVerification ? 'Préclassement emails non vérifié : ' : err?.dropboxVerification ? 'Suppression Dropbox non vérifiée : ' : err?.cockpitResponse
+        ? 'Le Cockpit a répondu : '
+        : requiresLocalTool ? 'L’agent local requis est injoignable : ' : 'Elynea cloud et locale sont injoignables : ';
       setMessages(prev => [...prev, { role: 'assistant', content: prefix + err.message, ts: Date.now(), isError: true }]);
     } finally {
       setLoading(false);
@@ -391,6 +431,9 @@ const FloatingAgent = () => {
   const resetConversation = useCallback(async () => {
     await cancelPendingConfirmation();
     stopSpeaking();
+    localVoiceRef.current?.cancel?.();
+    setVoicePhase('idle');
+    setIsListening(false);
     setMessages([]);
     setConfirmation(null);
     localStorage.removeItem('agent_chat_messages');
@@ -405,7 +448,12 @@ const FloatingAgent = () => {
     if (!files.length || uploading) return;
     const oversized = files.find((file) => file.size > 100 * 1024 * 1024);
     if (oversized) {
-      setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ ${oversized.name} dépasse la limite de 100 Mo.`, ts: Date.now(), isError: true }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: `${oversized.name} dépasse la limite de 100 Mo.`, ts: Date.now(), isError: true }]);
+      return;
+    }
+
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Mode hors ligne : le fichier n’est pas envoyé vers Dropbox. Conservez-le localement puis relancez l’archivage quand la connexion revient.', ts: Date.now(), isError: true }]);
       return;
     }
 
@@ -415,8 +463,8 @@ const FloatingAgent = () => {
       const uploadId = `upload-${Date.now()}-${file.name}`;
       const sizeLabel = file.size >= 1024 * 1024 ? `${(file.size / 1024 / 1024).toFixed(1)} Mo` : `${(file.size / 1024).toFixed(0)} Ko`;
       setMessages(prev => [...prev,
-        { role: 'user', content: `📎 ${file.name} (${sizeLabel})${context ? `\n${context}` : ''}`, ts: Date.now(), isFile: true },
-        { role: 'assistant', content: '🔄 Elynea classe, référence et archive le fichier dans Dropbox…', ts: Date.now(), isSystem: true, uploadId },
+        { role: 'user', content: `${file.name} (${sizeLabel})${context ? `\n${context}` : ''}`, ts: Date.now(), isFile: true },
+        { role: 'assistant', content: 'Elynea classe, référence et archive le fichier dans Dropbox…', ts: Date.now(), isSystem: true, uploadId },
       ]);
       try {
         const mediaMetadata = await inspectMediaFile(file);
@@ -436,15 +484,15 @@ const FloatingAgent = () => {
         if (!resp.ok) throw new Error(data.error || `Archivage impossible (HTTP ${resp.status})`);
 
         const cl = data.classification || {};
-        const clientInfo = cl.matchedClient ? `\n👤 Client: ${cl.matchedClient.name}` : '\n👤 Client: non identifié — rangé dans A_Classer';
-        const projectInfo = cl.matchedProject ? `\n📌 Projet: ${cl.matchedProject.name}` : '';
-        const indexInfo = data.indexed ? `\n🗂️ Index Cockpit: ${data.documentId}` : `\n🗂️ Index Cockpit: non créé${data.indexWarning ? ` (${data.indexWarning})` : ''}`;
+        const clientInfo = cl.matchedClient ? `\nClient: ${cl.matchedClient.name}` : '\nClient: non identifié — rangé dans A_Classer';
+        const projectInfo = cl.matchedProject ? `\nProjet: ${cl.matchedProject.name}` : '';
+        const indexInfo = data.indexed ? `\nIndex Cockpit: ${data.documentId}` : `\nIndex Cockpit: non créé${data.indexWarning ? ` (${data.indexWarning})` : ''}`;
         const reference = data.reference || {};
         const referenceInfo = reference.dropboxPath
-          ? `\n🏷️ Référencement: ${reference.title || 'contenu'}${reference.keywords?.length ? `\n🔎 Mots-clés: ${reference.keywords.join(', ')}` : ''}\n🧾 Fiche fichier: ${reference.dropboxPath}`
+          ? `\nRéférencement: ${reference.title || 'contenu'}${reference.keywords?.length ? `\nMots-clés: ${reference.keywords.join(', ')}` : ''}\nFiche fichier: ${reference.dropboxPath}`
           : '';
-        const renamedInfo = data.originalFileName && data.originalFileName !== data.fileName ? `\n↪️ Nom original: ${data.originalFileName}` : '';
-        const memoryInfo = data.memorySynced ? '\n🧠 Fichier relié à cette conversation' : `\n🧠 Mémoire: non synchronisée${data.memoryWarning ? ` (${data.memoryWarning})` : ''}`;
+        const renamedInfo = data.originalFileName && data.originalFileName !== data.fileName ? `\nNom original: ${data.originalFileName}` : '';
+        const memoryInfo = data.memorySynced ? '\nFichier relié à cette conversation' : `\nMémoire: non synchronisée${data.memoryWarning ? ` (${data.memoryWarning})` : ''}`;
         try {
           localStorage.setItem(RECENT_MEDIA_KEY, JSON.stringify({
             originalFileName: data.originalFileName,
@@ -462,12 +510,12 @@ const FloatingAgent = () => {
         queryClient.invalidateQueries({ queryKey: ['portfolio-dropbox-assets'] });
         setMessages(prev => prev.filter((message) => message.uploadId !== uploadId).concat({
           role: 'assistant',
-          content: `✅ Fichier archivé, classé et référencé dans Dropbox\n\n📄 ${data.fileName}${renamedInfo}\n🏷️ Type: ${cl.mediaType || 'Fichier'}${clientInfo}${projectInfo}\n📂 ${data.dropboxPath}${referenceInfo}${indexInfo}${memoryInfo}\n🧾 Journal: ${data.journalId}\n🕒 ${data.storedAt}`,
+          content: `Fichier archivé, classé et référencé dans Dropbox\n\n${data.fileName}${renamedInfo}\nType: ${cl.mediaType || 'Fichier'}${clientInfo}${projectInfo}\n${data.dropboxPath}${referenceInfo}${indexInfo}${memoryInfo}\nJournal: ${data.journalId}\n${data.storedAt}`,
           ts: Date.now(),
         }));
         speak(`Fichier ${data.fileName} classé et sauvegardé dans Dropbox`);
       } catch (err) {
-        setMessages(prev => prev.filter((message) => message.uploadId !== uploadId).concat({ role: 'assistant', content: '⚠️ ' + err.message, ts: Date.now(), isError: true }));
+        setMessages(prev => prev.filter((message) => message.uploadId !== uploadId).concat({ role: 'assistant', content: err.message, ts: Date.now(), isError: true }));
       }
     }
     setUploading(false);
@@ -476,17 +524,17 @@ const FloatingAgent = () => {
   }, [uploading, input, speak, conversationId, queryClient]);
 
   const toggleVoice = useCallback(() => {
-    if (isListening) stopListening();
+    if (isListening || voicePhase === 'transcribing') stopListening();
     else startListening();
-  }, [isListening, startListening, stopListening]);
+  }, [isListening, voicePhase, startListening, stopListening]);
 
   const toggleTts = useCallback(() => {
     if (ttsEnabled) { stopSpeaking(); setTtsEnabled(false); }
     else setTtsEnabled(true);
   }, [ttsEnabled, stopSpeaking]);
 
-  const statusColor = speaking ? '#D4AF37' : isListening ? '#06B6D4' : loading ? '#f59e0b' : '#22c55e';
-  const statusText = speaking ? 'Parle...' : isListening ? 'Écoute...' : loading ? 'Réfléchit...' : 'En ligne';
+  const statusColor = speaking ? '#D4AF37' : isListening ? '#06B6D4' : voicePhase === 'transcribing' ? '#8B5CF6' : loading ? '#f59e0b' : '#22c55e';
+  const statusText = speaking ? 'Parle...' : isListening ? 'Écoute locale...' : voicePhase === 'transcribing' ? 'Whisper transcrit...' : loading ? 'Réfléchit...' : (typeof navigator !== 'undefined' && navigator.onLine === false ? 'Mode local' : 'En ligne');
 
   return (
     <>
@@ -496,13 +544,13 @@ const FloatingAgent = () => {
             onClick={() => setIsOpen(true)}
             onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.08)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-            title="NOVA — Assistant IA"
+            title="Elynea — Assistante IA"
             style={{
               width: '60px', height: '60px', borderRadius: '50%', cursor: 'pointer', overflow: 'hidden', position: 'relative',
               boxShadow: '0 4px 20px rgba(212,175,55,0.3), 0 0 0 2px rgba(212,175,55,0.5)', transition: 'transform 0.2s ease',
             }}
           >
-            <img src={novaAvatar} alt="NOVA" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+            <img src={novaAvatar} alt="Elynea" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
             <span style={{ position: 'absolute', top: '-2px', right: '-2px', width: '12px', height: '12px', borderRadius: '50%', background: '#06B6D4', border: '2px solid #0B0B0F' }} />
           </div>
         </div>
@@ -519,9 +567,9 @@ const FloatingAgent = () => {
             borderBottom: '1px solid rgba(212,175,55,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <img src={novaAvatar} alt="NOVA" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(212,175,55,0.4)' }} />
+              <img src={novaAvatar} alt="Elynea" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(212,175,55,0.4)' }} />
               <div>
-                <p style={{ color: '#D4AF37', fontSize: '14px', fontWeight: 600, margin: 0 }}>NOVA</p>
+                <p style={{ color: '#D4AF37', fontSize: '14px', fontWeight: 600, margin: 0 }}>Elynea</p>
                 <p style={{ color: '#64748b', fontSize: '11px', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', display: 'inline-block', background: statusColor }} />
                   {statusText}
@@ -530,23 +578,23 @@ const FloatingAgent = () => {
             </div>
             <div style={{ display: 'flex', gap: '4px' }}>
               {ttsEnabled && ttsVoices.length > 0 && (
-                <select aria-label="Voix de NOVA" title="Choisir la voix française de NOVA" value={ttsVoiceName} onChange={(event) => setTtsVoiceName(event.target.value)} style={{ maxWidth: '104px', background: '#0F172A', border: '1px solid rgba(100,116,139,0.35)', borderRadius: '6px', color: '#cbd5e1', fontSize: '10px', padding: '3px 5px' }}>
+                <select aria-label="Voix d’Elynea" title="Choisir la voix française d’Elynea" value={ttsVoiceName} onChange={(event) => setTtsVoiceName(event.target.value)} style={{ maxWidth: '104px', background: '#0F172A', border: '1px solid rgba(100,116,139,0.35)', borderRadius: '6px', color: '#cbd5e1', fontSize: '10px', padding: '3px 5px' }}>
                   {ttsVoices.map((voice) => <option key={`${voice.name}-${voice.lang}`} value={voice.name}>{voice.name}</option>)}
                 </select>
               )}
-              <button onClick={toggleTts} title={ttsEnabled ? 'Lecture vocale ON' : 'Lecture vocale OFF'} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: ttsEnabled ? '#D4AF37' : '#64748b', fontSize: '16px', padding: '4px 8px', borderRadius: '6px' }}>{ttsEnabled ? '🔊' : '🔇'}</button>
+              <button onClick={toggleTts} title={ttsEnabled ? 'Lecture vocale ON' : 'Lecture vocale OFF'} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: ttsEnabled ? '#D4AF37' : '#64748b', fontSize: '13px', padding: '4px 8px', borderRadius: '6px' }}>{ttsEnabled ? 'Son ON' : 'Son OFF'}</button>
               <button onClick={resetConversation} title="Nouvelle conversation" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '16px', padding: '4px 8px', borderRadius: '6px' }}>↻</button>
-              <button onClick={() => { stopSpeaking(); setIsOpen(false); }} title="Fermer" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '16px', padding: '4px 8px', borderRadius: '6px' }}>✕</button>
+              <button onClick={() => { stopSpeaking(); localVoiceRef.current?.cancel?.(); setIsOpen(false); }} title="Fermer" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '16px', padding: '4px 8px', borderRadius: '6px' }}>×</button>
             </div>
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {messages.length === 0 && !loading && (
               <div style={{ textAlign: 'center', color: '#475569', fontSize: '13px', padding: '30px 20px' }}>
-                <img src={novaAvatar} alt="NOVA" style={{ width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 12px', display: 'block', opacity: 0.8 }} />
+                <img src={novaAvatar} alt="Elynea" style={{ width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 12px', display: 'block', opacity: 0.8 }} />
                 <p style={{ margin: 0 }}>Salut Julien !</p>
-                <p style={{ marginTop: '8px' }}>Pose ta question, parle-moi, ou joins n’importe quel fichier à classer dans Dropbox.</p>
-                <p style={{ marginTop: '12px', fontSize: '11px', color: '#334155' }}>{sttSupported ? '🎤 Micro disponible' : 'Micro non supporté'} · {ttsSupported ? '🔊 Voix disponible' : 'Voix non supportée'}</p>
+                <p style={{ marginTop: '8px' }}>Pose ta question, parle-moi, ou joins n’importe quel fichier — MP3, audio, image, vidéo, PDF, ZIP… — quand la connexion est disponible.</p>
+                <p style={{ marginTop: '12px', fontSize: '11px', color: '#334155' }}>{localSttSupported ? 'Micro Whisper local disponible' : sttSupported ? 'Micro navigateur disponible' : 'Micro non supporté'} · {ttsSupported ? 'Voix disponible' : 'Voix non supportée'}</p>
               </div>
             )}
 
@@ -562,7 +610,7 @@ const FloatingAgent = () => {
 
             {loading && (
               <div style={{ alignSelf: 'flex-start', color: '#64748b', fontSize: '12px', fontStyle: 'italic', padding: '8px 14px' }}>
-                <span style={{ animation: 'pulse 1.5s infinite' }}>●</span> NOVA réfléchit...
+                <span style={{ animation: 'pulse 1.5s infinite' }}>●</span> Elynea réfléchit...
               </div>
             )}
             <div ref={messagesEndRef} />
@@ -595,22 +643,22 @@ const FloatingAgent = () => {
               disabled={loading || uploading}
               style={{
                 background: '#1e293b', border: '1px solid rgba(100,116,139,0.3)', borderRadius: '10px', padding: '10px', cursor: (loading || uploading) ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '40px', height: '40px', fontSize: '16px', opacity: (loading || uploading) ? 0.5 : 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '40px', height: '40px', fontSize: '13px', opacity: (loading || uploading) ? 0.5 : 1,
               }}
             >
-              {uploading ? '⏳' : '📎'}
+              {uploading ? '...' : 'Fichier'}
             </button>
             {sttSupported && (
               <button
                 onClick={toggleVoice}
-                title={isListening ? 'Arrêt écoute' : 'Parler à NOVA'}
-                disabled={loading}
+                title={isListening ? 'Arrêter et transcrire' : localSttSupported ? 'Parler à Elynea avec Whisper local' : 'Parler à Elynea'}
+                disabled={loading || voicePhase === 'transcribing'}
                 style={{
-                  background: isListening ? 'rgba(6,182,212,0.15)' : '#1e293b', border: `1px solid ${isListening ? '#06B6D4' : 'rgba(100,116,139,0.3)'}`,
-                  borderRadius: '10px', padding: '10px', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '40px', height: '40px', fontSize: '16px',
+                  background: isListening ? 'rgba(6,182,212,0.15)' : voicePhase === 'transcribing' ? 'rgba(139,92,246,0.15)' : '#1e293b', border: `1px solid ${isListening ? '#06B6D4' : voicePhase === 'transcribing' ? '#8B5CF6' : 'rgba(100,116,139,0.3)'}`,
+                  borderRadius: '10px', padding: '10px', cursor: (loading || voicePhase === 'transcribing') ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '58px', height: '40px', fontSize: '11px', color: '#cbd5e1',
                 }}
               >
-                {isListening ? '⏹' : '🎤'}
+                {isListening ? 'Stop' : voicePhase === 'transcribing' ? 'Whisper…' : 'Micro'}
               </button>
             )}
             <textarea
@@ -618,9 +666,9 @@ const FloatingAgent = () => {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isListening ? 'Écoute en cours...' : 'Écris ton message...'}
+              placeholder={isListening ? 'Écoute en cours...' : voicePhase === 'transcribing' ? 'Transcription locale...' : 'Écris ton message...'}
               rows={1}
-              disabled={loading || isListening}
+              disabled={loading || isListening || voicePhase === 'transcribing'}
               style={{
                 flex: 1, background: '#0F172A', border: '1px solid rgba(100,116,139,0.3)', borderRadius: '10px', padding: '10px 14px',
                 color: '#e2e8f0', fontSize: '13px', outline: 'none', resize: 'none', fontFamily: 'inherit', maxHeight: '80px', minHeight: '40px',
