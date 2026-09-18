@@ -142,8 +142,8 @@ test('le Companion expose un dépôt binaire sécurisé, générique et indexé'
   assert.match(ui, /multiple/);
   assert.doesNotMatch(ui, /accept="image\/jpeg,image\/png,image\/webp,video\/mp4,video\/webm,video\/quicktime"/);
   assert.match(ui, /n’importe quel fichier/);
-  assert.match(ui, /audio\/\*/);
-  assert.match(ui, /\.mp3/);
+  assert.doesNotMatch(ui, /accept=/);
+  assert.match(ui, /MP3, audio, image, vidéo, PDF, ZIP/);
   assert.match(docker, /client_max_body_size 260m/);
   assert.match(docker, /proxy_request_buffering off/);
 });
