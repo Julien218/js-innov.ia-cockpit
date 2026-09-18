@@ -54,7 +54,17 @@ function taskStatusMatches(message, action, task) {
 }
 
 function bareConfirmationSignal(message) {
-  return /^(oui|ok|oki|okay|je confirme|confirme|go|vas[- ]y|execute)[.!\s]*$/.test(normalize(message));
+  const text = normalize(message)
+    .replace(/\b(?:merci|stp|svp|s['’]?il te plait|s il te plait)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return /^(oui|ok|oki|okay|je confirme|confirme|confirmer|go|vas[- ]y|execute|executer)[.!\s]*$/.test(text);
+}
+
+function confirmationActionSignal(message) {
+  const text = normalize(message);
+  if (!text) return false;
+  return /^(?:oui|ok|oki|okay|je confirme|confirme|confirmer)\b.{0,100}\b(?:envoie|envoyer|execute|executer|lance|lancer)\b/.test(text);
 }
 
 function ambiguousMessageSignal(message) {
@@ -243,6 +253,9 @@ function stripUnbackedConfirmationLanguage(value) {
     .replace(/[^.!?\n]*cliquez[^.!?\n]*(?:bouton|confirmer)[^.!?\n]*[.!?]?/gi, '')
     .replace(/[^.!?\n]*utilisez\s+le\s+bouton[^.!?\n]*[.!?]?/gi, '')
     .replace(/[^.!?\n]*souhaitez[- ]?vous\s+que\s+je\s+(?:lance|ex[eé]cute|proc[eè]de)[^.!?\n]*[.!?]?/gi, '')
+    .replace(/[^.!?\n]*(?:l['’]?email|le\s+mail|le\s+message)[^.!?\n]*(?:pr[eê]t[^.!?\n]*[àa]\s+[eê]tre\s+envoy[eé]|pr[eê]t[^.!?\n]*pour\s+l['’]?envoi)[^.!?\n]*[.!?]?/gi, '')
+    .replace(/[^.!?\n]*l['’]?envoi[^.!?\n]*(?:en\s+attente|attend)[^.!?\n]*confirm[^.!?\n]*[.!?]?/gi, '')
+    .replace(/[^.!?\n]*(?:souhaitez[- ]?vous|veux[- ]?tu)\s+que\s+je\s+(?:le\s+)?fasse(?:\s+maintenant)?[^.!?\n]*[.!?]?/gi, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
   return cleaned || 'Aucune action exécutable n’a été préparée pour cette demande. Reformulez la cible si une action doit réellement être lancée.';
@@ -313,18 +326,22 @@ router.use(async (req, res, next) => {
   if (req.method === 'POST' && req.path === '/chat' && typeof req.body?.message === 'string' && req.body.message.trim()) {
     const message = req.body.message.trim();
 
-    // Si le bouton a disparu mais qu'une confirmation structurée existe encore,
-    // une réponse courte "oui / je confirme" consomme le vrai jeton au lieu de créer un nouveau tour.
-    if (bareConfirmationSignal(message)) {
-      const cached = cachedConfirmation(req);
-      if (cached?.token) {
-        req.url = '/confirm';
-        req.body = {
-          ...req.body,
-          token: cached.token,
-        };
-        return next();
-      }
+    // Si une confirmation structurée existe, "oui merci", "je confirme" ou
+    // "je confirme et envoie" consomme le vrai jeton. Sans jeton, une phrase
+    // combinant confirmation + action continue vers l'assistant afin qu'il
+    // reconstruise l'action depuis le dernier brouillon au lieu de boucler.
+    const cached = cachedConfirmation(req);
+    const confirmationOnly = bareConfirmationSignal(message);
+    const confirmationWithAction = confirmationActionSignal(message);
+    if ((confirmationOnly || confirmationWithAction) && cached?.token) {
+      req.url = '/confirm';
+      req.body = {
+        ...req.body,
+        token: cached.token,
+      };
+      return next();
+    }
+    if (confirmationOnly) {
       return res.json({
         message: 'Aucune action exécutable n’est en attente. Elynea ne vous demandera plus de confirmer sans bouton actif. Reformulez la cible si nécessaire.',
         confirmation: null,
@@ -376,6 +393,7 @@ module.exports = {
   requestedTaskStatus,
   taskStatusMatches,
   bareConfirmationSignal,
+  confirmationActionSignal,
   ambiguousMessageSignal,
   dispatchVerificationSignal,
   summarizeTaskDispatches,

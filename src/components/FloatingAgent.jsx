@@ -30,7 +30,7 @@ const RECENT_MEDIA_KEY = 'nova_recent_media_v1';
 const TTS_VOICE_KEY = 'nova_tts_voice_name';
 const LOCAL_TOOL_REQUEST = /\b(?:find_local_workflows|comfyui_health|avatar_factory_status|ffmpeg_version|ffprobe_file|list_directory|http_diagnose)\b|(?:ex[eé]cut|diagnosti|contr[oô]l|v[eé]rifi|recherch).*(?:comfyui|port\s*(?:8188|8791)|workflow|minimax|avatar|ffmpeg|ffprobe|dossier\s+local)/i;
 const LOCAL_NOVA_PROMPT = `Tu es NOVA, l’unique assistant visible du Cockpit JS-Innov.IA. Tu conserves le même nom et le même rôle en mode cloud et en mode local. Vérifie les outils réellement disponibles avant toute affirmation de capacité. Ne dis jamais que tu es une simple IA textuelle ni que tu ne peux rien exécuter uniquement parce qu’Internet est coupé.`;
-const AFFIRMATIVE_CONFIRMATION = /^(oui|ok|oki|okay|confirme|je confirme|vas[- ]?y|go|ex[eé]cute)(?:\b|[,.!])/i;
+const AFFIRMATIVE_CONFIRMATION = /^(oui|ok|oki|okay|confirme|confirmer|je confirme|envoie|envoyer|vas[- ]?y|go|ex[eé]cute|ex[eé]cuter)(?:\b|[,.!])/i;
 const NEGATIVE_CONFIRMATION = /^(non|annule|annuler|stop)(?:\b|[,.!])/i;
 
 const FloatingAgent = () => {
