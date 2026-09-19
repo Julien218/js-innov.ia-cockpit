@@ -1,4 +1,4 @@
-import { isTaskBlocked, isTaskCompleted, normalizeTaskStatus } from "./taskStatus.js";
+import { isHistoricalDuplicate, isTaskBlocked, isTaskCompleted, normalizeTaskStatus } from "./taskStatus.js";
 
 const normalizeKey = (value) => String(value || "")
   .normalize("NFD")
@@ -17,6 +17,7 @@ export function taskGroupKey(task = {}) {
 }
 
 function taskStateRank(task) {
+  if (isHistoricalDuplicate(task)) return 9;
   const status = normalizeTaskStatus(task?.statut ?? task?.status);
   if (status === "en_cours") return 0;
   if (isTaskBlocked(task)) return 1;
@@ -42,6 +43,7 @@ export function groupTasks(tasks = []) {
     return {
       ...primary,
       duplicate_count: copies.length,
+      archived_duplicate_count: copies.filter(isHistoricalDuplicate).length,
       duplicate_ids: copies.map((task) => task.id).filter(Boolean),
       duplicate_tasks: copies,
       _search_text: copies.flatMap((task) => [task.titre, task.description, task.client_nom, task.projet_nom]).filter(Boolean).join(" "),
