@@ -136,6 +136,43 @@ function videoEnvironmentContext({ task = null, recentMedia = null, availableAct
   ].filter(Boolean).join('\n');
 }
 
+
+function guardTaskAwareAssistantResponse(value, { task = null, recentMedia = null, availableActions = [], localEnvironment = null } = {}) {
+  const text = String(value || '');
+  if (!task?.id) return text;
+  const taskText = normalizeLookup(`${task.titre || task.title || ''} ${task.description || ''}`);
+  const isVideo = /video|cinematograph|3d|grok|sora|morph|animation|motion/.test(taskText);
+  if (!isVideo) return text;
+
+  const genericQuestionnaire = /sc[eé]nario[\s\S]{0,1200}dur[eé]e|ressources?\s*3d|formats?\s+de\s+sortie|disposez[- ]?vous\s+de\s+mod[eè]les?\s*3d/i.test(text);
+  if (!genericQuestionnaire) return text;
+
+  const missing = missingVideoFields(task);
+  const description = clean(task.description, 1400);
+  const canCreate = availableActions.includes('create_video_generation');
+  const localKnown = localEnvironment?.recently_reachable === true;
+  const lines = [
+    `J’ai retrouvé la tâche « ${clean(task.titre || task.title, 300)} » dans le Cockpit.`,
+    description
+      ? `Le scénario et la direction visuelle sont déjà définis : ${description}`
+      : 'La tâche existe déjà ; je dois exploiter sa fiche avant de demander des paramètres supplémentaires.',
+    canCreate
+      ? 'Le pipeline disponible est déjà défini : génération vidéo via le Cockpit (Grok Imagine/xAI ou Sora/OpenAI selon la source), 8 s, 16:9, puis MP4 finalisé et vérifié par FFmpeg/FFprobe avec archivage Dropbox.'
+      : 'Je conserve le contexte de production existant, mais la route de génération vidéo n’est pas autorisée dans cette session.',
+    localKnown
+      ? 'Le pont local Windows a aussi été joint récemment ; je peux vérifier ComfyUI/FFmpeg local si ce workflow en dépend.'
+      : '',
+    missing.includes('source_document_id')
+      ? recentMedia?.documentId
+        ? `Le seul élément encore manquant dans la tâche est l’image source. Un média récent est déjà référencé dans le Cockpit (document ${clean(recentMedia.documentId, 160)}) ; je dois d’abord vérifier s’il s’agit de la bonne référence avant de demander un nouvel upload.`
+        : 'Le seul élément encore manquant dans la tâche est l’image source (source_document_id). Indique-moi quelle image déjà présente dans le Cockpit utiliser, ou joins simplement l’image source.'
+      : missing.length
+        ? `Les seuls éléments techniques encore manquants détectés sont : ${missing.join(', ')}.`
+        : 'Je ne redemande pas la durée, le format ou les ressources 3D : j’utilise les paramètres déjà connus et je ne demanderai qu’un choix réellement indispensable.',
+  ].filter(Boolean);
+  return lines.join('\n\n');
+}
+
 function recentMediaLines(media) {
   if (!media || typeof media !== 'object') return [];
   const lines = [];
@@ -174,4 +211,5 @@ module.exports = {
   missingVideoFields,
   taskContextBlock,
   videoEnvironmentContext,
+  guardTaskAwareAssistantResponse,
 };
