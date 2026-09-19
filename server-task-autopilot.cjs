@@ -22,6 +22,17 @@ function canonicalTaskTitle(value) {
     .trim();
 }
 
+function isHistoricalDuplicateTask(task = {}) {
+  const notes = norm(task?.notes || '');
+  return /exact_duplicate|semantic_duplicate|doublon.*(?:tache canonique|sans suppression)|doublon regroupe avec la tache/.test(notes);
+}
+
+function isStaleActiveRun(run = {}, now = Date.now(), maxAgeMs = 48 * 60 * 60 * 1000) {
+  if (!['pending', 'queued', 'dispatching', 'dispatched', 'running', 'awaiting_approval', 'awaiting_review'].includes(norm(run.status))) return false;
+  const timestamp = Date.parse(run.updated_at || run.created_at || run.started_at || '');
+  return Number.isFinite(timestamp) && now - timestamp > maxAgeMs;
+}
+
 function duplicateTasksForCanonical(tasks, canonicalTask) {
   const canonicalId = String(canonicalTask?.id || '');
   const key = canonicalTaskKey(canonicalTask);
@@ -234,26 +245,50 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
     const executableTasks = [];
     const blocked = [];
     const awaitingAuthorization = [];
+    const awaitingInput = [];
     const ready = [];
     const duplicates = [];
     for (const group of groups.values()) {
-      group.sort((a, b) => Number(completed(b)) - Number(completed(a)) || String(a.created_at || a.id).localeCompare(String(b.created_at || b.id)));
-      const [task, ...copies] = group;
-      const groupIds = new Set(group.map(item => String(item.id)));
+      const operationalGroup = group.filter((task) => !isHistoricalDuplicateTask(task));
+      if (!operationalGroup.length) {
+        duplicates.push({ canonical_task_id: null, duplicate_ids: group.map((item) => item.id), count: group.length, archived: true });
+        continue;
+      }
+
+      operationalGroup.sort((a, b) => Number(completed(b)) - Number(completed(a)) || String(a.created_at || a.id).localeCompare(String(b.created_at || b.id)));
+      const task = operationalGroup[0];
+      const copies = group.filter((item) => String(item.id) !== String(task.id));
+      if (copies.length) duplicates.push({ canonical_task_id: task.id, duplicate_ids: copies.map((item) => item.id), count: group.length });
+
+      // Une tâche canonique terminée avec preuve reste terminée, même si un ancien
+      // doublon possède encore une réservation historique.
+      if (completed(task)) continue;
+
+      const groupIds = new Set(operationalGroup.map(item => String(item.id)));
       const groupRuns = activeRuns.filter(run => groupIds.has(String(run.task_id)));
       if (groupRuns.length) {
         for (const run of groupRuns) {
-          const item = { task_id: run.task_id, title: group.find(task => String(task.id) === String(run.task_id))?.titre, run_id: run.id, status: 'already_running', operational_status: run.operational_status || (run.status === 'awaiting_approval' ? 'WAITING_AUTHORIZATION' : run.status === 'awaiting_review' ? 'WAITING_INPUT' : 'RUNNING'), reason: 'reservation_existante_conservee' };
+          const stale = isStaleActiveRun(run);
+          const item = {
+            task_id: run.task_id,
+            title: group.find(candidate => String(candidate.id) === String(run.task_id))?.titre,
+            run_id: run.id,
+            status: 'already_running',
+            operational_status: stale
+              ? 'WAITING_INPUT'
+              : run.operational_status || (run.status === 'awaiting_approval' ? 'WAITING_AUTHORIZATION' : run.status === 'awaiting_review' ? 'WAITING_INPUT' : 'RUNNING'),
+            reason: stale ? 'reservation_ancienne_a_relancer' : 'reservation_existante_conservee',
+          };
           if (item.operational_status === 'WAITING_AUTHORIZATION') awaitingAuthorization.push(item);
+          else if (item.operational_status === 'WAITING_INPUT') awaitingInput.push(item);
           else if (['RUNNING', 'RETRYING'].includes(item.operational_status)) existingExecutions.push(item);
           else if (!blocked.some(entry => entry.task_id === task.id)) blocked.push({ ...item, task_id: task.id, title: task.titre || task.title, reason: run.reason || 'confirmation_execution_absente', run_ids: groupRuns.map(entry => entry.id) });
         }
-        if (groupRuns.filter(run => ['RUNNING', 'RETRYING'].includes(run.operational_status)).length > 1) blocked.push({ task_id: task.id, title: task.titre || task.title, duplicate_ids: copies.map(item => item.id), run_ids: groupRuns.map(run => run.id), operational_status: 'TECHNICAL_ERROR', reason: 'plusieurs_runs_actifs_sur_un_objectif_regroupe' });
-        if (copies.length) duplicates.push({ canonical_task_id: task.id, duplicate_ids: copies.map(item => item.id), count: group.length });
+        if (groupRuns.filter(run => !isStaleActiveRun(run) && ['RUNNING', 'RETRYING'].includes(run.operational_status)).length > 1) {
+          blocked.push({ task_id: task.id, title: task.titre || task.title, duplicate_ids: copies.map(item => item.id), run_ids: groupRuns.map(run => run.id), operational_status: 'TECHNICAL_ERROR', reason: 'plusieurs_runs_actifs_sur_un_objectif_regroupe' });
+        }
         continue;
       }
-      if (completed(task)) continue;
-      if (copies.length) duplicates.push({ canonical_task_id: task.id, duplicate_ids: copies.map((item) => item.id), count: group.length });
       const executor = resolveNovaExecutor(task);
       if (executor.kind === 'unsupported') {
         blocked.push({ task_id: task.id, title: task.titre || task.title, kind: executor.kind, executable: false, operational_status: operationalStatus({ reason: executor.reason }), reason: executor.reason || 'aucun_executeur_verifiable' });
@@ -326,7 +361,7 @@ async function runAutopilot({ allowWrites = false, inspectOnly = false, requeste
       const canonicalTask = tasks.find((task) => String(task.id) === String(execution.task_id));
       if (canonicalTask) execution.duplicate_task_ids = await closeVerifiedDuplicates(canonicalTask, duplicateTasksForCanonical(tasks, canonicalTask), [execution.run_id].filter(Boolean));
     }
-    const result = { run_id: `autopilot-${crypto.randomUUID()}`, examined: tasks.length, unique: groups.size, executed, queued, ready, blocked, awaiting_authorization: awaitingAuthorization, duplicates, allow_writes: allowWrites, inspection_only: inspectOnly };
+    const result = { run_id: `autopilot-${crypto.randomUUID()}`, examined: tasks.length, unique: groups.size, executed, queued, ready, blocked, awaiting_authorization: awaitingAuthorization, awaiting_input: awaitingInput, duplicates, allow_writes: allowWrites, inspection_only: inspectOnly };
     state.last_result = result;
     return result;
   } catch (error) {
@@ -414,4 +449,4 @@ function startTaskAutopilotScheduler() {
   return { started: true, interval_ms: AUTOPILOT_INTERVAL_MS };
 }
 
-module.exports = { router, taskRunSummaries, canonicalTaskTitle, duplicateTasksForCanonical, classifyTask, recordedExecutionFailure, rowsFrom, summarizeBusinessData, runAutopilot, startTaskAutopilotScheduler, state };
+module.exports = { router, taskRunSummaries, canonicalTaskTitle, duplicateTasksForCanonical, isHistoricalDuplicateTask, isStaleActiveRun, classifyTask, recordedExecutionFailure, rowsFrom, summarizeBusinessData, runAutopilot, startTaskAutopilotScheduler, state };
