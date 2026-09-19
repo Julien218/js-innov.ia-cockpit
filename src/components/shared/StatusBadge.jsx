@@ -64,7 +64,7 @@ const statusStyles = {
 const statusLabels = {
   WAITING_AUTHORIZATION: "Autorisation requise", WAITING_INPUT: "Informations requises",
   RUNNING: "Exécution en cours", RETRYING: "Nouvelle tentative", DONE: "Terminée avec preuve",
-  NO_EXECUTOR: "Exécuteur indisponible", TECHNICAL_ERROR: "Erreur technique", FAILED: "Échec",
+  NO_EXECUTOR: "Exécuteur indisponible", TECHNICAL_ERROR: "Erreur technique", FAILED: "Échec",\n  ARCHIVED_DUPLICATE: "Doublon archivé",
 
   nouveau: "Nouveau", contacte: "Contacté", qualifie: "Qualifié",
   proposition: "Proposition", gagne: "Gagné", perdu: "Perdu",
