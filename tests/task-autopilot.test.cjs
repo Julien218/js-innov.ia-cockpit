@@ -111,3 +111,22 @@ test('l’ancien défaut de colonne Projet corrigé ne bloque plus une relance',
     null,
   );
 });
+
+
+test('l’autopilote reconnaît les doublons historiques et les anciennes réservations', () => {
+  assert.equal(autopilot.isHistoricalDuplicateTask({
+    notes: 'Audit NOVA: doublon bloqué sans suppression; tâche canonique abc (exact_duplicate).',
+  }), true);
+  assert.equal(autopilot.isHistoricalDuplicateTask({ notes: 'Tâche métier normale.' }), false);
+
+  const stale = { status: 'awaiting_approval', updated_at: '2026-08-21T10:00:00Z' };
+  assert.equal(autopilot.isStaleActiveRun(stale, Date.parse('2026-09-19T10:00:00Z')), true);
+});
+
+test('le résultat autopilote expose séparément les informations requises', () => {
+  const source = fs.readFileSync(path.join(root, 'server-task-autopilot.cjs'), 'utf8');
+  assert.match(source, /awaitingInput/);
+  assert.match(source, /awaiting_input: awaitingInput/);
+  assert.match(source, /reservation_ancienne_a_relancer/);
+  assert.match(source, /isHistoricalDuplicateTask/);
+});
