@@ -33,7 +33,7 @@ const ELYNEA_WAKE_MODE_KEY = 'elynea_wake_mode_enabled';
 const WAKE_RESTART_DELAY_MS = 650;
 const WAKE_COMMAND_TIMEOUT_MS = 10000;
 const LOCAL_TOOL_REQUEST = /\b(?:find_local_workflows|comfyui_health|avatar_factory_status|ffmpeg_version|ffprobe_file|list_directory|http_diagnose)\b|(?:ex[eé]cut|diagnosti|contr[oô]l|v[eé]rifi|recherch).*(?:comfyui|port\s*(?:8188|8791)|workflow|minimax|avatar|ffmpeg|ffprobe|dossier\s+local)/i;
-const LOCAL_NOVA_PROMPT = `Tu es NOVA, l’unique assistant visible du Cockpit JS-Innov.IA. Tu conserves le même nom et le même rôle en mode cloud et en mode local. Vérifie les outils réellement disponibles avant toute affirmation de capacité. Ne dis jamais que tu es une simple IA textuelle ni que tu ne peux rien exécuter uniquement parce qu’Internet est coupé.`;
+const LOCAL_NOVA_PROMPT = `Tu es Elynea, l’assistante visible du Cockpit JS-Innov.IA. Tu conserves le même rôle en mode cloud et local. Avant de poser une question, consulte task_snapshot, recent_media et les outils réellement disponibles. Si le message correspond au titre d’une tâche existante, utilise d’abord sa description et ses notes: ne recrée pas la tâche et ne repars pas d’un questionnaire générique. Pour une production vidéo, les defaults du Cockpit sont 8 s, 16:9 et MP4 finalisé; le cloud peut utiliser Grok Imagine/xAI ou Sora/OpenAI, tandis que ComfyUI/FFmpeg local doivent être vérifiés par les outils locaux. Si une tâche contient generation_video_incomplete:source_document_id, demande uniquement quelle image source utiliser au lieu de redemander scénario, durée, style, modèles 3D et format. Ne dis jamais qu’une capacité est indisponible sans l’avoir vérifiée.`;
 const AFFIRMATIVE_CONFIRMATION = /^(oui|ok|oki|okay|confirme|confirmer|je confirme|envoie|envoyer|vas[- ]?y|go|ex[eé]cute|ex[eé]cuter)(?:\b|[,.!])/i;
 const NEGATIVE_CONFIRMATION = /^(non|annule|annuler|stop)(?:\b|[,.!])/i;
 
@@ -525,12 +525,30 @@ const FloatingAgent = () => {
       if (confirmation) await cancelPendingConfirmation();
       const sendCloud = async () => {
         let recentMedia = null;
+        let localEnvironment = null;
         try { recentMedia = JSON.parse(localStorage.getItem(RECENT_MEDIA_KEY) || 'null'); } catch {}
+        try {
+          const lastLocalRun = Number(localStorage.getItem(LOCAL_AUTOPILOT_LAST_RUN_KEY) || 0);
+          localEnvironment = {
+            recently_reachable: lastLocalRun > 0 && Date.now() - lastLocalRun <= 10 * 60_000,
+            last_autopilot_success_at: lastLocalRun > 0 ? new Date(lastLocalRun).toISOString() : null,
+          };
+        } catch {}
         const resp = await fetch('/api/assistant/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ message: msg, conversation_id: conversationId, recent_media: recentMedia, mailbox: getNovaMailboxContext()?.id }),
+          body: JSON.stringify({
+            message: msg,
+            conversation_id: conversationId,
+            recent_media: recentMedia,
+            mailbox: getNovaMailboxContext()?.id,
+            page_context: {
+              path: typeof window !== 'undefined' ? window.location.pathname : '',
+              title: typeof document !== 'undefined' ? document.title : '',
+            },
+            local_environment: localEnvironment,
+          }),
         });
         if (!resp.ok) {
           const errData = await resp.json().catch(() => ({}));
@@ -545,8 +563,16 @@ const FloatingAgent = () => {
         let lastError;
         let taskSnapshot = null;
         let recentMedia = null;
+        let localEnvironment = null;
         try { taskSnapshot = JSON.parse(localStorage.getItem(LOCAL_TASK_SNAPSHOT_KEY) || 'null'); } catch {}
         try { recentMedia = JSON.parse(localStorage.getItem(RECENT_MEDIA_KEY) || 'null'); } catch {}
+        try {
+          const lastLocalRun = Number(localStorage.getItem(LOCAL_AUTOPILOT_LAST_RUN_KEY) || 0);
+          localEnvironment = {
+            recently_reachable: lastLocalRun > 0 && Date.now() - lastLocalRun <= 10 * 60_000,
+            last_autopilot_success_at: lastLocalRun > 0 ? new Date(lastLocalRun).toISOString() : null,
+          };
+        } catch {}
         for (const localUrl of LOCAL_NOVA_URLS) {
           try {
             const resp = await fetch(`${localUrl}/api/agent/chat`, {
@@ -556,7 +582,18 @@ const FloatingAgent = () => {
                 message: msg,
                 history: messages.slice(-20).map(({ role, content }) => ({ role, content })),
                 system_prompt: LOCAL_NOVA_PROMPT,
-                context: { source: 'cockpit-nova', conversation_id: conversationId, offline: true, task_snapshot: taskSnapshot, recent_media: recentMedia },
+                context: {
+                  source: 'cockpit-nova',
+                  conversation_id: conversationId,
+                  offline: true,
+                  task_snapshot: taskSnapshot,
+                  recent_media: recentMedia,
+                  page_context: {
+                    path: typeof window !== 'undefined' ? window.location.pathname : '',
+                    title: typeof document !== 'undefined' ? document.title : '',
+                  },
+                  local_environment: localEnvironment,
+                },
               }),
               signal: AbortSignal.timeout(90000),
             });

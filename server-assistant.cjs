@@ -24,6 +24,12 @@ const {
 const { indexDocument } = require('./server-documents.cjs');
 const ionosDns = require('./server-ionos-dns.cjs');
 const { MANAGED_DOMAINS } = require('./server-domain-ops.cjs');
+const {
+  pickRelevantTask,
+  taskContextBlock,
+  videoEnvironmentContext,
+  guardTaskAwareAssistantResponse,
+} = require('./server-task-context.cjs');
 
 const router = express.Router();
 const AGENT_URL = process.env.JSINNOVIA_AGENT_URL || process.env.AGENT_URL || 'https://jsinnovia-agent-production.up.railway.app';
@@ -215,6 +221,31 @@ async function buildProjectInventoryContext(message, user) {
 function needsIntegrityContext(message, mode) {
   if (mode === 'client') return false;
   return /factur|devis|client|rattach|projet.*client|tva|bce|l[eé]gal|entreprise/i.test(String(message || ''));
+}
+
+
+function requestPagePath(req) {
+  const raw = req.body?.page_context?.path || req.body?.page_path || '';
+  return String(raw || '').replace(/[\r\n<>]/g, '').slice(0, 240);
+}
+
+function requestLocalEnvironment(req) {
+  const raw = req.body?.local_environment;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const timestamp = Date.parse(String(raw.last_autopilot_success_at || ''));
+  const recentlyReachable = raw.recently_reachable === true
+    && Number.isFinite(timestamp)
+    && timestamp <= Date.now() + 60_000
+    && Date.now() - timestamp <= 10 * 60_000;
+  return {
+    recently_reachable: recentlyReachable,
+    last_autopilot_success_at: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null,
+  };
+}
+
+function shouldLoadTaskContext(message, pagePath = '') {
+  if (/\/taches(?:\/|$)|\/tasks(?:\/|$)/i.test(String(pagePath || ''))) return true;
+  return /\b(?:t[aâ]che|cr[eé]ation|production|finaliser|lancer|contr[oô]ler|v[eé]rifier|ajouter|mettre [àa] jour|configurer|seo|avatar|vid[eé]o|workflow|grok|sora|3d)\b/i.test(String(message || ''));
 }
 
 function rateAllowed(userId) {
@@ -642,6 +673,19 @@ router.post('/chat', async (req, res) => {
 
     const audience = await buildAdaptiveAudienceContext(req.user);
     const recentMedia = recentMediaFrom(req);
+    const pagePath = requestPagePath(req);
+    const localEnvironment = requestLocalEnvironment(req);
+    let relevantTask = null;
+    let relevantTaskContext = '';
+    if (audience.mode !== 'client' && shouldLoadTaskContext(message, pagePath)) {
+      try {
+        const taskRows = await fetchTableRows('Tache');
+        relevantTask = pickRelevantTask(taskRows, message, cleanTenant(req.user?.organisation));
+        if (relevantTask) relevantTaskContext = taskContextBlock(relevantTask, taskRows);
+      } catch (error) {
+        console.warn('[assistant] task context failed:', error.message);
+      }
+    }
     const routingDecision = evaluateNovaRequest(message);
     const costAttribution = resolveCostAttribution({ body: req.body, audience, user: req.user });
     let budgetDecision = { allowed: null, reason: 'budget_check_unavailable' };
@@ -666,8 +710,21 @@ router.post('/chat', async (req, res) => {
     let dropboxMemoryConnected = false;
     const contextBlocks = [
       audience.context,
+      pagePath ? [
+        '[CONTEXTE INTERFACE COCKPIT]',
+        `Page courante: ${pagePath}`,
+        'Si la page est Tâches, interpréter un titre de tâche comme une référence à une fiche existante avant de créer une nouvelle demande.',
+        '[/CONTEXTE INTERFACE COCKPIT]',
+      ].join('\n') : '',
       buildRoutingContext(routingDecision, costAttribution, budgetDecision),
       recentMediaContext(recentMedia),
+      relevantTaskContext,
+      videoEnvironmentContext({
+        task: relevantTask,
+        recentMedia,
+        availableActions,
+        localEnvironment,
+      }),
       [
         '[POLITIQUE VIDÉO JS-INNOV.IA — obligatoire pour tout rendu final]',
         'Toute génération vidéo finale doit passer par /api/video-provenance/finalize avant d’être déclarée terminée.',
@@ -696,6 +753,7 @@ router.post('/chat', async (req, res) => {
         'Une action disponible doit être proposée comme proposed_action au lieu de renvoyer une procédure manuelle. Une capacité absente doit être nommée précisément et ne doit jamais devenir un faux succès.',
         'L’Agent Local 8787 est une capacité optionnelle et son absence ne signifie jamais que NOVA ou le Cockpit ne peuvent rien exécuter.',
         'Avant d’affirmer qu’une action, un outil ou un agent est indisponible, vérifie les actions et contextes réellement fournis dans cette requête.',
+        'Lorsqu’une fiche Tache pertinente est fournie, elle est prioritaire sur un questionnaire générique. Utilise sa description, ses notes, ses médias et les defaults du pipeline avant de demander quoi que ce soit.',
         'Interdit: se présenter comme une simple IA textuelle, reprendre un ancien statut de capacité, ou dire « je ne peux pas exécuter directement » sans preuve issue de la requête courante.',
         '[/CONTRAT DE CAPACITÉS NOVA]',
       ].join('\n'),
@@ -762,7 +820,7 @@ router.post('/chat', async (req, res) => {
           requirements: {
             create_task: 'payload.titre est obligatoire et doit reprendre exactement le titre annoncé à l’utilisateur.',
             send_email: 'Ne proposer send_email que si le dernier message demande explicitement l’envoi. Utiliser une vraie boîte serveur: store pour JS-Innov.IA Store, assurances pour Assurances Dour, jsinnovia uniquement si cette boîte n’est pas un alias. Ne jamais demander une confirmation uniquement en prose: proposed_action est obligatoire.',
-            create_video_generation: 'Pour créer une vidéo depuis le média récent, utiliser payload { provider:"auto", client_name ou client_id, campaign_name, prompt, source_document_id }. Durée 8 s et 16:9 sont imposés par le serveur.',
+            create_video_generation: 'Pour créer une vidéo depuis le média récent ou une tâche existante, utiliser payload { provider:"auto", client_name ou client_id, campaign_name, prompt, source_document_id }. Durée 8 s et 16:9 sont imposés par le serveur; le livrable final est MP4. Ne redemande pas durée/format/modèles 3D si ces defaults conviennent. Si source_document_id manque, demander uniquement quelle image utiliser.',
             assign_media_client: 'Pour rattacher le média actif, utiliser son document id avec payload { clientId, clientName }. Le client doit provenir du contexte intégrité Cockpit.',
             publish_portfolio_media: 'Uniquement sur demande explicite de publication. Utiliser le média récent et payload { title, client_name, description, media_type, dropbox_path, integrity_hash, category, technologies, featured, public_rights_confirmed:true }. La confirmation doit mentionner la diffusion publique et les droits.',
             manage_dns_records: 'Réservé au superadmin. Utiliser payload { domain, changes:[{ name, type:"CNAME" ou "TXT", content, ttl }] }. Décrire exactement chaque valeur dans action_summary. Le serveur relit IONOS avant écriture et vérifie après confirmation.',
@@ -852,7 +910,15 @@ router.post('/chat', async (req, res) => {
     );
 
     res.json({
-      message: blockedAction ? 'La proposition de modification de tâche ne correspond pas à votre demande et a été bloquée. Aucune tâche modifiée. Pour changer un statut, précisez le titre ou l’identifiant de la tâche et le statut souhaité.' : action?.type === 'update_task_status' ? `Action préparée : ${confirmation.summary}` : guardUnverifiedCapabilityRefusal(data.response || data.reply || data.message || 'Réponse vide', { dropboxMemoryConnected }),
+      message: blockedAction ? 'La proposition de modification de tâche ne correspond pas à votre demande et a été bloquée. Aucune tâche modifiée. Pour changer un statut, précisez le titre ou l’identifiant de la tâche et le statut souhaité.' : action?.type === 'update_task_status' ? `Action préparée : ${confirmation.summary}` : guardUnverifiedCapabilityRefusal(
+        guardTaskAwareAssistantResponse(data.response || data.reply || data.message || 'Réponse vide', {
+          task: relevantTask,
+          recentMedia,
+          availableActions,
+          localEnvironment,
+        }),
+        { dropboxMemoryConnected },
+      ),
       confirmation,
       conversation_id: conversationIdFrom(req),
       model_used: data.model_used || data.model,
