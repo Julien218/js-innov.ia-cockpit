@@ -33,6 +33,7 @@ const statusStyles = {
   percue: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
   en_attente_paiement: "bg-amber-500/10 text-amber-600 border-amber-500/20",
   // Tâches
+  ARCHIVED_DUPLICATE: "bg-slate-500/10 text-slate-500 border-slate-500/20",
   a_faire: "bg-slate-500/10 text-slate-600 border-slate-500/20",
   en_cours_tache: "bg-blue-500/10 text-blue-600 border-blue-500/20",
   terminee: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
@@ -64,7 +65,8 @@ const statusStyles = {
 const statusLabels = {
   WAITING_AUTHORIZATION: "Autorisation requise", WAITING_INPUT: "Informations requises",
   RUNNING: "Exécution en cours", RETRYING: "Nouvelle tentative", DONE: "Terminée avec preuve",
-  NO_EXECUTOR: "Exécuteur indisponible", TECHNICAL_ERROR: "Erreur technique", FAILED: "Échec",\n  ARCHIVED_DUPLICATE: "Doublon archivé",
+  NO_EXECUTOR: "Exécuteur indisponible", TECHNICAL_ERROR: "Erreur technique", FAILED: "Échec",
+  ARCHIVED_DUPLICATE: "Doublon archivé",
 
   nouveau: "Nouveau", contacte: "Contacté", qualifie: "Qualifié",
   proposition: "Proposition", gagne: "Gagné", perdu: "Perdu",
