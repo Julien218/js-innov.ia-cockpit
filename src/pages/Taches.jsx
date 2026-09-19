@@ -9,7 +9,7 @@ import FormModal from "@/components/shared/FormModal";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { AlertTriangle, CheckCircle2, CircleDot, Clock3, Loader2, Pencil, Play, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
-import { isTaskBlocked, isTaskCompleted, isTaskInProgress, runOperationalStatus, taskBlockerMessage } from "@/lib/taskStatus";
+import { isHistoricalDuplicate, isStaleActiveRun, isTaskBlocked, isTaskCompleted, isTaskInProgress, runOperationalStatus, taskBlockerMessage, taskRequiresInput } from "@/lib/taskStatus";
 import { groupTasks } from "@/lib/taskGrouping";
 
 const formFields = [
@@ -30,7 +30,7 @@ const columns = [
     <div className="flex max-w-sm items-center gap-2 whitespace-normal">
       <span className="break-words">{value}</span>
       {row.duplicate_count > 1 && (
-        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-600" title={`${row.duplicate_count} enregistrements regroupés`}>
+        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-600" title={`${row.duplicate_count} enregistrements regroupés${row.archived_duplicate_count ? ` · ${row.archived_duplicate_count} historique(s)` : ""}`}>
           ×{row.duplicate_count}
         </span>
       )}
@@ -118,24 +118,38 @@ export default function Taches() {
   const rows = Array.isArray(taches) ? taches : [];
   const autopilotResult = autopilotStatus?.last_result || {};
   const awaitingAuthorization = Array.isArray(autopilotResult.awaiting_authorization) ? autopilotResult.awaiting_authorization : [];
+  const awaitingInput = Array.isArray(autopilotResult.awaiting_input) ? autopilotResult.awaiting_input : [];
   const actualBlockers = Array.isArray(autopilotResult.blocked) ? autopilotResult.blocked : [];
   const queuedExecutions = Array.isArray(autopilotResult.queued) ? autopilotResult.queued : [];
   const waitingTaskIds = useMemo(() => new Set(awaitingAuthorization.map((item) => String(item.task_id))), [awaitingAuthorization]);
   const displayRows = useMemo(() => {
     const latest = new Map();
-    const isActiveRun = run => ["pending", "queued", "dispatching", "dispatched", "running", "awaiting_approval", "awaiting_review"].includes(run.status);
-    for (const run of [...runs].sort((a, b) => Number(isActiveRun(b)) - Number(isActiveRun(a)) || String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))) {
+    const isPreferredActiveRun = run => ["pending", "queued", "dispatching", "dispatched", "running", "awaiting_approval", "awaiting_review"].includes(run.status)
+      && !isStaleActiveRun(run);
+    for (const run of [...runs].sort((a, b) => Number(isPreferredActiveRun(b)) - Number(isPreferredActiveRun(a)) || String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))) {
       if (!latest.has(String(run.task_id))) latest.set(String(run.task_id), run);
     }
-    const withRuns = rows.map(row => ({ ...row, operational_status: runOperationalStatus(latest.get(String(row.id))) }));
+    const withRuns = rows.map((row) => {
+      const run = latest.get(String(row.id));
+      let operationalStatus = null;
+      if (isHistoricalDuplicate(row)) operationalStatus = "ARCHIVED_DUPLICATE";
+      else if (isTaskCompleted(row) && !isPreferredActiveRun(run)) operationalStatus = "DONE";
+      else operationalStatus = runOperationalStatus(run);
+      if (!operationalStatus && taskRequiresInput(row, run)) operationalStatus = "WAITING_INPUT";
+      return { ...row, operational_status: operationalStatus, _latest_run: run || null };
+    });
     const groupedRows = groupDuplicates ? groupTasks(withRuns) : withRuns;
     return groupedRows.map((row) => {
-      const ids = (row.duplicate_ids?.length ? row.duplicate_ids : [row.id]).map(String);
+      if (row.operational_status === "DONE" || row.operational_status === "ARCHIVED_DUPLICATE") return row;
+
+      const operationalCopies = (row.duplicate_tasks?.length ? row.duplicate_tasks : [row])
+        .filter((task) => !isHistoricalDuplicate(task));
+      const ids = operationalCopies.map((task) => String(task.id)).filter(Boolean);
       const blocker = actualBlockers.find(item => [item.task_id, ...(item.duplicate_ids || [])].some(id => ids.includes(String(id))));
       const hasRealBlocker = Boolean(blocker);
       if (blocker?.operational_status) return { ...row, operational_status: blocker.operational_status };
       if (!row.operational_status && row.duplicate_tasks) {
-        const execution = row.duplicate_tasks.find(task => task.operational_status);
+        const execution = row.duplicate_tasks.find(task => !isHistoricalDuplicate(task) && task.operational_status);
         if (execution) return { ...row, operational_status: execution.operational_status };
       }
       const waiting = ids.some((id) => waitingTaskIds.has(id));
@@ -146,19 +160,27 @@ export default function Taches() {
   }, [rows, runs, groupDuplicates, waitingTaskIds, actualBlockers]);
   const isLate = (task) => task?.date_echeance && new Date(task.date_echeance) < new Date() && !isTaskCompleted(task);
 
+  const operationalRows = useMemo(
+    () => displayRows.filter((task) => task.operational_status !== "ARCHIVED_DUPLICATE" && !isHistoricalDuplicate(task)),
+    [displayRows],
+  );
+
   const counters = useMemo(() => ({
-    actives: displayRows.filter((task) => !isTaskCompleted(task)).length,
-    en_cours: displayRows.filter((task) => isTaskInProgress(task)).length,
-    bloquees: displayRows.filter(isTaskBlocked).length,
-    retard: displayRows.filter(isLate).length,
-    terminees: displayRows.filter(isTaskCompleted).length,
-  }), [displayRows]);
+    actives: operationalRows.filter((task) => !isTaskCompleted(task)).length,
+    en_cours: operationalRows.filter((task) => isTaskInProgress(task)).length,
+    bloquees: operationalRows.filter(isTaskBlocked).length,
+    retard: operationalRows.filter(isLate).length,
+    terminees: operationalRows.filter(isTaskCompleted).length,
+    historique: displayRows.filter((task) => task.operational_status === "ARCHIVED_DUPLICATE" || isHistoricalDuplicate(task)).length,
+  }), [displayRows, operationalRows]);
 
   const filteredTasks = useMemo(() => {
     const term = search.trim().toLowerCase();
     const priorityRank = { urgente: 0, haute: 1, normale: 2, basse: 3 };
     return displayRows
       .filter((task) => {
+        const archivedDuplicate = task.operational_status === "ARCHIVED_DUPLICATE" || isHistoricalDuplicate(task);
+        if (statusFilter !== "toutes" && archivedDuplicate) return false;
         if (statusFilter === "actives" && isTaskCompleted(task)) return false;
         if (statusFilter === "bloquees" && !isTaskBlocked(task)) return false;
         if (statusFilter === "retard" && !isLate(task)) return false;
@@ -219,7 +241,7 @@ export default function Taches() {
       {runsUnavailable && <p role="alert" className="text-sm text-amber-600">Les états NOVA ne peuvent pas être actualisés. Les tâches et leurs historiques restent conservés.</p>}
       <details className="rounded-xl border border-border/70 bg-card p-4" aria-label="Pilotage des exécutions NOVA">
         <summary className="cursor-pointer text-sm font-semibold focus-visible:outline-primary">
-          Pilotage NOVA <span className="ml-2 font-normal text-muted-foreground">{autopilotStatus?.last_result ? `${awaitingAuthorization.length} autorisation(s) · ${queuedExecutions.length} en cours · ${actualBlockers.length} blocage(s)` : 'État en cours de vérification'} — détails et actions</span>
+          Pilotage NOVA <span className="ml-2 font-normal text-muted-foreground">{autopilotStatus?.last_result ? `${awaitingAuthorization.length} autorisation(s) · ${awaitingInput.length} information(s) · ${queuedExecutions.length} en cours · ${actualBlockers.length} blocage(s)` : 'État en cours de vérification'} — détails et actions</span>
         </summary>
         <div className="mt-4 border-t border-border pt-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -233,6 +255,7 @@ export default function Taches() {
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
               <span className="rounded-full bg-amber-500/10 px-2.5 py-1 font-medium text-amber-600">{awaitingAuthorization.length} en attente d’autorisation</span>
+              <span className="rounded-full bg-violet-500/10 px-2.5 py-1 font-medium text-violet-600">{awaitingInput.length} information(s) requise(s)</span>
               <span className="rounded-full bg-blue-500/10 px-2.5 py-1 font-medium text-blue-600">{queuedExecutions.length} en traitement</span>
               <span className="rounded-full bg-red-500/10 px-2.5 py-1 font-medium text-red-600">{actualBlockers.length} blocage(s) réel(s)</span>
             </div>
@@ -288,7 +311,7 @@ export default function Taches() {
           })}
         </div>
         <p className="text-xs text-muted-foreground">
-          Priorité aux blocages et aux échéances. Les historiques restent conservés.
+          Priorité aux blocages réels et aux échéances. Les doublons historiques restent conservés mais sont exclus de « À traiter ».
         </p>
         <Button
           type="button"
