@@ -55,7 +55,7 @@ export const isTaskCompleted = (taskOrStatus) => {
 };
 
 export const isTaskBlocked = (taskOrStatus) => {
-  if (taskOrStatus?.operational_status) return ["NO_EXECUTOR", "TECHNICAL_ERROR", "FAILED", "WAITING_INPUT"].includes(taskOrStatus.operational_status);
+  if (taskOrStatus?.operational_status) return ["NO_EXECUTOR", "TECHNICAL_ERROR", "FAILED"].includes(taskOrStatus.operational_status);
   const value = typeof taskOrStatus === "object" && taskOrStatus !== null
     ? taskOrStatus.statut ?? taskOrStatus.status
     : taskOrStatus;
