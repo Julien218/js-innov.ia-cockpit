@@ -1,13 +1,13 @@
 /**
- * FloatingAgent.jsx — Widget flottant NOVA pour le cockpit
+ * FloatingAgent.jsx — Widget flottant Elynea pour le cockpit
  * 
  * Bulle de chat persistante en bas à droite, accessible sur toutes les pages.
  * Communique avec l'assistant local /api/assistant/chat (Railway, zéro Base44).
  * 
  * Fonctionnalités:
- * - Avatar NOVA (phoenix gold/cyan)
- * - Reconnaissance vocale (Web Speech API) — parler à NOVA
- * - Synthèse vocale (speechSynthesis) — NOVA lit à voix haute
+ * - Avatar Elynea (asset historique nova-avatar)
+ * - Reconnaissance vocale locale / Web Speech — parler à Elynea
+ * - Synthèse vocale (speechSynthesis) — Elynea lit à voix haute
  * - Persistance localStorage (50 derniers messages)
  * - Actions CRM avec confirmation
  * 
@@ -647,13 +647,13 @@ const FloatingAgent = () => {
               signal: AbortSignal.timeout(90000),
             });
             const data = await resp.json().catch(() => ({}));
-            if (!resp.ok) throw new Error(data.error || `NOVA locale indisponible (${resp.status})`);
+            if (!resp.ok) throw new Error(data.error || `Elynea locale indisponible (${resp.status})`);
             return { ...data, local_fallback: true, local_endpoint: localUrl };
           } catch (error) {
             lastError = error;
           }
         }
-        throw lastError || new Error('NOVA locale indisponible');
+        throw lastError || new Error('Elynea locale indisponible');
       };
 
       const data = await sendNovaChat({ message: msg, requiresLocalTool,
@@ -677,7 +677,7 @@ const FloatingAgent = () => {
     } catch (err) {
       const prefix = err?.emailVerification ? '⚠️ Préclassement emails non vérifié : ' : err?.dropboxVerification ? '⚠️ Suppression Dropbox non vérifiée : ' : err?.cockpitResponse
         ? '⚠️ Le Cockpit a répondu : '
-        : requiresLocalTool ? '⚠️ L’agent local requis est injoignable : ' : '⚠️ NOVA cloud et locale sont injoignables : ';
+        : requiresLocalTool ? '⚠️ L’agent local requis est injoignable : ' : '⚠️ Elynea cloud et locale sont injoignables : ';
       setMessages(prev => [...prev, { role: 'assistant', content: prefix + err.message, ts: Date.now(), isError: true }]);
     } finally {
       setLoading(false);
@@ -862,7 +862,7 @@ const FloatingAgent = () => {
             </div>
             <div style={{ display: 'flex', gap: '4px' }}>
               {ttsEnabled && ttsVoices.length > 0 && (
-                <select aria-label="Voix de NOVA" title="Choisir la voix française de NOVA" value={ttsVoiceName} onChange={(event) => setTtsVoiceName(event.target.value)} style={{ maxWidth: '104px', background: '#0F172A', border: '1px solid rgba(100,116,139,0.35)', borderRadius: '6px', color: '#cbd5e1', fontSize: '10px', padding: '3px 5px' }}>
+                <select aria-label="Voix d’Elynea" title="Choisir la voix française d’Elynea" value={ttsVoiceName} onChange={(event) => setTtsVoiceName(event.target.value)} style={{ maxWidth: '104px', background: '#0F172A', border: '1px solid rgba(100,116,139,0.35)', borderRadius: '6px', color: '#cbd5e1', fontSize: '10px', padding: '3px 5px' }}>
                   {ttsVoices.map((voice) => <option key={`${voice.name}-${voice.lang}`} value={voice.name}>{voice.name}</option>)}
                 </select>
               )}
