@@ -421,7 +421,7 @@ const FloatingAgent = () => {
           setIsListening(false);
           if (!value) return;
           setInput(value);
-          setTimeout(() => doSend(value), 100);
+          setTimeout(() => doSendRef.current?.(value), 100);
         },
         onError: (error) => {
           setVoicePhase('error');
@@ -462,7 +462,7 @@ const FloatingAgent = () => {
       setIsListening(false);
       if (finalTranscript.trim()) {
         setInput(finalTranscript.trim());
-        setTimeout(() => doSend(finalTranscript.trim()), 100);
+        setTimeout(() => doSendRef.current?.(finalTranscript.trim()), 100);
       }
     };
     recognition.onerror = (event) => {
