@@ -406,7 +406,9 @@ export default function PilotyaSign() {
               <span>{Math.round((discovery.radius_m || 0) / 1000)} km</span>
               <span>{discovery.sector_label}</span>
               <span>{discovery.count} résultat(s)</span>
-              <span>Source : OpenStreetMap / Overpass</span>
+              <span>
+                Source : <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">© contributeurs OpenStreetMap</a> / Overpass
+              </span>
             </div>
 
             <div className="grid gap-3 lg:grid-cols-2">
