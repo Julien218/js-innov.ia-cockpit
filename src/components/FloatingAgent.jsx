@@ -23,6 +23,8 @@ import { executeNovaClientAction } from '@/lib/novaClientAction';
 import { isDropboxDeletionRequest, sendNovaChat } from '@/lib/novaChatTransport';
 import { getNovaMailboxContext } from '@/lib/novaMailboxContext';
 import { extractElyneaWakeCommand } from '@/lib/elyneaWakeWord';
+import { speakAll } from '@/lib/speechText';
+import { createLocalVoiceRecorder, localMicroSupported } from '@/lib/localVoiceTranscriber';
 
 const LOCAL_NOVA_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
 const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
@@ -50,6 +52,7 @@ const FloatingAgent = () => {
   const [loading, setLoading] = useState(false);
   const [conversationId] = useState(() => localStorage.getItem('agent_conversation_id') || 'floating');
   const [isListening, setIsListening] = useState(false);
+  const [voicePhase, setVoicePhase] = useState('idle');
   const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('agent_tts_enabled') === 'true');
   const [ttsVoices, setTtsVoices] = useState([]);
   const [ttsVoiceName, setTtsVoiceName] = useState(() => localStorage.getItem(TTS_VOICE_KEY) || '');
@@ -66,6 +69,8 @@ const FloatingAgent = () => {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const recognitionRef = useRef(null);
+  const localVoiceRef = useRef(null);
+  const speechCancelRef = useRef(null);
   const wakeRecognitionRef = useRef(null);
   const wakeCommandRecognitionRef = useRef(null);
   const wakeRestartTimerRef = useRef(null);
@@ -75,7 +80,9 @@ const FloatingAgent = () => {
   const doSendRef = useRef(null);
 
   const ttsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
-  const sttSupported = typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
+  const browserSttSupported = typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
+  const localSttSupported = localMicroSupported();
+  const sttSupported = localSttSupported || browserSttSupported;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -172,6 +179,8 @@ const FloatingAgent = () => {
     }
     return () => {
       if (ttsSupported) {
+        speechCancelRef.current?.();
+        speechCancelRef.current = null;
         window.speechSynthesis.cancel();
         window.speechSynthesis.onvoiceschanged = null;
       }
@@ -180,32 +189,26 @@ const FloatingAgent = () => {
 
   const speak = useCallback((text) => {
     if (!ttsSupported || !ttsEnabled || !text) return;
-    const cleanText = text
-      .replace(/\[Contexte Dropbox[^\]]*\]/gi, '')
-      .replace(/[#*_~`]/g, '')
-      .replace(/⚠️/g, '')
-      .replace(/https?:\/\/\S+/gi, 'lien internet')
-      .replace(/\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/gi, 'identifiant du journal')
-      .replace(/\n{2,}/g, '. ')
-      .replace(/\n/g, ' ')
-      .slice(0, 500);
-
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(cleanText);
+    speechCancelRef.current?.();
     const voices = window.speechSynthesis.getVoices();
     const selectedVoice = chooseNovaVoice(voices, ttsVoiceName);
-    utter.lang = selectedVoice?.lang || 'fr-BE';
-    utter.rate = 0.96;
-    utter.pitch = 1.0;
-    if (selectedVoice) utter.voice = selectedVoice;
-    utter.onstart = () => setSpeaking(true);
-    utter.onend = () => setSpeaking(false);
-    utter.onerror = () => setSpeaking(false);
-    window.speechSynthesis.speak(utter);
+    speechCancelRef.current = speakAll({
+      text,
+      voice: selectedVoice,
+      lang: 'fr-BE',
+      rate: 0.96,
+      pitch: 1,
+      onStart: () => setSpeaking(true),
+      onDone: () => { setSpeaking(false); speechCancelRef.current = null; },
+      onError: () => setSpeaking(false),
+    });
   }, [ttsSupported, ttsEnabled, ttsVoiceName]);
 
   const stopSpeaking = useCallback(() => {
-    if (ttsSupported) { window.speechSynthesis.cancel(); setSpeaking(false); }
+    speechCancelRef.current?.();
+    speechCancelRef.current = null;
+    if (ttsSupported) window.speechSynthesis.cancel();
+    setSpeaking(false);
   }, [ttsSupported]);
 
   const clearWakeRestartTimer = useCallback(() => {
@@ -263,7 +266,7 @@ const FloatingAgent = () => {
   }), [ttsSupported, ttsVoiceName]);
 
   const startWakeCommandListening = useCallback(() => {
-    if (!wakeEnabledRef.current || !sttSupported) {
+    if (!wakeEnabledRef.current || !browserSttSupported) {
       rearmWakeWhenQuiet();
       return;
     }
@@ -304,10 +307,10 @@ const FloatingAgent = () => {
 
     try { recognition.start(); }
     catch { rearmWakeWhenQuiet(); }
-  }, [sttSupported, rearmWakeWhenQuiet]);
+  }, [browserSttSupported, rearmWakeWhenQuiet]);
 
   const startWakeListening = useCallback(() => {
-    if (!wakeEnabledRef.current || !sttSupported || wakeBusyRef.current || wakeRecognitionRef.current) return;
+    if (!wakeEnabledRef.current || !browserSttSupported || wakeBusyRef.current || wakeRecognitionRef.current) return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SR();
     recognition.lang = 'fr-BE';
@@ -365,7 +368,7 @@ const FloatingAgent = () => {
       setWakeError(String(error?.message || 'Impossible d’activer le microphone.'));
       setWakeStatus('blocked');
     }
-  }, [sttSupported, clearWakeRestartTimer, rearmWakeWhenQuiet, speakWakeAcknowledgement, startWakeCommandListening]);
+  }, [browserSttSupported, clearWakeRestartTimer, rearmWakeWhenQuiet, speakWakeAcknowledgement, startWakeCommandListening]);
 
   useEffect(() => {
     wakeStartRef.current = startWakeListening;
@@ -382,8 +385,8 @@ const FloatingAgent = () => {
   }, []);
 
   const toggleWakeMode = useCallback(() => {
-    if (!sttSupported) {
-      setWakeError('La reconnaissance vocale n’est pas disponible dans ce navigateur.');
+    if (!browserSttSupported) {
+      setWakeError('Le mode d’appel permanent nécessite SpeechRecognition. Le bouton Micro utilise Whisper local.');
       return;
     }
     if (wakeEnabledRef.current) {
@@ -402,10 +405,40 @@ const FloatingAgent = () => {
     setIsOpen(true);
     clearWakeRestartTimer();
     setTimeout(() => wakeStartRef.current?.(), 0);
-  }, [sttSupported, abortWakeRecognitions, clearWakeRestartTimer]);
+  }, [browserSttSupported, abortWakeRecognitions, clearWakeRestartTimer]);
 
   const startListening = useCallback(() => {
-    if (!sttSupported) return;
+    if (localSttSupported) {
+      if (localVoiceRef.current?.active) return;
+      const recorder = createLocalVoiceRecorder({
+        onState: (state) => {
+          setVoicePhase(state);
+          setIsListening(state === 'recording');
+        },
+        onTranscript: (transcript) => {
+          const value = String(transcript || '').trim();
+          setVoicePhase('idle');
+          setIsListening(false);
+          if (!value) return;
+          setInput(value);
+          setTimeout(() => doSend(value), 100);
+        },
+        onError: (error) => {
+          setVoicePhase('error');
+          setIsListening(false);
+          setMessages(prev => [...prev, { role: 'assistant', content: `Micro local : ${error?.message || 'transcription indisponible'}`, ts: Date.now(), isError: true }]);
+        },
+      });
+      localVoiceRef.current = recorder;
+      recorder.start().catch((error) => {
+        setVoicePhase('error');
+        setIsListening(false);
+        setMessages(prev => [...prev, { role: 'assistant', content: `Micro local : ${error?.message || 'activation impossible'}`, ts: Date.now(), isError: true }]);
+      });
+      return;
+    }
+
+    if (!browserSttSupported) return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SR();
     recognition.lang = 'fr-BE';
@@ -414,6 +447,7 @@ const FloatingAgent = () => {
     recognitionRef.current = recognition;
 
     let finalTranscript = '';
+    recognition.onstart = () => { setVoicePhase('recording'); setIsListening(true); };
     recognition.onresult = (event) => {
       let interim = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -424,19 +458,34 @@ const FloatingAgent = () => {
       setInput(finalTranscript + interim);
     };
     recognition.onend = () => {
+      setVoicePhase('idle');
       setIsListening(false);
       if (finalTranscript.trim()) {
         setInput(finalTranscript.trim());
         setTimeout(() => doSend(finalTranscript.trim()), 100);
       }
     };
-    recognition.onerror = () => setIsListening(false);
+    recognition.onerror = (event) => {
+      setVoicePhase('error');
+      setIsListening(false);
+      const code = String(event?.error || 'unknown');
+      setMessages(prev => [...prev, { role: 'assistant', content: `Micro navigateur : ${code}. Le micro local Whisper est recommandé.`, ts: Date.now(), isError: true }]);
+    };
     recognition.start();
-    setIsListening(true);
-  }, [sttSupported]);
+  }, [localSttSupported, browserSttSupported]);
 
   const stopListening = useCallback(() => {
-    if (recognitionRef.current) { recognitionRef.current.stop(); setIsListening(false); }
+    if (localVoiceRef.current?.active) {
+      setIsListening(false);
+      setVoicePhase('transcribing');
+      void localVoiceRef.current.stop().catch(() => {});
+      return;
+    }
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+      setVoicePhase('idle');
+    }
   }, []);
 
   const executeConfirmation = useCallback(async (userMessage = '') => {
@@ -649,6 +698,9 @@ const FloatingAgent = () => {
   const resetConversation = useCallback(async () => {
     await cancelPendingConfirmation();
     stopSpeaking();
+    localVoiceRef.current?.cancel?.();
+    setVoicePhase('idle');
+    setIsListening(false);
     setMessages([]);
     setConfirmation(null);
     localStorage.removeItem('agent_chat_messages');
@@ -664,6 +716,11 @@ const FloatingAgent = () => {
     const oversized = files.find((file) => file.size > 100 * 1024 * 1024);
     if (oversized) {
       setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ ${oversized.name} dépasse la limite de 100 Mo.`, ts: Date.now(), isError: true }]);
+      return;
+    }
+
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Mode hors ligne : le fichier n’est pas envoyé vers Dropbox. Conservez-le localement puis relancez l’archivage quand la connexion revient.', ts: Date.now(), isError: true }]);
       return;
     }
 
@@ -744,7 +801,7 @@ const FloatingAgent = () => {
   }, [ttsEnabled, stopSpeaking]);
 
   const wakeActive = wakeEnabled && ['starting', 'armed', 'woken', 'command', 'working', 'reconnecting'].includes(wakeStatus);
-  const statusColor = speaking ? '#D4AF37' : isListening || wakeStatus === 'command' ? '#06B6D4' : wakeActive ? '#22D3EE' : loading ? '#f59e0b' : '#22c55e';
+  const statusColor = speaking ? '#D4AF37' : voicePhase === 'transcribing' ? '#8B5CF6' : isListening || wakeStatus === 'command' ? '#06B6D4' : wakeActive ? '#22D3EE' : loading ? '#f59e0b' : '#22c55e';
   const statusText = speaking
     ? 'Parle...'
     : wakeStatus === 'command'
@@ -755,9 +812,11 @@ const FloatingAgent = () => {
           ? 'Appel détecté'
           : wakeStatus === 'reconnecting'
             ? 'Réactivation micro...'
-            : isListening
-              ? 'Écoute...'
-              : loading || wakeStatus === 'working'
+            : voicePhase === 'transcribing'
+              ? 'Whisper local...'
+              : isListening
+                ? 'Écoute...'
+                : loading || wakeStatus === 'working'
                 ? 'Réfléchit...'
                 : 'En ligne';
 
@@ -898,13 +957,13 @@ const FloatingAgent = () => {
               <button
                 onClick={toggleVoice}
                 title={wakeEnabled ? 'Appel Elynea écoute déjà le micro' : isListening ? 'Arrêt écoute' : 'Parler à Elynea'}
-                disabled={loading || wakeEnabled}
+                disabled={loading || wakeEnabled || voicePhase === 'transcribing'}
                 style={{
                   background: isListening ? 'rgba(6,182,212,0.15)' : wakeEnabled ? 'rgba(34,211,238,0.08)' : '#1e293b', border: `1px solid ${isListening ? '#06B6D4' : wakeEnabled ? 'rgba(34,211,238,0.35)' : 'rgba(100,116,139,0.3)'}`,
-                  borderRadius: '10px', padding: '10px', cursor: (loading || wakeEnabled) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '40px', height: '40px', fontSize: '16px', opacity: wakeEnabled ? 0.7 : 1,
+                  borderRadius: '10px', padding: '10px', cursor: (loading || wakeEnabled || voicePhase === 'transcribing') ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '40px', height: '40px', fontSize: '16px', opacity: wakeEnabled ? 0.7 : 1,
                 }}
               >
-                {isListening ? '⏹' : '🎤'}
+                {isListening ? 'Stop' : voicePhase === 'transcribing' ? 'Whisper…' : 'Micro'}
               </button>
             )}
             <textarea
@@ -912,9 +971,9 @@ const FloatingAgent = () => {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isListening ? 'Écoute en cours...' : 'Écris ton message...'}
+              placeholder={isListening ? 'Écoute en cours...' : voicePhase === 'transcribing' ? 'Transcription locale...' : 'Écris ton message...'}
               rows={1}
-              disabled={loading || isListening}
+              disabled={loading || isListening || voicePhase === 'transcribing'}
               style={{
                 flex: 1, background: '#0F172A', border: '1px solid rgba(100,116,139,0.3)', borderRadius: '10px', padding: '10px 14px',
                 color: '#e2e8f0', fontSize: '13px', outline: 'none', resize: 'none', fontFamily: 'inherit', maxHeight: '80px', minHeight: '40px',
