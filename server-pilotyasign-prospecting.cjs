@@ -204,7 +204,7 @@ function overpassQuery({ lat, lon, radius, sector }) {
     .replaceAll('LAT', String(lat))
     .replaceAll('LON', String(lon)))
     .join('\n');
-  return `[out:json][timeout:20];\n(\n${clauses}\n);\nout center tags;`;
+  return `[out:json][timeout:20];\n(\n${clauses}\n);\nout center tags 250;`;
 }
 
 async function searchOpenStreetMap({ lat, lon, radius, sector }, fetchImpl = global.fetch) {
@@ -257,7 +257,7 @@ async function searchProspects({ zone = DEFAULT_ZONE, radius = DEFAULT_RADIUS_M,
     source: {
       provider: 'OpenStreetMap / Overpass',
       live: true,
-      note: 'Les coordonnées et coordonnées de contact dépendent des données publiques disponibles dans OpenStreetMap et doivent être vérifiées avant prise de contact.',
+      note: 'Données © contributeurs OpenStreetMap. Les coordonnées et informations de contact dépendent des données publiques disponibles et doivent être vérifiées avant prise de contact.',
     },
   };
 
