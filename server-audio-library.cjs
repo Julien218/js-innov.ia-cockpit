@@ -4,7 +4,6 @@ const { Readable } = require('node:stream');
 const {
   getAccessToken,
   uploadFile,
-  ensureFolderTree,
   downloadFile,
   dropboxApiArg,
 } = require('./server-dropbox-helper.cjs');
@@ -24,11 +23,19 @@ const PLAYLIST_LIMIT = 100;
 const TRACKS_PER_PLAYLIST_LIMIT = 500;
 const MAX_AUDIO_UPLOAD_BYTES = 80 * 1024 * 1024;
 
+function normalizePath(value, fallback = '/Cockpit') {
+  const parts = String(value || fallback).split('/').filter(Boolean);
+  return `/${parts.join('/')}`;
+}
+
+function normalizeCatalogRoot(env = process.env) {
+  return normalizePath(env.DROPBOX_ROOT_PATH || '/Cockpit');
+}
+
 function normalizeRoot(env = process.env) {
   const explicit = String(env.ELYNEA_AUDIO_DROPBOX_PATH || '').trim();
-  if (explicit) return `/${explicit.split('/').filter(Boolean).join('/')}`;
-  const base = String(env.DROPBOX_ROOT_PATH || '/Cockpit').replace(/\/+$/, '');
-  return `${base}/Elynea Audio Studio`;
+  if (explicit) return normalizePath(explicit);
+  return `${normalizeCatalogRoot(env)}/Elynea Audio Studio`;
 }
 
 function safeFilename(value, fallback = 'audio.mp3') {
@@ -69,8 +76,9 @@ function assertAudioFilename(filename) {
 }
 
 function isInside(folder, candidate) {
-  const prefix = `${String(folder || '').replace(/\/+$/, '').toLowerCase()}/`;
-  return String(candidate || '').toLowerCase().startsWith(prefix);
+  const base = String(folder || '').replace(/\/+$/, '').toLowerCase();
+  const value = String(candidate || '').toLowerCase();
+  return value === base || value.startsWith(`${base}/`);
 }
 
 async function readRequestBuffer(req, maximum = MAX_AUDIO_UPLOAD_BYTES) {
@@ -103,21 +111,32 @@ async function dropboxJson(endpoint, body, fetchImpl = (...args) => fetch(...arg
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = data.error_summary || `Dropbox HTTP ${response.status}`;
-    throw Object.assign(new Error(message), { status: response.status === 409 ? 404 : 502 });
+    const message = data.error_summary || data?.error?.['.tag'] || `Dropbox HTTP ${response.status}`;
+    const error = Object.assign(new Error(message), {
+      status: response.status === 409 ? 404 : 502,
+      dropboxStatus: response.status,
+      dropboxData: data,
+    });
+    throw error;
   }
   return data;
 }
 
-async function listFolderAll(folder, fetchImpl) {
+async function listFolderAll(folder, fetchImpl, { recursive = false, missingOk = false } = {}) {
   const entries = [];
-  let result = await dropboxJson('files/list_folder', {
-    path: folder,
-    recursive: false,
-    include_deleted: false,
-    include_non_downloadable_files: false,
-    limit: 2000,
-  }, fetchImpl);
+  let result;
+  try {
+    result = await dropboxJson('files/list_folder', {
+      path: folder,
+      recursive,
+      include_deleted: false,
+      include_non_downloadable_files: false,
+      limit: 2000,
+    }, fetchImpl);
+  } catch (error) {
+    if (missingOk && error.status === 404) return [];
+    throw error;
+  }
   entries.push(...(result.entries || []));
   while (result.has_more && result.cursor) {
     result = await dropboxJson('files/list_folder/continue', { cursor: result.cursor }, fetchImpl);
@@ -126,18 +145,50 @@ async function listFolderAll(folder, fetchImpl) {
   return entries;
 }
 
-async function ensureAudioTree(root) {
-  for (const name of ['Bibliotheque', 'Playlists', 'Projets', 'Exports', 'Inbox', 'Archives']) {
-    const result = await ensureFolderTree(`${root}/${name}`);
-    if (result?.error) throw Object.assign(new Error(result.error), { status: 503 });
+async function ensureFolderExists(folder, fetchImpl) {
+  try {
+    const metadata = await dropboxJson('files/get_metadata', {
+      path: folder,
+      include_media_info: false,
+      include_deleted: false,
+    }, fetchImpl);
+    if (metadata?.['.tag'] === 'folder') return { success: true, path: folder, alreadyExisted: true };
+    throw Object.assign(new Error(`Un fichier existe déjà à l’emplacement ${folder}.`), { status: 409 });
+  } catch (error) {
+    if (error.status !== 404) throw error;
+  }
+
+  try {
+    await dropboxJson('files/create_folder_v2', { path: folder, autorename: false }, fetchImpl);
+    return { success: true, path: folder, alreadyExisted: false };
+  } catch (createError) {
+    // Dropbox peut renvoyer un conflit de dossier sans error_summary exploitable.
+    // Vérifier l'état réel avant de considérer la création comme un échec.
+    try {
+      const metadata = await dropboxJson('files/get_metadata', {
+        path: folder,
+        include_media_info: false,
+        include_deleted: false,
+      }, fetchImpl);
+      if (metadata?.['.tag'] === 'folder') return { success: true, path: folder, alreadyExisted: true };
+    } catch {}
+    throw createError;
   }
 }
 
-function trackFromEntry(entry, root) {
+async function ensureAudioTree(root, fetchImpl) {
+  await ensureFolderExists(root, fetchImpl);
+  for (const name of ['Bibliotheque', 'Playlists', 'Projets', 'Exports', 'Inbox', 'Archives']) {
+    await ensureFolderExists(`${root}/${name}`, fetchImpl);
+  }
+}
+
+function trackFromEntry(entry, catalogRoot, libraryFolder) {
   const displayPath = entry.path_display || entry.path_lower || '';
   const name = entry.name || path.basename(displayPath);
   const extension = audioExtension(name);
-  if (entry['.tag'] !== 'file' || !AUDIO_EXTENSIONS.has(extension)) return null;
+  if (entry['.tag'] !== 'file' || !AUDIO_EXTENSIONS.has(extension) || !isInside(catalogRoot, displayPath)) return null;
+  const encoded = encodeURIComponent(displayPath);
   return {
     id: entry.id || displayPath,
     name,
@@ -145,14 +196,16 @@ function trackFromEntry(entry, root) {
     size: Number(entry.size || 0),
     modified_at: entry.server_modified || entry.client_modified || null,
     mime_type: AUDIO_MIME[extension] || 'application/octet-stream',
-    stream_url: `/api/music-motion/audio/stream?path=${encodeURIComponent(displayPath)}`,
-    source: 'dropbox',
-    library_root: `${root}/Bibliotheque`,
+    stream_url: `/api/music-motion/audio/stream?path=${encoded}`,
+    download_url: `/api/music-motion/audio/stream?path=${encoded}&download=1`,
+    source: isInside(libraryFolder, displayPath) ? 'elynea-audio-studio' : 'cockpit-dropbox',
+    library_root: libraryFolder,
   };
 }
 
 function createAudioLibraryRouter({ fetchImpl = (...args) => fetch(...args), env = process.env } = {}) {
   const router = express.Router();
+  const catalogRoot = normalizeCatalogRoot(env);
   const root = normalizeRoot(env);
   const libraryFolder = `${root}/Bibliotheque`;
   const playlistsFolder = `${root}/Playlists`;
@@ -171,6 +224,7 @@ function createAudioLibraryRouter({ fetchImpl = (...args) => fetch(...args), env
     res.json({
       available: Boolean(token),
       root,
+      catalog_root: catalogRoot,
       library: libraryFolder,
       playlists: playlistsFolder,
       formats: [...AUDIO_EXTENSIONS],
@@ -178,17 +232,21 @@ function createAudioLibraryRouter({ fetchImpl = (...args) => fetch(...args), env
   }));
 
   router.get('/tracks', wrap(async (_req, res) => {
-    await ensureAudioTree(root);
-    const entries = await listFolderAll(libraryFolder, fetchImpl);
+    // Ne crée aucun dossier pendant une simple lecture. Cela permet aussi d'indexer
+    // immédiatement les MP3 déjà classés par Elynea dans A_Classer, Clients ou Projets.
+    const entries = await listFolderAll(catalogRoot, fetchImpl, { recursive: true });
     const tracks = entries
-      .map(entry => trackFromEntry(entry, root))
+      .map(entry => trackFromEntry(entry, catalogRoot, libraryFolder))
       .filter(Boolean)
-      .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
-    res.json({ tracks, count: tracks.length, root, library: libraryFolder });
+      .sort((a, b) => {
+        const dateCompare = String(b.modified_at || '').localeCompare(String(a.modified_at || ''));
+        return dateCompare || a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' });
+      });
+    res.json({ tracks, count: tracks.length, root, catalog_root: catalogRoot, library: libraryFolder });
   }));
 
   router.post('/upload', wrap(async (req, res) => {
-    await ensureAudioTree(root);
+    await ensureAudioTree(root, fetchImpl);
     const contentType = String(req.headers?.['content-type'] || '').split(';', 1)[0].toLowerCase();
     if (!contentType.startsWith('audio/') && contentType !== 'application/octet-stream') {
       throw Object.assign(new Error('Type de fichier audio non pris en charge.'), { status: 415 });
@@ -209,15 +267,15 @@ function createAudioLibraryRouter({ fetchImpl = (...args) => fetch(...args), env
       size: uploaded.size || body.length,
       server_modified: new Date().toISOString(),
     };
-    res.status(201).json({ track: trackFromEntry(entry, root) });
+    res.status(201).json({ track: trackFromEntry(entry, catalogRoot, libraryFolder) });
   }));
 
   router.get('/stream', wrap(async (req, res) => {
     const requestedPath = String(req.query.path || '');
-    if (!requestedPath || !isInside(libraryFolder, requestedPath)) {
+    if (!requestedPath || !isInside(catalogRoot, requestedPath)) {
       throw Object.assign(new Error('Chemin audio non autorisé.'), { status: 403 });
     }
-    assertAudioFilename(path.basename(requestedPath));
+    const safeName = assertAudioFilename(path.basename(requestedPath));
 
     const token = await getAccessToken();
     if (!token) throw Object.assign(new Error('Dropbox non configuré.'), { status: 503 });
@@ -242,8 +300,11 @@ function createAudioLibraryRouter({ fetchImpl = (...args) => fetch(...args), env
     res.status(upstream.status === 206 ? 206 : 200);
     res.setHeader('Content-Type', upstream.headers.get('content-type') || AUDIO_MIME[extension] || 'application/octet-stream');
     res.setHeader('Accept-Ranges', upstream.headers.get('accept-ranges') || 'bytes');
-    res.setHeader('Cache-Control', 'private, max-age=60');
+    res.setHeader('Cache-Control', req.query.download === '1' ? 'private, no-store' : 'private, max-age=60');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (req.query.download === '1') {
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeName)}`);
+    }
     for (const header of ['content-length', 'content-range', 'etag']) {
       const value = upstream.headers.get(header);
       if (value) res.setHeader(header, value);
@@ -253,8 +314,7 @@ function createAudioLibraryRouter({ fetchImpl = (...args) => fetch(...args), env
   }));
 
   router.get('/playlists', wrap(async (_req, res) => {
-    await ensureAudioTree(root);
-    const entries = (await listFolderAll(playlistsFolder, fetchImpl))
+    const entries = (await listFolderAll(playlistsFolder, fetchImpl, { missingOk: true }))
       .filter(entry => entry['.tag'] === 'file' && /\.json$/i.test(entry.name || ''))
       .slice(0, PLAYLIST_LIMIT);
     const playlists = [];
@@ -266,7 +326,7 @@ function createAudioLibraryRouter({ fetchImpl = (...args) => fetch(...args), env
         if (!parsed?.name || !Array.isArray(parsed.tracks)) continue;
         playlists.push({
           name: String(parsed.name).slice(0, 80),
-          tracks: parsed.tracks.filter(trackPath => isInside(libraryFolder, trackPath)).slice(0, TRACKS_PER_PLAYLIST_LIMIT),
+          tracks: parsed.tracks.filter(trackPath => isInside(catalogRoot, trackPath)).slice(0, TRACKS_PER_PLAYLIST_LIMIT),
           updated_at: parsed.updated_at || entry.server_modified || null,
         });
       } catch {}
@@ -276,15 +336,15 @@ function createAudioLibraryRouter({ fetchImpl = (...args) => fetch(...args), env
   }));
 
   router.post('/playlists', wrap(async (req, res) => {
-    await ensureAudioTree(root);
+    await ensureAudioTree(root, fetchImpl);
     const name = safePlaylistName(req.body?.name);
     const tracks = [...new Set(Array.isArray(req.body?.tracks) ? req.body.tracks.map(value => String(value || '')) : [])]
-      .filter(trackPath => isInside(libraryFolder, trackPath))
+      .filter(trackPath => isInside(catalogRoot, trackPath) && AUDIO_EXTENSIONS.has(audioExtension(trackPath)))
       .slice(0, TRACKS_PER_PLAYLIST_LIMIT);
     if (!tracks.length) throw Object.assign(new Error('Ajoutez au moins un morceau à la playlist.'), { status: 400 });
     const filename = `${safePlaylistName(name).replace(/\s+/g, '-')}.json`;
     const payload = Buffer.from(JSON.stringify({
-      schema_version: 1,
+      schema_version: 2,
       name,
       tracks,
       updated_at: new Date().toISOString(),
@@ -297,4 +357,4 @@ function createAudioLibraryRouter({ fetchImpl = (...args) => fetch(...args), env
   return router;
 }
 
-module.exports = { createAudioLibraryRouter, normalizeRoot, AUDIO_EXTENSIONS };
+module.exports = { createAudioLibraryRouter, normalizeRoot, normalizeCatalogRoot, AUDIO_EXTENSIONS };
