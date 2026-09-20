@@ -113,3 +113,13 @@ test('PilotyaSign UI exposes Elynea discovery, anti-duplicate and CRM insertion'
   assert.match(page, /base44\.entities\.Lead\.create/);
   assert.match(page, /© contributeurs OpenStreetMap/);
 });
+
+
+test('public prospecting is rate-limited and website links are sanitized before rendering', () => {
+  const server = read('server-pilotyasign-prospecting.cjs');
+  const page = read('src/pages/PilotyaSign.jsx');
+  assert.match(server, /RATE_LIMIT_MS\s*=\s*3000/);
+  assert.match(server, /prospecting_rate_limited/);
+  assert.match(page, /safeExternalUrl/);
+  assert.match(page, /\["http:", "https:"\]/);
+});
