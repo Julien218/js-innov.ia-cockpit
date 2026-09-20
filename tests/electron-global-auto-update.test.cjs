@@ -68,12 +68,22 @@ test('desktop releases always use a new semantic version so installed apps can d
   assert.match(workflow, /Incrémente electron\/package\.json/);
 });
 
+test('desktop enforces a single application instance', () => {
+  assert.match(bootstrap, /requestSingleInstanceLock\(\)/);
+  assert.match(bootstrap, /app\.on\("second-instance"/);
+  assert.match(bootstrap, /BrowserWindow\s*\.getAllWindows\(\)/);
+  assert.match(bootstrap, /existingWindow\.restore\(\)/);
+  assert.match(bootstrap, /existingWindow\.show\(\)/);
+  assert.match(bootstrap, /existingWindow\.focus\(\)/);
+  assert.match(bootstrap, /if \(!singleInstanceLock\) return;/);
+});
+
 test('packaged desktop enables startup with Windows', () => {
   assert.match(bootstrap, /function enableWindowsStartup\(\)/);
   assert.match(bootstrap, /app\.setLoginItemSettings\(\{/);
   assert.match(bootstrap, /openAtLogin:\s*true/);
   assert.match(bootstrap, /path:\s*process\.execPath/);
-  assert.match(bootstrap, /app\.whenReady\(\)\.then\(async \(\) => \{\s*enableWindowsStartup\(\)/);
+  assert.match(bootstrap, /app\.whenReady\(\)\.then\(async \(\) => \{\s*if \(!singleInstanceLock\) return;\s*enableWindowsStartup\(\)/);
 });
 
 test('desktop release runs when Elynea local capabilities change', () => {
