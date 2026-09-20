@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  BriefcaseBusiness,
+  Briefcase,
   Copy,
   ExternalLink,
   MonitorPlay,
@@ -193,7 +193,7 @@ export default function PilotyaSign() {
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild>
               <a href={PILOTYA_URL} target="_blank" rel="noopener noreferrer">
-                <BriefcaseBusiness className="mr-2 h-4 w-4" />
+                <Briefcase className="mr-2 h-4 w-4" />
                 Ouvrir PilotyaSign
                 <ExternalLink className="ml-2 h-4 w-4" />
               </a>
