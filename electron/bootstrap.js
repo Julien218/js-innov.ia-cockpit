@@ -1,4 +1,4 @@
-const { app, session, Notification } = require("electron");
+const { app, session, Notification, BrowserWindow } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
@@ -402,7 +402,26 @@ function startAutoUpdater() {
   });
 }
 
+const singleInstanceLock = app.requestSingleInstanceLock();
+
+if (!singleInstanceLock) {
+  console.log("[desktop] Une instance du Cockpit est déjà active.");
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    const existingWindow = BrowserWindow
+      .getAllWindows()
+      .find((window) => !window.isDestroyed());
+
+    if (!existingWindow) return;
+    if (existingWindow.isMinimized()) existingWindow.restore();
+    existingWindow.show();
+    existingWindow.focus();
+  });
+}
+
 app.whenReady().then(async () => {
+  if (!singleInstanceLock) return;
   enableWindowsStartup();
   await startBundledLocalAgent().catch((error) => {
     console.log("[desktop] Elynea Local Tools initial start failed:", error.message);
