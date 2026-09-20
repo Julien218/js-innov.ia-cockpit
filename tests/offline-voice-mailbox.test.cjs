@@ -56,3 +56,10 @@ test('offline Dropbox upload never claims a cloud archive succeeded', () => {
   assert.match(floating, /Mode hors ligne : le fichier n’est pas envoyé vers Dropbox/);
   assert.match(floating, /navigator\.onLine\s*===\s*false/);
 });
+
+
+test('microphone transcript uses the current Elynea sender rather than a stale render closure', () => {
+  const floating = read('src/components/FloatingAgent.jsx');
+  assert.match(floating, /doSendRef\.current\?\.\(value\)/);
+  assert.match(floating, /doSendRef\.current\?\.\(finalTranscript\.trim\(\)\)/);
+});
