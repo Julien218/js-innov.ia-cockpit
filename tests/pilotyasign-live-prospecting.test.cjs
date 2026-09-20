@@ -123,3 +123,29 @@ test('public prospecting is rate-limited and website links are sanitized before 
   assert.match(page, /safeExternalUrl/);
   assert.match(page, /\["http:", "https:"\]/);
 });
+
+
+test('Elynea understands a read-only signage prospecting voice command', () => {
+  const intent = require('../server-assistant-intent.cjs');
+  assert.equal(
+    intent.signageProspectingSignal('Elynea, cherche des commerces pour la publicité sur l’écran géant à Dour'),
+    true,
+  );
+  assert.equal(
+    intent.signageProspectingSignal('Elynea, contacte ces commerces par email pour l’écran géant'),
+    false,
+  );
+
+  const params = intent.signageProspectingParams('Elynea cherche des restaurants autour de Mons dans un rayon de 20 km pour l’écran géant');
+  assert.equal(params.sector, 'horeca');
+  assert.equal(params.radius, 20000);
+  assert.match(params.zone, /Mons/);
+});
+
+test('Elynea prospecting response remains read-only and points to PilotyaSign for CRM insertion', () => {
+  const source = read('server-assistant-intent.cjs');
+  assert.match(source, /inspection_only:\s*true/);
+  assert.match(source, /pilotyasign_path:\s*'\/pilotyasign'/);
+  assert.match(source, /Ouvrez PilotyaSign · Prospection/);
+  assert.match(source, /coordonnées publiques doivent être vérifiées/i);
+});
