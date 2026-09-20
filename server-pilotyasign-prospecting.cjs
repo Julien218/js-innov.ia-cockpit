@@ -9,7 +9,9 @@ const DEFAULT_RADIUS_M = 12000;
 const MAX_RADIUS_M = 25000;
 const MAX_RESULTS = 80;
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const RATE_LIMIT_MS = 3000;
 const cache = new Map();
+const lastSearchByActor = new Map();
 
 const SECTORS = Object.freeze({
   all: {
@@ -179,7 +181,7 @@ async function geocodeZone(zone, fetchImpl = global.fetch) {
     headers: {
       Accept: 'application/json',
       'Accept-Language': 'fr-BE,fr;q=0.9',
-      'User-Agent': 'JS-Innov.IA-Cockpit/1.0',
+      'User-Agent': 'JS-Innov.IA-Cockpit/1.0 (https://jsinnovia.com/)',
     },
     signal: AbortSignal.timeout(8000),
   });
@@ -214,7 +216,7 @@ async function searchOpenStreetMap({ lat, lon, radius, sector }, fetchImpl = glo
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
       Accept: 'application/json',
-      'User-Agent': 'JS-Innov.IA-Cockpit/1.0',
+      'User-Agent': 'JS-Innov.IA-Cockpit/1.0 (https://jsinnovia.com/)',
     },
     body: new URLSearchParams({ data: query }).toString(),
     signal: AbortSignal.timeout(25000),
@@ -266,6 +268,19 @@ async function searchProspects({ zone = DEFAULT_ZONE, radius = DEFAULT_RADIUS_M,
 }
 
 router.get('/search', async (req, res) => {
+  const actor = clean(req.user?.id || req.ip || 'unknown', 120);
+  const now = Date.now();
+  const lastSearch = lastSearchByActor.get(actor) || 0;
+  if (now - lastSearch < RATE_LIMIT_MS) {
+    res.setHeader('Retry-After', String(Math.ceil((RATE_LIMIT_MS - (now - lastSearch)) / 1000)));
+    return res.status(429).json({
+      ok: false,
+      error: 'prospecting_rate_limited',
+      message: 'Patientez quelques secondes avant de relancer une recherche.',
+    });
+  }
+  lastSearchByActor.set(actor, now);
+
   try {
     const result = await searchProspects({
       zone: req.query.zone,
