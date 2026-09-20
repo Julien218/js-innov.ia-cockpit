@@ -6,7 +6,7 @@ import {
   CheckSquare, MessageSquare, Shield,
   Network, Smartphone, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
-  PlayCircle, GalleryHorizontalEnd, Send, Gauge, Workflow, Factory, MonitorPlay, Building2, Database, Music2, ClipboardSignature,
+  PlayCircle, GalleryHorizontalEnd, Send, Gauge, Workflow, Factory, MonitorPlay, Building2, Database, Music2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -95,7 +95,7 @@ export const allNavGroups = [
     items: [
       { label: "HainoFlow", icon: Workflow, path: "/hainoflow" },
       { label: "Signelya", icon: MonitorPlay, path: "/ecran-geant" },
-      { label: "PilotyaSign · Prospection", icon: ClipboardSignature, path: "/pilotyasign", minRole: "collaborateur" },
+      { label: "PilotyaSign · Prospection", icon: FileText, path: "/pilotyasign", minRole: "collaborateur" },
     ]
   },
   {
