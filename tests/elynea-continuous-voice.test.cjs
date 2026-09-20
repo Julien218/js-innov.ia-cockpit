@@ -37,9 +37,12 @@ test('Elynea returns to wake-word standby after a command or timeout', () => {
 
 test('Elynea pauses listening while speaking and resumes wake-word standby afterwards', () => {
   const voice = source('src/components/ElyneaContinuousVoice.jsx');
+  const speech = source('src/lib/speechText.js');
   assert.match(voice, /speakingRef\.current\s*=\s*true/);
   assert.match(voice, /if \(!activeRef\.current \|\| speakingRef\.current \|\| sendingRef\.current/);
-  assert.match(voice, /utterance\.onend\s*=\s*finish/);
+  assert.match(voice, /speakAll/);
+  assert.match(voice, /onDone:\s*finish/);
+  assert.match(speech, /utterance\.onend\s*=/);
   assert.match(voice, /setStatus\('Elynea parle…'\)/);
   assert.match(voice, /returnToStandby\(\)/);
 });
