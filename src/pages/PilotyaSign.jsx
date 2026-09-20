@@ -63,6 +63,18 @@ const normalize = (value) => String(value || "")
   .replace(/[^a-z0-9]+/g, " ")
   .trim();
 
+const safeExternalUrl = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    const parsed = new URL(candidate);
+    return ["http:", "https:"].includes(parsed.protocol) ? parsed.href : "";
+  } catch {
+    return "";
+  }
+};
+
 const isPilotyaProspect = (lead = {}) => {
   const notes = String(lead.notes || "");
   return notes.includes(PROSPECT_MARKER)
@@ -430,8 +442,8 @@ export default function PilotyaSign() {
                       {candidate.address && <p>{candidate.address}</p>}
                       {candidate.phone && <p>{candidate.phone}</p>}
                       {candidate.email && <p>{candidate.email}</p>}
-                      {candidate.website && (
-                        <a href={candidate.website} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                      {safeExternalUrl(candidate.website) && (
+                        <a href={safeExternalUrl(candidate.website)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
                           <Globe className="h-3.5 w-3.5" />
                           Site web
                         </a>
