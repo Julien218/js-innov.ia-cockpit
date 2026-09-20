@@ -153,7 +153,7 @@ export default function ElyneaContinuousVoice() {
       rate: 0.96,
       pitch: 1,
       onDone: finish,
-      onError: finish,
+      onError: () => {},
     });
   }, []);
 
