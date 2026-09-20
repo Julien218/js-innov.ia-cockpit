@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const express = require('express');
 const { cleanTenant } = require('./server-tenant.cjs');
+const { searchProspects: searchPilotyaProspects } = require('./server-pilotyasign-prospecting.cjs');
 
 const turns = new Map();
 const confirmationCache = new Map();
@@ -82,6 +83,55 @@ function dispatchVerificationSignal(message) {
     || /\b(?:etat|statut|sont elles|ont elles|bien ete)\b/.test(text);
   const asksToExecute = /\b(?:puis|et ensuite|ensuite|maintenant)\s+(?:dispatch\w*|delegu\w*|assign\w*)\b/.test(text);
   return mentionsTasks && mentionsRouting && asksForState && !asksToExecute;
+}
+
+function signageProspectingSignal(message) {
+  const text = normalize(message);
+  const action = /\b(?:cherche|chercher|recherche|rechercher|trouve|trouver|liste|lister|prospecte|prospecter)\b/.test(text);
+  const target = /\b(?:prospect|prospects|commerce|commerces|entreprise|entreprises|magasin|magasins)\b/.test(text);
+  const signage = /\b(?:ecran geant|espace c|publicite|pilotyasign|signelya)\b/.test(text);
+  const contactAction = /\b(?:contacte|contacter|envoie|envoyer|mail|email|telephone|appelle|appeler)\b/.test(text);
+  return action && target && signage && !contactAction;
+}
+
+function signageProspectingParams(message) {
+  const raw = String(message || '');
+  const text = normalize(raw);
+  const radiusMatch = text.match(/\b(\d{1,2})\s*(?:km|kilometres?)\b/);
+  const radiusKm = radiusMatch ? Math.max(1, Math.min(25, Number(radiusMatch[1]))) : 12;
+
+  let sector = 'all';
+  if (/\b(?:horeca|restaurant|restaurants|cafe|cafes|bar|bars|snack|snacks)\b/.test(text)) sector = 'horeca';
+  else if (/\b(?:coiffeur|coiffeurs|beaute|esthetique|bien etre|fitness)\b/.test(text)) sector = 'beauty';
+  else if (/\b(?:garage|garages|auto|automobile|voiture|moto|pneu|pneus)\b/.test(text)) sector = 'auto';
+  else if (/\b(?:sante|pharmacie|pharmacies|dentiste|dentistes|medecin|medecins|veterinaire)\b/.test(text)) sector = 'health';
+  else if (/\b(?:service|services|bureau|bureaux|artisan|artisans|profession)\b/.test(text)) sector = 'services';
+  else if (/\b(?:loisir|loisirs|sport|sports|cinema|theatre)\b/.test(text)) sector = 'leisure';
+  else if (/\b(?:commerce|commerces|magasin|magasins|boutique|boutiques|retail)\b/.test(text)) sector = 'retail';
+
+  let zone = 'Dour, Belgique';
+  const zoneMatch = raw.match(/(?:autour de|près de|pres de|sur|à|a)\s+([A-Za-zÀ-ÿ' -]{2,60})(?:\s+(?:dans un rayon|rayon|pour|secteur|et|$)|[,.!?]|$)/i);
+  if (zoneMatch?.[1]) {
+    const candidate = String(zoneMatch[1]).trim().replace(/\s+/g, ' ');
+    if (candidate.length >= 2 && candidate.length <= 60) zone = `${candidate}, Belgique`;
+  }
+
+  return { zone, radius: radiusKm * 1000, sector };
+}
+
+function signageProspectingMessage(result) {
+  const candidates = Array.isArray(result?.candidates) ? result.candidates.slice(0, 8) : [];
+  const lines = candidates.map((candidate, index) => {
+    const contact = [candidate.phone, candidate.email, candidate.website].filter(Boolean);
+    return `${index + 1}. ${candidate.name} · ${candidate.category || 'commerce'} · score ${candidate.score || 0}/100${candidate.address ? ` · ${candidate.address}` : ''}${contact.length ? ` · ${contact.join(' · ')}` : ''}`;
+  });
+  return [
+    `Recherche PilotyaSign terminée autour de ${result?.zone || 'Dour'} : ${result?.count || 0} prospect(s) public(s) trouvé(s).`,
+    candidates.length ? 'Premiers résultats :' : 'Aucun résultat exploitable dans cette recherche.',
+    ...lines,
+    candidates.length ? 'Ouvrez PilotyaSign · Prospection dans le Cockpit pour vérifier les doublons et ajouter les commerces retenus au pipeline.' : 'Essayez un autre secteur ou un rayon différent dans PilotyaSign · Prospection.',
+    'Les coordonnées publiques doivent être vérifiées avant tout contact commercial.',
+  ].join('\n');
 }
 
 function rowsFrom(payload) {
@@ -375,6 +425,34 @@ router.use(async (req, res, next) => {
         });
       }
     }
+
+    const canProspectSignage = req.user?.role === 'superadmin'
+      || (['admin', 'collaborateur'].includes(req.user?.role)
+        && Array.isArray(req.user?.permissions)
+        && req.user.permissions.includes('pilotyasign_prospecting'));
+
+    if (canProspectSignage && signageProspectingSignal(message)) {
+      try {
+        const params = signageProspectingParams(message);
+        const report = await searchPilotyaProspects(params);
+        const reportMessage = signageProspectingMessage(report);
+        return res.json({
+          message: reportMessage,
+          response: reportMessage,
+          confirmation: null,
+          inspection_only: true,
+          pilotyasign_path: '/pilotyasign',
+          prospecting_report: report,
+          conversation_id: String(req.body?.conversation_id || 'main'),
+        });
+      } catch (error) {
+        return res.status(502).json({
+          error: 'Recherche de prospects PilotyaSign impossible',
+          details: String(error.message || error).slice(0, 300),
+          confirmation: null,
+        });
+      }
+    }
   }
   next();
 });
@@ -396,6 +474,9 @@ module.exports = {
   confirmationActionSignal,
   ambiguousMessageSignal,
   dispatchVerificationSignal,
+  signageProspectingSignal,
+  signageProspectingParams,
+  signageProspectingMessage,
   summarizeTaskDispatches,
   dispatchReportMessage,
   stripUnbackedConfirmationLanguage,
