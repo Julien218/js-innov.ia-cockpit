@@ -37,3 +37,13 @@ test('manual microphone prefers local Whisper and remains usable while wake mode
   assert.match(localVoice, /\/api\/music-motion\/production\/assets/);
   assert.match(localVoice, /transcription\?\.transcript/);
 });
+
+test('Electron grants microphone access only to Elynea trusted audio origins', () => {
+  const bootstrap = read('electron/bootstrap.js');
+  assert.match(bootstrap, /setPermissionRequestHandler/);
+  assert.match(bootstrap, /setPermissionCheckHandler/);
+  assert.match(bootstrap, /https:\/\/cockpit\.jsinnovia\.com/);
+  assert.match(bootstrap, /127\.0\.0\.1/);
+  assert.match(bootstrap, /mediaTypes\.includes\('audio'\)/);
+  assert.match(bootstrap, /!mediaTypes\.includes\('video'\)/);
+});
