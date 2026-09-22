@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   webAssistant: {
     execute: (task) => ipcRenderer.invoke("nova-web-assistant-execute", task),
   },
+  localVoice: {
+    transcribe: ({ bytes, mimeType }) => ipcRenderer.invoke("elynea-local-voice-transcribe", { bytes, mimeType }),
+  },
   onUpdateAvailable: (callback) => {
     ipcRenderer.on("update-available", (event, data) => callback(data));
   },
