@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Mic, RefreshCw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
-import elyneaAvatar from "@/assets/nova-avatar-128.png";
+const elyneaAvatar = "https://www.jsinnovia.com/brand/companion/companion-avatar-256.webp";
 
 const MESSAGE_STORAGE_KEY = "elynea_signelya_messages_v2";
 const CONVERSATION_STORAGE_KEY = "elynea_signelya_conversation_id_v2";
