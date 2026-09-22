@@ -19,10 +19,12 @@ test('autopilot preserves conflicting historical claims without starting another
     assert.equal(result.executed.length, 0);
     assert.equal(result.queued.length, 0);
     assert.equal(result.awaiting_authorization.length, 1);
-    assert.equal(result.blocked[0].title, 'Analyser les factures');
-    assert.equal(result.blocked[0].reason, 'attente_confirmation_execution_agent');
-    assert.equal(result.blocked[0].run_ids.length, 2);
-    assert.equal(result.blocked[0].operational_status, 'WAITING_INPUT');
+    assert.equal(result.awaiting_input.length, 1);
+    assert.equal(result.blocked.length, 0);
+    assert.equal(result.awaiting_authorization[0].title, 'Analyser les factures');
+    assert.equal(result.awaiting_authorization[0].operational_status, 'WAITING_AUTHORIZATION');
+    assert.equal(result.awaiting_input[0].title, 'Analyser les factures');
+    assert.equal(result.awaiting_input[0].operational_status, 'WAITING_INPUT');
     assert.ok(methods.every(method => method === 'GET'));
   } finally { global.fetch = previous; }
 });
