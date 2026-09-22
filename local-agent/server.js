@@ -879,6 +879,7 @@ function localTaskPlan(task) {
   if (/(achever|finaliser).*(avatar|js innov ia).*local/.test(text)) return ['avatar_factory_status'];
   const genericReadOnlyWorkspaceTask = /(analys|audit|verifi|control|diagnost|inspect|recherch|identifier)/.test(text)
     && /(front|bouton|interface|application|cockpit|code|react|ui|affichage)/.test(text)
+    && !/(image|media|photo|camera)/.test(text)
     && !/(achever|finaliser|corriger|modifier|supprimer|effacer|deployer|publier|ecrire)/.test(text);
   if (genericReadOnlyWorkspaceTask) return ['workspace_task_analysis'];
   if (/(achever|finaliser|corriger|modifier|supprimer|effacer|deployer|publier|ecrire)/.test(text)) return null;
