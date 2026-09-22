@@ -598,13 +598,13 @@ const FloatingAgent = () => {
               signal: AbortSignal.timeout(90000),
             });
             const data = await resp.json().catch(() => ({}));
-            if (!resp.ok) throw new Error(data.error || `NOVA locale indisponible (${resp.status})`);
+            if (!resp.ok) throw new Error(data.error || `Elynea locale indisponible (${resp.status})`);
             return { ...data, local_fallback: true, local_endpoint: localUrl };
           } catch (error) {
             lastError = error;
           }
         }
-        throw lastError || new Error('NOVA locale indisponible');
+        throw lastError || new Error('Elynea locale indisponible');
       };
 
       const data = await sendNovaChat({ message: msg, requiresLocalTool,
@@ -628,7 +628,7 @@ const FloatingAgent = () => {
     } catch (err) {
       const prefix = err?.emailVerification ? '⚠️ Préclassement emails non vérifié : ' : err?.dropboxVerification ? '⚠️ Suppression Dropbox non vérifiée : ' : err?.cockpitResponse
         ? '⚠️ Le Cockpit a répondu : '
-        : requiresLocalTool ? '⚠️ L’agent local requis est injoignable : ' : '⚠️ NOVA cloud et locale sont injoignables : ';
+        : requiresLocalTool ? '⚠️ L’agent local requis est injoignable : ' : '⚠️ Elynea cloud et locale sont injoignables : ';
       setMessages(prev => [...prev, { role: 'assistant', content: prefix + err.message, ts: Date.now(), isError: true }]);
     } finally {
       setLoading(false);

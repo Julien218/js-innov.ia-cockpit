@@ -64,7 +64,7 @@ export default function Taches() {
     queryFn: async () => {
       const response = await fetch("/api/task-autopilot/status", { credentials: "same-origin" });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "État NOVA indisponible");
+      if (!response.ok) throw new Error(data.error || "État Elynea indisponible");
       return data;
     },
     refetchInterval: 30_000,
@@ -89,7 +89,7 @@ export default function Taches() {
         body: JSON.stringify({ allow_writes: allowWrites }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Exécution NOVA impossible");
+      if (!response.ok) throw new Error(data.error || "Exécution Elynea impossible");
       return data;
     },
     onSuccess: (data) => {
@@ -97,11 +97,11 @@ export default function Taches() {
       refetchAutopilot();
       const result = data || {};
       toast({
-        title: "NOVA a terminé le passage",
+        title: "Elynea a terminé le passage",
         description: `${result.executed?.length || 0} terminée(s), ${result.queued?.length || 0} en traitement, ${result.blocked?.length || 0} blocage(s) réel(s).`,
       });
     },
-    onError: (mutationError) => toast({ title: "Exécution NOVA impossible", description: mutationError.message, variant: "destructive" }),
+    onError: (mutationError) => toast({ title: "Exécution Elynea impossible", description: mutationError.message, variant: "destructive" }),
   });
 
   const save = useMutation({
