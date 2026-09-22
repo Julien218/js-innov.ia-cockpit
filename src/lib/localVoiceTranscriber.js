@@ -71,6 +71,14 @@ async function transcribeAt(baseUrl, blob) {
 }
 
 export async function transcribeLocalVoiceBlob(blob) {
+  if (typeof window !== 'undefined' && window.electronAPI?.localVoice?.transcribe) {
+    const buffer = new Uint8Array(await blob.arrayBuffer());
+    return window.electronAPI.localVoice.transcribe({
+      bytes: buffer,
+      mimeType: blob.type || 'audio/webm',
+    });
+  }
+
   let lastError = null;
   for (const baseUrl of LOCAL_VOICE_URLS) {
     try {
