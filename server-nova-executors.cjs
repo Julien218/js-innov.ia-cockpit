@@ -8,7 +8,7 @@ const {
   MANAGED_DOMAINS,
   verifiedImprovement,
 } = require('./server-domain-ops.cjs');
-// Les spécialistes de domaine sont désormais des profils internes NOVA.
+// Les spécialistes de domaine sont désormais des compétences internes d’Elynea.
 const SITE_AGENT_KEYS = new Set([
   'jsinnov-agent',
   'assurances-dour',
@@ -24,37 +24,46 @@ const SITE_AGENT_KEYS = new Set([
 const INTERNAL_EXECUTORS = Object.freeze({
   local_windows: {
     id: 'nova-windows-local',
-    name: 'NOVA Windows Local',
+    name: 'Elynea · Runtime local',
     provider: 'local-agent',
     role: 'windows_local_execution',
     execution_mode: 'autonomous',
   },
   business_data: {
     id: 'nova-business-data',
-    name: 'NOVA Données Métier',
+    name: 'Elynea · Données métier',
     provider: 'cockpit-server',
     role: 'business_data_execution',
     execution_mode: 'autonomous',
   },
   project_data: {
     id: 'nova-project-data',
-    name: 'NOVA Projets',
+    name: 'Elynea · Projets',
     provider: 'cockpit-server',
     role: 'project_data_execution',
     execution_mode: 'autonomous',
   },
   video_production: {
     id: 'nova-video-production',
-    name: 'NOVA Production Vidéo',
+    name: 'Elynea · Production vidéo',
     provider: 'cockpit-server',
     role: 'video_generation_execution',
     execution_mode: 'autonomous',
   },
   site_ops: {
     id: 'nova-site-ops',
-    name: 'NOVA Sites · GitHub + Railway',
+    name: 'Elynea · Sites · GitHub + Railway',
     provider: 'cockpit-server',
     role: 'site_repository_operations',
+    execution_mode: 'autonomous',
+  },
+  general_read_only: {
+    // ID historique conservé volontairement pour ne pas casser les runs, filtres
+    // et journaux existants. Elynea est l’unique agent visible.
+    id: 'nova-general-local',
+    name: 'Elynea · Analyse locale générale',
+    provider: 'local-agent',
+    role: 'general_local_analysis',
     execution_mode: 'autonomous',
   },
 });
@@ -124,6 +133,17 @@ function resolveNovaExecutor(task = {}) {
   if (/(fiche\s+projet|projet\s+[a-z0-9]|villeconnect\s*os|villeconnectos)/.test(text)) {
     return { kind: 'project', ...INTERNAL_EXECUTORS.project_data };
   }
+
+  // Fallback Jarvis d’Elynea : une demande d’analyse/inspection générale peut
+  // être prise en charge par le runtime local en lecture seule, sans inventer
+  // un exécuteur métier spécialisé. Les mutations restent volontairement hors
+  // de ce fallback afin de conserver les garde-fous existants.
+  const genericReadOnly = /(analys|audit|verifi|control|diagnost|inspect|recherch|recens|etat|comprendre|identifier)/.test(text)
+    && !/(supprim|effac|corrig|modifi|appliqu|deploi|publi|envoy|paiement|factur|ecri|creer|creation|generer|lancer|executer)/.test(text);
+  if (genericReadOnly) {
+    return { kind: 'local', ...INTERNAL_EXECUTORS.general_read_only, capabilities: ['workspace_task_analysis'] };
+  }
+
   const missingTargetReason = /(site|page web|depot github|repository|application web)/.test(text)
     ? 'cible_site_ou_depot_absente_de_la_tache'
     : /(image|media|photo|camera)/.test(text)
@@ -132,7 +152,7 @@ function resolveNovaExecutor(task = {}) {
   return {
     kind: 'unsupported',
     id: 'nova-architect',
-    name: 'NOVA Architecte',
+    name: 'Elynea · Orchestration',
     provider: 'cockpit-server',
     role: 'orchestration',
     execution_mode: 'prepare_only',
