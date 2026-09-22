@@ -23,7 +23,9 @@ test('PilotyaSign prospecting is commercial/admin only and not exposed to client
   assert.deepEqual(permission.roles, ['collaborateur', 'admin']);
   assert.ok(permission.routes.includes('/pilotyasign'));
   assert.match(roles, /collaborateur:[\s\S]*"\/pilotyasign"/);
-  assert.doesNotMatch(roles, /client:[\s\S]*"\/pilotyasign"[\s\S]*\]/);
+  const clientRoutes = roles.match(/client:\s*\[([\s\S]*?)\n\s*\],/);
+  assert.ok(clientRoutes, 'client route block should exist');
+  assert.doesNotMatch(clientRoutes[1], /"\/pilotyasign"/);
 });
 
 test('PilotyaSign page reuses Cockpit Leads and a dedicated Espace C Dour marker', () => {
