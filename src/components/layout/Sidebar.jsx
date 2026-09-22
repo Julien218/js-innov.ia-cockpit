@@ -140,6 +140,7 @@ export const allNavGroups = [
       { label: "Production", icon: Clapperboard, path: "/production", minRole: "admin" },
       { label: "Avatar Factory", icon: Factory, path: "/avatar-factory", minRole: "admin" },
       { label: "Portfolio", icon: GalleryHorizontalEnd, path: "/portfolio", minRole: "admin" },
+      { label: "Elynea Audio", icon: Music2, path: "/elynea-audio", minRole: "admin" },
       { label: "Elynea Motion Studio", icon: Music2, path: "/music-motion", minRole: "admin" },
     ]
   },
