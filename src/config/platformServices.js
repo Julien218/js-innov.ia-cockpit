@@ -25,15 +25,15 @@ export const PLATFORM_SERVICES = Object.freeze({
   }),
   signageManager: Object.freeze({
     title: "Signelya — gestion d’affichage dynamique",
-    url: "https://olivier-signage-cockpit-production.up.railway.app/ecran-geant",
-    domain: "olivier-signage-cockpit-production.up.railway.app",
+    url: "https://app.signelya.jsinnovia.com/ecran-geant",
+    domain: "app.signelya.jsinnovia.com",
     hosting: "Railway",
     service: "olivier-signage-cockpit",
     repository: "Julien218/js-innov.ia-cockpit",
     repositoryUrl: "https://github.com/Julien218/js-innov.ia-cockpit",
     branch: "feature/olivier-signage-pilot-release",
     status: "module",
-    note: "Module spécialisé relié au Cockpit, distinct du site public.",
+    note: "Application Signelya privée sur son domaine canonique, distincte de la vitrine publique.",
   }),
   signageProductSite: Object.freeze({
     title: "Vitrine produit Signage",
