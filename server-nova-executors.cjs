@@ -140,6 +140,7 @@ function resolveNovaExecutor(task = {}) {
   // de ce fallback afin de conserver les garde-fous existants.
   const genericReadOnly = /(analys|audit|verifi|control|diagnost|inspect|recherch|recens|etat|comprendre|identifier)/.test(text)
     && !/(image|media|photo|camera)/.test(text)
+    && !/(site|page web|depot github|repository|application web)/.test(text)
     && !/(supprim|effac|corrig|modifi|appliqu|deploi|publi|envoy|paiement|factur|ecri|creer|creation|generer|lancer|executer)/.test(text);
   if (genericReadOnly) {
     return { kind: 'local', ...INTERNAL_EXECUTORS.general_read_only, capabilities: ['workspace_task_analysis'] };
