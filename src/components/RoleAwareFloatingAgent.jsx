@@ -3,7 +3,6 @@ import FloatingAgent from '@/components/FloatingAgent';
 import ClientCompanion from '@/components/ClientCompanion';
 import LocalAgentQueueBridge from '@/components/LocalAgentQueueBridge';
 import ElyneaContinuousVoice from '@/components/ElyneaContinuousVoice';
-import ElyneaAudioDockSynced from '@/components/audio/ElyneaAudioDockSynced';
 import ElyneaBrandScope, { ELYNEA_COMPANION, OFFICIAL_ELYNEA_AVATAR } from '@/components/ElyneaBrandScope';
 
 /**
@@ -24,7 +23,7 @@ function LegacyAvatarCompatibility() {
  * - client : interface conversationnelle client, toujours sous l'identité Elynea ;
  * - équipe/admin : Elynea complète + pont vers ses outils locaux ;
  * - ElyneaContinuousVoice ajoute le dialogue mains libres sans créer un second agent ;
- * - ElyneaAudioDock ajoute le lecteur global et la bibliothèque Dropbox pour les admins ;
+ * - le lecteur audio est maintenant une page de navigation dédiée, jamais un widget flottant ;
  * - aucune seconde identité IA n'est rendue par ce composant.
  */
 export default function ElyneaCockpitCompanion() {
@@ -41,14 +40,11 @@ export default function ElyneaCockpitCompanion() {
     );
   }
 
-  const audioEnabled = user.role === 'admin' || user.role === 'superadmin';
-
   return (
     <ElyneaBrandScope>
       <LocalAgentQueueBridge />
       <FloatingAgent />
       <ElyneaContinuousVoice />
-      {audioEnabled && <ElyneaAudioDockSynced />}
       <LegacyAvatarCompatibility />
       <span
         aria-hidden="true"
