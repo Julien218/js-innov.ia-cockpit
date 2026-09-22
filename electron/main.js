@@ -14,6 +14,8 @@ let tray = null;
 let splashTimer = null;
 let updateAvailable = null;
 let offlineFallbackActive = false;
+let remoteRenderRecoveryAttempts = 0;
+const REMOTE_COCKPIT_URL = "https://cockpit.jsinnovia.com";
 const OFFLINE_COCKPIT_URL = "http://127.0.0.1:8790";
 const OFFLINE_STORAGE_KEYS = ["cockpit_session_user", "nova_local_task_snapshot_v1", "agent_chat_messages", "agent_conversation_id", "agent_tts_enabled"];
 let offlineStorageHydrated = false;
@@ -24,7 +26,7 @@ function offlineSessionPath() {
 }
 
 async function captureOfflineSession(win) {
-  if (!isAlive(win) || !win.webContents.getURL().startsWith("https://cockpit.jsinnovia.com")) return;
+  if (!isAlive(win) || !win.webContents.getURL().startsWith(REMOTE_COCKPIT_URL)) return;
   try {
     const snapshot = await win.webContents.executeJavaScript(`Object.fromEntries(${JSON.stringify(OFFLINE_STORAGE_KEYS)}.map((key) => [key, localStorage.getItem(key)]).filter(([, value]) => value !== null))`);
     fs.writeFileSync(offlineSessionPath(), JSON.stringify(snapshot), "utf8");
@@ -771,6 +773,83 @@ function isAlive(win) {
   return win && !win.isDestroyed();
 }
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function inspectRemoteCockpitDocument(win) {
+  if (!isAlive(win) || !win.webContents.getURL().startsWith(REMOTE_COCKPIT_URL)) {
+    return { healthy: true, skipped: true };
+  }
+
+  // Laisser React monter son arbre après le chargement du document principal.
+  await wait(1400);
+  if (!isAlive(win)) return { healthy: false, reason: "window_closed" };
+
+  try {
+    const state = await win.webContents.executeJavaScript(`(() => {
+      const root = document.querySelector('#root');
+      const bodyText = String(document.body?.innerText || '').slice(0, 1800);
+      const contentType = String(document.contentType || '').toLowerCase();
+      const sourceLike = !root?.childElementCount && (
+        bodyText.includes('data-sonner-toaster')
+        || bodyText.includes('"@context"')
+        || bodyText.includes('--toast-icon-margin')
+        || bodyText.includes('<!doctype html')
+        || bodyText.includes('<html')
+      );
+      return {
+        contentType,
+        readyState: document.readyState,
+        rootExists: Boolean(root),
+        rootChildCount: root?.childElementCount || 0,
+        sourceLike,
+        bodyTextLength: bodyText.length,
+      };
+    })()`, true);
+
+    const htmlDocument = /^(text\/html|application\/xhtml\+xml)/i.test(state?.contentType || "");
+    return {
+      ...state,
+      healthy: Boolean(htmlDocument && state?.rootExists && state?.rootChildCount > 0 && !state?.sourceLike),
+      reason: !htmlDocument
+        ? `unexpected_content_type:${state?.contentType || "unknown"}`
+        : !state?.rootExists
+          ? "react_root_missing"
+          : state?.rootChildCount <= 0
+            ? "react_root_empty"
+            : state?.sourceLike
+              ? "raw_source_rendered"
+              : null,
+    };
+  } catch (error) {
+    return { healthy: false, reason: `inspection_failed:${error.message}` };
+  }
+}
+
+async function recoverInvalidRemoteRender(win, state) {
+  if (!isAlive(win)) return;
+
+  if (remoteRenderRecoveryAttempts < 1) {
+    remoteRenderRecoveryAttempts += 1;
+    console.log(`Cockpit distant mal rendu (${state?.reason || "unknown"}), purge du cache renderer et nouvelle tentative.`);
+    try {
+      await win.webContents.session.clearCache();
+      await win.webContents.session.clearStorageData({
+        storages: ["serviceworkers", "cachestorage"],
+      });
+    } catch (error) {
+      console.log(`Purge renderer ignorée: ${error.message}`);
+    }
+    if (isAlive(win)) win.webContents.reloadIgnoringCache();
+    return;
+  }
+
+  offlineFallbackActive = true;
+  console.log(`Cockpit distant toujours invalide (${state?.reason || "unknown"}), bascule vers le mode hors ligne.`);
+  if (isAlive(win)) win.loadURL(OFFLINE_COCKPIT_URL);
+}
+
 // ── Vérifier les mises à jour via l'API cockpit ──────────────────────────────
 function checkForUpdates(silent = true) {
   const options = {
@@ -860,6 +939,7 @@ function createSplash() {
 // ── Fenêtre principale ──────────────────────────────────────────────────────
 function createWindow() {
   offlineFallbackActive = false;
+  remoteRenderRecoveryAttempts = 0;
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -882,7 +962,7 @@ function createWindow() {
 
   mainWindow.setMenuBarVisibility(false);
   mainWindow.removeMenu();
-  mainWindow.loadURL("https://cockpit.jsinnovia.com");
+  mainWindow.loadURL(REMOTE_COCKPIT_URL);
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -931,7 +1011,7 @@ ipcMain.on("notify", (event, { title, body }) => {
 // ── IPC — tâches web authentifiées, limitées aux recettes NOVA autorisées ──
 ipcMain.handle("nova-web-assistant-execute", async (event, task = {}) => {
   const caller = String(event.senderFrame?.url || event.sender?.getURL?.() || "");
-  if (!caller.startsWith("https://cockpit.jsinnovia.com/") && !caller.startsWith(`${OFFLINE_COCKPIT_URL}/`)) {
+  if (!caller.startsWith(`${REMOTE_COCKPIT_URL}/`) && !caller.startsWith(`${OFFLINE_COCKPIT_URL}/`)) {
     throw new Error("Appel refusé hors du Cockpit JS-Innov.IA.");
   }
   return webAssistant.execute(task);
@@ -951,12 +1031,21 @@ app.whenReady().then(() => {
   const splash = createSplash();
   const win = createWindow();
 
-  win.webContents.on("did-finish-load", () => {
-    if (win.webContents.getURL().startsWith(OFFLINE_COCKPIT_URL)) {
-      hydrateOfflineSession(win);
-    } else {
+  win.webContents.on("did-finish-load", async () => {
+    const currentUrl = win.webContents.getURL();
+
+    if (currentUrl.startsWith(REMOTE_COCKPIT_URL)) {
+      const renderState = await inspectRemoteCockpitDocument(win);
+      if (!renderState.healthy) {
+        await recoverInvalidRemoteRender(win, renderState);
+        return;
+      }
+      remoteRenderRecoveryAttempts = 0;
       setTimeout(() => captureOfflineSession(win), 5000);
+    } else if (currentUrl.startsWith(OFFLINE_COCKPIT_URL)) {
+      hydrateOfflineSession(win);
     }
+
     if (splashTimer) clearTimeout(splashTimer);
     splashTimer = setTimeout(() => {
       splashTimer = null;

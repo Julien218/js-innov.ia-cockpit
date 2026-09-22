@@ -341,6 +341,12 @@ async function refreshWebRuntime() {
     // HTTP afin que tous les modules prennent la dernière version au prochain démarrage,
     // sans toucher aux cookies, sessions ou données locales de l'utilisateur.
     await session.defaultSession.clearCache();
+    // Un service worker ou CacheStorage corrompu peut faire afficher le HTML/CSS brut
+    // dans Electron alors que le site est correct dans Chrome. On purge uniquement
+    // ces caches de rendu, sans supprimer cookies, localStorage ni session utilisateur.
+    await session.defaultSession.clearStorageData({
+      storages: ["serviceworkers", "cachestorage"],
+    });
   } catch (error) {
     console.log("[desktop] cache refresh skipped:", error.message);
   }

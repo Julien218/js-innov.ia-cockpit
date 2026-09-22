@@ -42,9 +42,12 @@ test('desktop bundles and starts Elynea Local Tools with Music Motion v2', () =>
   assert.ok(pkg.build?.extraResources?.some((item) => item.to === 'video-provenance-core.cjs'));
 });
 
-test('startup refreshes only HTTP cache before loading the remote cockpit', () => {
+test('startup refreshes renderer caches without clearing authentication data', () => {
   assert.match(bootstrap, /session\.defaultSession\.clearCache\(\)/);
-  assert.doesNotMatch(bootstrap, /clearStorageData\(/);
+  assert.match(bootstrap, /clearStorageData\(\{/);
+  assert.match(bootstrap, /storages:\s*\["serviceworkers", "cachestorage"\]/);
+  assert.doesNotMatch(bootstrap, /storages:\s*\[[^\]]*"cookies"/);
+  assert.doesNotMatch(bootstrap, /storages:\s*\[[^\]]*"localstorage"/);
   assert.match(bootstrap, /require\("\.\/main\.js"\)/);
 });
 
