@@ -66,6 +66,7 @@ import ApiVideoFactory from "@/pages/ApiVideoFactory";
 import VilleConnect from "@/pages/VilleConnect";
 import ProjectData from "@/pages/ProjectData";
 import MusicMotionWorkspace from "@/pages/MusicMotionWorkspace";
+import ElyneaAudio from "@/pages/ElyneaAudio";
 
 const PageBoundary = ({ children }) => <AppErrorBoundary>{children}</AppErrorBoundary>;
 
@@ -127,6 +128,7 @@ const AppRoutes = () => {
           <Route path="/video-studio/:id" element={<VideoStudio />} />
           <Route path="/music-motion" element={isAdmin ? <PageBoundary><MusicMotionWorkspace /></PageBoundary> : <Navigate to="/" replace />} />
           <Route path="/music-motion-studio" element={isAdmin ? <PageBoundary><MusicMotionWorkspace /></PageBoundary> : <Navigate to="/" replace />} />
+          <Route path="/elynea-audio" element={isAdmin ? <PageBoundary><ElyneaAudio /></PageBoundary> : <Navigate to="/" replace />} />
           <Route path="/ai-video" element={<AIVideoReportGenerator />} />
           <Route path="/thumbnail" element={<ThumbnailGenerator />} />
           <Route path="/dour-campaign" element={<DourCampaignVideo />} />
