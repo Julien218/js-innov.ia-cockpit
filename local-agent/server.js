@@ -555,7 +555,8 @@ function requestedTools(message) {
   const localPath = text.match(/["“](.+?)["”]/)?.[1] || text.match(/([A-Za-z]:\\[^\r\n]+)/)?.[1];
   if (/ffprobe|m[eé]tadonn[eé]es?|analyse.*(?:vid[eé]o|fichier)/i.test(text) && localPath) add('ffprobe_file', { path: localPath.trim() });
   if (/(?:liste|contenu).*(?:dossier|fichiers?)/i.test(text) && localPath) add('list_directory', { path: localPath.trim() });
-  if (/(?:analys|audit|v[eé]rifi|contr[oô]l|diagnost|inspect).*(?:frontend|front-end|bouton|interface|application|cockpit|code|react|ui)|(?:frontend|front-end|bouton|interface|application|cockpit|code|react|ui).*(?:analys|audit|v[eé]rifi|contr[oô]l|diagnost|inspect)/i.test(text)) {
+  if (/(?:analys|audit|v[eé]rifi|contr[oô]l|diagnost|inspect).*(?:frontend|front-end|bouton|interface|application|cockpit|code|react|ui)|(?:frontend|front-end|bouton|interface|application|cockpit|code|react|ui).*(?:analys|audit|v[eé]rifi|contr[oô]l|diagnost|inspect)/i.test(text)
+    && !/(image|m[eé]dia|photo|cam[eé]ra)/i.test(text)) {
     add('workspace_task_analysis', { task: { titre: text.slice(0, 240), description: text.slice(0, 4000) } });
   }
   return requests;
