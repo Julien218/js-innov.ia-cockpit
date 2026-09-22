@@ -47,7 +47,6 @@ export default function ElyneaCockpitCompanion() {
     <ElyneaBrandScope>
       <LocalAgentQueueBridge />
       <FloatingAgent />
-      <ElyneaContinuousVoice />
       {audioEnabled && <ElyneaAudioDockSynced />}
       <LegacyAvatarCompatibility />
       <span
