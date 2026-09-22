@@ -29,7 +29,7 @@ test('Signelya is an assignable product application', async () => {
 });
 
 test('the client cockpit opens securely outside the main cockpit frame', () => {
-  assert.match(pageSource, /olivier-signage-cockpit-production\.up\.railway\.app\/ecran-geant/);
+  assert.match(pageSource, /app\\.signelya\\.jsinnovia\\.com\\/ecran-geant/);
   assert.match(pageSource, /target="_blank"/);
   assert.match(pageSource, /rel="noopener noreferrer"/);
   assert.doesNotMatch(pageSource, /<iframe/i);
