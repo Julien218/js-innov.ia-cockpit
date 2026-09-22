@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const bootstrap = fs.readFileSync(path.join(root, 'electron', 'bootstrap.js'), 'utf8');
+const main = fs.readFileSync(path.join(root, 'electron', 'main.js'), 'utf8');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'electron', 'package.json'), 'utf8'));
 const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'electron-build.yml'), 'utf8');
 
@@ -32,7 +33,6 @@ test('desktop bundles and starts Elynea Local Tools with Music Motion v2', () =>
   assert.ok(offlineWebResource);
   assert.match(bootstrap, /startBundledOfflineCockpit/);
   assert.match(bootstrap, /OFFLINE_WEB_PORT = 8790/);
-  const main = fs.readFileSync(path.join(root, 'electron', 'main.js'), 'utf8');
   assert.match(main, /did-fail-load/);
   assert.match(main, /http:\/\/127\.0\.0\.1:8790/);
   assert.match(main, /captureOfflineSession/);
@@ -65,10 +65,18 @@ test('release workflow publishes updater metadata with the installer', () => {
   assert.match(workflow, /tag_name:\s*v\$\{\{ steps\.version\.outputs\.version \}\}/);
 });
 
-test('desktop releases always use a new semantic version so installed apps can detect the update', () => {
+test('desktop release version is calculated automatically from the latest published tag', () => {
   assert.match(pkg.version, /^\d+\.\d+\.\d+$/);
-  assert.match(workflow, /git tag --list "v\$version"/);
-  assert.match(workflow, /Incrémente electron\/package\.json/);
+  assert.match(workflow, /git tag --list "v\*" --sort=-v:refname/);
+  assert.match(workflow, /npm version \$version --no-git-tag-version --allow-same-version/);
+  assert.doesNotMatch(workflow, /Incrémente electron\/package\.json/);
+});
+
+test('desktop update actions never send the user to a manual GitHub installer download', () => {
+  assert.match(main, /require\("electron-updater"\)/);
+  assert.match(main, /autoUpdater\.checkForUpdates\(\)/);
+  assert.doesNotMatch(main, /shell\.openExternal\([^\n]*releases/);
+  assert.doesNotMatch(main, /downloadUrl/);
 });
 
 test('desktop enforces a single application instance', () => {

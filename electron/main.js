@@ -1,4 +1,5 @@
 const { app, BrowserWindow, shell, ipcMain, Notification, Tray, Menu } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
@@ -12,7 +13,6 @@ const { formatComfyErrorBody } = require("./comfy-error.cjs");
 let mainWindow = null;
 let tray = null;
 let splashTimer = null;
-let updateAvailable = null;
 let offlineFallbackActive = false;
 let remoteRenderRecoveryAttempts = 0;
 const REMOTE_COCKPIT_URL = "https://cockpit.jsinnovia.com";
@@ -850,72 +850,28 @@ async function recoverInvalidRemoteRender(win, state) {
   if (isAlive(win)) win.loadURL(OFFLINE_COCKPIT_URL);
 }
 
-// ── Vérifier les mises à jour via l'API cockpit ──────────────────────────────
+// ── Vérifier les mises à jour Electron sans téléchargement manuel ────────────
 function checkForUpdates(silent = true) {
-  const options = {
-    hostname: "cockpit.jsinnovia.com",
-    path: "/api/version",
-    method: "GET",
-    headers: { "User-Agent": "jsinnovia-cockpit-electron" },
-  };
+  if (!app.isPackaged) {
+    if (!silent) console.log("[desktop] update check skipped outside packaged app");
+    return;
+  }
 
-  const req = https.request(options, (res) => {
-    let data = "";
-    res.on("data", (c) => (data += c));
-    res.on("end", () => {
-      try {
-        const result = JSON.parse(data);
-        if (result.success && result.latest) {
-          const latestVersion = result.latest.version.replace(/^v/, "");
-          if (isNewerVersion(latestVersion, APP_VERSION)) {
-            updateAvailable = result.latest;
-            if (Notification.isSupported()) {
-              new Notification({
-                title: "Mise à jour disponible — JS-Innov.IA Cockpit",
-                body: `Version ${latestVersion} disponible. Cliquez pour télécharger.`,
-              }).show();
-            }
-            if (!silent && isAlive(mainWindow)) {
-              mainWindow.webContents.send("update-available", updateAvailable);
-            }
-          } else if (!silent) {
-            if (Notification.isSupported()) {
-              new Notification({
-                title: "JS-Innov.IA Cockpit",
-                body: "Votre application est à jour.",
-              }).show();
-            }
-          }
-        }
-      } catch (e) {
-        console.log("Update check error:", e.message);
-      }
-    });
+  autoUpdater.checkForUpdates().catch((error) => {
+    console.log("[desktop] manual update check failed:", error.message);
+    if (!silent && Notification.isSupported()) {
+      new Notification({
+        title: "JS-Innov.IA Cockpit",
+        body: "La vérification de mise à jour a échoué. Elle sera retentée automatiquement.",
+      }).show();
+    }
   });
-  req.on("error", (e) => console.log("Update check error:", e.message));
-  req.end();
 }
 
-// ── Comparer les versions (semver simple) ───────────────────────────────────
-function isNewerVersion(latest, current) {
-  const l = latest.split(".").map(Number);
-  const c = current.split(".").map(Number);
-  for (let i = 0; i < Math.max(l.length, c.length); i++) {
-    const lv = l[i] || 0;
-    const cv = c[i] || 0;
-    if (lv > cv) return true;
-    if (lv < cv) return false;
-  }
-  return false;
-}
-
-// ── Ouvrir le lien de téléchargement ─────────────────────────────────────────
+// Compatibilité avec l'ancien bouton renderer : electron-updater télécharge
+// automatiquement la version détectée (autoDownload=true dans bootstrap.js).
 function downloadUpdate() {
-  if (updateAvailable && updateAvailable.downloadUrl) {
-    shell.openExternal(updateAvailable.downloadUrl);
-  } else {
-    shell.openExternal("https://github.com/Julien218/js-innov.ia-cockpit/releases/latest");
-  }
+  checkForUpdates(false);
 }
 
 // ── Splash screen ───────────────────────────────────────────────────────────
@@ -983,14 +939,8 @@ function createTray() {
       { label: "Ouvrir le Cockpit", click: () => { if (isAlive(mainWindow)) mainWindow.show(); else createWindow().show(); } },
       { type: "separator" },
       {
-        label: updateAvailable ? `Mise à jour ${updateAvailable.version} disponible` : "Vérifier les mises à jour",
-        click: () => {
-          if (updateAvailable) {
-            downloadUpdate();
-          } else {
-            checkForUpdates(false);
-          }
-        }
+        label: "Vérifier les mises à jour",
+        click: () => checkForUpdates(false),
       },
       { type: "separator" },
       { label: "Quitter", click: () => app.quit() },
@@ -1053,7 +1003,6 @@ app.whenReady().then(() => {
       if (isAlive(win)) {
         win.show();
         if (os.platform() !== "darwin") createTray();
-        setTimeout(() => checkForUpdates(true), 3000);
       }
     }, 1200);
   });

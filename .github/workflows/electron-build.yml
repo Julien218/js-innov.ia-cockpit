@@ -1,5 +1,9 @@
 name: Build & Release Electron Windows
 
+concurrency:
+  group: electron-release-main
+  cancel-in-progress: false
+
 on:
   push:
     branches:
@@ -17,6 +21,7 @@ on:
       - "tests/electron-global-auto-update.test.cjs"
       - "tests/electron-local-agent-watchdog.test.cjs"
       - "tests/local-cost-telemetry.test.cjs"
+      - ".github/workflows/electron-build.yml"
   workflow_dispatch:
 
 permissions:
@@ -44,17 +49,25 @@ jobs:
           npm ci --legacy-peer-deps --no-audit --no-fund
           npm run build
 
-      - name: Read Electron version
+      - name: Calculate next Electron version
         id: version
         shell: pwsh
         run: |
-          $version = node -p "require('./package.json').version"
-          if (-not $version) { throw "Version Electron introuvable" }
           git fetch --tags --force
-          $existingTag = git tag --list "v$version"
-          if ($existingTag) { throw "La version v$version existe déjà. Incrémente electron/package.json avant de publier afin que l'auto-update Windows détecte le nouveau binaire." }
+          $latestTag = git tag --list "v*" --sort=-v:refname | Select-Object -First 1
+          if ($latestTag) {
+            $baseVersion = $latestTag.TrimStart("v")
+          } else {
+            $baseVersion = node -p "require('./package.json').version"
+          }
+          if ($baseVersion -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Version Electron invalide: $baseVersion"
+          }
+          $parts = $baseVersion.Split(".")
+          $version = "{0}.{1}.{2}" -f $parts[0], $parts[1], ([int]$parts[2] + 1)
+          npm version $version --no-git-tag-version --allow-same-version
           "version=$version" >> $env:GITHUB_OUTPUT
-          Write-Host "Building JS-Innov.IA Cockpit v$version"
+          Write-Host "Building JS-Innov.IA Cockpit v$version from latest release $latestTag"
 
       - name: Validate desktop sources
         shell: pwsh
