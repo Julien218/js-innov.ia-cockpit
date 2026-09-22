@@ -12,7 +12,7 @@ export const ELYNEA_COMPANION = Object.freeze({
   name: 'Elynea',
   role: 'Companion du Cockpit',
   brand: 'JS-Innov.IA',
-  avatar: 'https://www.jsinnovia.com/brand/companion/companion-avatar-256.webp',
+  avatar: 'https://www.jsinnovia.com/brand/companion/companion-avatar-256.webp?v=1.3.0',
 });
 
 export const OFFICIAL_ELYNEA_AVATAR = ELYNEA_COMPANION.avatar;
