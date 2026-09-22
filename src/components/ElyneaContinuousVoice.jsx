@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
+import { chooseNovaVoice } from '@/lib/nova-voice';
+import { ELYNEA_CONTINUOUS_VOICE_KEY, ELYNEA_VOICE_PREFERENCES_EVENT, ELYNEA_VOICE_STATUS_EVENT, readElyneaVoicePreferences } from '@/lib/elyneaVoicePreferences';
 
-const ENABLED_KEY = 'elynea_continuous_voice_enabled';
+const ENABLED_KEY = ELYNEA_CONTINUOUS_VOICE_KEY;
 const CONVERSATION_KEY = 'agent_conversation_id';
 const WAKE_TIMEOUT_MS = 10000;
 const WAKE_WORD_ALIASES = ['elynea', 'elyna', 'elina', 'elena'];
@@ -82,6 +84,7 @@ export default function ElyneaContinuousVoice() {
   const sendingRef = useRef(false);
   const wakeTimeoutRef = useRef(null);
   const autoRestoreAttemptedRef = useRef(false);
+  const preferencesRef = useRef(readElyneaVoicePreferences());
   const [supported, setSupported] = useState(false);
   const [active, setActive] = useState(false);
   const [status, setStatus] = useState('Prêt');
@@ -145,7 +148,8 @@ export default function ElyneaContinuousVoice() {
 
   const speak = useCallback((text, onDone) => {
     const cleanText = cleanForSpeech(text);
-    if (!cleanText || typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    const prefs = preferencesRef.current;
+    if (!prefs.ttsEnabled || !cleanText || typeof window === 'undefined' || !('speechSynthesis' in window)) {
       onDone?.();
       return;
     }
@@ -154,9 +158,12 @@ export default function ElyneaContinuousVoice() {
     setStatus('Elynea parle…');
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = 'fr-BE';
+    const voices = window.speechSynthesis.getVoices();
+    const selectedVoice = chooseNovaVoice(voices, prefs.voiceName);
+    utterance.lang = selectedVoice?.lang || 'fr-BE';
     utterance.rate = 0.96;
     utterance.pitch = 1.0;
+    if (selectedVoice) utterance.voice = selectedVoice;
     const finish = () => {
       speakingRef.current = false;
       onDone?.();
@@ -355,11 +362,6 @@ export default function ElyneaContinuousVoice() {
     startRecognition();
   }, [startRecognition, supported]);
 
-  const toggle = useCallback(() => {
-    if (activeRef.current) disable();
-    else enable();
-  }, [disable, enable]);
-
   useEffect(() => {
     if (!supported || !user || autoRestoreAttemptedRef.current) return;
     autoRestoreAttemptedRef.current = true;
@@ -372,6 +374,25 @@ export default function ElyneaContinuousVoice() {
     window.setTimeout(() => startRecognitionRef.current?.(), 300);
   }, [supported, user]);
 
+  useEffect(() => {
+    const applyPreferences = (event) => {
+      const next = event?.detail || readElyneaVoicePreferences();
+      preferencesRef.current = { ...preferencesRef.current, ...next };
+      if (!supported) return;
+      if (next.handsFree === true && !activeRef.current) enable();
+      if (next.handsFree === false && activeRef.current) disable();
+    };
+    window.addEventListener(ELYNEA_VOICE_PREFERENCES_EVENT, applyPreferences);
+    return () => window.removeEventListener(ELYNEA_VOICE_PREFERENCES_EVENT, applyPreferences);
+  }, [disable, enable, supported]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent(ELYNEA_VOICE_STATUS_EVENT, {
+      detail: { supported, active, status, error },
+    }));
+  }, [active, error, status, supported]);
+
   useEffect(() => () => {
     activeRef.current = false;
     awakeRef.current = false;
@@ -380,38 +401,18 @@ export default function ElyneaContinuousVoice() {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
   }, [clearWakeTimeout, stopRecognition]);
 
-  if (!user || !supported) return null;
+  if (!user) return null;
 
+  // Le contrôle visuel a été déplacé dans Paramètres > Elynea.
+  // Ce composant reste monté en arrière-plan pour assurer la veille vocale.
   return (
-    <div style={{
-      position: 'fixed', right: 88, bottom: 24, zIndex: 100000,
-      display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5,
-      fontFamily: 'Inter, -apple-system, sans-serif', pointerEvents: 'auto',
-    }}>
-      {error && (
-        <div style={{
-          maxWidth: 280, padding: '7px 10px', borderRadius: 8,
-          background: 'rgba(127,29,29,.95)', color: '#fecaca', fontSize: 11,
-          boxShadow: '0 6px 22px rgba(0,0,0,.35)',
-        }}>{error}</div>
-      )}
-      <button
-        type="button"
-        onClick={toggle}
-        aria-pressed={active}
-        title={active ? 'Désactiver l’appel vocal « Elynea »' : 'Activer l’appel vocal « Elynea »'}
-        style={{
-          height: 38, padding: '0 12px', borderRadius: 20,
-          border: `1px solid ${active ? '#06B6D4' : 'rgba(212,175,55,.45)'}`,
-          background: active ? 'rgba(6,182,212,.16)' : 'rgba(11,11,15,.94)',
-          color: active ? '#67e8f9' : '#e5c75c', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, fontWeight: 700,
-          boxShadow: '0 5px 22px rgba(0,0,0,.38)', backdropFilter: 'blur(8px)',
-        }}
-      >
-        <span aria-hidden="true">{active ? '🟢' : '🎙️'}</span>
-        <span>{active ? status : 'Activer « Elynea »'}</span>
-      </button>
-    </div>
+    <span
+      aria-hidden="true"
+      data-elynea-voice-supported={supported ? "true" : "false"}
+      data-elynea-voice-active={active ? "true" : "false"}
+      data-elynea-voice-status={status}
+      data-elynea-voice-error={error}
+      style={{ display: "none" }}
+    />
   );
 }
