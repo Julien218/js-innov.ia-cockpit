@@ -13,7 +13,7 @@ const PORT = Number(process.env.LOCAL_AGENT_PORT || 8787);
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 const MAX_BODY = 5 * 1024 * 1024;
 const approvals = new Map();
 const runs = new Map();
@@ -298,7 +298,21 @@ async function executeTool(tool, args = {}) {
   let command;
   let commandArgs;
 
-  if (tool === 'ffmpeg_version') {
+  if (tool === 'workspace_task_analysis') {
+    const task = args?.task && typeof args.task === 'object' ? args.task : {};
+    const report = await workspaceTaskAnalysis(task);
+    const success = report.evidence_count > 0;
+    return recordRun({
+      id,
+      tool,
+      started_at: startedAt,
+      completed_at: new Date().toISOString(),
+      success,
+      exit_code: success ? 0 : 1,
+      target: 'local_allowed_workspaces',
+      output: JSON.stringify(report),
+    });
+  } else if (tool === 'ffmpeg_version') {
     command = 'ffmpeg'; commandArgs = ['-version'];
   } else if (tool === 'comfyui_health') {
     return fetchRun({ id, tool, startedAt, url: 'http://127.0.0.1:8188/system_stats', timeout: 5000, includeJson: true });
@@ -541,11 +555,110 @@ function requestedTools(message) {
   const localPath = text.match(/["“](.+?)["”]/)?.[1] || text.match(/([A-Za-z]:\\[^\r\n]+)/)?.[1];
   if (/ffprobe|m[eé]tadonn[eé]es?|analyse.*(?:vid[eé]o|fichier)/i.test(text) && localPath) add('ffprobe_file', { path: localPath.trim() });
   if (/(?:liste|contenu).*(?:dossier|fichiers?)/i.test(text) && localPath) add('list_directory', { path: localPath.trim() });
+  if (/(?:analys|audit|v[eé]rifi|contr[oô]l|diagnost|inspect).*(?:frontend|front-end|bouton|interface|application|cockpit|code|react|ui)|(?:frontend|front-end|bouton|interface|application|cockpit|code|react|ui).*(?:analys|audit|v[eé]rifi|contr[oô]l|diagnost|inspect)/i.test(text)) {
+    add('workspace_task_analysis', { task: { titre: text.slice(0, 240), description: text.slice(0, 4000) } });
+  }
   return requests;
 }
 
 function requestedTool(message) {
   return requestedTools(message)[0] || null;
+}
+
+function normalizeWorkspaceText(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function workspaceTaskTerms(task = {}) {
+  const stop = new Set([
+    'avec', 'dans', 'pour', 'sans', 'sous', 'sur', 'une', 'des', 'les', 'aux', 'du', 'de', 'la', 'le',
+    'afin', 'cette', 'cela', 'comme', 'plus', 'moins', 'probleme', 'tache', 'taches', 'analyse', 'analyser',
+    'audit', 'verifier', 'verification', 'controle', 'diagnostic', 'application', 'cockpit', 'elynea', 'nova',
+  ]);
+  const source = normalizeWorkspaceText(`${task?.titre || task?.title || ''} ${task?.description || ''}`);
+  return [...new Set(source.match(/[a-z0-9][a-z0-9._-]{2,}/g) || [])]
+    .map((term) => term.replace(/^[-_.]+|[-_.]+$/g, ''))
+    .filter((term) => term.length >= 4 && !stop.has(term) && !/^\d+$/.test(term))
+    .slice(0, 12);
+}
+
+async function workspaceEvidenceForTask(task = {}) {
+  const terms = workspaceTaskTerms(task);
+  const extensions = new Set(['.js', '.jsx', '.ts', '.tsx', '.cjs', '.mjs', '.json', '.md', '.css', '.scss', '.html']);
+  const ignored = new Set(['node_modules', '.git', 'dist', 'build', '.cache', 'coverage', '.next', '.vite']);
+  const secretName = /(?:^|[._-])(?:env|secret|secrets|credential|credentials|token|tokens|oauth|private|key)(?:[._-]|$)/i;
+  const matches = [];
+  let filesScanned = 0;
+
+  async function visit(directory, depth) {
+    if (depth > 5 || filesScanned >= 1200 || matches.length >= 40) return;
+    const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (filesScanned >= 1200 || matches.length >= 40) break;
+      if (ignored.has(entry.name.toLowerCase()) || secretName.test(entry.name)) continue;
+      const fullPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        await visit(fullPath, depth + 1);
+        continue;
+      }
+      if (!entry.isFile() || !extensions.has(path.extname(entry.name).toLowerCase())) continue;
+      const info = await stat(fullPath).catch(() => null);
+      if (!info?.isFile() || info.size > 450 * 1024) continue;
+      filesScanned += 1;
+      const content = await readFile(fullPath, 'utf8').catch(() => '');
+      if (!content) continue;
+      const normalizedPath = normalizeWorkspaceText(fullPath);
+      const normalizedContent = normalizeWorkspaceText(content.slice(0, 260000));
+      const matchedTerms = terms.filter((term) => normalizedPath.includes(term) || normalizedContent.includes(term));
+      if (!matchedTerms.length) continue;
+
+      const snippets = [];
+      const lines = content.split(/\r?\n/);
+      for (let lineIndex = 0; lineIndex < lines.length && snippets.length < 5; lineIndex += 1) {
+        const normalizedLine = normalizeWorkspaceText(lines[lineIndex]);
+        if (!matchedTerms.some((term) => normalizedLine.includes(term))) continue;
+        snippets.push({ line: lineIndex + 1, text: String(lines[lineIndex]).trim().slice(0, 320) });
+      }
+      matches.push({
+        path: fullPath,
+        score: matchedTerms.length + matchedTerms.filter((term) => normalizedPath.includes(term)).length * 2,
+        matched_terms: matchedTerms,
+        snippets,
+      });
+    }
+  }
+
+  for (const root of ALLOWED_ROOTS) await visit(root, 0);
+  matches.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
+  return { terms, files_scanned: filesScanned, matches: matches.slice(0, 15) };
+}
+
+async function workspaceTaskAnalysis(task = {}) {
+  const evidence = await workspaceEvidenceForTask(task);
+  const taskLabel = String(task?.titre || task?.title || 'Tâche sans titre').slice(0, 300);
+  const taskDescription = String(task?.description || '').slice(0, 3000);
+  let summary = '';
+  if (evidence.matches.length) {
+    const prompt = [
+      'Tu es Elynea, runtime local JS-Innov.IA. Analyse en lecture seule uniquement.',
+      'Base ton diagnostic exclusivement sur les preuves locales fournies. Ne prétends jamais avoir modifié un fichier.',
+      'Donne: cause probable, fichiers concernés, vérifications à faire et prochaine action sûre.',
+      `Tâche: ${taskLabel}`,
+      taskDescription ? `Description: ${taskDescription}` : '',
+      `Preuves locales: ${JSON.stringify(evidence.matches).slice(0, 18000)}`,
+    ].filter(Boolean).join('\n');
+    summary = await ollama(prompt).catch((error) => `Analyse Ollama indisponible: ${String(error.message || error).slice(0, 300)}`);
+  }
+  return {
+    checked_at: new Date().toISOString(),
+    task: taskLabel,
+    read_only: true,
+    files_scanned: evidence.files_scanned,
+    search_terms: evidence.terms,
+    evidence_count: evidence.matches.length,
+    evidence: evidence.matches,
+    summary: summary || 'Aucune preuve locale suffisamment précise trouvée dans les dossiers autorisés.',
+  };
 }
 
 function requestsTaskList(message) {
@@ -764,7 +877,11 @@ function localTaskPlan(task) {
   if (/campagne.*tests?.*video ia/.test(text)) return ['video_pipeline_audit'];
   if (/mettre a jour.*documentation.*workflows?.*locaux/.test(text)) return ['workflow_documentation_audit'];
   if (/(achever|finaliser).*(avatar|js innov ia).*local/.test(text)) return ['avatar_factory_status'];
-  if (/(achever|finaliser|corriger|modifier)/.test(text)) return null;
+  const genericReadOnlyWorkspaceTask = /(analys|audit|verifi|control|diagnost|inspect|recherch|identifier)/.test(text)
+    && /(front|bouton|interface|application|cockpit|code|react|ui|affichage)/.test(text)
+    && !/(achever|finaliser|corriger|modifier|supprimer|effacer|deployer|publier|ecrire)/.test(text);
+  if (genericReadOnlyWorkspaceTask) return ['workspace_task_analysis'];
+  if (/(achever|finaliser|corriger|modifier|supprimer|effacer|deployer|publier|ecrire)/.test(text)) return null;
   if (/verifi.*(?:workflow|minimax)|absence.*(?:workflow|minimax)/.test(text)) return ['find_local_workflows', 'comfyui_health'];
   if (/control.*(?:persistance|workflow)/.test(text)) return ['find_local_workflows'];
   if (/control.*(?:api video|comfyui|port 8188)/.test(text)) return ['comfyui_health'];
@@ -785,8 +902,12 @@ async function executeLocalTaskAutopilot(snapshot) {
     if (!tools) continue;
     const toolRuns = [];
     for (const tool of tools) {
-      if (!cache.has(tool)) cache.set(tool, await executeTool(tool, {}));
-      toolRuns.push(cache.get(tool));
+      const toolArgs = tool === 'workspace_task_analysis'
+        ? { task: { id: task.id, titre: task.titre || task.title, description: task.description, notes: task.notes } }
+        : {};
+      const cacheKey = tool === 'workspace_task_analysis' ? `${tool}:${task.id || key}` : tool;
+      if (!cache.has(cacheKey)) cache.set(cacheKey, await executeTool(tool, toolArgs));
+      toolRuns.push(cache.get(cacheKey));
     }
     let completed = toolRuns.every((run) => run.success);
     let reason = completed ? null : 'outil_local_en_echec';
@@ -813,7 +934,7 @@ async function health() {
     models = (payload.models || []).map((item) => item.name);
   } catch {}
   const [ffmpeg, ffprobe] = await Promise.all([commandStatus('ffmpeg'), commandStatus('ffprobe')]);
-  return { ok: true, agent: { name: 'Elynea Local Tools', version: VERSION, mode: 'local-first', approvalGate: true }, services: { ollama: { online: ollamaOnline, url: OLLAMA_URL, models }, ffmpeg, ffprobe }, telemetry: await currentTelemetrySnapshot(), tools: [{ name: 'ffmpeg_version', mode: 'read_only', available: ffmpeg.online }, { name: 'ffprobe_file', mode: 'read_only', available: ffprobe.online }, { name: 'list_directory', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'find_local_workflows', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'workflow_documentation_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'video_pipeline_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'comfyui_health', mode: 'read_only', available: true }, { name: 'avatar_factory_status', mode: 'read_only', available: true }, { name: 'http_diagnose', mode: 'read_only', available: true }], allowed_roots: ALLOWED_ROOTS, allowed_http_hosts: [...ALLOWED_HTTP_HOSTS] };
+  return { ok: true, agent: { name: 'Elynea Local Tools', version: VERSION, mode: 'local-first', approvalGate: true }, services: { ollama: { online: ollamaOnline, url: OLLAMA_URL, models }, ffmpeg, ffprobe }, telemetry: await currentTelemetrySnapshot(), tools: [{ name: 'ffmpeg_version', mode: 'read_only', available: ffmpeg.online }, { name: 'ffprobe_file', mode: 'read_only', available: ffprobe.online }, { name: 'list_directory', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'workspace_task_analysis', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'find_local_workflows', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'workflow_documentation_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'video_pipeline_audit', mode: 'read_only', available: ALLOWED_ROOTS.length > 0 }, { name: 'comfyui_health', mode: 'read_only', available: true }, { name: 'avatar_factory_status', mode: 'read_only', available: true }, { name: 'http_diagnose', mode: 'read_only', available: true }], allowed_roots: ALLOWED_ROOTS, allowed_http_hosts: [...ALLOWED_HTTP_HOSTS] };
 }
 
 function toolResponse(run) {
@@ -882,7 +1003,7 @@ const server = http.createServer(async (req, res) => {
       const recentMediaContext = body.context?.recent_media
         ? JSON.stringify(body.context.recent_media).slice(0, 5000)
         : 'Aucun média récent.';
-      const prompt = `${body.system_prompt || 'Tu es Elynea, assistante locale JS-Innov.IA.'}\nOutils réels: ffmpeg_version, ffprobe_file, list_directory, find_local_workflows, workflow_documentation_audit, video_pipeline_audit, comfyui_health, avatar_factory_status, http_diagnose. N’invente jamais une exécution. Ne prétends jamais avoir exécuté un outil sans tool_run réel. Si une tâche exige un outil absent, marque-la bloquée et précise l’outil manquant.\nCopie locale des tâches: ${taskContext}\nMédia récent actif: ${recentMediaContext}. La demande suivante peut concerner ce média; ne dis pas qu’aucun média n’existe quand ce contexte est présent.\nHistorique: ${JSON.stringify(Array.isArray(body.history) ? body.history.slice(-20) : []).slice(0, 20000)}\nUtilisateur: ${String(body.message).slice(0, 4000)}\nElynea:`;
+      const prompt = `${body.system_prompt || 'Tu es Elynea, assistante locale JS-Innov.IA.'}\nOutils réels: ffmpeg_version, ffprobe_file, list_directory, workspace_task_analysis, find_local_workflows, workflow_documentation_audit, video_pipeline_audit, comfyui_health, avatar_factory_status, http_diagnose. N’invente jamais une exécution. Ne prétends jamais avoir exécuté un outil sans tool_run réel. Si une tâche exige un outil absent, marque-la bloquée et précise l’outil manquant.\nCopie locale des tâches: ${taskContext}\nMédia récent actif: ${recentMediaContext}. La demande suivante peut concerner ce média; ne dis pas qu’aucun média n’existe quand ce contexte est présent.\nHistorique: ${JSON.stringify(Array.isArray(body.history) ? body.history.slice(-20) : []).slice(0, 20000)}\nUtilisateur: ${String(body.message).slice(0, 4000)}\nElynea:`;
       const response = await ollama(prompt, body.model);
       if (!response) {
         return send(req, res, 200, { ok: true, response: 'Elynea locale n’a produit aucune réponse exploitable. Reformulez la demande ou précisez le fichier, le dossier ou l’action souhaitée.', model: body.model || DEFAULT_MODEL, mode: 'local', empty_model_response: true });
@@ -919,4 +1040,4 @@ if (process.env.LOCAL_AGENT_NO_LISTEN !== '1') {
     void ensureComfyUi();
   });
 }
-export { executeTool, pathInsideAllowedRoot, requestedTool, requestedTools, requestsTaskList, taskSnapshotResponse, requestsTaskAnalysis, taskAnalysisResponse, canonicalTaskKey, localTaskPlan, executeLocalTaskAutopilot, auditVideoPipeline, comfyUiLaunchSpec, ensureComfyUi, collectTelemetrySnapshot, summarizeTelemetrySamples, estimateSystemPower, telemetrySummary };
+export { executeTool, pathInsideAllowedRoot, requestedTool, requestedTools, requestsTaskList, taskSnapshotResponse, requestsTaskAnalysis, taskAnalysisResponse, canonicalTaskKey, localTaskPlan, executeLocalTaskAutopilot, workspaceTaskTerms, workspaceEvidenceForTask, workspaceTaskAnalysis, auditVideoPipeline, comfyUiLaunchSpec, ensureComfyUi, collectTelemetrySnapshot, summarizeTelemetrySamples, estimateSystemPower, telemetrySummary };
