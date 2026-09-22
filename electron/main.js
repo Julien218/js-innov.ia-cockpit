@@ -51,6 +51,119 @@ async function hydrateOfflineSession(win) {
 // ── Version actuelle de l'app ────────────────────────────────────────────────
 const APP_VERSION = app.getVersion();
 
+const LOCAL_AGENT_PORTS = [8788, 8787];
+const LOCAL_AGENT_TOKEN = String(process.env.LOCAL_AGENT_TOKEN || "").trim();
+
+function trustedCockpitCaller(event) {
+  const caller = String(event.senderFrame?.url || event.sender?.getURL?.() || "");
+  return caller.startsWith(REMOTE_COCKPIT_URL) || caller.startsWith(OFFLINE_COCKPIT_URL);
+}
+
+function localAgentRequest(port, pathname, { method = "GET", json, body, contentType, timeoutMs = 15000 } = {}) {
+  return new Promise((resolve, reject) => {
+    const payload = json !== undefined ? Buffer.from(JSON.stringify(json)) : body;
+    const headers = {
+      ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...(contentType ? { "Content-Type": contentType } : {}),
+      ...(payload ? { "Content-Length": payload.length } : {}),
+      ...(LOCAL_AGENT_TOKEN ? { Authorization: `Bearer ${LOCAL_AGENT_TOKEN}` } : {}),
+    };
+    const req = http.request({
+      host: "127.0.0.1",
+      port,
+      path: pathname,
+      method,
+      headers,
+      timeout: timeoutMs,
+    }, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        let data = {};
+        try { data = raw ? JSON.parse(raw) : {}; }
+        catch {
+          reject(new Error(`Agent local ${port} : réponse non JSON (HTTP ${res.statusCode}).`));
+          return;
+        }
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          reject(new Error(data.error || data.message || `Agent local ${port} : HTTP ${res.statusCode}`));
+          return;
+        }
+        resolve(data);
+      });
+    });
+    req.on("timeout", () => req.destroy(new Error(`Agent local ${port} : délai dépassé.`)));
+    req.on("error", reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+async function transcribeLocalVoiceBytes(bytes, mimeType = "audio/webm") {
+  const audio = Buffer.isBuffer(bytes)
+    ? bytes
+    : bytes instanceof ArrayBuffer
+      ? Buffer.from(new Uint8Array(bytes))
+      : Buffer.from(bytes || []);
+  if (!audio.length) throw new Error("Enregistrement micro vide.");
+  if (audio.length > 12 * 1024 * 1024) throw new Error("Enregistrement micro trop volumineux.");
+
+  const failures = [];
+  for (const port of LOCAL_AGENT_PORTS) {
+    try {
+      const health = await localAgentRequest(port, "/health", { timeoutMs: 3000 });
+      if (!health?.ok) throw new Error("agent non prêt");
+      const capabilities = await localAgentRequest(port, "/api/music-motion/production/capabilities", { timeoutMs: 25000 });
+      if (capabilities?.transcription !== true) {
+        throw new Error("Whisper local n’est pas installé ou n’est pas détecté");
+      }
+
+      const extension = String(mimeType || "").includes("ogg") ? "ogg" : "webm";
+      const asset = await localAgentRequest(
+        port,
+        `/api/music-motion/production/assets?name=${encodeURIComponent(`elynea-voice-${Date.now()}.${extension}`)}`,
+        { method: "POST", body: audio, contentType: mimeType || "audio/webm", timeoutMs: 30000 },
+      );
+      if (!asset?.id) throw new Error("identifiant audio absent");
+
+      let job = await localAgentRequest(port, "/api/music-motion/production/jobs", {
+        method: "POST",
+        json: { type: "analyze", audio_id: asset.id, instrumental: false },
+        timeoutMs: 30000,
+      });
+      if (!job?.id) throw new Error("tâche de transcription absente");
+
+      const deadline = Date.now() + 120000;
+      while (Date.now() < deadline) {
+        if (job.status === "completed") {
+          const transcript = String(job.result?.transcription?.transcript || "").trim();
+          if (!transcript) throw new Error("Whisper n’a détecté aucune parole exploitable");
+          return {
+            transcript,
+            endpoint: `http://127.0.0.1:${port}`,
+            device: job.result?.transcription?.device || null,
+            fallbackUsed: Boolean(job.result?.transcription?.fallback_used),
+          };
+        }
+        if (job.status === "failed" || job.status === "cancelled") {
+          throw new Error(job.error || `transcription ${job.status}`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        job = await localAgentRequest(
+          port,
+          `/api/music-motion/production/jobs/${encodeURIComponent(job.id)}`,
+          { timeoutMs: 15000 },
+        );
+      }
+      throw new Error("délai de transcription dépassé");
+    } catch (error) {
+      failures.push(`${port}: ${String(error?.message || error)}`);
+    }
+  }
+  throw new Error(`Elynea locale injoignable. ${failures.join(" | ")}`);
+}
+
 // ── Local Video Bridge — loopback uniquement ────────────────────────────────
 const COMFYUI_HOST = "127.0.0.1";
 const COMFYUI_PORT = Number(process.env.JSINNOVIA_COMFYUI_PORT || 8188);
@@ -956,6 +1069,14 @@ ipcMain.on("notify", (event, { title, body }) => {
   if (Notification.isSupported()) {
     new Notification({ title: title || "JS-Innov.IA", body: body || "" }).show();
   }
+});
+
+// ── IPC — transcription micro Elynea via le processus Electron ──────────────
+ipcMain.handle("elynea-local-voice-transcribe", async (event, payload = {}) => {
+  if (!trustedCockpitCaller(event)) {
+    throw new Error("Appel micro refusé hors du Cockpit JS-Innov.IA.");
+  }
+  return transcribeLocalVoiceBytes(payload.bytes, payload.mimeType);
 });
 
 // ── IPC — tâches web authentifiées, limitées aux recettes NOVA autorisées ──
