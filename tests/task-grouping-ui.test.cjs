@@ -20,9 +20,9 @@ test('la vue Tâches sépare les permissions des vrais blocages et permet une re
   const fs = require('node:fs');
   const path = require('node:path');
   const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'pages', 'Taches.jsx'), 'utf8');
-  assert.match(source, /Pilotage NOVA/);
+  assert.match(source, /Pilotage Elynea/);
   assert.match(source, /awaiting_authorization/);
-  assert.match(source, /Exécuter les tâches autorisées/);
+  assert.match(source, /Exécuter avec Elynea/);
   assert.match(source, /allow_writes: allowWrites/);
   assert.match(source, /Aucune suppression ni facturation/);
 });
