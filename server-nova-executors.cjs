@@ -124,11 +124,19 @@ function resolveNovaExecutor(task = {}) {
   if (/(fiche\s+projet|projet\s+[a-z0-9]|villeconnect\s*os|villeconnectos)/.test(text)) {
     return { kind: 'project', ...INTERNAL_EXECUTORS.project_data };
   }
-  const missingTargetReason = /(site|page web|depot github|repository|application web)/.test(text)
+  const specificUnsupportedReason =
+    /(?:effacer|nettoyer|archiver|regrouper).*(?:doublon|duplicat).*(?:tache)|(?:doublon|duplicat).*(?:tache).*(?:effacer|nettoyer|archiver|regrouper)/.test(text)
+      ? 'maintenance_doublons_taches_non_raccordee'
+      : /(?:front.?end|affichage|bouton).*(?:onglet\s+taches|page\s+taches|cockpit)|(?:onglet\s+taches|page\s+taches).*(?:front.?end|affichage|bouton)/.test(text)
+        ? 'diagnostic_frontend_cockpit_non_raccorde'
+        : /(?:analys|audit|diagnost|verifi).*(?:camera|videosurveillance).*(?:olivier|signelya|application)|(?:camera|videosurveillance).*(?:olivier|signelya|application).*(?:analys|audit|diagnost|verifi)/.test(text)
+          ? 'diagnostic_application_camera_non_raccorde'
+          : null;
+  const missingTargetReason = specificUnsupportedReason || (/(site|page web|depot github|repository|application web)/.test(text)
     ? 'cible_site_ou_depot_absente_de_la_tache'
     : /(image|media|photo|camera)/.test(text)
       ? (sourceDocumentIdsFromTask(task).length ? 'aucun_executeur_media_enregistre' : 'media_source_absente_ou_non_exploitable')
-      : 'aucun_executeur_reel_enregistre_pour_ce_type_de_tache';
+      : 'aucun_executeur_reel_enregistre_pour_ce_type_de_tache');
   return {
     kind: 'unsupported',
     id: 'nova-architect',
