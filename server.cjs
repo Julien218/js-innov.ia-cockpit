@@ -234,6 +234,15 @@ try {
   console.warn('⚠️ Route Écran géant indisponible:', e.message);
 }
 
+// ── Prospection PilotyaSign · écran géant Espace C Dour ─────
+try {
+  const pilotyaProspectingRouter = require('./server-pilotyasign-prospecting.cjs');
+  app.use('/api/pilotyasign-prospecting', requireSession('collaborateur'), requirePermission('pilotyasign_prospecting', 'collaborateur'), pilotyaProspectingRouter.router);
+  console.log('✅ Prospection PilotyaSign activée (recherche commerces publics + pipeline Leads)');
+} catch (e) {
+  console.warn('⚠️ Route prospection PilotyaSign indisponible:', e.message);
+}
+
 // ── Supervision VilleConnectOS : site + application + API ─
 try {
   const villeConnectRouter = require('./server-villeconnect.cjs');

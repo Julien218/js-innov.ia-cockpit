@@ -18,6 +18,7 @@
   { "code": "twilio", "label": "Téléphonie Twilio", "group": "Communication", "roles": ["admin"], "routes": ["/twilio"] },
   { "code": "production", "label": "Production vidéo", "group": "Studio", "roles": ["admin"], "routes": ["/production", "/video-studio", "/video-studio/*", "/ai-video", "/thumbnail", "/dour-campaign", "/exports", "/exported-videos", "/templates", "/calendar", "/video-factory-local", "/video-factory-api", "/music-motion", "/music-motion-studio"] },
   { "code": "signage", "label": "Signelya", "description": "Affichage dynamique et gestion des écrans", "group": "Services souscrits", "roles": ["client", "collaborateur", "admin"], "routes": ["/ecran-geant"] },
+  { "code": "pilotyasign_prospecting", "label": "PilotyaSign · Prospection", "description": "Prospection commerciale pour les publicités sur l’écran géant Espace C Dour", "group": "Services souscrits", "roles": ["collaborateur", "admin"], "routes": ["/pilotyasign"] },
   { "code": "avatar_factory", "label": "Avatar Factory", "group": "Studio", "roles": ["admin"], "routes": ["/avatar-factory"] },
   { "code": "portfolio", "label": "Portfolio", "group": "Studio", "roles": ["admin"], "routes": ["/portfolio"] },
   { "code": "apps_agents", "label": "Apps et agents", "group": "Écosystème", "roles": ["admin"], "routes": ["/apps-agents"] },

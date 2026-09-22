@@ -95,6 +95,7 @@ export const allNavGroups = [
     items: [
       { label: "HainoFlow", icon: Workflow, path: "/hainoflow" },
       { label: "Signelya", icon: MonitorPlay, path: "/ecran-geant" },
+      { label: "PilotyaSign · Prospection", icon: FileText, path: "/pilotyasign", minRole: "collaborateur" },
     ]
   },
   {
