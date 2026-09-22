@@ -11,7 +11,7 @@ import {
 import PageHeader from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 
-const FALLBACK_MANAGER_URL = "https://olivier-signage-cockpit-production.up.railway.app/ecran-geant";
+const FALLBACK_MANAGER_URL = "https://app.signelya.jsinnovia.com/ecran-geant";
 
 export default function DigitalSignage() {
   const [status, setStatus] = useState(null);

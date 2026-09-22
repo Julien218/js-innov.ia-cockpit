@@ -2,7 +2,7 @@ const express = require('express');
 
 const router = express.Router();
 
-const SIGNAGE_BASE_URL = 'https://olivier-signage-cockpit-production.up.railway.app';
+const SIGNAGE_BASE_URL = 'https://app.signelya.jsinnovia.com';
 const SIGNAGE_MANAGER_URL = `${SIGNAGE_BASE_URL}/ecran-geant`;
 const SIGNAGE_HEALTH_URL = `${SIGNAGE_BASE_URL}/api/health`;
 
