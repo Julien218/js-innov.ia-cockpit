@@ -114,5 +114,8 @@ export function taskBlockerMessage(reason) {
     aucun_executeur_media_enregistre: "Une source média est présente, mais aucun exécuteur média compatible n’est encore raccordé.",
     cible_site_ou_depot_absente_de_la_tache: "La tâche concerne un site ou un dépôt, mais la cible exacte n’est pas indiquée.",
     confirmation_execution_absente: "Le traitement précédent n’a pas laissé de confirmation d’exécution vérifiable.",
+    maintenance_doublons_taches_non_raccordee: "Le regroupement des doublons est identifié, mais aucun exécuteur de maintenance des tâches n’est encore raccordé.",
+    diagnostic_frontend_cockpit_non_raccorde: "Le diagnostic concerne l’interface du Cockpit, mais aucun exécuteur front-end avec preuve n’est encore raccordé.",
+    diagnostic_application_camera_non_raccorde: "La cible est l’application de caméras/vidéosurveillance, pas un fichier média ; l’exécuteur de diagnostic applicatif reste à raccorder.",
   })[reason] || reason || "Exécuteur indisponible";
 }
