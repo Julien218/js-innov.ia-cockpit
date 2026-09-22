@@ -33,7 +33,7 @@ export const ROLE_COLORS = {
 const OWNER_ROUTES = [
   "/", "/hainoflow", "/assurances", "/documents", "/clients", "/leads", "/demandes", "/projets", "/donnees-projets", "/taches",
   "/devis", "/factures", "/emails", "/emails-core", "/cost-centers", "/ai-cost", "/villeconnect",
-  "/production", "/ecran-geant", "/avatar-factory", "/portfolio", "/apps-agents", "/automations", "/domaines", "/rangement", "/parametres",
+  "/production", "/ecran-geant", "/elynea-audio", "/avatar-factory", "/portfolio", "/apps-agents", "/automations", "/domaines", "/rangement", "/parametres",
   "/services", "/validations", "/agent", "/agents-ia", "/mobile-hub", "/ai-cost-control", "/invitations", "/gouvernance", "/confidentialite",
   // Studio / production média
   "/video-studio", "/video-studio/*", "/ai-video", "/thumbnail", "/dour-campaign",
