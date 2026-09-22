@@ -108,5 +108,11 @@ export function taskBlockerMessage(reason) {
     correction_repertoire_interne_a_executer: "Diagnostic disponible ; exécuteur de correction du dépôt non raccordé.",
     plusieurs_runs_actifs_sur_un_objectif_regroupe: "Plusieurs exécutions déclarées actives pour cet objectif ; relance suspendue.",
     reservation_ancienne_a_relancer: "Ancienne exécution conservée pour traçabilité ; une information ou une relance contrôlée est requise.",
+    aucun_executeur_reel_enregistre_pour_ce_type_de_tache: "Aucun exécuteur réel n’est encore raccordé à ce type de tâche.",
+    aucun_executeur_verifiable: "Aucun exécuteur vérifiable n’est encore raccordé à ce type de tâche.",
+    media_source_absente_ou_non_exploitable: "La tâche mentionne un média ou une caméra, mais aucune source exploitable n’est disponible pour l’exécuteur actuel.",
+    aucun_executeur_media_enregistre: "Une source média est présente, mais aucun exécuteur média compatible n’est encore raccordé.",
+    cible_site_ou_depot_absente_de_la_tache: "La tâche concerne un site ou un dépôt, mais la cible exacte n’est pas indiquée.",
+    confirmation_execution_absente: "Le traitement précédent n’a pas laissé de confirmation d’exécution vérifiable.",
   })[reason] || reason || "Exécuteur indisponible";
 }
