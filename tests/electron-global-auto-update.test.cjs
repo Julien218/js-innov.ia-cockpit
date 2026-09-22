@@ -94,7 +94,7 @@ test('packaged desktop enables startup with Windows', () => {
   assert.match(bootstrap, /app\.setLoginItemSettings\(\{/);
   assert.match(bootstrap, /openAtLogin:\s*true/);
   assert.match(bootstrap, /path:\s*process\.execPath/);
-  assert.match(bootstrap, /app\.whenReady\(\)\.then\(async \(\) => \{\s*if \(!singleInstanceLock\) return;\s*enableWindowsStartup\(\)/);
+  assert.match(bootstrap, /app\.whenReady\(\)\.then\(async \(\) => \{\s*if \(!singleInstanceLock\) return;\s*configureMicrophonePermissions\(\);\s*enableWindowsStartup\(\)/);
 });
 
 test('desktop release runs when Elynea local capabilities change', () => {

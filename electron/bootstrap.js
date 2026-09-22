@@ -26,6 +26,40 @@ const LOCAL_AGENT_STARTUP_GRACE_MS = 25_000;
 const LOCAL_AGENT_MAX_MISSES = 3;
 const MUSIC_MOTION_CONTRACT_VERSION = 2;
 
+const TRUSTED_MICROPHONE_ORIGINS = new Set([
+  'https://cockpit.jsinnovia.com',
+  `http://127.0.0.1:${OFFLINE_WEB_PORT}`,
+]);
+
+function normalizeOrigin(value) {
+  try { return new URL(String(value || '')).origin; }
+  catch { return ''; }
+}
+
+function configureMicrophonePermissions() {
+  const ses = session.defaultSession;
+  const trustedAudioRequest = (permission, origin, details = {}) => {
+    if (permission !== 'media' || !TRUSTED_MICROPHONE_ORIGINS.has(normalizeOrigin(origin))) return false;
+    const mediaTypes = Array.isArray(details.mediaTypes)
+      ? details.mediaTypes
+      : details.mediaType
+        ? [details.mediaType]
+        : [];
+    return mediaTypes.length === 0 || (mediaTypes.includes('audio') && !mediaTypes.includes('video'));
+  };
+
+  ses.setPermissionRequestHandler((webContents, permission, callback, details = {}) => {
+    const requestingUrl = details.requestingUrl || webContents?.getURL?.() || '';
+    callback(trustedAudioRequest(permission, requestingUrl, details));
+  });
+
+  ses.setPermissionCheckHandler((webContents, permission, requestingOrigin, details = {}) => (
+    trustedAudioRequest(permission, requestingOrigin || webContents?.getURL?.() || '', details)
+  ));
+
+  console.log('[desktop] microphone permission restricted to Elynea Cockpit audio origins');
+}
+
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -428,6 +462,7 @@ if (!singleInstanceLock) {
 
 app.whenReady().then(async () => {
   if (!singleInstanceLock) return;
+  configureMicrophonePermissions();
   enableWindowsStartup();
   await startBundledLocalAgent().catch((error) => {
     console.log("[desktop] Elynea Local Tools initial start failed:", error.message);
