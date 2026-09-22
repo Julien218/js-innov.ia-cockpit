@@ -23,6 +23,7 @@ import { executeNovaClientAction } from '@/lib/novaClientAction';
 import { isDropboxDeletionRequest, sendNovaChat } from '@/lib/novaChatTransport';
 import { getNovaMailboxContext } from '@/lib/novaMailboxContext';
 import { extractElyneaWakeCommand } from '@/lib/elyneaWakeWord';
+import { ELYNEA_VOICE_PREFERENCES_EVENT } from '@/lib/elyneaVoicePreferences';
 
 const LOCAL_NOVA_URLS = ['http://127.0.0.1:8788', 'http://127.0.0.1:8787'];
 const LOCAL_TASK_SNAPSHOT_KEY = 'nova_local_task_snapshot_v1';
@@ -56,9 +57,9 @@ const FloatingAgent = () => {
   const [speaking, setSpeaking] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
-  const [wakeEnabled, setWakeEnabled] = useState(() => {
-    try { return localStorage.getItem(ELYNEA_WAKE_MODE_KEY) === 'true'; } catch { return false; }
-  });
+  // Legacy wake mode is intentionally kept off here. Hands-free voice is owned by
+  // ElyneaContinuousVoice and configured from Paramètres > Elynea.
+  const [wakeEnabled, setWakeEnabled] = useState(false);
   const [wakeStatus, setWakeStatus] = useState('off');
   const [wakeError, setWakeError] = useState('');
   const fileInputRef = useRef(null);
@@ -96,6 +97,17 @@ const FloatingAgent = () => {
   useEffect(() => {
     if (ttsVoiceName) localStorage.setItem(TTS_VOICE_KEY, ttsVoiceName);
   }, [ttsVoiceName]);
+
+  useEffect(() => {
+    try { localStorage.setItem(ELYNEA_WAKE_MODE_KEY, 'false'); } catch {}
+    const syncPreferences = (event) => {
+      const detail = event?.detail || {};
+      if (typeof detail.ttsEnabled === 'boolean') setTtsEnabled(detail.ttsEnabled);
+      if (typeof detail.voiceName === 'string') setTtsVoiceName(detail.voiceName);
+    };
+    window.addEventListener(ELYNEA_VOICE_PREFERENCES_EVENT, syncPreferences);
+    return () => window.removeEventListener(ELYNEA_VOICE_PREFERENCES_EVENT, syncPreferences);
+  }, []);
 
   useEffect(() => {
     wakeEnabledRef.current = wakeEnabled;
@@ -761,9 +773,12 @@ const FloatingAgent = () => {
                 ? 'Réfléchit...'
                 : 'En ligne';
 
+  const detachedDesktopCompanion = typeof window !== 'undefined' && Boolean(window.electronAPI?.desktopCompanion);
+  const showInlineVoiceControls = false;
+
   return (
     <>
-      {!isOpen && (
+      {!isOpen && !detachedDesktopCompanion && (
         <div style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 99999, fontFamily: 'Inter, -apple-system, sans-serif' }}>
           <div
             onClick={() => setIsOpen(true)}
@@ -802,14 +817,16 @@ const FloatingAgent = () => {
               </div>
             </div>
             <div style={{ display: 'flex', gap: '4px' }}>
-              {ttsEnabled && ttsVoices.length > 0 && (
-                <select aria-label="Voix de NOVA" title="Choisir la voix française de NOVA" value={ttsVoiceName} onChange={(event) => setTtsVoiceName(event.target.value)} style={{ maxWidth: '104px', background: '#0F172A', border: '1px solid rgba(100,116,139,0.35)', borderRadius: '6px', color: '#cbd5e1', fontSize: '10px', padding: '3px 5px' }}>
-                  {ttsVoices.map((voice) => <option key={`${voice.name}-${voice.lang}`} value={voice.name}>{voice.name}</option>)}
-                </select>
-              )}
-              <button onClick={toggleTts} title={ttsEnabled ? 'Lecture vocale ON' : 'Lecture vocale OFF'} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: ttsEnabled ? '#D4AF37' : '#64748b', fontSize: '16px', padding: '4px 8px', borderRadius: '6px' }}>{ttsEnabled ? '🔊' : '🔇'}</button>
-              <button
-                onClick={toggleWakeMode}
+              {showInlineVoiceControls && (
+                <>
+                  {ttsEnabled && ttsVoices.length > 0 && (
+                    <select aria-label="Voix de NOVA" title="Choisir la voix française de NOVA" value={ttsVoiceName} onChange={(event) => setTtsVoiceName(event.target.value)} style={{ maxWidth: '104px', background: '#0F172A', border: '1px solid rgba(100,116,139,0.35)', borderRadius: '6px', color: '#cbd5e1', fontSize: '10px', padding: '3px 5px' }}>
+                      {ttsVoices.map((voice) => <option key={`${voice.name}-${voice.lang}`} value={voice.name}>{voice.name}</option>)}
+                    </select>
+                  )}
+                  <button onClick={toggleTts} title={ttsEnabled ? 'Lecture vocale ON' : 'Lecture vocale OFF'} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: ttsEnabled ? '#D4AF37' : '#64748b', fontSize: '16px', padding: '4px 8px', borderRadius: '6px' }}>{ttsEnabled ? '🔊' : '🔇'}</button>
+                  <button
+                    onClick={toggleWakeMode}
                 title={wakeEnabled ? 'Désactiver Appel Elynea' : 'Activer Appel Elynea'}
                 style={{
                   background: wakeEnabled ? 'rgba(34,211,238,0.12)' : 'transparent',
@@ -822,9 +839,11 @@ const FloatingAgent = () => {
                   borderRadius: '6px',
                   whiteSpace: 'nowrap',
                 }}
-              >
-                {wakeEnabled ? 'Appel ON' : 'Appel OFF'}
-              </button>
+                  >
+                    {wakeEnabled ? 'Appel ON' : 'Appel OFF'}
+                  </button>
+                </>
+              )}
               <button onClick={resetConversation} title="Nouvelle conversation" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '16px', padding: '4px 8px', borderRadius: '6px' }}>↻</button>
               <button onClick={() => { stopSpeaking(); setIsOpen(false); }} title="Fermer" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '16px', padding: '4px 8px', borderRadius: '6px' }}>✕</button>
             </div>
@@ -837,10 +856,9 @@ const FloatingAgent = () => {
                 <p style={{ margin: 0 }}>Salut Julien !</p>
                 <p style={{ marginTop: '8px' }}>Pose ta question, parle-moi, ou joins n’importe quel fichier à classer dans Dropbox.</p>
                 <p style={{ marginTop: '12px', fontSize: '11px', color: '#334155' }}>{sttSupported ? '🎤 Micro disponible' : 'Micro non supporté'} · {ttsSupported ? '🔊 Voix disponible' : 'Voix non supportée'}</p>
-                <p style={{ marginTop: '8px', fontSize: '11px', color: wakeEnabled ? '#22D3EE' : '#475569' }}>
-                  {wakeEnabled ? 'Appel Elynea actif : dis « Elynea », puis ta commande.' : 'Active « Appel OFF » une fois pour autoriser le micro et m’appeler par mon nom.'}
+                <p style={{ marginTop: '8px', fontSize: '11px', color: '#475569' }}>
+                  La veille vocale et la voix d’Elynea se règlent dans Paramètres → Elynea.
                 </p>
-                {wakeError && <p style={{ marginTop: '6px', fontSize: '11px', color: '#fca5a5' }}>{wakeError}</p>}
               </div>
             )}
 
@@ -897,8 +915,8 @@ const FloatingAgent = () => {
             {sttSupported && (
               <button
                 onClick={toggleVoice}
-                title={wakeEnabled ? 'Appel Elynea écoute déjà le micro' : isListening ? 'Arrêt écoute' : 'Parler à Elynea'}
-                disabled={loading || wakeEnabled}
+                title={isListening ? 'Arrêt écoute' : 'Parler à Elynea'}
+                disabled={loading}
                 style={{
                   background: isListening ? 'rgba(6,182,212,0.15)' : wakeEnabled ? 'rgba(34,211,238,0.08)' : '#1e293b', border: `1px solid ${isListening ? '#06B6D4' : wakeEnabled ? 'rgba(34,211,238,0.35)' : 'rgba(100,116,139,0.3)'}`,
                   borderRadius: '10px', padding: '10px', cursor: (loading || wakeEnabled) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '40px', height: '40px', fontSize: '16px', opacity: wakeEnabled ? 0.7 : 1,
