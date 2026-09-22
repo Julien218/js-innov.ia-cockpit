@@ -32,10 +32,24 @@ test('manual microphone prefers local Whisper and remains usable while wake mode
 
   assert.match(localVoice, /navigator\.mediaDevices\.getUserMedia/);
   assert.match(localVoice, /new MediaRecorder/);
+  assert.match(localVoice, /window\.electronAPI\?\.localVoice\?\.transcribe/);
+  assert.match(localVoice, /new Uint8Array\(await blob\.arrayBuffer\(\)\)/);
   assert.match(localVoice, /127\.0\.0\.1:8788/);
   assert.match(localVoice, /127\.0\.0\.1:8787/);
   assert.match(localVoice, /\/api\/music-motion\/production\/assets/);
   assert.match(localVoice, /transcription\?\.transcript/);
+});
+
+test('Electron bridges microphone audio to loopback instead of making the HTTPS renderer fetch localhost', () => {
+  const preload = read('electron/preload.js');
+  const main = read('electron/main.js');
+  assert.match(preload, /elynea-local-voice-transcribe/);
+  assert.match(main, /ipcMain\.handle\("elynea-local-voice-transcribe"/);
+  assert.match(main, /trustedCockpitCaller/);
+  assert.match(main, /LOCAL_AGENT_PORTS = \[8788, 8787\]/);
+  assert.match(main, /\/api\/music-motion\/production\/capabilities/);
+  assert.match(main, /\/api\/music-motion\/production\/assets/);
+  assert.match(main, /\/api\/music-motion\/production\/jobs/);
 });
 
 test('Electron grants microphone access only to Elynea trusted audio origins', () => {
