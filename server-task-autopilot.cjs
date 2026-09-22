@@ -395,7 +395,7 @@ router.post('/run', async (req, res) => {
   catch (error) { res.status(502).json({ error: error.message, state }); }
 });
 
-const LOCAL_TOOLS = new Set(['ffmpeg_version', 'ffprobe_file', 'list_directory', 'find_local_workflows', 'workflow_documentation_audit', 'video_pipeline_audit', 'comfyui_health', 'http_diagnose', 'avatar_factory_status']);
+const LOCAL_TOOLS = new Set(['ffmpeg_version', 'ffprobe_file', 'list_directory', 'workspace_task_analysis', 'find_local_workflows', 'workflow_documentation_audit', 'video_pipeline_audit', 'comfyui_health', 'http_diagnose', 'avatar_factory_status']);
 router.post('/local-results', async (req, res) => {
   const results = Array.isArray(req.body?.task_results) ? req.body.task_results.slice(0, 50) : [];
   const synced = [];
@@ -426,7 +426,7 @@ router.post('/local-results', async (req, res) => {
       const log = pendingRun?.id
         ? await agentRequest(`/agent-runs/${encodeURIComponent(pendingRun.id)}`, { method: 'PATCH', body: runPayload })
         : await agentRequest('/agent-runs', { method: 'POST', body: { task_id: taskId, agent_id: 'nova-local-tools', functional_role: 'windows_local_diagnostics', provider_name: 'local-agent', status: 'completed', execution_mode: 'autonomous', input: { title: String(item.title || '').slice(0, 240), tools: evidence.map((run) => run.tool) }, ...runPayload, idempotency_key: `local-autopilot:${taskId}:${evidence.map((run) => run.id).join(':')}`.slice(0, 500), requested_by: String(req.user?.email || req.user?.id || 'desktop-companion').slice(0, 180), started_at: evidence[0].started_at } });
-      await patchTask(taskId, { statut: 'terminee', notes: `${canonicalTask.notes || ''}\nNOVA locale — diagnostic terminé avec preuve.\nOutils: ${evidence.map((run) => run.tool).join(', ')}\nJournaux: ${evidence.map((run) => run.id).join(', ')}` });
+      await patchTask(taskId, { statut: 'terminee', notes: `${canonicalTask.notes || ''}\nElynea locale — diagnostic terminé avec preuve.\nOutils: ${evidence.map((run) => run.tool).join(', ')}\nJournaux: ${evidence.map((run) => run.id).join(', ')}` });
       const duplicateTaskIds = await closeVerifiedDuplicates(
         canonicalTask,
         duplicateTasksForCanonical(allTasks, canonicalTask),
