@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
+import { speakAll } from '@/lib/speechText';
 
 const ENABLED_KEY = 'elynea_continuous_voice_enabled';
 const CONVERSATION_KEY = 'agent_conversation_id';
@@ -10,18 +11,6 @@ const STANDBY_STATUS = 'En veille — dites « Elynea »';
 function getSpeechRecognition() {
   if (typeof window === 'undefined') return null;
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
-}
-
-function cleanForSpeech(text) {
-  return String(text || '')
-    .replace(/\[Contexte Dropbox[^\]]*\]/gi, '')
-    .replace(/[#*_~`]/g, '')
-    .replace(/https?:\/\/\S+/gi, 'lien internet')
-    .replace(/\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/gi, 'identifiant du journal')
-    .replace(/\n{2,}/g, '. ')
-    .replace(/\n/g, ' ')
-    .trim()
-    .slice(0, 800);
 }
 
 function normalizeWakeText(text) {
@@ -82,6 +71,7 @@ export default function ElyneaContinuousVoice() {
   const sendingRef = useRef(false);
   const wakeTimeoutRef = useRef(null);
   const autoRestoreAttemptedRef = useRef(false);
+  const speechCancelRef = useRef(null);
   const [supported, setSupported] = useState(false);
   const [active, setActive] = useState(false);
   const [status, setStatus] = useState('Prêt');
@@ -144,26 +134,27 @@ export default function ElyneaContinuousVoice() {
   }, []);
 
   const speak = useCallback((text, onDone) => {
-    const cleanText = cleanForSpeech(text);
-    if (!cleanText || typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    if (!text || typeof window === 'undefined' || !('speechSynthesis' in window)) {
       onDone?.();
       return;
     }
 
+    speechCancelRef.current?.();
     speakingRef.current = true;
     setStatus('Elynea parle…');
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = 'fr-BE';
-    utterance.rate = 0.96;
-    utterance.pitch = 1.0;
     const finish = () => {
       speakingRef.current = false;
+      speechCancelRef.current = null;
       onDone?.();
     };
-    utterance.onend = finish;
-    utterance.onerror = finish;
-    window.speechSynthesis.speak(utterance);
+    speechCancelRef.current = speakAll({
+      text,
+      lang: 'fr-BE',
+      rate: 0.96,
+      pitch: 1,
+      onDone: finish,
+      onError: () => {},
+    });
   }, []);
 
   const startRecognitionRef = useRef(null);
@@ -233,7 +224,7 @@ export default function ElyneaContinuousVoice() {
     if (!activeRef.current || speakingRef.current || sendingRef.current || restartingRef.current) return;
     const SR = getSpeechRecognition();
     if (!SR) {
-      setError('La reconnaissance vocale n’est pas disponible dans ce navigateur.');
+      setError('La reconnaissance vocale n’est pas disponible dans ce navigateur. Utilisez le micro du chat Elynea pour la transcription Whisper locale.');
       setStatus('Indisponible');
       activeRef.current = false;
       awakeRef.current = false;
@@ -338,6 +329,8 @@ export default function ElyneaContinuousVoice() {
     localStorage.setItem(ENABLED_KEY, 'false');
     clearWakeTimeout();
     stopRecognition();
+    speechCancelRef.current?.();
+    speechCancelRef.current = null;
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
     speakingRef.current = false;
     sendingRef.current = false;
@@ -377,6 +370,8 @@ export default function ElyneaContinuousVoice() {
     awakeRef.current = false;
     clearWakeTimeout();
     stopRecognition();
+    speechCancelRef.current?.();
+    speechCancelRef.current = null;
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
   }, [clearWakeTimeout, stopRecognition]);
 
