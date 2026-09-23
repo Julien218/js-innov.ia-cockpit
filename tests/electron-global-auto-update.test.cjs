@@ -103,3 +103,15 @@ test('desktop release runs when Elynea local capabilities change', () => {
   assert.match(workflow, /- "src\/components\/LocalAgentQueueBridge\.jsx"/);
   assert.match(workflow, /- "src\/lib\/localAgentQueueBridge\.js"/);
 });
+
+test('desktop bundles and launches the detached Elynea QML companion', () => {
+  const qmlResource = pkg.build?.extraResources?.find((item) => item.to === 'elynea-desktop');
+  assert.ok(qmlResource);
+  assert.equal(qmlResource.from, '../elynea-qml/dist/ElyneaDesktop');
+  assert.match(bootstrap, /function startBundledElyneaDesktop\(\)/);
+  assert.match(bootstrap, /ElyneaDesktop\.exe/);
+  assert.match(bootstrap, /fs\.cpSync\(source, target/);
+  assert.match(bootstrap, /startBundledElyneaDesktop\(\)/);
+  assert.match(workflow, /Build Elynea QML companion/);
+  assert.match(workflow, /elynea-desktop\/ElyneaDesktop\.exe/);
+});
