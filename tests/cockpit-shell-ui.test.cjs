@@ -42,7 +42,8 @@ test('cockpit reference background and gold tracer remain scoped without feather
   const backdrop = read('public/cockpit-sunset.svg');
   assert.match(css, /\.cockpit-shell/);
   assert.match(css, /url\("\/cockpit-sunset\.svg"\)/);
-  assert.match(css, /cockpit-gold-trace/);
+  assert.match(css, /cockpit-gold-run/);
+  assert.match(css, /animation:\s*cockpit-gold-run\s+5\.4s\s+linear\s+infinite/);
   assert.match(css, /cockpit-reference-elynea/);
   assert.match(backdrop, /panoramique JS-Innov\.IA/);
   assert.doesNotMatch(css, /plume|feather/i);
@@ -57,4 +58,19 @@ test('Mobile Hub inherits the same floating cockpit system', () => {
   assert.match(mobile, /<Link/);
   assert.doesNotMatch(mobile, /#0a0a14|background:\s*COLORS\.bg/);
   assert.match(css, /body:has\(\.cockpit-shell\)[\s\S]*cockpit-sunset\.svg/);
+});
+
+
+test('gold tracer remains animated and cockpit buttons react on hover', () => {
+  const css = read('src/premium-overrides.css');
+  const dashboard = read('src/pages/Dashboard.jsx');
+  assert.match(css, /@keyframes cockpit-gold-run/);
+  assert.match(css, /\.cockpit-shell button:not\(:disabled\):hover/);
+  assert.match(css, /transform:\s*translateY\(-2px\) scale\(1\.025\)/);
+  assert.match(css, /@keyframes cockpit-icon-response/);
+  assert.match(css, /prefers-reduced-motion:[\s\S]*animation-duration:\s*11s/);
+  assert.doesNotMatch(css, /prefers-reduced-motion:[\s\S]*cockpit-electric-frame::before[\s\S]*animation:\s*none/);
+  assert.match(dashboard, /cockpit-reference-kpi cockpit-electric-frame/);
+  const audio = read('src/components/audio/ElyneaAudioDock.jsx');
+  assert.match(audio, /cockpit-audio-dock cockpit-electric-frame/);
 });

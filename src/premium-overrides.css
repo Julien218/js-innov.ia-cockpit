@@ -113,7 +113,7 @@ body:has(.cockpit-shell) {
 /* Top bar translucide claire. */
 .cockpit-shell.premium-shell header,
 .cockpit-shell.premium-shell header.bg-white {
-  background: rgba(247, 250, 255, 0.78) !important;
+  background: rgba(247, 250, 255, 0.62) !important;
   border-color: rgba(244, 207, 97, 0.24) !important;
   box-shadow:
     0 12px 34px rgba(3, 15, 35, 0.15),
@@ -134,7 +134,7 @@ body:has(.cockpit-shell) {
 .cockpit-shell .workspace-metric,
 .cockpit-shell .cockpit-reference-panel {
   background:
-    linear-gradient(145deg, rgba(251, 253, 255, 0.91), rgba(239, 247, 255, 0.83)) !important;
+    linear-gradient(145deg, rgba(251, 253, 255, 0.76), rgba(239, 247, 255, 0.62)) !important;
   border-color: rgba(244, 207, 97, 0.44) !important;
   box-shadow:
     0 18px 42px rgba(2, 12, 31, 0.20),
@@ -192,7 +192,7 @@ body:has(.cockpit-shell) {
   border-radius: 1rem;
   padding: 0.8rem;
   color: #0f172a;
-  background: linear-gradient(145deg, rgba(255,255,255,0.93), rgba(238,247,255,0.86));
+  background: linear-gradient(145deg, rgba(255,255,255,0.82), rgba(238,247,255,0.70));
   box-shadow:
     0 14px 32px rgba(2, 12, 31, 0.18),
     inset 0 1px 0 rgba(255,255,255,0.96);
@@ -328,45 +328,186 @@ body:has(.cockpit-reference-dashboard) [data-elynea-floating-trigger] {
   display: none !important;
 }
 
-/* Liseré doré animé léger : bord fixe + éclat voyageur. */
-.cockpit-shell .cockpit-electric-frame,
+/* Liseré doré animé : segment lumineux qui voyage réellement sur le périmètre.
+ * Utilise top/left/transform plutôt qu'une interpolation de custom property afin
+ * d'être fiable dans Chrome, Electron et les WebViews Windows.
+ */
+.cockpit-shell .cockpit-electric-frame {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-color: rgba(236, 196, 72, .52) !important;
+  box-shadow:
+    0 18px 42px rgba(2, 12, 31, .18),
+    0 0 0 1px rgba(226, 181, 49, .10),
+    inset 0 1px 0 rgba(255, 255, 255, .72);
+}
+
+.cockpit-shell .cockpit-electric-frame::before {
+  content: "";
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  width: 38px;
+  height: 2px;
+  left: 12px;
+  top: -1px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(230, 198, 90, 0),
+    rgba(230, 198, 90, .72) 28%,
+    rgba(255, 249, 210, 1) 58%,
+    rgba(230, 198, 90, .90) 76%,
+    rgba(230, 198, 90, 0)
+  );
+  box-shadow:
+    0 0 5px rgba(255, 246, 188, .95),
+    0 0 11px rgba(230, 190, 62, .74),
+    0 0 18px rgba(230, 190, 62, .30);
+  transform-origin: center;
+  will-change: left, top, transform, opacity;
+  animation: cockpit-gold-run 5.4s linear infinite !important;
+}
+
+.cockpit-shell .cockpit-electric-frame:hover::before {
+  animation-duration: 3.7s !important;
+  filter: brightness(1.14);
+}
+
+@keyframes cockpit-gold-run {
+  0% {
+    left: 12px;
+    top: -1px;
+    transform: rotate(0deg);
+    opacity: .78;
+  }
+  23% {
+    left: calc(100% - 50px);
+    top: -1px;
+    transform: rotate(0deg);
+    opacity: 1;
+  }
+  25% {
+    left: calc(100% - 19px);
+    top: 10px;
+    transform: rotate(90deg);
+    opacity: 1;
+  }
+  48% {
+    left: calc(100% - 19px);
+    top: calc(100% - 48px);
+    transform: rotate(90deg);
+    opacity: .9;
+  }
+  50% {
+    left: calc(100% - 50px);
+    top: calc(100% - 1px);
+    transform: rotate(180deg);
+    opacity: 1;
+  }
+  73% {
+    left: 12px;
+    top: calc(100% - 1px);
+    transform: rotate(180deg);
+    opacity: .84;
+  }
+  75% {
+    left: -19px;
+    top: calc(100% - 48px);
+    transform: rotate(270deg);
+    opacity: 1;
+  }
+  98% {
+    left: -19px;
+    top: 10px;
+    transform: rotate(270deg);
+    opacity: .86;
+  }
+  100% {
+    left: 12px;
+    top: -1px;
+    transform: rotate(360deg);
+    opacity: .78;
+  }
+}
+
+/* Surfaces génériques gardent un liseré doré fixe, sans risque de masquer
+ * des menus ou popovers internes qui peuvent déborder.
+ */
 .cockpit-shell .premium-panel,
 .cockpit-shell .data-surface {
   position: relative;
   isolation: isolate;
+  border-color: rgba(236, 196, 72, .38) !important;
 }
 
-.cockpit-shell .cockpit-electric-frame::before,
-.cockpit-shell .premium-panel::before,
-.cockpit-shell .data-surface::before {
-  content: "";
-  position: absolute;
-  z-index: 6;
-  pointer-events: none;
-  inset: -1px;
-  border-radius: inherit;
-  padding: 1px;
-  background:
-    conic-gradient(
-      from var(--cockpit-trace-angle),
-      rgba(212,175,55,.18) 0deg,
-      rgba(212,175,55,.18) 310deg,
-      rgba(250,218,111,.94) 334deg,
-      rgba(255,250,219,1) 343deg,
-      rgba(234,186,48,.82) 352deg,
-      rgba(212,175,55,.18) 360deg
-    );
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  filter: drop-shadow(0 0 4px rgba(245, 194, 66, 0.34));
-  animation: cockpit-gold-trace 7.5s linear infinite;
+/* Animation universelle des boutons du Cockpit.
+ * Chaque bouton monte légèrement, gagne un halo doré et son icône répond au survol.
+ */
+.cockpit-shell button:not(:disabled),
+.cockpit-shell [role="button"]:not([aria-disabled="true"]),
+.cockpit-shell .premium-button,
+.cockpit-shell .workspace-secondary-action,
+.cockpit-shell .cockpit-reference-quick-action,
+.cockpit-shell .cockpit-reference-elynea-action,
+.cockpit-shell .sidebar-item {
+  transform-origin: center;
+  transition:
+    transform 180ms cubic-bezier(.2,.8,.2,1),
+    box-shadow 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    filter 180ms ease,
+    color 180ms ease;
+  will-change: transform;
 }
 
-@keyframes cockpit-gold-trace {
-  to { --cockpit-trace-angle: 360deg; }
+.cockpit-shell button:not(:disabled):hover,
+.cockpit-shell [role="button"]:not([aria-disabled="true"]):hover,
+.cockpit-shell .premium-button:hover,
+.cockpit-shell .workspace-secondary-action:hover,
+.cockpit-shell .cockpit-reference-quick-action:hover,
+.cockpit-shell .cockpit-reference-elynea-action:hover {
+  transform: translateY(-2px) scale(1.025);
+  filter: brightness(1.045) saturate(1.04);
+  border-color: rgba(236, 196, 72, .70) !important;
+  box-shadow:
+    0 10px 24px rgba(8, 18, 38, .16),
+    0 0 0 1px rgba(230, 190, 62, .20),
+    0 0 16px rgba(230, 190, 62, .16);
+}
+
+.cockpit-shell button:not(:disabled):active,
+.cockpit-shell [role="button"]:not([aria-disabled="true"]):active,
+.cockpit-shell .premium-button:active,
+.cockpit-shell .workspace-secondary-action:active,
+.cockpit-shell .cockpit-reference-quick-action:active,
+.cockpit-shell .cockpit-reference-elynea-action:active {
+  transform: translateY(0) scale(.975);
+  transition-duration: 70ms;
+}
+
+.cockpit-shell button:not(:disabled):hover svg,
+.cockpit-shell [role="button"]:not([aria-disabled="true"]):hover svg,
+.cockpit-shell .premium-button:hover svg,
+.cockpit-shell .workspace-secondary-action:hover svg,
+.cockpit-shell .cockpit-reference-quick-action:hover svg,
+.cockpit-shell .cockpit-reference-elynea-action:hover svg,
+.cockpit-shell .sidebar-item:hover svg {
+  animation: cockpit-icon-response 420ms cubic-bezier(.2,.8,.2,1);
+  filter: drop-shadow(0 0 5px rgba(230, 190, 62, .25));
+}
+
+.cockpit-shell .sidebar-item:hover {
+  transform: translateX(3px) scale(1.015);
+}
+
+@keyframes cockpit-icon-response {
+  0% { transform: scale(1) rotate(0deg); }
+  45% { transform: scale(1.14) rotate(-4deg); }
+  72% { transform: scale(1.06) rotate(3deg); }
+  100% { transform: scale(1) rotate(0deg); }
 }
 
 /* Player global, centré comme dans le modèle. */
@@ -430,19 +571,18 @@ body:has(.cockpit-reference-dashboard) [data-elynea-floating-trigger] {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cockpit-shell .cockpit-electric-frame::before,
-  .cockpit-shell .premium-panel::before,
-  .cockpit-shell .data-surface::before {
-    animation: none;
-    background: rgba(212,175,55,.40);
+  .cockpit-shell .cockpit-electric-frame::before {
+    animation-duration: 11s !important;
   }
 
-  .cockpit-shell .cockpit-float-tile:hover,
-  .cockpit-shell .workspace-card:hover,
-  .cockpit-shell main .card-hover:hover,
-  .cockpit-reference-quick-action:hover,
-  .cockpit-reference-elynea-action:hover {
-    transform: none;
+  .cockpit-shell button:not(:disabled),
+  .cockpit-shell [role="button"]:not([aria-disabled="true"]),
+  .cockpit-shell .premium-button,
+  .cockpit-shell .workspace-secondary-action,
+  .cockpit-shell .cockpit-reference-quick-action,
+  .cockpit-shell .cockpit-reference-elynea-action,
+  .cockpit-shell .sidebar-item {
+    transition-duration: 120ms;
   }
 }
 

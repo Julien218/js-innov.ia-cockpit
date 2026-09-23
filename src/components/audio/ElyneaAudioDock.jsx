@@ -305,7 +305,7 @@ export default function ElyneaAudioDock() {
         onTimeUpdate={event => setTime(Number(event.currentTarget.currentTime || 0))}
       />
 
-      <div className="cockpit-audio-dock fixed bottom-4 left-1/2 z-[99990] w-[min(680px,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-2xl border border-amber-400/25 bg-[#0b0b10]/90 text-white shadow-2xl backdrop-blur-xl" aria-label="Lecteur audio persistant du Cockpit">
+      <div className="cockpit-audio-dock cockpit-electric-frame fixed bottom-4 left-1/2 z-[99990] w-[min(680px,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-2xl border border-amber-400/25 bg-[#0b0b10]/90 text-white shadow-2xl backdrop-blur-xl" aria-label="Lecteur audio persistant du Cockpit">
         <div className="h-1 bg-white/10">
           <div className="h-full bg-amber-300 transition-[width]" style={{ width: `${progress}%` }} />
         </div>
