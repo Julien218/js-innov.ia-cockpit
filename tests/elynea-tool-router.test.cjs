@@ -23,3 +23,9 @@ test("destructive actions always require confirmation", () => {
   assert.equal(route.risk, "destructive");
   assert.equal(route.confirmation, true);
 });
+
+test("routes WaveSpeed only when API capability is configured", () => {
+  assert.equal(routeJarvis({ provider: "wavespeed", action: "generate video" }, { wavespeed: true }).tool, "wavespeed");
+  assert.equal(routeJarvis({ provider: "wavespeed", action: "generate video" }, { wavespeed: true }).engine, "api");
+  assert.equal(routeJarvis({ provider: "wavespeed", action: "generate video" }, { wavespeed: false }).engine, "unavailable");
+});
