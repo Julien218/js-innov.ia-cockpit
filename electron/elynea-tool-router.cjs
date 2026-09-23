@@ -8,6 +8,7 @@ function normalizeIntent(raw = {}) {
     provider: String(raw.provider || "").trim().toLowerCase(),
     action: String(raw.action || raw.task_type || "").trim().toLowerCase(),
     payload: raw.payload && typeof raw.payload === "object" ? raw.payload : raw,
+    payloadText: raw.payload && typeof raw.payload === "object" ? JSON.stringify(raw.payload).toLowerCase() : String(raw.payload || "").toLowerCase(),
   };
 }
 
@@ -18,7 +19,7 @@ function capabilityOnline(capabilities, name) {
 
 function routeJarvis(raw = {}, capabilities = {}) {
   const task = normalizeIntent(raw);
-  const text = [task.intent, task.provider, task.action].join(" ");
+  const text = [task.intent, task.provider, task.action, task.payloadText].join(" ");
   const localAgent = capabilityOnline(capabilities, "localAgent");
   const comfy = capabilityOnline(capabilities, "comfyui");
   const github = capabilityOnline(capabilities, "github");
@@ -26,7 +27,7 @@ function routeJarvis(raw = {}, capabilities = {}) {
   const supabase = capabilityOnline(capabilities, "supabase");
   const wavespeed = capabilityOnline(capabilities, "wavespeed");
 
-  if (/delete|remove|destroy|drop|purge|payment|publish|deploy.production/.test(text)) {
+  if (/delete|remove|destroy|drop|purge|payment|publish|deploy.production|supprim|effac|détrui|detru|purge|paiement|publier|publication|déploiement.production|deploiement.production/.test(text)) {
     return { tool: "guarded_action", engine: "explicit", risk: RISK.DESTRUCTIVE, confirmation: true };
   }
   if (/transcrib|voice|micro|whisper/.test(text)) {
