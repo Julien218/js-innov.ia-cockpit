@@ -37,7 +37,12 @@ export default function Dashboard() {
       const response = await fetch('/api/emails?limit=8', { credentials: 'same-origin' });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.success) throw new Error(data.error || `Emails indisponibles (HTTP ${response.status})`);
-      return { emails: Array.isArray(data.emails) ? data.emails : [] };
+      const emails = Array.isArray(data.emails) ? data.emails : [];
+      const unreadFromApi = Number(data.unread);
+      return {
+        emails,
+        unread: Number.isFinite(unreadFromApi) ? unreadFromApi : emails.filter(email => !email.seen).length,
+      };
     },
     staleTime: 60_000,
     refetchInterval: 120_000,
@@ -55,7 +60,9 @@ export default function Dashboard() {
   const tachesBloquees = taches.filter(isTaskBlocked).length;
   const tachesActives = taches.filter(t => !isTaskCompleted(t)).length;
   const demandesOuvertes = demandes.filter(isNewDemande).length;
-  const emailsATraiter = emailOverview.emails.filter(email => !email.seen).length;
+  const emailsATraiter = Number.isFinite(Number(emailOverview.unread))
+    ? Number(emailOverview.unread)
+    : emailOverview.emails.filter(email => !email.seen).length;
   const emailsRecents = emailOverview.emails.filter(email => !email.seen).slice(0, 5);
 
   const leadsByStatus = [
@@ -214,7 +221,7 @@ export default function Dashboard() {
                 <p className="truncate text-sm font-medium">{email.subject || "(sans objet)"}</p>
                 <p className="truncate text-xs text-muted-foreground">{email.from || "Expéditeur inconnu"}</p>
               </div>
-              <span className="text-[10px] text-muted-foreground">{email.date ? format(new Date(email.date), "dd/MM HH:mm") : ""}</span>
+              <span className="text-[10px] text-muted-foreground">{email.date && Number.isFinite(new Date(email.date).getTime()) ? format(new Date(email.date), "dd/MM HH:mm") : ""}</span>
             </Link>
           ))}
         </div>
