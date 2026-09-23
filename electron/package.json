@@ -65,6 +65,13 @@
         ]
       },
       {
+        "from": "../elynea-qml/dist/ElyneaDesktop",
+        "to": "elynea-desktop",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
         "from": "../server-video-provenance-core.cjs",
         "to": "video-provenance-core.cjs"
       }
