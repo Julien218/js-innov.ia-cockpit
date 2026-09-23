@@ -24,8 +24,8 @@ test('le Local Agent autorise explicitement le domaine Cockpit en CORS', () => {
   assert.doesNotMatch(localAgent, /Access-Control-Allow-Origin'\s*,\s*'\*'/);
 });
 
-test('le frontend cible bien le Local Agent sur la boucle locale 8787', () => {
+test('le frontend cible Elynea Local Tools sur 8788 avec fallback 8787', () => {
   const agentPage = read('src/pages/Agent.jsx');
-  assert.match(agentPage, /LOCAL_AGENT_URL\s*=\s*"http:\/\/127\.0\.0\.1:8787"/);
+  assert.match(agentPage, /LOCAL_AGENT_URLS\s*=\s*\["http:\/\/127\.0\.0\.1:8788",\s*"http:\/\/127\.0\.0\.1:8787"\]/);
   assert.match(agentPage, /LOCAL_AGENT_URL\}\/health/);
 });
