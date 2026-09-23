@@ -1107,6 +1107,7 @@ async function detectJarvisCapabilities() {
     github: { online: Boolean(process.env.GITHUB_TOKEN || process.env.GH_TOKEN) },
     railway: { online: Boolean(process.env.RAILWAY_TOKEN || process.env.RAILWAY_API_TOKEN) },
     supabase: { online: Boolean(process.env.SUPABASE_URL && (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)) },
+    wavespeed: { online: Boolean(process.env.TOKEN_WAVESPEED || process.env.WAVESPEED_API_KEY), provider: "wavespeed" },
   };
   for (const port of LOCAL_AGENT_PORTS) {
     try {
