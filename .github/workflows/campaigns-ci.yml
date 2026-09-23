@@ -1,0 +1,40 @@
+name: Campaign Orchestrator CI
+
+on:
+  push:
+    branches:
+      - feature/campaign-orchestrator
+    paths:
+      - 'src/pages/Campaigns.jsx'
+      - 'src/lib/campaignOrchestrator.js'
+      - 'server-campaigns*.cjs'
+      - 'server.cjs'
+      - 'Dockerfile'
+      - 'permission-catalog.json'
+      - 'src/App.jsx'
+      - 'src/components/layout/Sidebar.jsx'
+      - 'src/lib/roles.js'
+      - 'tests/campaign-orchestrator.test.cjs'
+      - 'supabase/migrations/*campaign_orchestrator.sql'
+      - '.github/workflows/campaigns-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - name: Server syntax
+        run: |
+          node --check server-campaigns-core.cjs
+          node --check server-campaigns.cjs
+          node --check server.cjs
+      - name: Campaign tests
+        run: node --test tests/campaign-orchestrator.test.cjs
+      - name: Build
+        run: npm run build
