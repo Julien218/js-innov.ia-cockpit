@@ -52,10 +52,13 @@ test('startup refreshes renderer caches without clearing authentication data', (
   assert.match(bootstrap, /require\("\.\/main\.js"\)/);
 });
 
-test('electron update is downloaded and installed globally', () => {
-  assert.match(bootstrap, /autoUpdater\.autoDownload\s*=\s*true/);
+test('electron update is explicitly downloaded, observable and installed globally', () => {
+  assert.match(bootstrap, /autoUpdater\.autoDownload\s*=\s*false/);
   assert.match(bootstrap, /autoUpdater\.autoInstallOnAppQuit\s*=\s*true/);
   assert.match(bootstrap, /autoUpdater\.checkForUpdates\(\)/);
+  assert.match(bootstrap, /autoUpdater\.downloadUpdate\(\)/);
+  assert.match(bootstrap, /publishDesktopUpdateState/);
+  assert.match(bootstrap, /desktop-update-status/);
   assert.match(bootstrap, /autoUpdater\.quitAndInstall\(false, true\)/);
 });
 
@@ -145,4 +148,18 @@ test('desktop grants speaker selection only to trusted Cockpit origins and expos
   assert.match(bootstrap, /app\.setName\('JS-Innov\.IA Cockpit'\)/);
   assert.match(bootstrap, /app\.setAppUserModelId\('com\.jsinnovia\.cockpit'\)/);
   assert.match(main, /webContents\.setAudioMuted\(false\)/);
+});
+
+
+test('settings can read the exact running desktop version and updater progress', () => {
+  const preload = fs.readFileSync(path.join(root, 'electron', 'preload.js'), 'utf8');
+  const settings = fs.readFileSync(path.join(root, 'src', 'pages', 'Parametres.jsx'), 'utf8');
+  assert.match(main, /ipcMain\.handle\("desktop-app-info"/);
+  assert.match(main, /version:\s*APP_VERSION/);
+  assert.match(preload, /getInfo:\s*\(\)\s*=>\s*ipcRenderer\.invoke\("desktop-app-info"\)/);
+  assert.match(preload, /desktop-update-status/);
+  assert.match(settings, /Version installée/);
+  assert.match(settings, /app\.getVersion\(\)/);
+  assert.match(settings, /Vérifier les mises à jour/);
+  assert.match(settings, /Relancer la mise à jour/);
 });
