@@ -68,23 +68,26 @@ function brandPrompt(context, brief, kind) {
   const rules = b.visual_rules || {};
   const required = arr(rules.must || rules.required || []);
   const forbidden = arr(rules.avoid || rules.forbidden || []);
+  const manifest = context.bible?.manifest || {};
+  const request = clean(brief, 9000);
   const parts = [
-    'MARQUE : ' + b.name,
+    'MARQUE ACTIVE RÉSOLUE : ' + b.name,
     b.site_url ? 'SITE : ' + b.site_url : '',
+    context.campaign ? 'CAMPAGNE : ' + context.campaign.name + ' — objectif : ' + (context.campaign.objective || 'non précisé') + ' — phase : ' + (context.campaign.phase || 'préparation') : '',
+    'DEMANDE CRÉATIVE : ' + request,
     b.tone ? 'TON : ' + b.tone : '',
     Object.keys(b.palette || {}).length ? 'PALETTE CANONIQUE : ' + JSON.stringify(b.palette) : '',
     Object.keys(b.typography || {}).length ? 'TYPOGRAPHIE CANONIQUE : ' + JSON.stringify(b.typography) : '',
     Object.keys(b.assets || {}).length ? 'ASSETS CANONIQUES : ' + JSON.stringify(b.assets) : '',
     required.length ? 'OBLIGATOIRE : ' + required.join(' ; ') : '',
     forbidden.length ? 'INTERDIT : ' + forbidden.join(' ; ') : '',
-    context.bible && context.bible.manifest ? 'MANIFESTE ADN CANONIQUE (prioritaire) :\n' + JSON.stringify(context.bible.manifest) : '',
-    context.bible && context.bible.text ? 'BIBLE / RÈGLES ADN CANONIQUES :\n' + context.bible.text : '',
-    b.brand_board_url ? 'PLANCHE ADN : ' + b.brand_board_url : '',
-    context.campaign ? 'CAMPAGNE : ' + context.campaign.name + ' — objectif : ' + (context.campaign.objective || 'non précisé') + ' — phase : ' + (context.campaign.phase || 'préparation') : '',
-    'DEMANDE : ' + clean(brief, 12000),
+    Object.keys(manifest).length ? 'MANIFESTE ADN CANONIQUE (prioritaire) :\n' + JSON.stringify(manifest).slice(0, 7000) : '',
+    context.bible?.text ? 'BIBLE / RÈGLES ADN CANONIQUES :\n' + context.bible.text.slice(0, 9000) : '',
+    b.brand_board_url ? 'PLANCHE ADN COMPLÉMENTAIRE : ' + b.brand_board_url : '',
+    'RÈGLE LOGO : ne jamais inventer, redessiner, recolorer ou approximer un logo verrouillé. Si le moteur ne peut pas composer l’asset officiel, réserver une zone propre et laisser le logo absent plutôt que créer un faux logo.',
     kind === 'video'
-      ? 'SORTIE VIDÉO : animer l’image validée sans modifier identité, personnages, logos ou proportions. Aucun texte inventé.'
-      : 'SORTIE IMAGE : composition premium, mobile-first, aucun faux logo ni texte illisible. Respect strict des références et de la Bible ADN.'
+      ? 'SORTIE VIDÉO : animer uniquement l’image validée en conservant strictement identité, visages, personnages, logos officiels et proportions. Aucun texte inventé.'
+      : 'SORTIE IMAGE : composition premium et mobile-first. Respect strict des références et de la Bible ADN. Aucun faux logo. Aucun texte inventé ou illisible.'
   ];
   return parts.filter(Boolean).join('\n\n').slice(0, 24000);
 }
@@ -146,8 +149,8 @@ async function draftWithElynea(context, brief, platforms) {
   const parsed = extractJson(data.response || data.reply || data.message);
   if (!parsed) throw new Error('Pack Elynea non exploitable.');
   const result = normalizeDraft(parsed, context);
-  if (!result.image_prompt) result.image_prompt = brandPrompt(context, brief, 'image');
-  if (!result.video_prompt) result.video_prompt = brandPrompt(context, brief, 'video');
+  result.image_prompt = brandPrompt(context, result.image_prompt || brief, 'image');
+  result.video_prompt = brandPrompt(context, result.video_prompt || brief, 'video');
   return result;
 }
 function normalizeBrand(body, org) {
