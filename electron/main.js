@@ -1039,6 +1039,8 @@ function createWindow() {
 
   mainWindow.setMenuBarVisibility(false);
   mainWindow.removeMenu();
+  // Le player Elynea doit toujours créer une session audio Windows audible.
+  mainWindow.webContents.setAudioMuted(false);
   mainWindow.loadURL(REMOTE_COCKPIT_URL);
 
   mainWindow.on("closed", () => {
