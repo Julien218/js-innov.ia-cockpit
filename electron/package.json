@@ -53,7 +53,11 @@
           "install-windows.ps1",
           "repair-music-motion-windows.ps1",
           "music-motion-*.mjs",
-          "music_motion_document.py"
+          "music_motion_document.py",
+          "elynea_listener_STABLE.py",
+          "elynea_listener.py",
+          "models/**/*wake*",
+          "models/**/*elynea*"
         ]
       },
       {
