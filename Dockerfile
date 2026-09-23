@@ -149,6 +149,8 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-video-studio.cjs \
  && test -f /app/server-video-generation-core.cjs \
  && test -f /app/server-video-generation.cjs \
+ && test -f /app/server-campaigns-core.cjs \
+ && test -f /app/server-campaigns.cjs \
  && test -f /app/server-audio-library.cjs \
  && test -f /app/server-assistant-batch.cjs \
  && test -f /app/server-task-batch.cjs \
@@ -195,6 +197,8 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-video-studio.cjs \
  && node --check /app/server-video-generation-core.cjs \
  && node --check /app/server-video-generation.cjs \
+ && node --check /app/server-campaigns-core.cjs \
+ && node --check /app/server-campaigns.cjs \
  && node --check /app/server-audio-library.cjs \
  && node --check /app/server-assistant-batch.cjs \
  && node --check /app/server-task-batch.cjs \
