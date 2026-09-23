@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Bell, BellRing, CheckCircle2, CircleAlert, HelpCircle, Loader2, Menu, MessageSquare, Search, Wrench } from 'lucide-react';
+import { Bell, BellRing, CheckCircle2, CircleAlert, HelpCircle, Loader2, Menu, MessageSquare, Minus, Search, Square, Wrench, X } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { usePermissions } from '@/lib/usePermissions';
 import { ROLE_LABELS } from '@/lib/roles';
@@ -233,8 +233,9 @@ export default function TopBar({ onOpenMobileMenu }) {
   }
 
   const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const hasWindowControls = typeof window !== 'undefined' && Boolean(window.electronAPI?.windowControls);
   return (
-    <header className="h-14 border-b flex items-center justify-between px-3 sm:px-5 gap-2 sm:gap-4 sticky top-0 z-20 shrink-0 relative bg-background/95 backdrop-blur">
+    <header className="cockpit-topbar h-14 border-b flex items-center justify-between px-3 sm:px-5 gap-2 sm:gap-4 sticky top-0 z-20 shrink-0 relative bg-background/95 backdrop-blur">
       <button onClick={onOpenMobileMenu} className="md:hidden p-2 rounded-xl" aria-label="Ouvrir le menu"><Menu className="w-5 h-5" /></button>
       <p className="hidden md:block text-xs text-muted-foreground capitalize">{today}</p>
       <div className="flex-1 max-w-md relative" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setSearchOpen(false); }}>
@@ -274,6 +275,38 @@ export default function TopBar({ onOpenMobileMenu }) {
         <span title={user?.email} className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-xs font-bold text-primary lg:hidden">
           {user?.full_name?.charAt(0) || user?.email?.charAt(0)?.toUpperCase() || 'J'}
         </span>
+
+        {hasWindowControls && (
+          <div className="cockpit-window-controls ml-2 flex items-center gap-0.5 border-l border-slate-900/10 pl-2" aria-label="Contrôles de fenêtre">
+            <button
+              type="button"
+              className="cockpit-window-control"
+              aria-label="Réduire la fenêtre"
+              title="Réduire"
+              onClick={() => window.electronAPI.windowControls.minimize()}
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              className="cockpit-window-control"
+              aria-label="Agrandir ou restaurer la fenêtre"
+              title="Agrandir / Restaurer"
+              onClick={() => window.electronAPI.windowControls.toggleMaximize()}
+            >
+              <Square className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              className="cockpit-window-control cockpit-window-control-close"
+              aria-label="Fermer la fenêtre"
+              title="Fermer"
+              onClick={() => window.electronAPI.windowControls.close()}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       {notificationsOpen && <section className="absolute right-3 sm:right-5 top-[calc(100%+.5rem)] z-50 w-[min(27rem,calc(100vw-1.5rem))] max-h-[min(38rem,calc(100dvh-5rem))] overflow-hidden rounded-2xl border bg-background shadow-2xl flex flex-col" aria-label="Centre de notifications">

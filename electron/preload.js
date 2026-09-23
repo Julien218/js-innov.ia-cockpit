@@ -1,9 +1,19 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+window.addEventListener("DOMContentLoaded", () => {
+  document.documentElement.classList.add("electron-cockpit");
+  document.body?.classList.add("electron-cockpit");
+});
+
 contextBridge.exposeInMainWorld("electronAPI", {
   notify: (title, body) => ipcRenderer.send("notify", { title, body }),
   checkForUpdates: () => ipcRenderer.send("check-for-updates"),
   downloadUpdate: () => ipcRenderer.send("download-update"),
+  windowControls: {
+    minimize: () => ipcRenderer.send("window-minimize"),
+    toggleMaximize: () => ipcRenderer.send("window-toggle-maximize"),
+    close: () => ipcRenderer.send("window-close"),
+  },
   webAssistant: {
     execute: (task) => ipcRenderer.invoke("nova-web-assistant-execute", task),
   },

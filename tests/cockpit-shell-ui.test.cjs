@@ -37,17 +37,17 @@ test('dashboard follows the approved reference composition', () => {
   assert.match(dashboard, /elynea:open/);
 });
 
-test('cockpit reference background and gold tracer remain scoped without feather branding', () => {
+test('cockpit uses real Electron transparency while keeping the gold tracer', () => {
   const css = read('src/premium-overrides.css');
-  const backdrop = read('public/cockpit-sunset.svg');
-  assert.match(css, /\.cockpit-shell/);
-  assert.match(css, /url\("\/cockpit-sunset\.svg"\)/);
+  const layout = read('src/components/layout/AppLayout.jsx');
+  assert.match(css, /html\.electron-cockpit[\s\S]*background:\s*transparent/);
+  assert.match(css, /background-image:\s*none/);
+  assert.doesNotMatch(css, /cockpit-sunset\.svg/);
   assert.match(css, /cockpit-gold-run/);
   assert.match(css, /animation:\s*cockpit-gold-run\s+5\.4s\s+linear\s+infinite/);
   assert.match(css, /cockpit-reference-elynea/);
-  assert.match(backdrop, /panoramique JS-Innov\.IA/);
+  assert.doesNotMatch(layout, /cockpit-ambient/);
   assert.doesNotMatch(css, /plume|feather/i);
-  assert.doesNotMatch(backdrop, /plume|feather/i);
 });
 
 test('Mobile Hub inherits the same floating cockpit system', () => {
@@ -57,7 +57,8 @@ test('Mobile Hub inherits the same floating cockpit system', () => {
   assert.match(mobile, /cockpit-float-panel/);
   assert.match(mobile, /<Link/);
   assert.doesNotMatch(mobile, /#0a0a14|background:\s*COLORS\.bg/);
-  assert.match(css, /body:has\(\.cockpit-shell\)[\s\S]*cockpit-sunset\.svg/);
+  assert.match(css, /body:has\(\.cockpit-shell\)[\s\S]*background:\s*transparent/);
+  assert.doesNotMatch(css, /cockpit-sunset\.svg/);
 });
 
 
