@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Users, Target, FolderKanban,
-  FileText, Receipt, ChevronLeft, ChevronRight, ChevronDown, Search, X,
+  FileText, Receipt, ChevronDown, Search, X,
   CheckSquare, MessageSquare, Shield,
   Network, Smartphone, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
@@ -169,17 +169,16 @@ export const allNavGroups = [
 export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
   const [navSearch, setNavSearch] = useState("");
   const [expandedGroups, setExpandedGroups] = useState({ Pilotage: true, Projets: true, CRM: true });
-  const [collapsed, setCollapsed] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem("cockpit-sidebar-collapsed") === "true";
-  });
+  const [desktopHovered, setDesktopHovered] = useState(false);
   const location = useLocation();
   React.useEffect(() => {
     setNavSearch("");
     const activeGroup = allNavGroups.find(group => group.items.some(item => isNavigationActive(location.pathname, item.path)));
     if (activeGroup) setExpandedGroups(current => ({ ...current, [activeGroup.label]: true }));
   }, [location.pathname]);
-  const compact = collapsed && !mobileOpen;
+  // Desktop: la navigation reste discrète et se déploie automatiquement au survol.
+  // Mobile: l'ouverture reste pilotée par le bouton du TopBar.
+  const compact = !mobileOpen && !desktopHovered;
   React.useEffect(() => {
     if (!mobileOpen) return;
     const closeOnEscape = event => { if (event.key === 'Escape') onCloseMobile?.(); };
@@ -226,14 +225,6 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
     if (mobileOpen && onCloseMobile) onCloseMobile();
   };
 
-  const toggleCollapsed = () => {
-    setCollapsed((current) => {
-      const next = !current;
-      window.localStorage.setItem("cockpit-sidebar-collapsed", String(next));
-      return next;
-    });
-  };
-
   return (
     <>
       {mobileOpen && (
@@ -244,10 +235,13 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
       )}
 
       <aside
+        data-cockpit-sidebar
+        onMouseEnter={() => setDesktopHovered(true)}
+        onMouseLeave={() => setDesktopHovered(false)}
         className={cn(
           "relative flex flex-col h-screen bg-white border-r border-border transition-all duration-300 ease-in-out",
           "md:relative md:translate-x-0 md:z-30",
-          compact ? "md:w-[68px]" : "md:w-[240px]",
+          compact ? "md:w-[72px]" : "md:w-[248px]",
           "fixed md:static z-50 w-[260px] shrink-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
@@ -356,15 +350,15 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
           {!compact && navSearch.trim() && !navGroups.some(group => group.items.some(item => `${group.label} ${item.label}`.toLocaleLowerCase('fr').includes(navSearch.trim().toLocaleLowerCase('fr')))) && <p role="status" className="px-3 py-4 text-sm text-muted-foreground">Aucun module trouvé.</p>}
         </nav>
 
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          aria-label={collapsed ? "Déplier la navigation" : "Réduire la navigation"}
-          title={compact ? "Déplier la navigation" : "Réduire la navigation"}
-          className="hidden md:flex items-center justify-center py-2.5 border-t border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+        <div
+          className={cn(
+            "hidden md:flex min-h-8 items-center justify-center border-t border-border text-[10px] font-medium tracking-wide text-muted-foreground transition-opacity",
+            compact ? "opacity-80" : "opacity-50"
+          )}
+          aria-hidden="true"
         >
-          {compact ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-        </button>
+          {compact ? "SURVOL" : "MENU"}
+        </div>
 
         {!compact ? (
           <div className="border-t border-border p-3">

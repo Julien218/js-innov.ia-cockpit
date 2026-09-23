@@ -3,6 +3,9 @@ const {
   clean, arr, jsonValue, crm, organisation, one,
   loadBrandContext, brandPrompt, draftWithElynea, normalizeBrand
 } = require('./server-campaigns-core.cjs');
+const { startImageGeneration, approveAndStartVideo } = require('./server-campaign-engine.cjs');
+const { pairWorker, workerStatus } = require('./server-campaign-worker.cjs');
+const mediaStore = require('./server-campaign-media.cjs');
 
 const router = express.Router();
 const MAX_IMAGE_BYTES = 14 * 1024 * 1024;
@@ -12,6 +15,19 @@ async function brandForCampaign(campaign, org) {
 }
 async function campaignForPost(post, org) {
   return post && post.campaign_id ? one('campaigns', post.campaign_id, org) : null;
+}
+function adnSnapshot(context, brand) {
+  const bible = context?.bible || {};
+  return {
+    source: bible.source || 'canonical-registry',
+    brand_id: bible.brand_id || context?.brand?.slug || brand?.slug || null,
+    registry_version: bible.registry_version || null,
+    repository: bible.repository || null,
+    path: bible.manifest_path || null,
+    ref: bible.ref || null,
+    sha: bible.manifest_sha || null,
+    brand_board_url: brand?.brand_board_url || null
+  };
 }
 
 router.get('/brands', async function(req, res) {
@@ -134,11 +150,9 @@ router.post('/:campaignId/posts', async function(req, res) {
       brief: clean(req.body.brief, 12000) || null,
       status: 'draft',
       platforms: arr(req.body.platforms || campaign.channels || ['facebook','instagram','tiktok'], 8),
+      image_engine: ['auto','local','api'].includes(req.body.image_engine) ? req.body.image_engine : null,
       video_engine: ['auto','local','api'].includes(req.body.video_engine) ? req.body.video_engine : null,
-      adn_source: {
-        source: context.bible.source, repository: context.bible.repository, path: context.bible.path,
-        ref: context.bible.ref, sha: context.bible.sha, brand_board_url: brand.brand_board_url || null
-      },
+      adn_source: adnSnapshot(context, brand),
       created_by: (req.user && (req.user.id || req.user.email)) || null
     };
     const rows = await crm('campaign_posts', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(row) });
@@ -151,7 +165,7 @@ router.patch('/posts/:id', async function(req, res) {
     const org = organisation(req);
     const post = await one('campaign_posts', req.params.id, org);
     if (!post) return res.status(404).json({ error: 'Contenu introuvable.' });
-    const allowed = ['title','brief','status','platforms','copy','seo','hashtags','image_prompt','image_url','image_status','image_approved_at','video_prompt','video_engine','video_provider','video_job_id','video_status','video_url','video_approved_at','scheduled_at','published_at','analytics','metadata'];
+    const allowed = ['title','brief','status','platforms','copy','seo','hashtags','image_prompt','image_engine','image_provider','image_job_id','image_url','image_storage_path','image_status','image_error','image_approved_at','video_prompt','video_engine','video_provider','video_job_id','video_url','video_storage_path','video_status','video_error','video_approved_at','scheduled_at','published_at','analytics','metadata'];
     const patch = {};
     allowed.forEach(function(key) {
       if (req.body[key] === undefined) return;
@@ -178,7 +192,7 @@ router.post('/posts/:id/draft', async function(req, res) {
       title: draft.title, copy: draft.copy, seo: draft.seo, hashtags: draft.hashtags,
       image_prompt: draft.image_prompt, video_prompt: draft.video_prompt, status: 'prepared',
       updated_at: new Date().toISOString(),
-      adn_source: { source: context.bible.source, repository: context.bible.repository, path: context.bible.path, ref: context.bible.ref, sha: context.bible.sha, brand_board_url: brand.brand_board_url || null }
+      adn_source: adnSnapshot(context, brand)
     };
     const rows = await crm('campaign_posts?id=eq.' + encodeURIComponent(post.id) + '&organisation_id=eq.' + encodeURIComponent(org), {
       method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify(patch)
@@ -199,9 +213,45 @@ router.post('/posts/:id/compile', async function(req, res) {
       context: context,
       image_prompt: post.image_prompt || brandPrompt(context, post.brief || post.title, 'image'),
       video_prompt: post.video_prompt || brandPrompt(context, post.brief || post.title, 'video'),
+      image_engine: post.image_engine || brand.image_engine || 'auto',
       video_engine: post.video_engine || brand.video_engine || 'auto'
     });
   } catch (e) { res.status(503).json({ error: e.message }); }
+});
+
+
+router.post('/local-worker/pair', async function(req,res){
+  try {
+    const paired=await pairWorker(req,req.body||{});
+    res.status(201).json(paired);
+  } catch(e) { res.status(e.status||400).json({error:e.message,code:e.code||null}); }
+});
+router.get('/local-worker/status', async function(req,res){
+  try { res.json(await workerStatus(req)); }
+  catch(e) { res.status(e.status||503).json({error:e.message}); }
+});
+
+router.post('/posts/:id/generate-image', async function(req,res){
+  try {
+    const result=await startImageGeneration({
+      postId:req.params.id,
+      org:organisation(req),
+      userId:req.user?.id||req.user?.email,
+      allowPaidApi:req.body?.allow_paid_api===true
+    });
+    res.status(202).json(result);
+  } catch(e) { res.status(e.status||400).json({error:e.message,code:e.code||null}); }
+});
+router.post('/posts/:id/approve-image-and-generate-video', async function(req,res){
+  try {
+    const result=await approveAndStartVideo({
+      postId:req.params.id,
+      org:organisation(req),
+      userId:req.user?.id||req.user?.email,
+      allowPaidApi:req.body?.allow_paid_api===true
+    });
+    res.status(202).json(result);
+  } catch(e) { res.status(e.status||400).json({error:e.message,code:e.code||null}); }
 });
 
 router.post('/posts/:id/approve-image', async function(req, res) {
@@ -238,6 +288,10 @@ function allowedImageHost(host) {
 }
 async function postImage(req) {
   const post = await one('campaign_posts', req.params.id, organisation(req));
+  if (post?.image_storage_path) {
+    const stored=await mediaStore.downloadBuffer(post.image_storage_path);
+    return {buffer:stored.buffer,type:stored.mime};
+  }
   if (!post || !post.image_url) {
     const err = new Error('Image de campagne absente.'); err.status = 404; throw err;
   }

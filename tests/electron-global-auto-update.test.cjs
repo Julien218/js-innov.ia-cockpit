@@ -103,3 +103,34 @@ test('desktop release runs when Elynea local capabilities change', () => {
   assert.match(workflow, /- "src\/components\/LocalAgentQueueBridge\.jsx"/);
   assert.match(workflow, /- "src\/lib\/localAgentQueueBridge\.js"/);
 });
+
+test('desktop bundles and launches the detached Elynea QML companion', () => {
+  const qmlResource = pkg.build?.extraResources?.find((item) => item.to === 'elynea-desktop');
+  assert.ok(qmlResource);
+  assert.equal(qmlResource.from, '../elynea-qml/dist/ElyneaDesktop');
+  assert.match(bootstrap, /function startBundledElyneaDesktop\(\)/);
+  assert.match(bootstrap, /ElyneaDesktop\.exe/);
+  assert.match(bootstrap, /fs\.cpSync\(source, target/);
+  assert.match(bootstrap, /startBundledElyneaDesktop\(\)/);
+  assert.match(workflow, /Build Elynea QML companion/);
+  assert.match(workflow, /elynea-desktop\/ElyneaDesktop\.exe/);
+});
+
+
+test('desktop Cockpit window is truly transparent and uses custom window controls', () => {
+  const preload = fs.readFileSync(path.join(root, 'electron', 'preload.js'), 'utf8');
+  const topbar = fs.readFileSync(path.join(root, 'src', 'components', 'layout', 'TopBar.jsx'), 'utf8');
+  const css = fs.readFileSync(path.join(root, 'src', 'premium-overrides.css'), 'utf8');
+  assert.match(main, /frame:\s*false/);
+  assert.match(main, /transparent:\s*true/);
+  assert.match(main, /backgroundColor:\s*"#00000000"/);
+  assert.match(main, /ipcMain\.on\("window-minimize"/);
+  assert.match(main, /ipcMain\.on\("window-toggle-maximize"/);
+  assert.match(main, /ipcMain\.on\("window-close"/);
+  assert.match(preload, /document\.documentElement\.classList\.add\("electron-cockpit"\)/);
+  assert.match(preload, /windowControls:/);
+  assert.match(topbar, /cockpit-window-controls/);
+  assert.match(css, /-webkit-app-region:\s*drag/);
+  assert.match(css, /html\.electron-cockpit[\s\S]*background:\s*transparent/);
+  assert.doesNotMatch(css, /cockpit-sunset\.svg/);
+});

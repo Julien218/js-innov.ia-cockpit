@@ -83,11 +83,16 @@ COPY --from=builder /app/server-video-provenance.cjs ./server-video-provenance.c
 COPY --from=builder /app/server-video-studio.cjs ./server-video-studio.cjs
 COPY --from=builder /app/server-video-generation-core.cjs ./server-video-generation-core.cjs
 COPY --from=builder /app/server-video-generation.cjs ./server-video-generation.cjs
+COPY --from=builder /app/server-brand-canonical.cjs ./server-brand-canonical.cjs
+COPY --from=builder /app/server-campaign-media.cjs ./server-campaign-media.cjs
+COPY --from=builder /app/server-campaign-engine.cjs ./server-campaign-engine.cjs
+COPY --from=builder /app/server-campaign-worker.cjs ./server-campaign-worker.cjs
 COPY --from=builder /app/server-campaigns-core.cjs ./server-campaigns-core.cjs
 COPY --from=builder /app/server-campaigns.cjs ./server-campaigns.cjs
 COPY --from=builder /app/server-music-motion.cjs ./server-music-motion.cjs
 COPY --from=builder /app/server-audio-library.cjs ./server-audio-library.cjs
 COPY --from=builder /app/local-agent/music-motion-engine.mjs ./local-agent/music-motion-engine.mjs
+COPY --from=builder /app/local-agent/campaign-worker.mjs ./local-agent/campaign-worker.mjs
 COPY --from=builder /app/server-dropbox-helper.cjs ./server-dropbox-helper.cjs
 COPY --from=builder /app/server-ai-cost.cjs ./server-ai-cost.cjs
 COPY --from=builder /app/server-nova-routing.cjs ./server-nova-routing.cjs
@@ -112,6 +117,7 @@ COPY --from=builder /app/server-nova-document-delete.cjs ./server-nova-document-
 COPY --from=builder /app/server-push.cjs ./server-push.cjs
 COPY assets ./assets
 COPY public ./public
+COPY brand ./brand
 
 RUN npm ci --omit=dev --legacy-peer-deps
 RUN test -f /app/server-ai-cost-attribution.cjs \
@@ -149,6 +155,12 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-video-studio.cjs \
  && test -f /app/server-video-generation-core.cjs \
  && test -f /app/server-video-generation.cjs \
+ && test -f /app/server-brand-canonical.cjs \
+ && test -f /app/server-campaign-media.cjs \
+ && test -f /app/server-campaign-engine.cjs \
+ && test -f /app/server-campaign-worker.cjs \
+ && test -f /app/local-agent/campaign-worker.mjs \
+ && test -f /app/brand/brand-registry.json \
  && test -f /app/server-campaigns-core.cjs \
  && test -f /app/server-campaigns.cjs \
  && test -f /app/server-audio-library.cjs \
@@ -197,6 +209,11 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-video-studio.cjs \
  && node --check /app/server-video-generation-core.cjs \
  && node --check /app/server-video-generation.cjs \
+ && node --check /app/server-brand-canonical.cjs \
+ && node --check /app/server-campaign-media.cjs \
+ && node --check /app/server-campaign-engine.cjs \
+ && node --check /app/server-campaign-worker.cjs \
+ && node --check /app/local-agent/campaign-worker.mjs \
  && node --check /app/server-campaigns-core.cjs \
  && node --check /app/server-campaigns.cjs \
  && node --check /app/server-audio-library.cjs \

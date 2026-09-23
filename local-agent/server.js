@@ -1,5 +1,6 @@
 import http from 'node:http';
 import { createMusicMotionService } from './music-motion-service.mjs';
+import { createCampaignWorker } from './campaign-worker.mjs';
 import crypto from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
 import { appendFile, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
@@ -13,7 +14,7 @@ const PORT = Number(process.env.LOCAL_AGENT_PORT || 8787);
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 const MAX_BODY = 5 * 1024 * 1024;
 const approvals = new Map();
 const runs = new Map();
@@ -947,13 +948,21 @@ function toolResponse(run) {
 }
 
 const musicMotionProduction = createMusicMotionService({ root: logDir, send, headersFor, readJson, isAllowedOrigin, ollama });
+const campaignWorker = createCampaignWorker({ root: logDir, port: PORT, localToken: TOKEN });
 
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'OPTIONS') return send(req, res, 204, {});
     const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
-    const publicReadOnlyPath = url.pathname === '/health' || url.pathname === '/api/telemetry/current' || url.pathname === '/api/telemetry/summary';
+    const publicReadOnlyPath = url.pathname === '/health' || url.pathname === '/api/telemetry/current' || url.pathname === '/api/telemetry/summary' || url.pathname === '/api/campaign-worker/status';
+    const campaignConfigure = req.method === 'POST' && url.pathname === '/api/campaign-worker/configure';
+    if (campaignConfigure) {
+      if (!isAllowedOrigin(req.headers.origin) || !/^(localhost|127\\.0\\.0\\.1|\\[::1\\])(?::\\d+)?$/.test(String(req.headers.host || ''))) return send(req,res,403,{ok:false,error:'origin_not_allowed'});
+      const body=await readJson(req,100000);
+      return send(req,res,200,{ok:true,worker:await campaignWorker.configure(body)});
+    }
     if (TOKEN && !publicReadOnlyPath && req.headers.authorization !== `Bearer ${TOKEN}`) return send(req, res, 401, { ok: false, error: 'unauthorized' });
+    if (req.method === 'GET' && url.pathname === '/api/campaign-worker/status') return send(req,res,200,{ok:true,worker:campaignWorker.status()});
     if (await musicMotionProduction(req, res, url)) return;
     if (req.method === 'GET' && url.pathname === '/health') return send(req, res, 200, await health());
     if (req.method === 'GET' && url.pathname === '/api/telemetry/current') {
@@ -1041,6 +1050,7 @@ if (process.env.LOCAL_AGENT_NO_LISTEN !== '1') {
     const telemetryTimer = setInterval(() => void collectTelemetrySnapshot(), TELEMETRY_INTERVAL_MS);
     telemetryTimer.unref();
     void ensureComfyUi();
+    void campaignWorker.start();
   });
 }
 export { executeTool, pathInsideAllowedRoot, requestedTool, requestedTools, requestsTaskList, taskSnapshotResponse, requestsTaskAnalysis, taskAnalysisResponse, canonicalTaskKey, localTaskPlan, executeLocalTaskAutopilot, workspaceTaskTerms, workspaceEvidenceForTask, workspaceTaskAnalysis, auditVideoPipeline, comfyUiLaunchSpec, ensureComfyUi, collectTelemetrySnapshot, summarizeTelemetrySamples, estimateSystemPower, telemetrySummary };
