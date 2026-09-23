@@ -65,6 +65,7 @@ import LocalVideoFactory from "@/pages/LocalVideoFactory";
 import ApiVideoFactory from "@/pages/ApiVideoFactory";
 import VilleConnect from "@/pages/VilleConnect";
 import ProjectData from "@/pages/ProjectData";
+import Campaigns from "@/pages/Campaigns";
 import MusicMotionWorkspace from "@/pages/MusicMotionWorkspace";
 
 const PageBoundary = ({ children }) => <AppErrorBoundary>{children}</AppErrorBoundary>;
@@ -98,6 +99,7 @@ const AppRoutes = () => {
 
           <Route path="/projets" element={<PageBoundary><Projets /></PageBoundary>} />
           <Route path="/donnees-projets" element={<PageBoundary><ProjectData /></PageBoundary>} />
+          <Route path="/campagnes" element={isAdmin ? <PageBoundary><Campaigns /></PageBoundary> : <Navigate to="/" replace />} />
           <Route path="/villeconnect" element={isAdmin ? <PageBoundary><VilleConnect /></PageBoundary> : <Navigate to="/" replace />} />
           <Route path="/mes-projets" element={<PageBoundary><ClientRecords kind="projects" /></PageBoundary>} />
           <Route path="/taches" element={<PageBoundary><Taches /></PageBoundary>} />
