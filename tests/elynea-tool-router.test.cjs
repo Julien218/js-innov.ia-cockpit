@@ -51,3 +51,12 @@ test("guards truncate and empty-table destructive semantics", () => {
     assert.equal(route.confirmation, true);
   }
 });
+
+
+test("local voice routing uses the local runtime capability and never cloud fallback", () => {
+  const online = routeJarvis({ intent: "micro voice whisper" }, { localAgent: { online: true } });
+  assert.equal(online.tool, "local_voice");
+  assert.equal(online.engine, "local");
+  const offline = routeJarvis({ intent: "micro voice whisper" }, { localAgent: { online: false } });
+  assert.equal(offline.engine, "unavailable");
+});
