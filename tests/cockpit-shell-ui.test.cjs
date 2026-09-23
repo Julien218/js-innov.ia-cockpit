@@ -71,4 +71,6 @@ test('gold tracer remains animated and cockpit buttons react on hover', () => {
   assert.match(css, /prefers-reduced-motion:[\s\S]*animation-duration:\s*11s/);
   assert.doesNotMatch(css, /prefers-reduced-motion:[\s\S]*cockpit-electric-frame::before[\s\S]*animation:\s*none/);
   assert.match(dashboard, /cockpit-reference-kpi cockpit-electric-frame/);
+  const audio = read('src/components/audio/ElyneaAudioDock.jsx');
+  assert.match(audio, /cockpit-audio-dock cockpit-electric-frame/);
 });
