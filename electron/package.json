@@ -120,6 +120,7 @@
     "linux": {
       "target": "AppImage",
       "icon": "icon.png"
-    }
+    },
+    "electronDist": "node_modules/electron/dist"
   }
 }
