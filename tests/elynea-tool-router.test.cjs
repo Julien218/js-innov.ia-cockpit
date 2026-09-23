@@ -42,3 +42,12 @@ test("guards destructive French actions and nested payloads", () => {
     assert.equal(route.confirmation, true);
   }
 });
+
+
+test("guards truncate and empty-table destructive semantics", () => {
+  for (const action of ["truncate table clients", "vider la table clients"]) {
+    const route = routeJarvis({ provider: "supabase", action }, { supabase: true });
+    assert.equal(route.risk, "destructive");
+    assert.equal(route.confirmation, true);
+  }
+});
