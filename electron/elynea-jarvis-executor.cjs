@@ -26,7 +26,15 @@ function createJarvisExecutor({ routeJarvis, detectCapabilities, executeWeb, loc
     } else if (route.tool === "media" && route.engine === "comfyui") {
       output = await comfyRequest("/system_stats", { timeoutMs: 3000 });
     } else {
-      output = { delegated: true, tool: route.tool, engine: route.engine };
+      const result = {
+        ...base,
+        status: route.engine === "unavailable" ? "unavailable" : "delegated",
+        requiresConfirmation: false,
+        output: { delegated: route.engine !== "unavailable", tool: route.tool, engine: route.engine },
+        completedAt: null,
+      };
+      await audit?.({ ...result, phase: "delegate" });
+      return result;
     }
 
     const result = { ...base, status: "completed", requiresConfirmation: false, output, completedAt: new Date().toISOString() };
