@@ -47,7 +47,7 @@ test('le contexte de routage interdit le questionnaire générique', () => {
   assert.match(context, /projet=internal:cockpit-nova/);
 });
 
-test('la page assistant expose uniquement l identité NOVA', () => {
+test('la page assistant expose uniquement l identité Elynea', () => {
   const source = fs.readFileSync(path.join(root, 'src/pages/Agent.jsx'), 'utf8');
   assert.match(source, /Je suis NOVA/);
   assert.match(source, /shouldUseLocalFirst/);
