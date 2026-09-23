@@ -15,7 +15,8 @@
       "Resolve a single active brand before generating image, video, social copy or campaign material.",
       "Load the canonical manifest from the exact repository and production branch listed below.",
       "Never reuse a visually similar brand when the requested brand is unresolved.",
-      "JS-Innov.IA credit is secondary unless the active brand itself is JS-Innov.IA or JS-Innov.IA Cockpit."
+      "JS-Innov.IA credit is secondary unless the active brand itself is JS-Innov.IA or JS-Innov.IA Cockpit.",
+      "Exclusive campaign motifs declared in exclusiveMotifs must never leak into another brand."
     ]
   },
   "brands": [
@@ -224,5 +225,14 @@
         "manifest": "docs/brand/brand.manifest.json"
       }
     }
-  ]
+  ],
+  "exclusiveMotifs": {
+    "feather": {
+      "ownerBrandId": "miss-mister-dour",
+      "edition": "2027",
+      "status": "campaign-only",
+      "crossBrandReuse": false,
+      "rule": "The feather/plume visual motif is reserved to Miss & Mister Dour 2027 and must never be used as JS-Innov.IA, Cockpit or another brand identity."
+    }
+  }
 }
