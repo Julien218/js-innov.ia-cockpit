@@ -10,6 +10,7 @@ on:
       - main
     paths:
       - "electron/**"
+      - "elynea-qml/**"
       - "local-agent/**"
       - "src/components/FloatingAgent.jsx"
       - "src/components/RoleAwareFloatingAgent.jsx"
@@ -42,6 +43,22 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: "24"
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build Elynea QML companion
+        working-directory: elynea-qml
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m unittest tests/test_contract.py
+          pyside6-qmllint qml/Main.qml
+          pyinstaller --noconfirm --clean --windowed --name ElyneaDesktop --icon ..\electron\icon.ico --add-data "qml;qml" --add-data "resources;resources" --add-data "..\local-agent;local-agent" --hidden-import PySide6.QtTextToSpeech --hidden-import PySide6.QtQuick --hidden-import PySide6.QtQuickControls2 main.py
+          if (-not (Test-Path "dist\ElyneaDesktop\ElyneaDesktop.exe")) { throw "ElyneaDesktop.exe manquant" }
 
       - name: Build offline Cockpit interface
         working-directory: .
@@ -93,6 +110,7 @@ jobs:
           if (-not $exe) { throw "Installeur .exe manquant" }
           if (-not (Test-Path "dist/win-unpacked/resources/offline-web/index.html")) { throw "Interface Cockpit hors ligne manquante" }
           if (-not (Test-Path "dist/win-unpacked/resources/video-provenance-core.cjs")) { throw "Finaliseur vidéo local manquant" }
+          if (-not (Test-Path "dist/win-unpacked/resources/elynea-desktop/ElyneaDesktop.exe")) { throw "Companion Elynea QML manquant" }
           Write-Host "Installer: $($exe.Name)"
 
       - name: Upload Windows artifact
