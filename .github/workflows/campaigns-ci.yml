@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - feature/campaign-orchestrator
+      - fix/campaign-canonical-brand-registry
     paths:
       - 'src/pages/Campaigns.jsx'
       - 'src/lib/campaignOrchestrator.js'
