@@ -39,10 +39,12 @@ test('production emphasizes the two primary services', () => {
   assert.match(source, /ACTIONS\.slice\(2\)/);
 });
 
-test('the navigation keeps its compact preference and exposes the active item', () => {
+test('the navigation stays compact by default, expands on hover and exposes the active item', () => {
   const source = read('src/components/layout/Sidebar.jsx');
-  assert.match(source, /cockpit-sidebar-collapsed/);
+  assert.match(source, /desktopHovered/);
+  assert.match(source, /const compact = !mobileOpen && !desktopHovered/);
+  assert.match(source, /onMouseEnter=\{\(\) => setDesktopHovered\(true\)\}/);
+  assert.match(source, /onMouseLeave=\{\(\) => setDesktopHovered\(false\)\}/);
   assert.match(source, /\? "active"/);
-  assert.match(source, /aria-label=\{collapsed \? "Déplier la navigation" : "Réduire la navigation"\}/);
 });
 
