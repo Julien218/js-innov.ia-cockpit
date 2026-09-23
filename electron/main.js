@@ -1107,7 +1107,9 @@ ipcMain.handle("nova-web-assistant-execute", async (event, task = {}) => {
 // ── IPC — Elynea Jarvis Tool Router ─────────────────────────────────────────
 async function detectJarvisCapabilities() {
   const state = {
-    localAgent: { online: false, port: null },
+    localAgent: { online: false, port: null, mode: "local-first" },
+    ollama: { online: false, url: "http://127.0.0.1:11434", models: [] },
+    voice: { capture: "electron", transcription: false, wakeWord: false, wakeWordStatus: "not_implemented", tts: "web-speech" },
     comfyui: { online: false, port: COMFYUI_PORT },
     github: { online: Boolean(process.env.GITHUB_TOKEN || process.env.GH_TOKEN) },
     railway: { online: Boolean(process.env.RAILWAY_TOKEN || process.env.RAILWAY_API_TOKEN) },
@@ -1116,12 +1118,20 @@ async function detectJarvisCapabilities() {
   };
   for (const port of LOCAL_AGENT_PORTS) {
     try {
-      const health = await localAgentRequest(port, "/health", { timeoutMs: 1200 });
-      if (health?.ok) { state.localAgent = { online: true, port }; break; }
-    } catch (_) { /* capability offline */ }
+      const health = await localAgentRequest(port, "/health", { timeoutMs: 2500 });
+      if (!health?.ok) continue;
+      state.localAgent = { online: true, port, mode: health.agent?.mode || "local-first" };
+      const ollama = health.services?.ollama || {};
+      state.ollama = { online: Boolean(ollama.online), url: ollama.url || state.ollama.url, models: Array.isArray(ollama.models) ? ollama.models : [] };
+      try {
+        const production = await localAgentRequest(port, "/api/music-motion/production/capabilities", { timeoutMs: 8000 });
+        state.voice.transcription = production?.transcription === true;
+      } catch (_) { /* STT capability remains explicitly false */ }
+      break;
+    } catch (_) { /* try compatibility port */ }
   }
   try {
-    await comfyRequest("/system_stats", { timeoutMs: 1200 });
+    await comfyRequest("/system_stats", { timeoutMs: 2500 });
     state.comfyui.online = true;
   } catch (_) { /* capability offline */ }
   return state;
