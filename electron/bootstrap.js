@@ -7,6 +7,45 @@ const http = require("node:http");
 const net = require("node:net");
 
 let updaterStarted = false;
+let updateDownloadPromise = null;
+let desktopUpdateState = {
+  status: "idle",
+  installedVersion: null,
+  targetVersion: null,
+  progress: null,
+  error: null,
+  checkedAt: null,
+  downloadedAt: null,
+};
+globalThis.__cockpitDesktopUpdateState = desktopUpdateState;
+
+function publishDesktopUpdateState(patch = {}) {
+  desktopUpdateState = {
+    ...desktopUpdateState,
+    ...patch,
+    installedVersion: app.getVersion(),
+  };
+  globalThis.__cockpitDesktopUpdateState = desktopUpdateState;
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send("desktop-update-status", desktopUpdateState);
+  }
+  return desktopUpdateState;
+}
+
+function downloadAvailableUpdate() {
+  if (updateDownloadPromise) return updateDownloadPromise;
+  publishDesktopUpdateState({ status: "downloading", error: null, progress: 0 });
+  updateDownloadPromise = autoUpdater.downloadUpdate()
+    .catch((error) => {
+      publishDesktopUpdateState({ status: "error", error: error?.message || String(error) });
+      throw error;
+    })
+    .finally(() => {
+      updateDownloadPromise = null;
+    });
+  return updateDownloadPromise;
+}
+
 let localAgentProcess = null;
 let localAgentPort = null;
 let localAgentMisses = 0;
@@ -27,7 +66,7 @@ const LOCAL_AGENT_STARTUP_GRACE_MS = 25_000;
 const LOCAL_AGENT_MAX_MISSES = 3;
 const MUSIC_MOTION_CONTRACT_VERSION = 2;
 
-const TRUSTED_MICROPHONE_ORIGINS = new Set([
+const TRUSTED_AUDIO_ORIGINS = new Set([
   'https://cockpit.jsinnovia.com',
   `http://127.0.0.1:${OFFLINE_WEB_PORT}`,
 ]);
@@ -40,7 +79,9 @@ function normalizeOrigin(value) {
 function configureMicrophonePermissions() {
   const ses = session.defaultSession;
   const trustedAudioRequest = (permission, origin, details = {}) => {
-    if (permission !== 'media' || !TRUSTED_MICROPHONE_ORIGINS.has(normalizeOrigin(origin))) return false;
+    if (!TRUSTED_AUDIO_ORIGINS.has(normalizeOrigin(origin))) return false;
+    if (permission === 'speaker-selection') return true;
+    if (permission !== 'media') return false;
     const mediaTypes = Array.isArray(details.mediaTypes)
       ? details.mediaTypes
       : details.mediaType
@@ -58,7 +99,7 @@ function configureMicrophonePermissions() {
     trustedAudioRequest(permission, requestingOrigin || webContents?.getURL?.() || '', details)
   ));
 
-  console.log('[desktop] microphone permission restricted to Elynea Cockpit audio origins');
+  console.log('[desktop] microphone and speaker-selection permissions restricted to Elynea Cockpit audio origins');
 }
 
 const MIME_TYPES = {
@@ -453,54 +494,80 @@ function startAutoUpdater() {
   if (updaterStarted || !app.isPackaged) return;
   updaterStarted = true;
 
-  autoUpdater.autoDownload = true;
+  // Téléchargement piloté explicitement : on ne dépend plus du comportement implicite
+  // autoDownload pour savoir si l'installeur a réellement commencé à être récupéré.
+  autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.allowPrerelease = false;
+  publishDesktopUpdateState({ status: "idle", installedVersion: app.getVersion(), error: null });
 
   autoUpdater.on("checking-for-update", () => {
     console.log("[desktop] checking for update");
+    publishDesktopUpdateState({ status: "checking", checkedAt: new Date().toISOString(), error: null });
   });
 
   autoUpdater.on("update-available", (info) => {
-    console.log(`[desktop] update available: ${info?.version || "unknown"}`);
+    const targetVersion = info?.version || null;
+    console.log(`[desktop] update available: ${targetVersion || "unknown"}`);
+    publishDesktopUpdateState({ status: "available", targetVersion, progress: 0, error: null });
     notify(
       "Mise à jour JS-Innov.IA",
-      `Version ${info?.version || "nouvelle"} détectée. Téléchargement automatique…`,
+      `Version ${targetVersion || "nouvelle"} détectée. Téléchargement automatique…`,
     );
+    void downloadAvailableUpdate().catch((error) => {
+      console.log("[desktop] explicit update download failed:", error?.message || error);
+    });
   });
 
-  autoUpdater.on("update-not-available", () => {
+  autoUpdater.on("update-not-available", (info) => {
     console.log("[desktop] application up to date");
+    publishDesktopUpdateState({
+      status: "up-to-date",
+      targetVersion: info?.version || app.getVersion(),
+      progress: 100,
+      error: null,
+    });
   });
 
   autoUpdater.on("download-progress", (progress) => {
-    const percent = Number(progress?.percent || 0).toFixed(1);
-    console.log(`[desktop] update download ${percent}%`);
+    const percent = Math.max(0, Math.min(100, Number(progress?.percent || 0)));
+    console.log(`[desktop] update download ${percent.toFixed(1)}%`);
+    publishDesktopUpdateState({ status: "downloading", progress: percent, error: null });
   });
 
   autoUpdater.on("update-downloaded", (info) => {
     console.log(`[desktop] update downloaded: ${info?.version || "unknown"}`);
+    publishDesktopUpdateState({
+      status: "downloaded",
+      targetVersion: info?.version || desktopUpdateState.targetVersion,
+      progress: 100,
+      downloadedAt: new Date().toISOString(),
+      error: null,
+    });
     notify(
       "Mise à jour prête",
       "Le Cockpit va redémarrer automatiquement pour installer la nouvelle version.",
     );
 
-    // Installation globale au démarrage : aucun module ne doit gérer son propre reload.
     setTimeout(() => {
       try {
+        publishDesktopUpdateState({ status: "installing" });
         autoUpdater.quitAndInstall(false, true);
       } catch (error) {
+        publishDesktopUpdateState({ status: "error", error: error?.message || String(error) });
         console.log("[desktop] update install error:", error.message);
       }
     }, 2500);
   });
 
   autoUpdater.on("error", (error) => {
-    // Une panne GitHub/Internet ne doit jamais empêcher l'ouverture du Cockpit.
-    console.log("[desktop] auto-update error:", error?.message || error);
+    const message = error?.message || String(error);
+    publishDesktopUpdateState({ status: "error", error: message });
+    console.log("[desktop] auto-update error:", message);
   });
 
   autoUpdater.checkForUpdates().catch((error) => {
+    publishDesktopUpdateState({ status: "error", error: error?.message || String(error) });
     console.log("[desktop] update check failed:", error.message);
   });
 }
@@ -525,6 +592,8 @@ if (!singleInstanceLock) {
 
 app.whenReady().then(async () => {
   if (!singleInstanceLock) return;
+  app.setName('JS-Innov.IA Cockpit');
+  if (process.platform === 'win32') app.setAppUserModelId('com.jsinnovia.cockpit');
   configureMicrophonePermissions();
   enableWindowsStartup();
   await startBundledLocalAgent().catch((error) => {

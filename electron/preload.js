@@ -9,6 +9,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
   notify: (title, body) => ipcRenderer.send("notify", { title, body }),
   checkForUpdates: () => ipcRenderer.send("check-for-updates"),
   downloadUpdate: () => ipcRenderer.send("download-update"),
+  desktop: {
+    getInfo: () => ipcRenderer.invoke("desktop-app-info"),
+    checkForUpdates: () => ipcRenderer.send("check-for-updates"),
+    retryUpdate: () => ipcRenderer.send("download-update"),
+    onUpdateStatus: (callback) => {
+      const listener = (_event, data) => callback(data);
+      ipcRenderer.on("desktop-update-status", listener);
+      return () => ipcRenderer.removeListener("desktop-update-status", listener);
+    },
+  },
   windowControls: {
     minimize: () => ipcRenderer.send("window-minimize"),
     toggleMaximize: () => ipcRenderer.send("window-toggle-maximize"),

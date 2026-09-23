@@ -13,6 +13,7 @@ test('desktop starts through the global bootstrap', () => {
   assert.equal(pkg.main, 'bootstrap.js');
   assert.ok(pkg.dependencies?.['electron-updater']);
   assert.ok(pkg.build?.files?.includes('bootstrap.js'));
+  assert.equal(pkg.build?.electronDist, 'node_modules/electron/dist');
 });
 
 test('desktop bundles and starts Elynea Local Tools with Music Motion v2', () => {
@@ -51,10 +52,13 @@ test('startup refreshes renderer caches without clearing authentication data', (
   assert.match(bootstrap, /require\("\.\/main\.js"\)/);
 });
 
-test('electron update is downloaded and installed globally', () => {
-  assert.match(bootstrap, /autoUpdater\.autoDownload\s*=\s*true/);
+test('electron update is explicitly downloaded, observable and installed globally', () => {
+  assert.match(bootstrap, /autoUpdater\.autoDownload\s*=\s*false/);
   assert.match(bootstrap, /autoUpdater\.autoInstallOnAppQuit\s*=\s*true/);
   assert.match(bootstrap, /autoUpdater\.checkForUpdates\(\)/);
+  assert.match(bootstrap, /autoUpdater\.downloadUpdate\(\)/);
+  assert.match(bootstrap, /publishDesktopUpdateState/);
+  assert.match(bootstrap, /desktop-update-status/);
   assert.match(bootstrap, /autoUpdater\.quitAndInstall\(false, true\)/);
 });
 
@@ -94,7 +98,9 @@ test('packaged desktop enables startup with Windows', () => {
   assert.match(bootstrap, /app\.setLoginItemSettings\(\{/);
   assert.match(bootstrap, /openAtLogin:\s*true/);
   assert.match(bootstrap, /path:\s*process\.execPath/);
-  assert.match(bootstrap, /app\.whenReady\(\)\.then\(async \(\) => \{\s*if \(!singleInstanceLock\) return;\s*configureMicrophonePermissions\(\);\s*enableWindowsStartup\(\)/);
+  assert.match(bootstrap, /app\.whenReady\(\)\.then\(async \(\) => \{/);
+  assert.match(bootstrap, /configureMicrophonePermissions\(\);/);
+  assert.match(bootstrap, /enableWindowsStartup\(\);/);
 });
 
 test('desktop release runs when Elynea local capabilities change', () => {
@@ -133,4 +139,27 @@ test('desktop Cockpit window is truly transparent and uses custom window control
   assert.match(css, /-webkit-app-region:\s*drag/);
   assert.match(css, /html\.electron-cockpit[\s\S]*background:\s*transparent/);
   assert.doesNotMatch(css, /cockpit-sunset\.svg/);
+});
+
+
+test('desktop grants speaker selection only to trusted Cockpit origins and exposes a Windows audio identity', () => {
+  assert.match(bootstrap, /permission === 'speaker-selection'/);
+  assert.match(bootstrap, /TRUSTED_AUDIO_ORIGINS/);
+  assert.match(bootstrap, /app\.setName\('JS-Innov\.IA Cockpit'\)/);
+  assert.match(bootstrap, /app\.setAppUserModelId\('com\.jsinnovia\.cockpit'\)/);
+  assert.match(main, /webContents\.setAudioMuted\(false\)/);
+});
+
+
+test('settings can read the exact running desktop version and updater progress', () => {
+  const preload = fs.readFileSync(path.join(root, 'electron', 'preload.js'), 'utf8');
+  const settings = fs.readFileSync(path.join(root, 'src', 'pages', 'Parametres.jsx'), 'utf8');
+  assert.match(main, /ipcMain\.handle\("desktop-app-info"/);
+  assert.match(main, /version:\s*APP_VERSION/);
+  assert.match(preload, /getInfo:\s*\(\)\s*=>\s*ipcRenderer\.invoke\("desktop-app-info"\)/);
+  assert.match(preload, /desktop-update-status/);
+  assert.match(settings, /Version installée/);
+  assert.match(settings, /app\.getVersion\(\)/);
+  assert.match(settings, /Vérifier les mises à jour/);
+  assert.match(settings, /Relancer la mise à jour/);
 });
