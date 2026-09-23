@@ -20,13 +20,11 @@ def health_port():
 
 
 def main():
-    # Stable launcher/health companion for the desktop runtime. Actual audio capture
-    # stays in Electron where microphone permission and Whisper IPC are controlled.
-    # This process is intentionally dependency-light and never opens a second mic.
+    # Runtime health companion only. Actual audio capture stays in Electron where\n    # microphone permission and Whisper IPC are controlled. This process does NOT\n    # implement wake-word detection and must never advertise that capability.
     last = None
     while True:
         port = health_port()
-        state = {"wake_word": WAKE_WORD, "agent_port": port, "ready": port is not None}
+        state = {"wake_word": WAKE_WORD, "wake_word_available": False, "wake_word_status": "not_implemented", "agent_port": port, "ready": port is not None}
         if state != last:
             print(json.dumps(state), flush=True)
             last = state
