@@ -9,6 +9,8 @@ on:
       - 'src/pages/Campaigns.jsx'
       - 'src/lib/campaignOrchestrator.js'
       - 'server-campaigns*.cjs'
+      - 'server-brand-canonical.cjs'
+      - 'brand/**'
       - 'server.cjs'
       - 'Dockerfile'
       - 'permission-catalog.json'
@@ -32,6 +34,7 @@ jobs:
       - run: npm ci --legacy-peer-deps
       - name: Server syntax
         run: |
+          node --check server-brand-canonical.cjs
           node --check server-campaigns-core.cjs
           node --check server-campaigns.cjs
           node --check server.cjs
