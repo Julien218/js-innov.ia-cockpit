@@ -75,3 +75,14 @@ test('gold tracer remains animated and cockpit buttons react on hover', () => {
   const audio = read('src/components/audio/ElyneaAudioDock.jsx');
   assert.match(audio, /cockpit-audio-dock cockpit-electric-frame/);
 });
+
+
+test('Elynea audio player can persist and apply an explicit Windows output device', () => {
+  const audio = read('src/components/audio/ElyneaAudioDock.jsx');
+  assert.match(audio, /elynea_audio_output_device/);
+  assert.match(audio, /enumerateDevices\(\)/);
+  assert.match(audio, /device\.kind === 'audiooutput'/);
+  assert.match(audio, /audio\.setSinkId\(sinkId\)/);
+  assert.match(audio, /Sortie système Windows/);
+  assert.match(audio, /Périphérique de sortie audio/);
+});
