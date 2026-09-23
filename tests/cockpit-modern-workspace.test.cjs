@@ -6,13 +6,15 @@ const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('the dashboard starts with the approved reference work area', () => {
+test('the dashboard starts in the approved Jarvis-first work area', () => {
   const source = read('src/pages/Dashboard.jsx');
-  assert.match(source, /Voici votre activité du jour/);
-  assert.match(source, /Emails à traiter/);
-  assert.match(source, /Actions rapides/);
-  assert.match(source, /Tâches prioritaires/);
-  assert.match(source, /cockpit-reference-elynea/);
+  assert.match(source, /Mode Jarvis/);
+  assert.match(source, /Appeler Elynea/);
+  assert.match(source, /Priorités/);
+  assert.match(source, /Projets récents/);
+  assert.match(source, /elynea:open/);
+  assert.doesNotMatch(source, /Actions rapides/);
+  assert.doesNotMatch(source, /cockpit-reference-elynea-portrait/);
 });
 
 test('the task workspace supports search, filters and progressive display', () => {
