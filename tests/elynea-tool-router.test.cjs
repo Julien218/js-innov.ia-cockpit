@@ -29,3 +29,16 @@ test("routes WaveSpeed only when API capability is configured", () => {
   assert.equal(routeJarvis({ provider: "wavespeed", action: "generate video" }, { wavespeed: true }).engine, "api");
   assert.equal(routeJarvis({ provider: "wavespeed", action: "generate video" }, { wavespeed: false }).engine, "unavailable");
 });
+
+
+test("guards destructive French actions and nested payloads", () => {
+  for (const task of [
+    { provider: "railway", action: "supprimer le service" },
+    { provider: "supabase", payload: { action: "effacer la table clients" } },
+    { provider: "github", payload: { instruction: "détruire la branche production" } },
+  ]) {
+    const route = routeJarvis(task, { railway: true, supabase: true, github: true });
+    assert.equal(route.risk, "destructive");
+    assert.equal(route.confirmation, true);
+  }
+});
