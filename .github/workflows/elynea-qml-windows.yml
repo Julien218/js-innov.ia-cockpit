@@ -1,0 +1,77 @@
+name: Elynea QML Windows CI
+
+on:
+  pull_request:
+    paths:
+      - "elynea-qml/**"
+      - "local-agent/**"
+      - ".github/workflows/elynea-qml-windows.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "elynea-qml/**"
+      - "local-agent/**"
+      - ".github/workflows/elynea-qml-windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install QML dependencies
+        working-directory: elynea-qml
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Contract tests
+        run: python -m unittest elynea-qml/tests/test_contract.py
+
+      - name: Python syntax
+        working-directory: elynea-qml
+        run: |
+          python -m py_compile main.py backend.py
+
+      - name: QML syntax
+        working-directory: elynea-qml
+        run: pyside6-qmllint qml/Main.qml
+
+      - name: Build Windows companion
+        working-directory: elynea-qml
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name ElyneaDesktop --icon ..\electron\icon.ico --add-data "qml;qml" --add-data "resources;resources" --add-data "..\local-agent;local-agent" --hidden-import PySide6.QtTextToSpeech --hidden-import PySide6.QtQuick --hidden-import PySide6.QtQuickControls2 main.py
+
+      - name: Verify packaged QML
+        working-directory: elynea-qml
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist\ElyneaDesktop\ElyneaDesktop.exe")) { throw "ElyneaDesktop.exe manquant" }
+          if (-not (Test-Path "dist\ElyneaDesktop\_internal\qml\Main.qml")) { throw "Main.qml manquant dans le package" }
+          if (-not (Test-Path "dist\ElyneaDesktop\_internal\resources\elynea.webp")) { throw "Avatar Elynea manquant" }
+
+      - name: Package artifact
+        working-directory: elynea-qml
+        shell: pwsh
+        run: Compress-Archive -Path "dist\ElyneaDesktop\*" -DestinationPath "dist\ElyneaDesktop-Windows.zip" -Force
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Elynea-Desktop-QML-Windows
+          path: elynea-qml/dist/ElyneaDesktop-Windows.zip
+          retention-days: 90
+          if-no-files-found: error
