@@ -3,14 +3,12 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
-  AlertCircle,
   ArrowRight,
   CheckSquare,
   FileText,
   FolderKanban,
   Mail,
   MessageSquare,
-  Plus,
   Search,
   Shield,
   Target,
@@ -51,11 +49,6 @@ function timeLabel(value) {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "—";
   return format(date, "dd/MM · HH:mm", { locale: fr });
-}
-
-function firstName(value) {
-  const text = String(value || "").trim();
-  return text.split(/\s+/)[0] || "Julien";
 }
 
 function projectTitle(project) {
@@ -109,7 +102,6 @@ export default function Dashboard() {
   const { data: projets = [], isError: projetsErr } = useQuery({ queryKey: ["projets"], queryFn: () => base44.entities.Projet.list() });
   const { data: taches = [], isError: tachesErr } = useQuery({ queryKey: ["taches"], queryFn: () => base44.entities.Tache.list() });
   const { data: demandes = [], isError: demandesErr } = useDemandes();
-  const { data: devis = [], isError: devisErr } = useQuery({ queryKey: ["devis"], queryFn: () => base44.entities.Devis.list() });
   const { data: factures = [], isError: facturesErr } = useQuery({ queryKey: ["factures"], queryFn: () => base44.entities.Facture.list() });
   const { data: commissions = [], isError: commissionsErr } = useQuery({ queryKey: ["commissions"], queryFn: () => base44.entities.Commission.list() });
 
@@ -171,7 +163,7 @@ export default function Dashboard() {
   }));
   const pipelineMax = Math.max(1, ...pipelineCounts.map((item) => item.value));
 
-  const hasAnyError = clientsErr || leadsErr || projetsErr || tachesErr || demandesErr || devisErr || facturesErr || commissionsErr;
+  const hasAnyError = clientsErr || leadsErr || projetsErr || tachesErr || demandesErr || facturesErr || commissionsErr;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bonjour" : hour < 18 ? "Bon après-midi" : "Bonsoir";
 
