@@ -36,3 +36,19 @@ test("read-only local diagnostic executes without confirmation", async () => {
   assert.equal(result.status, "completed");
   assert.equal(result.output.ok, true);
 });
+
+
+test("delegated routes are never reported completed", async () => {
+  const { executor, audit } = build({ tool: "github", engine: "connector", risk: "read", confirmation: false });
+  const result = await executor.execute({ provider: "github", action: "inspect repo" });
+  assert.equal(result.status, "delegated");
+  assert.equal(result.completedAt, null);
+  assert.equal(audit.at(-1).phase, "delegate");
+});
+
+test("unavailable routes are explicit and never verified", async () => {
+  const { executor, audit } = build({ tool: "local_voice", engine: "unavailable", risk: "read", confirmation: false });
+  const result = await executor.execute({ intent: "transcribe voice" });
+  assert.equal(result.status, "unavailable");
+  assert.equal(audit.at(-1).phase, "delegate");
+});
