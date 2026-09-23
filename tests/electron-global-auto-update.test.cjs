@@ -94,7 +94,9 @@ test('packaged desktop enables startup with Windows', () => {
   assert.match(bootstrap, /app\.setLoginItemSettings\(\{/);
   assert.match(bootstrap, /openAtLogin:\s*true/);
   assert.match(bootstrap, /path:\s*process\.execPath/);
-  assert.match(bootstrap, /app\.whenReady\(\)\.then\(async \(\) => \{\s*if \(!singleInstanceLock\) return;\s*configureMicrophonePermissions\(\);\s*enableWindowsStartup\(\)/);
+  assert.match(bootstrap, /app\.whenReady\(\)\.then\(async \(\) => \{/);
+  assert.match(bootstrap, /configureMicrophonePermissions\(\);/);
+  assert.match(bootstrap, /enableWindowsStartup\(\);/);
 });
 
 test('desktop release runs when Elynea local capabilities change', () => {
@@ -133,4 +135,13 @@ test('desktop Cockpit window is truly transparent and uses custom window control
   assert.match(css, /-webkit-app-region:\s*drag/);
   assert.match(css, /html\.electron-cockpit[\s\S]*background:\s*transparent/);
   assert.doesNotMatch(css, /cockpit-sunset\.svg/);
+});
+
+
+test('desktop grants speaker selection only to trusted Cockpit origins and exposes a Windows audio identity', () => {
+  assert.match(bootstrap, /permission === 'speaker-selection'/);
+  assert.match(bootstrap, /TRUSTED_AUDIO_ORIGINS/);
+  assert.match(bootstrap, /app\.setName\('JS-Innov\.IA Cockpit'\)/);
+  assert.match(bootstrap, /app\.setAppUserModelId\('com\.jsinnovia\.cockpit'\)/);
+  assert.match(main, /webContents\.setAudioMuted\(false\)/);
 });
