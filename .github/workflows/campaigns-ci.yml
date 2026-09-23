@@ -1,4 +1,5 @@
 name: Campaign Orchestrator CI
+# Re-run on Docker/runtime hardening
 
 on:
   push:
