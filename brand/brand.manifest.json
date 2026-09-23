@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "1.0",
+  "brand": "SIGNELYA",
+  "status": "production",
+  "locale": "fr-BE",
+  "lastAligned": "2026-09-23",
+  "repository": {
+    "fullName": "Julien218/js-innov.ia-cockpit",
+    "productionBranch": "feature/olivier-signage-pilot-release"
+  },
+  "canonicalSources": {
+    "bible": "brand/BRAND_ADN.md",
+    "wordmark": "src/components/brand/SignelyaWordmark.jsx",
+    "brandTest": "tests/signelya-brand.test.cjs",
+    "brandOverrides": "public/signelya-brand-overrides.css"
+  },
+  "identity": {
+    "name": "SIGNELYA",
+    "fullName": "SIGNELYA by JS-Innov.IA",
+    "tagline": "Vos écrans prennent vie",
+    "assistant": "Elynea"
+  },
+  "wordmarkLetters": {
+    "S": "#00D4FF",
+    "I": "#20B8FF",
+    "G": "#4E8BFF",
+    "N": "#755BFF",
+    "E": "#9E35F3",
+    "L": "#CA1EE4",
+    "Y": "#EA12D8",
+    "A": "#FF00CC"
+  },
+  "typography": {
+    "brand": "Space Grotesk",
+    "ui": "Inter"
+  },
+  "assets": {
+    "masterIcon": "public/signelya-app-icon-approved.png",
+    "symbol": "public/signelya-symbol-approved-512.png",
+    "lockup": "public/signelya-lockup-approved.png",
+    "social": "public/signelya-social-share.jpg"
+  },
+  "agentPolicy": {
+    "mode": "fail-closed",
+    "readOrder": [
+      "brand/brand.manifest.json",
+      "brand/BRAND_ADN.md",
+      "src/components/brand/SignelyaWordmark.jsx",
+      "tests/signelya-brand.test.cjs"
+    ],
+    "forbidden": [
+      "generate-logo",
+      "redraw-symbol",
+      "recolor-master",
+      "restore-legacy-svg",
+      "rename-elynea-to-nova",
+      "mix-other-product-adn"
+    ],
+    "qualityGate": [
+      "brand-tests-pass",
+      "approved-assets-used",
+      "pwa-icons-derived-from-master",
+      "wordmark-sequence-respected",
+      "reduced-motion-supported",
+      "no-cross-brand-contamination"
+    ]
+  }
+}
