@@ -6,10 +6,15 @@ on:
     branches:
       - feature/campaign-orchestrator
       - fix/campaign-canonical-brand-registry
+      - feature/campaign-generation-engine-v2
     paths:
       - 'src/pages/Campaigns.jsx'
       - 'src/lib/campaignOrchestrator.js'
       - 'server-campaigns*.cjs'
+      - 'server-campaign-*.cjs'
+      - 'local-agent/campaign-worker.mjs'
+      - 'local-agent/server.js'
+      - 'electron/package.json'
       - 'server-brand-canonical.cjs'
       - 'brand/**'
       - 'server.cjs'
@@ -19,7 +24,7 @@ on:
       - 'src/components/layout/Sidebar.jsx'
       - 'src/lib/roles.js'
       - 'tests/campaign-orchestrator.test.cjs'
-      - 'supabase/migrations/*campaign_orchestrator.sql'
+      - 'supabase/migrations/*campaign*.sql'
       - '.github/workflows/campaigns-ci.yml'
   workflow_dispatch:
 
@@ -36,6 +41,11 @@ jobs:
       - name: Server syntax
         run: |
           node --check server-brand-canonical.cjs
+          node --check server-campaign-media.cjs
+          node --check server-campaign-engine.cjs
+          node --check server-campaign-worker.cjs
+          node --check local-agent/campaign-worker.mjs
+          node --check local-agent/server.js
           node --check server-campaigns-core.cjs
           node --check server-campaigns.cjs
           node --check server.cjs

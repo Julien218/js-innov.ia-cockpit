@@ -2,8 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Film, Image as ImageIcon, Loader2, Megaphone, Plus, RefreshCw, Settings2, Sparkles, XCircle } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
-import { base44Shim as base44 } from '@/lib/supabaseVideoClient';
-import { campaignApi, arrayToCsv, csvToArray, generateCampaignVideo, refreshCampaignVideo } from '@/lib/campaignOrchestrator';
+import {
+  campaignApi, arrayToCsv, csvToArray, pairCampaignLocalWorker, localCampaignWorkerStatus,
+  requestCampaignImage, approveCampaignImageAndGenerateVideo
+} from '@/lib/campaignOrchestrator';
 
 const input = 'w-full rounded-lg border border-border bg-background px-3 py-2 text-sm';
 const panel = 'rounded-2xl border border-border bg-card p-4 shadow-sm';
@@ -25,8 +27,9 @@ export default function Campaigns() {
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState(null);
   const [campaignForm, setCampaignForm] = useState({ name: '', objective: '', phase: 'recrutement', cta: '', landing_url: '', channels: ['facebook','instagram','tiktok'] });
-  const [postForm, setPostForm] = useState({ title: '', brief: '', platforms: ['facebook','instagram','tiktok'], video_engine: 'auto' });
+  const [postForm, setPostForm] = useState({ title: '', brief: '', platforms: ['facebook','instagram','tiktok'], image_engine: '', video_engine: '' });
   const [brandForm, setBrandForm] = useState({});
+  const [worker, setWorker] = useState({ paired: false, online: false, local_agent_reachable: false, cloud: null, local: null });
   const [brandContext, setBrandContext] = useState(null);
 
   const selectedBrand = useMemo(() => brands.find(b => b.id === brandId), [brands, brandId]);
@@ -48,8 +51,18 @@ export default function Campaigns() {
     const data = await campaignApi('/' + encodeURIComponent(id) + '/posts');
     setPosts(data.posts || []);
   };
+  const loadWorker = async () => {
+    const status = await localCampaignWorkerStatus();
+    setWorker(status);
+    return status;
+  };
 
-  useEffect(() => { loadBrands().catch(e => setNotice({ type: 'error', text: e.message })); }, []);
+  useEffect(() => {
+    loadBrands().catch(e => setNotice({ type: 'error', text: e.message }));
+    loadWorker().catch(() => {});
+    const timer = setInterval(() => loadWorker().catch(() => {}), 15000);
+    return () => clearInterval(timer);
+  }, []);
   useEffect(() => {
     if (!brandId) { setBrandContext(null); return; }
     loadCampaigns(brandId).catch(e => setNotice({ type: 'error', text: e.message }));
@@ -57,7 +70,12 @@ export default function Campaigns() {
       .then(setBrandContext)
       .catch(e => { setBrandContext(null); setNotice({ type: 'error', text: e.message }); });
   }, [brandId]);
-  useEffect(() => { if (campaignId) loadPosts(campaignId).catch(e => setNotice({ type: 'error', text: e.message })); else setPosts([]); }, [campaignId]);
+  useEffect(() => {
+    if (!campaignId) { setPosts([]); return; }
+    loadPosts(campaignId).catch(e => setNotice({ type: 'error', text: e.message }));
+    const timer = setInterval(() => loadPosts(campaignId).catch(() => {}), 8000);
+    return () => clearInterval(timer);
+  }, [campaignId]);
   useEffect(() => {
     if (!selectedBrand) return;
     const rules = parseJson(selectedBrand.visual_rules, {});
@@ -88,6 +106,7 @@ export default function Campaigns() {
       hashtags_forbidden: csvToArray(brandForm.hashtags_forbidden_text),
       visual_rules: { must: splitLines(brandForm.must_text), avoid: splitLines(brandForm.avoid_text) },
       palette: parseJson(brandForm.palette_text, {}),
+      fallback_image_to_api: Boolean(brandForm.fallback_image_to_api),
       fallback_to_api: Boolean(brandForm.fallback_to_api),
     };
     const data = await campaignApi('/brands/' + encodeURIComponent(brandId), { method: 'PATCH', body: JSON.stringify(payload) });
@@ -107,7 +126,7 @@ export default function Campaigns() {
     if (!campaignId || !postForm.brief.trim()) throw new Error('Ajoute un brief de contenu.');
     const data = await campaignApi('/' + encodeURIComponent(campaignId) + '/posts', { method: 'POST', body: JSON.stringify(postForm) });
     setPosts(current => [data.post, ...current]);
-    setPostForm({ title: '', brief: '', platforms: ['facebook','instagram','tiktok'], video_engine: 'auto' });
+    setPostForm({ title: '', brief: '', platforms: ['facebook','instagram','tiktok'], image_engine: '', video_engine: '' });
   });
 
   const draftPost = post => act('draft-' + post.id, async () => {
@@ -117,34 +136,44 @@ export default function Campaigns() {
   });
 
   const generateImage = post => act('image-' + post.id, async () => {
-    const compiled = await campaignApi('/posts/' + encodeURIComponent(post.id) + '/compile', { method: 'POST', body: '{}' });
-    await campaignApi('/posts/' + encodeURIComponent(post.id), { method: 'PATCH', body: JSON.stringify({ image_status: 'generating', image_prompt: compiled.image_prompt }) });
-    const result = await base44.integrations.Core.GenerateImage({ prompt: compiled.image_prompt });
-    if (!result?.url) throw new Error('Le générateur n’a retourné aucune image.');
-    const updated = await campaignApi('/posts/' + encodeURIComponent(post.id), {
-      method: 'PATCH',
-      body: JSON.stringify({ image_url: result.url, image_status: 'review', status: 'image_review', image_prompt: compiled.image_prompt, video_prompt: compiled.video_prompt })
-    });
-    setPosts(current => current.map(p => p.id === post.id ? updated.post : p));
+    try {
+      await requestCampaignImage(post.id, false);
+    } catch (error) {
+      if (error.code !== 'PAID_API_CONFIRMATION_REQUIRED') throw error;
+      const ok = window.confirm('Le moteur local n’est pas disponible pour cette image. Autoriser UNE génération xAI payante en respectant la Bible ADN ?');
+      if (!ok) {
+        setNotice({ type: 'info', text: 'Génération image API non autorisée.' });
+        return;
+      }
+      await requestCampaignImage(post.id, true);
+    }
+    await loadPosts();
+    setNotice({ type: 'success', text: 'Génération image lancée par le moteur Campagnes.' });
   });
 
   const approveAndAnimate = post => act('approve-' + post.id, async () => {
-    const approved = await campaignApi('/posts/' + encodeURIComponent(post.id) + '/approve-image', { method: 'POST', body: '{}' });
-    setPosts(current => current.map(p => p.id === post.id ? approved.post : p));
     try {
-      await generateCampaignVideo({ postId: post.id, orchestration: approved.orchestration, allowPaidApi: false });
+      await approveCampaignImageAndGenerateVideo(post.id, false);
     } catch (error) {
       if (error.code !== 'PAID_API_CONFIRMATION_REQUIRED') throw error;
-      const ok = window.confirm('Le moteur local n’est pas utilisé ou indisponible. Autoriser UNE génération vidéo xAI payante à partir de cette image validée ?');
+      const ok = window.confirm('Le moteur vidéo local n’est pas disponible. Autoriser UNE génération xAI payante à partir de cette image validée ?');
       if (!ok) {
-        setNotice({ type: 'info', text: 'Image validée. La génération vidéo API n’a pas été autorisée.' });
+        setNotice({ type: 'info', text: 'Image validée ; génération vidéo API non autorisée.' });
         await loadPosts();
         return;
       }
-      await generateCampaignVideo({ postId: post.id, orchestration: approved.orchestration, allowPaidApi: true });
+      await approveCampaignImageAndGenerateVideo(post.id, true);
     }
     await loadPosts();
-    setNotice({ type: 'success', text: 'Image validée : génération vidéo lancée.' });
+    setNotice({ type: 'success', text: 'Image validée : job vidéo lancé côté serveur.' });
+  });
+
+  const pairWorker = () => act('worker-pair', async () => {
+    await pairCampaignLocalWorker('Elynea Local — ' + (selectedBrand?.name || 'Cockpit'));
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    const status = await loadWorker();
+    if (!status.online) throw new Error('Appairage enregistré mais le worker local n’a pas encore envoyé son heartbeat.');
+    setNotice({ type: 'success', text: 'Moteur local appairé et en ligne.' });
   });
 
   const rejectImage = post => act('reject-' + post.id, async () => {
@@ -153,7 +182,6 @@ export default function Campaigns() {
   });
 
   const refreshVideo = post => act('video-' + post.id, async () => {
-    await refreshCampaignVideo(post);
     await loadPosts();
   });
 
@@ -181,6 +209,22 @@ export default function Campaigns() {
               {campaigns.map(c => <option key={c.id} value={c.id}>{c.name} · {c.phase}</option>)}
             </select>
           </label>}
+        </div>
+        <div className={"mt-4 rounded-xl border p-3 text-sm " + (worker.online ? "border-emerald-500/30 bg-emerald-500/5" : "border-amber-500/30 bg-amber-500/5")}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="font-semibold">Moteur local Elynea · {worker.online ? 'EN LIGNE' : worker.paired ? 'HORS LIGNE' : 'NON APPAIRÉ'}</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Agent PC {worker.local_agent_reachable ? 'détecté' : 'non détecté'} ·
+                {worker.cloud?.last_seen_at ? ' dernier heartbeat ' + new Date(worker.cloud.last_seen_at).toLocaleTimeString('fr-BE') : ' aucun heartbeat'}
+              </div>
+              {worker.cloud?.capabilities?.checkpoints?.length > 0 && <div className="mt-1 text-xs text-muted-foreground">{worker.cloud.capabilities.checkpoints.length} checkpoint(s) image · {(worker.cloud.capabilities.video_workflows || []).filter(w => w.available).length} workflow(s) vidéo</div>}
+            </div>
+            <Button size="sm" variant={worker.online ? "outline" : "default"} onClick={pairWorker} disabled={busy === 'worker-pair'}>
+              {busy === 'worker-pair' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+              {worker.paired ? 'Réappairer' : 'Appairer le PC'}
+            </Button>
+          </div>
         </div>
       </section>
 
@@ -210,12 +254,31 @@ export default function Campaigns() {
             <label className="text-xs font-medium"># obligatoires<input className={input + ' mt-1'} value={brandForm.hashtags_required_text || ''} onChange={e => setBrandForm(v => ({ ...v, hashtags_required_text: e.target.value }))} /></label>
             <label className="text-xs font-medium"># recommandés<input className={input + ' mt-1'} value={brandForm.hashtags_recommended_text || ''} onChange={e => setBrandForm(v => ({ ...v, hashtags_recommended_text: e.target.value }))} /></label>
             <label className="text-xs font-medium"># interdits<input className={input + ' mt-1'} value={brandForm.hashtags_forbidden_text || ''} onChange={e => setBrandForm(v => ({ ...v, hashtags_forbidden_text: e.target.value }))} /></label>
+            <label className="text-xs font-medium">Moteur image
+              <select className={input + ' mt-1'} value={brandForm.image_engine || 'auto'} onChange={e => setBrandForm(v => ({ ...v, image_engine: e.target.value }))}>
+                <option value="auto">AUTO — local prioritaire</option><option value="local">LOCAL uniquement</option><option value="api">API xAI</option>
+              </select>
+            </label>
+            <label className="text-xs font-medium">Checkpoint image local
+              <select className={input + ' mt-1'} value={brandForm.local_image_checkpoint || ''} onChange={e => setBrandForm(v => ({ ...v, local_image_checkpoint: e.target.value }))}>
+                <option value="">Premier checkpoint compatible</option>
+                {(worker.cloud?.capabilities?.checkpoints || []).map(name => <option key={name} value={name}>{name}</option>)}
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(brandForm.fallback_image_to_api)} onChange={e => setBrandForm(v => ({ ...v, fallback_image_to_api: e.target.checked }))} /> Fallback image xAI après confirmation payante</label>
+            <div />
             <label className="text-xs font-medium">Moteur vidéo
               <select className={input + ' mt-1'} value={brandForm.video_engine || 'auto'} onChange={e => setBrandForm(v => ({ ...v, video_engine: e.target.value }))}>
                 <option value="auto">AUTO — local prioritaire</option><option value="local">LOCAL uniquement</option><option value="api">API xAI</option>
               </select>
             </label>
-            <label className="flex items-center gap-2 text-sm mt-6"><input type="checkbox" checked={Boolean(brandForm.fallback_to_api)} onChange={e => setBrandForm(v => ({ ...v, fallback_to_api: e.target.checked }))} /> Autoriser le fallback API après confirmation payante</label>
+            <label className="text-xs font-medium">Workflow vidéo local
+              <select className={input + ' mt-1'} value={brandForm.local_workflow_id || ''} onChange={e => setBrandForm(v => ({ ...v, local_workflow_id: e.target.value }))}>
+                <option value="">Premier workflow compatible</option>
+                {(worker.cloud?.capabilities?.video_workflows || []).filter(item => item.available).map(item => <option key={item.id} value={item.id}>{item.label || item.id}</option>)}
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(brandForm.fallback_to_api)} onChange={e => setBrandForm(v => ({ ...v, fallback_to_api: e.target.checked }))} /> Fallback vidéo xAI après confirmation payante</label>
           </div>
           <Button onClick={saveBrand} disabled={busy === 'brand-save'}>{busy === 'brand-save' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}Enregistrer l’ADN</Button>
         </section>
@@ -241,7 +304,8 @@ export default function Campaigns() {
               <textarea className={input + ' min-h-28'} placeholder="Ex. Prépare un post d’ouverture du recrutement 2027 avec suspense, CTA inscription et visuel vertical premium." value={postForm.brief} onChange={e => setPostForm(v => ({ ...v, brief: e.target.value }))} />
               <div className="flex flex-wrap items-center gap-4">
                 {['facebook','instagram','tiktok'].map(platform => <label key={platform} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={postForm.platforms.includes(platform)} onChange={e => setPostForm(v => ({ ...v, platforms: e.target.checked ? [...v.platforms, platform] : v.platforms.filter(p => p !== platform) }))} />{platform}</label>)}
-                <select className={input + ' max-w-52'} value={postForm.video_engine} onChange={e => setPostForm(v => ({ ...v, video_engine: e.target.value }))}><option value="auto">Vidéo AUTO</option><option value="local">Vidéo LOCAL</option><option value="api">Vidéo API</option></select>
+                <select className={input + ' max-w-52'} value={postForm.image_engine} onChange={e => setPostForm(v => ({ ...v, image_engine: e.target.value }))}><option value="">Image : moteur de la marque</option><option value="auto">Image AUTO</option><option value="local">Image LOCAL</option><option value="api">Image API</option></select>
+                <select className={input + ' max-w-52'} value={postForm.video_engine} onChange={e => setPostForm(v => ({ ...v, video_engine: e.target.value }))}><option value="">Vidéo : moteur de la marque</option><option value="auto">Vidéo AUTO</option><option value="local">Vidéo LOCAL</option><option value="api">Vidéo API</option></select>
               </div>
               <Button onClick={createPost} disabled={busy === 'post-create'}><Plus className="w-4 h-4 mr-2" />Créer le contenu</Button>
             </section>
@@ -264,9 +328,14 @@ export default function Campaigns() {
 
                 {(post.copy?.facebook || post.copy?.instagram || post.copy?.tiktok?.caption) && <details className="rounded-xl border border-border p-3"><summary className="cursor-pointer text-sm font-medium">Textes & référencement</summary><div className="grid gap-3 lg:grid-cols-3 mt-3 text-xs"><div><strong>Facebook</strong><p className="whitespace-pre-wrap mt-1 text-muted-foreground">{post.copy?.facebook}</p><p className="mt-2 text-primary">{(post.hashtags?.facebook || []).join(' ')}</p></div><div><strong>Instagram</strong><p className="whitespace-pre-wrap mt-1 text-muted-foreground">{post.copy?.instagram}</p><p className="mt-2 text-primary">{(post.hashtags?.instagram || []).join(' ')}</p></div><div><strong>TikTok</strong><p className="mt-1">{post.copy?.tiktok?.hook}</p><p className="whitespace-pre-wrap mt-1 text-muted-foreground">{post.copy?.tiktok?.caption}</p><p className="mt-2 text-primary">{(post.hashtags?.tiktok || []).join(' ')}</p></div></div></details>}
 
-                {post.image_url && <div className="grid gap-4 lg:grid-cols-[minmax(0,460px)_1fr]"><img src={post.image_url} alt={post.seo?.alt_text || post.title} className="w-full max-h-[520px] object-contain rounded-xl border bg-black/5" /><div className="space-y-3"><div className="rounded-xl border p-3 text-xs"><strong>Image</strong><p className="mt-1 text-muted-foreground">{post.image_status}</p></div>{post.image_status === 'review' && <div className="flex flex-wrap gap-2"><Button onClick={() => approveAndAnimate(post)} disabled={busy === 'approve-' + post.id}><CheckCircle2 className="w-4 h-4 mr-2" />Valider + générer vidéo</Button><Button variant="outline" onClick={() => rejectImage(post)}><XCircle className="w-4 h-4 mr-2" />Refuser</Button></div>}<details className="rounded-xl border p-3"><summary className="cursor-pointer text-xs font-medium">Prompts ADN</summary><p className="mt-2 text-xs whitespace-pre-wrap text-muted-foreground">{post.image_prompt}</p><hr className="my-3 border-border" /><p className="text-xs whitespace-pre-wrap text-muted-foreground">{post.video_prompt}</p></details></div></div>}
+                {post.image_status !== 'none' && <div className="rounded-xl border border-border p-3 text-xs">
+                  <strong>Image · {post.image_provider || post.image_engine || 'auto'}</strong>
+                  <p className="mt-1 text-muted-foreground">{post.image_status}{post.image_job_id ? ' · ' + post.image_job_id : ''}</p>
+                  {post.image_error && <p className="mt-1 text-red-600">{post.image_error}</p>}
+                </div>}
+                {post.image_url && <div className="grid gap-4 lg:grid-cols-[minmax(0,460px)_1fr]"><img src={post.image_url} alt={post.seo?.alt_text || post.title} className="w-full max-h-[520px] object-contain rounded-xl border bg-black/5" /><div className="space-y-3">{post.image_status === 'review' && <div className="flex flex-wrap gap-2"><Button onClick={() => approveAndAnimate(post)} disabled={busy === 'approve-' + post.id}><CheckCircle2 className="w-4 h-4 mr-2" />Valider + générer vidéo</Button><Button variant="outline" onClick={() => rejectImage(post)}><XCircle className="w-4 h-4 mr-2" />Refuser</Button></div>}<details className="rounded-xl border p-3"><summary className="cursor-pointer text-xs font-medium">Prompts ADN</summary><p className="mt-2 text-xs whitespace-pre-wrap text-muted-foreground">{post.image_prompt}</p><hr className="my-3 border-border" /><p className="text-xs whitespace-pre-wrap text-muted-foreground">{post.video_prompt}</p></details></div></div>}
 
-                {post.video_job_id && <div className="rounded-xl border border-border p-3 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><Film className="w-4 h-4 text-primary" /><div><p className="text-sm font-medium">Vidéo · {post.video_provider}</p><p className="text-xs text-muted-foreground">{post.video_status} · {post.video_job_id}</p></div></div><Button size="sm" variant="outline" onClick={() => refreshVideo(post)} disabled={busy === 'video-' + post.id}><RefreshCw className={'w-3.5 h-3.5 mr-2 ' + (busy === 'video-' + post.id ? 'animate-spin' : '')} />Actualiser</Button>{post.video_url && <video controls src={post.video_url} className="w-full max-h-[420px] rounded-lg bg-black" />}</div>}
+                {post.video_job_id && <div className="rounded-xl border border-border p-3 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><Film className="w-4 h-4 text-primary" /><div><p className="text-sm font-medium">Vidéo · {post.video_provider}</p><p className="text-xs text-muted-foreground">{post.video_status} · {post.video_job_id}</p>{post.video_error && <p className="text-xs text-red-600">{post.video_error}</p>}</div></div><Button size="sm" variant="outline" onClick={() => refreshVideo(post)} disabled={busy === 'video-' + post.id}><RefreshCw className={'w-3.5 h-3.5 mr-2 ' + (busy === 'video-' + post.id ? 'animate-spin' : '')} />Actualiser</Button>{post.video_url && <video controls src={post.video_url} className="w-full max-h-[420px] rounded-lg bg-black" />}</div>}
               </article>
             ))}
             {campaignId && posts.length === 0 && <div className={panel + ' text-center text-sm text-muted-foreground py-10'}>Aucun contenu pour cette campagne.</div>}

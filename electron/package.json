@@ -53,7 +53,8 @@
           "install-windows.ps1",
           "repair-music-motion-windows.ps1",
           "music-motion-*.mjs",
-          "music_motion_document.py"
+          "music_motion_document.py",
+          "campaign-worker.mjs"
         ]
       },
       {

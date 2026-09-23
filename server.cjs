@@ -246,8 +246,13 @@ try {
 // ── Campagnes multi-marques : ADN → contenu → image → validation → vidéo ─
 try {
   const campaignsRouter = require('./server-campaigns.cjs');
+  const campaignEngine = require('./server-campaign-engine.cjs');
+  const campaignWorker = require('./server-campaign-worker.cjs');
+  // Le worker local s'authentifie par jeton dédié. Il ne reçoit jamais de session Cockpit.
+  app.use('/api/campaign-worker', campaignWorker.workerRouter);
   app.use('/api/campaigns', requireSession('admin'), requirePermission('campaigns', 'admin'), campaignsRouter.router);
-  console.log('✅ Route /api/campaigns activée (multi-marques + ADN GitHub + orchestration média)');
+  const campaignScheduler = campaignEngine.startCampaignGenerationScheduler();
+  console.log(`✅ Route /api/campaigns activée (ADN canonique + moteur image/vidéo + worker ${campaignScheduler.started ? 'actif' : campaignScheduler.reason})`);
 } catch (e) {
   console.warn('⚠️ Route campagnes indisponible:', e.message);
 }

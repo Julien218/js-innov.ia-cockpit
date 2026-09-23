@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const { brandPrompt, normalizeBrand, normalizeDraft } = require('../server-campaigns-core.cjs');
 const { allowedImageHost } = require('../server-campaigns.cjs');
 const { resolveRegistryBrand } = require('../server-brand-canonical.cjs');
+const { formatForPost } = require('../server-campaign-engine.cjs');
+const { hashToken } = require('../server-campaign-worker.cjs');
 
 const context = {
   brand: {
@@ -39,8 +41,10 @@ test('normalizeDraft force les hashtags obligatoires et retire les interdits', (
 });
 
 test('normalizeBrand conserve la politique moteur par marque', () => {
-  const brand = normalizeBrand({ name: 'X', slug: 'X', video_engine: 'local', fallback_to_api: true, hashtags_required: ['#X'] }, 'jsinnovia');
+  const brand = normalizeBrand({ name: 'X', slug: 'X', image_engine: 'api', fallback_image_to_api: true, video_engine: 'local', fallback_to_api: true, hashtags_required: ['#X'] }, 'jsinnovia');
   assert.equal(brand.slug, 'x');
+  assert.equal(brand.image_engine, 'api');
+  assert.equal(brand.fallback_image_to_api, true);
   assert.equal(brand.video_engine, 'local');
   assert.equal(brand.fallback_to_api, true);
 });
@@ -64,4 +68,19 @@ test('une marque inconnue est bloquée au lieu de reprendre JS-Innov.IA', () => 
     () => resolveRegistryBrand({ slug: 'marque-inconnue', name: 'Marque inconnue', site_url: 'https://unknown.invalid' }),
     /BLOCK_BRAND_CONTEXT_REQUIRED/
   );
+});
+
+
+test('format social privilégie le vertical pour Instagram/TikTok', () => {
+  assert.equal(formatForPost({ platforms: ['tiktok'] }), '9:16');
+  assert.equal(formatForPost({ platforms: ['instagram'] }), '9:16');
+  assert.equal(formatForPost({ platforms: ['facebook'] }), '1:1');
+});
+
+test('le jeton worker est stocké sous forme de hash irréversible', () => {
+  const token = 'abcdefghijklmnopqrstuvwxyz_ABCDEFGH1234567890';
+  const digest = hashToken(token);
+  assert.equal(digest.length, 64);
+  assert.notEqual(digest, token);
+  assert.equal(hashToken(token), digest);
 });
