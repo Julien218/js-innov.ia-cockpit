@@ -15,7 +15,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     close: () => ipcRenderer.send("window-close"),
   },
   webAssistant: {
-    execute: (task) => ipcRenderer.invoke("nova-web-assistant-execute", task),
+    execute: (task) => ipcRenderer.invoke("elynea-web-assistant-execute", task),
+  },
+  jarvis: {
+    capabilities: () => ipcRenderer.invoke("elynea-tool-capabilities"),
+    route: (task) => ipcRenderer.invoke("elynea-tool-route", task),
+    execute: (task, confirmed = false) => ipcRenderer.invoke("elynea-jarvis-execute", { task, confirmed }),
   },
   localVoice: {
     transcribe: ({ bytes, mimeType }) => ipcRenderer.invoke("elynea-local-voice-transcribe", { bytes, mimeType }),

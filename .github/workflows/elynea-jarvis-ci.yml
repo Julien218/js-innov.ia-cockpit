@@ -1,0 +1,29 @@
+name: Elynea Jarvis CI
+
+on:
+  pull_request:
+    paths:
+      - "electron/**"
+      - "src/pages/Agent.jsx"
+      - "tests/elynea-*.test.cjs"
+      - "package.json"
+  push:
+    branches: [main]
+    paths:
+      - "electron/**"
+      - "src/pages/Agent.jsx"
+      - "tests/elynea-*.test.cjs"
+      - "package.json"
+
+jobs:
+  jarvis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:elynea
+      - run: npm run build

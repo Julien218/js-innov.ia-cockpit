@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "start": "node server.cjs",
     "test": "node --require ./tests/node-test-globals.cjs --test tests/*.test.cjs",
-    "test:official-email": "node --test tests/official-email.test.cjs"
+    "test:official-email": "node --test tests/official-email.test.cjs",
+    "test:elynea": "node --test tests/elynea-tool-router.test.cjs tests/elynea-jarvis-executor.test.cjs"
   },
   "dependencies": {
     "@base44/sdk": "^0.8.41",

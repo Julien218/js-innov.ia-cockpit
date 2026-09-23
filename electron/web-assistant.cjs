@@ -101,7 +101,7 @@ function domStepScript(task, stage) {
 async function saveEvidence(win, app, taskId) {
   const image = await win.webContents.capturePage();
   const bytes = image.toPNG();
-  const folder = path.join(app.getPath('userData'), 'nova-evidence');
+  const folder = path.join(app.getPath('userData'), 'elynea-evidence');
   fs.mkdirSync(folder, { recursive: true });
   const file = path.join(folder, `${taskId}.png`);
   fs.writeFileSync(file, bytes);
@@ -113,7 +113,7 @@ function createWebAssistant({ app, getParentWindow }) {
 
   async function execute(rawTask) {
     const task = sanitizeWebTask(rawTask);
-    if (activeWindow && !activeWindow.isDestroyed()) throw new Error('Une tâche web NOVA est déjà ouverte.');
+    if (activeWindow && !activeWindow.isDestroyed()) throw new Error('Une tâche web Elynea est déjà ouverte.');
     const taskId = crypto.randomUUID();
     let stage = 'domain';
     let lastProgress = Date.now();
@@ -123,12 +123,13 @@ function createWebAssistant({ app, getParentWindow }) {
       width: 1220,
       height: 820,
       parent: getParentWindow?.() || undefined,
-      title: `NOVA · IONOS · ${task.domain}`,
+      title: `Elynea · IONOS · ${task.domain}`,
       autoHideMenuBar: true,
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
         sandbox: true,
+        // Identifiant historique conservé pour réutiliser les cookies/session IONOS des installations existantes.
         partition: 'persist:nova-web-ionos',
       },
     });
@@ -185,7 +186,7 @@ function createWebAssistant({ app, getParentWindow }) {
             return;
           }
           if (Date.now() - lastProgress > 90_000) {
-            return finish(new Error(`NOVA s'est arrêtée sans modifier IONOS : étape introuvable (${step?.reason || stage}).`));
+            return finish(new Error(`Elynea s'est arrêtée sans modifier IONOS : étape introuvable (${step?.reason || stage}).`));
           }
         } catch (error) {
           if (!/destroyed|navigation|frame/i.test(String(error.message))) finish(error);

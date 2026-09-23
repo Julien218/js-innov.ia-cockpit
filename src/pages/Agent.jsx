@@ -6,12 +6,13 @@ import { fr } from "date-fns/locale";
 import { shouldUseLocalFirst } from "@/lib/nova-routing";
 import { executeNovaClientAction } from '@/lib/novaClientAction';
 
-const LOCAL_AGENT_URL = "http://127.0.0.1:8787";
+const LOCAL_AGENT_URLS = ["http://127.0.0.1:8788", "http://127.0.0.1:8787"];
+let activeLocalAgentUrl = LOCAL_AGENT_URLS[0];
 const STORAGE_KEY = "jsinnovia_ai_provider";
 const STORAGE_MODEL = "jsinnovia_ai_model";
 const CONVERSATION_ID = "main";
 
-const GREETING = "Bonjour Julien 👋 Je suis NOVA, l’assistante unique du Cockpit JS-Innov.IA. J’utilise le Cloud pour l’orchestration et les tâches complexes, et l’IA locale pour les outils Windows, les fichiers et le mode hors connexion.";
+const GREETING = "Bonjour Julien 👋 Je suis Elynea, l’assistante unique du Cockpit JS-Innov.IA. Je combine automatiquement le runtime local et les services connectés selon la tâche.";
 
 const SUGGESTIONS = [
   "Résume mes projets en cours",
@@ -20,9 +21,9 @@ const SUGGESTIONS = [
   "Crée une tâche urgente pour un projet",
 ];
 
-const SYSTEM_PROMPT = `Tu es NOVA, l’unique assistante et architecte du Cockpit JS-Innov.IA.
+const SYSTEM_PROMPT = `Tu es Elynea, l’unique assistante et architecte du Cockpit JS-Innov.IA.
 Tu travailles par défaut pour JS-Innov.IA et Julien Pagin. Assurances-Dour.be est un périmètre séparé dont tu utilises l’identité uniquement pour sa boîte email ou ses opérations explicites.
-Base44 n’est jamais un prérequis : utilise en priorité les capacités internes NOVA, le Cockpit, Windows local et les connexions GitHub/Railway disponibles.
+Base44 n’est jamais un prérequis : utilise en priorité les capacités internes Elynea, le Cockpit, Windows local et les connexions GitHub/Railway disponibles.
 Tu aides avec clients, projets, tâches, leads, devis, factures, automatisation, création web, branding et IA.
 Conserve le contexte des messages précédents, notamment les références courtes comme « lui », « ajoute-le », « sur le net BCE ».
 Avant de poser une question, exploite les données, outils et valeurs internes par défaut déjà disponibles. Ne transforme jamais une demande d’architecture en questionnaire générique.
@@ -58,14 +59,18 @@ export default function AgentPage() {
   const [agentModels, setAgentModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem(STORAGE_MODEL) || "");
   const [agentStatus, setAgentStatus] = useState("checking");
+  const [activeLocalPort, setActiveLocalPort] = useState(8788);
   const [activeEngine, setActiveEngine] = useState("cloud");
   const [showProviderMenu, setShowProviderMenu] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
 
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const providerRef = useRef(null);
   const modelRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -86,10 +91,16 @@ export default function AgentPage() {
   const checkAgent = useCallback(async () => {
     setAgentStatus("checking");
     try {
-      const res = await fetch(`${LOCAL_AGENT_URL}/health`, { signal: AbortSignal.timeout(4000) });
-      if (!res.ok) throw new Error("offline");
+      let res = null;
+      for (const baseUrl of LOCAL_AGENT_URLS) {
+        try {
+          const candidate = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(2500) });
+          if (candidate.ok) { res = candidate; activeLocalAgentUrl = baseUrl; setActiveLocalPort(Number(new URL(baseUrl).port)); break; }
+        } catch { /* essayer le port de compatibilité */ }
+      }
+      if (!res?.ok) throw new Error("offline");
       try {
-        const modelsRes = await fetch(`${LOCAL_AGENT_URL}/api/agent/models`, { signal: AbortSignal.timeout(3000) });
+        const modelsRes = await fetch(`${activeLocalAgentUrl}/api/agent/models`, { signal: AbortSignal.timeout(3000) });
         if (modelsRes.ok) {
           const modelsData = await modelsRes.json();
           const rawModels = Array.isArray(modelsData) ? modelsData : (modelsData.models || modelsData.data || []);
@@ -149,7 +160,7 @@ export default function AgentPage() {
       role: item.role === "assistant" ? "assistant" : "user",
       content: item.content,
     }));
-    const res = await fetch(`${LOCAL_AGENT_URL}/api/agent/chat`, {
+    const res = await fetch(`${activeLocalAgentUrl}/api/agent/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -185,14 +196,14 @@ export default function AgentPage() {
       return sendToCloud(msg);
     }
     if (provider === "local") {
-      if (agentStatus !== "online") throw new Error("Agent Local (8787) non accessible en mode Local uniquement");
+      if (agentStatus !== "online") throw new Error(`Agent Local (${activeLocalPort || 8788}) non accessible en mode Local uniquement`);
       const result = await sendToLocal(msg);
       await persistMessages([{ role: 'user', content: msg }, { role: 'assistant', content: result.response }]);
       setActiveEngine("local");
       return result;
     }
 
-    // Mode NOVA automatique : le Cloud orchestre les demandes métier/complexes.
+    // Mode Elynea automatique : le Cloud orchestre les demandes métier/complexes.
     // Le local est prioritaire uniquement pour une opération locale explicite ou un échange très simple.
     if (shouldUseLocalFirst(msg, agentStatus === "online")) {
       try {
@@ -208,6 +219,48 @@ export default function AgentPage() {
     return sendToCloud(msg);
   };
 
+  const speakElynea = useCallback((text) => {
+    if (localStorage.getItem("agent_tts_enabled") !== "true") return;
+    if (!("speechSynthesis" in window) || !text) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(String(text).replace(/[*#_]/g, ""));
+    utterance.lang = "fr-BE";
+    utterance.rate = 1;
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  const toggleVoice = async () => {
+    if (voiceListening) {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+    setVoiceError("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const chunks = [];
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => { if (event.data?.size) chunks.push(event.data); };
+      recorder.onstop = async () => {
+        setVoiceListening(false);
+        stream.getTracks().forEach((track) => track.stop());
+        try {
+          const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+          const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
+          if (!window.electronAPI?.localVoice?.transcribe) throw new Error("Transcription locale disponible uniquement dans l’application Cockpit desktop.");
+          const result = await window.electronAPI.localVoice.transcribe({ bytes, mimeType: blob.type });
+          if (!result?.transcript) throw new Error("Aucune parole détectée.");
+          await send(result.transcript);
+        } catch (error) { setVoiceError(error.message); }
+      };
+      recorder.start();
+      setVoiceListening(true);
+    } catch (error) {
+      setVoiceListening(false);
+      setVoiceError(error.message || "Microphone indisponible.");
+    }
+  };
+
   const send = async (text) => {
     const msg = (text || input).trim();
     if (!msg || loading) return;
@@ -217,6 +270,7 @@ export default function AgentPage() {
     try {
       const result = await runCompanion(msg);
       setMessages((prev) => [...prev, { role: "assistant", content: result.response, ts: new Date() }]);
+      speakElynea(result.response);
       setConfirmation(result.confirmation || null);
     } catch (error) {
       setMessages((prev) => [...prev, { role: "assistant", content: `❌ ${error.message}`, ts: new Date(), error: true }]);
@@ -253,7 +307,7 @@ export default function AgentPage() {
     try {
       await fetch(`/api/assistant/history?conversation_id=${CONVERSATION_ID}`, { method: 'DELETE', credentials: 'same-origin' });
     } finally {
-      setMessages([{ role: "assistant", content: "Conversation réinitialisée. Je reste NOVA, ton assistante unique. Comment puis-je t’aider ?", ts: new Date() }]);
+      setMessages([{ role: "assistant", content: "Conversation réinitialisée. Je reste Elynea, ton assistante unique. Comment puis-je t’aider ?", ts: new Date() }]);
       setConfirmation(null);
     }
   };
@@ -261,13 +315,13 @@ export default function AgentPage() {
   const providerBadge = provider === "auto"
     ? {
         icon: agentStatus === "online" ? <Wifi className="w-3 h-3 text-emerald-500" /> : <Cloud className="w-3 h-3 text-primary" />,
-        label: agentStatus === "checking" ? "Companion · vérification…" : agentStatus === "online" ? `Companion · ${activeEngine === "local" ? "Local" : "Cloud"} · 8787 disponible` : "Companion · Cloud actif · Local indisponible",
+        label: agentStatus === "checking" ? "Companion · vérification…" : agentStatus === "online" ? `Companion · ${activeEngine === "local" ? "Local" : "Cloud"} · ${activeLocalPort} disponible` : "Companion · Cloud actif · Local indisponible",
         color: agentStatus === "online" ? "text-emerald-500" : "text-primary",
       }
     : provider === "local"
       ? {
           icon: agentStatus === "online" ? <Wifi className="w-3 h-3 text-emerald-500" /> : <WifiOff className="w-3 h-3 text-red-500" />,
-          label: agentStatus === "checking" ? "Connexion…" : agentStatus === "online" ? `Local 8787${selectedModel ? " · " + selectedModel : ""}` : "Local 8787 offline",
+          label: agentStatus === "checking" ? "Connexion…" : agentStatus === "online" ? `Local ${activeLocalPort}${selectedModel ? " · " + selectedModel : ""}` : "Local indisponible",
           color: agentStatus === "online" ? "text-emerald-500" : "text-red-500",
         }
       : { icon: <Cloud className="w-3 h-3 text-primary" />, label: "Cloud · JS-Innov.IA", color: "text-primary" };
@@ -299,7 +353,7 @@ export default function AgentPage() {
                 </button>
                 <button onClick={() => switchProvider("local")} className={cn("w-full flex items-start gap-3 px-3 py-2.5 hover:bg-accent transition-colors text-left border-t border-border", provider === "local" && "bg-accent/50")}>
                   <Server className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
-                  <div><div className="text-sm font-medium">Local uniquement (8787)</div><div className="text-[10px] text-muted-foreground">Ollama + fichiers + outils du PC</div><div className={cn("text-[10px] mt-0.5", agentStatus === "online" ? "text-emerald-500" : "text-red-500")}>{agentStatus === "online" ? "✓ Connecté" : "✗ Hors ligne"}</div></div>
+                  <div><div className="text-sm font-medium">Local uniquement (auto 8788 → 8787)</div><div className="text-[10px] text-muted-foreground">Ollama + fichiers + outils du PC</div><div className={cn("text-[10px] mt-0.5", agentStatus === "online" ? "text-emerald-500" : "text-red-500")}>{agentStatus === "online" ? "✓ Connecté" : "✗ Hors ligne"}</div></div>
                 </button>
                 <button onClick={() => switchProvider("cloud")} className={cn("w-full flex items-start gap-3 px-3 py-2.5 hover:bg-accent transition-colors text-left border-t border-border", provider === "cloud" && "bg-accent/50")}>
                   <Cloud className="w-4 h-4 text-primary mt-0.5 shrink-0" />
@@ -379,10 +433,10 @@ export default function AgentPage() {
 
       <div className="px-3 sm:px-6 py-3 border-t border-border bg-card shrink-0 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
         <form onSubmit={(event) => { event.preventDefault(); send(); }} className="flex gap-2 items-end">
-          <input ref={inputRef} type="text" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Écrire à NOVA…" disabled={loading} className="flex-1 bg-background border border-border rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 disabled:opacity-50" />
+          <input ref={inputRef} type="text" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Écrire à Elynea…" disabled={loading} className="flex-1 bg-background border border-border rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 disabled:opacity-50" />
           <button type="submit" disabled={loading || !input.trim()} className="rounded-2xl gradient-primary p-2.5 text-white disabled:opacity-40 hover:opacity-90 transition-opacity shrink-0">{loading ? <Loader2 className="w-4 h-4 text-white animate-spin" /> : <Send className="w-4 h-4 text-white" />}</button>
         </form>
-        <p className="text-center text-[10px] text-muted-foreground mt-2 hidden sm:block">Mémoire persistante · Cloud JS-Innov.IA · Agent Local 8787 optionnel · actions sensibles confirmées</p>
+        <p className="text-center text-[10px] text-muted-foreground mt-2 hidden sm:block">Mémoire persistante · Cloud JS-Innov.IA · Agent Local auto 8788 → 8787 · actions sensibles confirmées</p>
       </div>
     </div>
   );
