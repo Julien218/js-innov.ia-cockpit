@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const { loadCanonicalBrand } = require('./server-brand-canonical.cjs');
 
 const CRM_URL = process.env.SUPABASE_CRM_URL || 'https://gfjpryakxzdzwnazlsfz.supabase.co';
 const CRM_KEY = process.env.SUPABASE_CRM_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '';
@@ -34,38 +35,26 @@ async function one(table, id, org) {
   const rows = await crm(table + '?id=eq.' + encodeURIComponent(id) + '&organisation_id=eq.' + encodeURIComponent(org) + '&limit=1');
   return rows && rows[0] || null;
 }
-async function githubBible(brand) {
-  const repo = clean(brand && brand.github_repository, 240);
-  const filePath = clean(brand && brand.github_path, 600);
-  const ref = clean((brand && brand.github_ref) || 'main', 180) || 'main';
-  if (!repo || !filePath || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) {
-    return { text: '', source: 'stored-profile', repository: repo || null, path: filePath || null, ref: ref, sha: null };
-  }
-  const endpoint = 'https://api.github.com/repos/' + repo + '/contents/' + filePath.split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(ref);
-  const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'jsinnovia-campaigns' };
-  if (GITHUB_TOKEN) headers.Authorization = 'Bearer ' + GITHUB_TOKEN;
-  const response = await fetch(endpoint, { headers: headers, signal: AbortSignal.timeout(15000) });
-  if (!response.ok) return { text: '', source: 'github-unavailable', repository: repo, path: filePath, ref: ref, sha: null, warning: 'GitHub HTTP ' + response.status };
-  const data = await response.json();
-  if (data.type !== 'file' || data.encoding !== 'base64' || !data.content) {
-    return { text: '', source: 'github-not-file', repository: repo, path: filePath, ref: ref, sha: data.sha || null, warning: 'La Bible ADN doit pointer vers un fichier texte ou Markdown.' };
-  }
-  return {
-    text: Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString('utf8').slice(0, 120000),
-    source: 'github', repository: repo, path: filePath, ref: ref, sha: data.sha || null, html_url: data.html_url || null
-  };
-}
 async function loadBrandContext(brand, campaign) {
-  const bible = await githubBible(brand);
+  const bible = await loadCanonicalBrand(brand);
+  const manifest = bible.manifest || {};
+  const storedRules = jsonValue(brand.visual_rules, {});
+  const canonicalForbidden = arr(manifest.agentPolicy?.forbidden || [], 80);
+  const visualRules = {
+    ...storedRules,
+    must: arr(storedRules.must || storedRules.required || [], 80),
+    avoid: Array.from(new Set([...arr(storedRules.avoid || storedRules.forbidden || [], 80), ...canonicalForbidden]))
+  };
   return {
     brand: {
-      id: brand.id, slug: brand.slug, name: brand.name, site_url: brand.site_url, skill_key: brand.skill_key,
-      tone: brand.tone, palette: jsonValue(brand.palette, {}), visual_rules: jsonValue(brand.visual_rules, {}),
+      id: brand.id, slug: bible.brand_id || brand.slug, name: manifest.brand || brand.name, site_url: brand.site_url, skill_key: brand.skill_key,
+      tone: brand.tone, palette: manifest.palette || jsonValue(brand.palette, {}), typography: manifest.typography || {}, assets: manifest.assets || manifest.canonicalAssets || {}, visual_rules: visualRules,
       seo_keywords: arr(jsonValue(brand.seo_keywords, [])), hashtags_required: arr(jsonValue(brand.hashtags_required, [])),
       hashtags_recommended: arr(jsonValue(brand.hashtags_recommended, [])), hashtags_forbidden: arr(jsonValue(brand.hashtags_forbidden, [])),
       brand_board_url: brand.brand_board_url || null, image_provider: brand.image_provider || 'base44',
       video_engine: brand.video_engine || 'auto', local_workflow_id: brand.local_workflow_id || '',
-      api_provider: brand.api_provider || 'xai', fallback_to_api: brand.fallback_to_api === true
+      api_provider: brand.api_provider || 'xai', fallback_to_api: brand.fallback_to_api === true,
+      canonical_manifest: { repository: bible.repository, ref: bible.ref, path: bible.manifest_path, sha: bible.manifest_sha, registry_version: bible.registry_version }
     },
     campaign: campaign ? {
       id: campaign.id, name: campaign.name, objective: campaign.objective, phase: campaign.phase,
@@ -83,10 +72,13 @@ function brandPrompt(context, brief, kind) {
     'MARQUE : ' + b.name,
     b.site_url ? 'SITE : ' + b.site_url : '',
     b.tone ? 'TON : ' + b.tone : '',
-    Object.keys(b.palette || {}).length ? 'PALETTE : ' + JSON.stringify(b.palette) : '',
+    Object.keys(b.palette || {}).length ? 'PALETTE CANONIQUE : ' + JSON.stringify(b.palette) : '',
+    Object.keys(b.typography || {}).length ? 'TYPOGRAPHIE CANONIQUE : ' + JSON.stringify(b.typography) : '',
+    Object.keys(b.assets || {}).length ? 'ASSETS CANONIQUES : ' + JSON.stringify(b.assets) : '',
     required.length ? 'OBLIGATOIRE : ' + required.join(' ; ') : '',
     forbidden.length ? 'INTERDIT : ' + forbidden.join(' ; ') : '',
-    context.bible && context.bible.text ? 'BIBLE ADN CANONIQUE (prioritaire) :\n' + context.bible.text : '',
+    context.bible && context.bible.manifest ? 'MANIFESTE ADN CANONIQUE (prioritaire) :\n' + JSON.stringify(context.bible.manifest) : '',
+    context.bible && context.bible.text ? 'BIBLE / RÈGLES ADN CANONIQUES :\n' + context.bible.text : '',
     b.brand_board_url ? 'PLANCHE ADN : ' + b.brand_board_url : '',
     context.campaign ? 'CAMPAGNE : ' + context.campaign.name + ' — objectif : ' + (context.campaign.objective || 'non précisé') + ' — phase : ' + (context.campaign.phase || 'préparation') : '',
     'DEMANDE : ' + clean(brief, 12000),
