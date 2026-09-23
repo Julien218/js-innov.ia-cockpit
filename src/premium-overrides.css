@@ -121,6 +121,7 @@ body:has(.cockpit-shell) {
 .cockpit-shell .cockpit-float-panel,
 .cockpit-shell .cockpit-float-tile,
 .cockpit-shell main .bg-card,
+.cockpit-shell main .bg-white,
 .cockpit-shell .premium-panel,
 .cockpit-shell .data-surface,
 .cockpit-shell .workspace-toolbar,
@@ -223,13 +224,17 @@ body:has(.cockpit-shell) {
  * Liseré d'or discret : un seul point lumineux voyage en permanence autour
  * des grandes cases au lieu d'électrifier tout le contour.
  */
-.cockpit-shell .cockpit-electric-frame {
+.cockpit-shell .cockpit-electric-frame,
+.cockpit-shell .premium-panel,
+.cockpit-shell .data-surface {
   position: relative;
   isolation: isolate;
   overflow: hidden;
 }
 
-.cockpit-shell .cockpit-electric-frame::before {
+.cockpit-shell .cockpit-electric-frame::before,
+.cockpit-shell .premium-panel::before,
+.cockpit-shell .data-surface::before {
   content: "";
   position: absolute;
   z-index: 5;
@@ -274,14 +279,11 @@ body:has(.cockpit-shell) {
   box-shadow: 0 24px 66px rgba(15, 23, 42, 0.16) !important;
 }
 
-/* Les contenus restent lisibles malgré les anciens utilitaires dark. */
-.cockpit-shell main .text-white:not(.premium-mail-route *),
-.cockpit-shell main .text-gray-100:not(.premium-mail-route *) {
-  color: hsl(var(--foreground));
-}
 
 @media (prefers-reduced-motion: reduce) {
-  .cockpit-shell .cockpit-electric-frame::before {
+  .cockpit-shell .cockpit-electric-frame::before,
+  .cockpit-shell .premium-panel::before,
+  .cockpit-shell .data-surface::before {
     animation: none;
     background: rgba(212, 175, 55, 0.28);
   }
