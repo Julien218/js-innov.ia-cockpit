@@ -68,7 +68,13 @@ async function activeWorker({ userId, org, kind, brand }) {
   }
   return null;
 }
+async function activeJob(postId,kind) {
+  const rows=await crm('campaign_generation_jobs?post_id=eq.'+encodeURIComponent(postId)+'&kind=eq.'+encodeURIComponent(kind)+'&status=in.(queued,claimed,submitting,submitted,running)&order=created_at.desc&limit=1');
+  return rows?.[0] || null;
+}
 async function createJob({ org,userId,postId,kind,engine,provider,payload,paidConsent=false }) {
+  const existing=await activeJob(postId,kind);
+  if(existing)return { ...existing, reused:true };
   return insert('campaign_generation_jobs',{
     organisation_id:org,user_id:String(userId),post_id:postId,kind,engine,provider:provider||engine,
     status:engine === 'local' ? 'queued' : 'submitting',payload,paid_consent:paidConsent,
@@ -221,6 +227,7 @@ async function startImageGeneration({ postId,org,userId,allowPaidApi=false }) {
   if (!apiAllowed) throw engineError('Moteur local indisponible et fallback image API désactivé.',503,'LOCAL_ENGINE_UNAVAILABLE');
   if (!allowPaidApi) throw engineError('La génération image xAI est payante et nécessite une confirmation.',409,'PAID_API_CONFIRMATION_REQUIRED');
   const job=await createJob({org,userId,postId:post.id,kind:'image',engine:'api',provider:'xai',paidConsent:true,payload:{prompt,format:formatForPost(post)}});
+  if(job.reused)return {engine:job.engine,job,reused:true};
   await patch('campaign_posts','id=eq.'+encodeURIComponent(post.id),{
     image_provider:'xai',image_job_id:job.id,image_status:'generating',image_error:null,image_prompt:prompt,status:'prepared'
   });
@@ -252,6 +259,7 @@ async function approveAndStartVideo({ postId,org,userId,allowPaidApi=false }) {
   if (!apiAllowed) throw engineError('Moteur local indisponible et fallback vidéo API désactivé.',503,'LOCAL_ENGINE_UNAVAILABLE');
   if (!allowPaidApi) throw engineError('La génération vidéo xAI est payante et nécessite une confirmation.',409,'PAID_API_CONFIRMATION_REQUIRED');
   const job=await createJob({org,userId,postId:post.id,kind:'video',engine:'api',provider:'xai',paidConsent:true,payload:{prompt,format:formatForPost(post),duration_seconds:8}});
+  if(job.reused)return {engine:job.engine,job,reused:true};
   await patch('campaign_posts','id=eq.'+encodeURIComponent(post.id),{
     video_provider:'xai',video_job_id:job.id,video_status:'generating',video_error:null,video_prompt:prompt,status:'video_generating'
   });
@@ -280,4 +288,4 @@ function startCampaignGenerationScheduler() {
   return {started:true,interval_ms:10000};
 }
 
-module.exports={ startImageGeneration,approveAndStartVideo,startCampaignGenerationScheduler,activeWorker,formatForPost,engineError };
+module.exports={ startImageGeneration,approveAndStartVideo,startCampaignGenerationScheduler,activeWorker,formatForPost,engineError,activeJob };
