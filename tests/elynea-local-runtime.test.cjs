@@ -33,7 +33,7 @@ test('une tâche caméra sans source exploitable conserve son blocage métier', 
 
 test('le runtime local Elynea expose l’analyse d’espace de travail en lecture seule', () => {
   const source = fs.readFileSync(path.join(root, 'local-agent', 'server.js'), 'utf8');
-  assert.match(source, /const VERSION = '1\.6\.0'/);
+  assert.match(source, /const VERSION = '1\.7\.0'/);
   assert.match(source, /workspace_task_analysis/);
   assert.match(source, /workspaceTaskAnalysis/);
   assert.match(source, /read_only:\s*true/);
