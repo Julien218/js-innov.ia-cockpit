@@ -51,7 +51,8 @@ async function loadBrandContext(brand, campaign) {
       tone: brand.tone, palette: manifest.palette || jsonValue(brand.palette, {}), typography: manifest.typography || {}, assets: manifest.assets || manifest.canonicalAssets || {}, visual_rules: visualRules,
       seo_keywords: arr(jsonValue(brand.seo_keywords, [])), hashtags_required: arr(jsonValue(brand.hashtags_required, [])),
       hashtags_recommended: arr(jsonValue(brand.hashtags_recommended, [])), hashtags_forbidden: arr(jsonValue(brand.hashtags_forbidden, [])),
-      brand_board_url: brand.brand_board_url || null, image_provider: brand.image_provider || 'base44',
+      brand_board_url: brand.brand_board_url || null, image_provider: brand.image_provider || 'xai',
+      image_engine: brand.image_engine || 'auto', local_image_checkpoint: brand.local_image_checkpoint || '', fallback_image_to_api: brand.fallback_image_to_api === true,
       video_engine: brand.video_engine || 'auto', local_workflow_id: brand.local_workflow_id || '',
       api_provider: brand.api_provider || 'xai', fallback_to_api: brand.fallback_to_api === true,
       canonical_manifest: { repository: bible.repository, ref: bible.ref, path: bible.manifest_path, sha: bible.manifest_sha, registry_version: bible.registry_version }
@@ -163,9 +164,10 @@ function normalizeBrand(body, org) {
     tone: clean(body.tone, 1000) || null, palette: jsonValue(body.palette, {}), visual_rules: jsonValue(body.visual_rules, {}),
     seo_keywords: arr(jsonValue(body.seo_keywords, [])), hashtags_required: arr(jsonValue(body.hashtags_required, [])),
     hashtags_recommended: arr(jsonValue(body.hashtags_recommended, [])), hashtags_forbidden: arr(jsonValue(body.hashtags_forbidden, [])),
-    image_provider: clean(body.image_provider || 'base44', 60), video_engine: ['auto','local','api'].includes(body.video_engine) ? body.video_engine : 'auto',
-    local_workflow_id: clean(body.local_workflow_id, 180) || null, api_provider: clean(body.api_provider || 'xai', 60),
-    fallback_to_api: body.fallback_to_api === true, active: body.active !== false, metadata: jsonValue(body.metadata, {}), updated_at: new Date().toISOString()
+    image_provider: clean(body.image_provider || 'xai', 60), image_engine: ['auto','local','api'].includes(body.image_engine) ? body.image_engine : 'auto',
+    local_image_checkpoint: clean(body.local_image_checkpoint, 240) || null, fallback_image_to_api: body.fallback_image_to_api === true,
+    video_engine: ['auto','local','api'].includes(body.video_engine) ? body.video_engine : 'auto', local_workflow_id: clean(body.local_workflow_id, 180) || null,
+    api_provider: clean(body.api_provider || 'xai', 60), fallback_to_api: body.fallback_to_api === true, active: body.active !== false, metadata: jsonValue(body.metadata, {}), updated_at: new Date().toISOString()
   };
 }
 
