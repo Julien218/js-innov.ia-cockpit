@@ -69,7 +69,7 @@ function priorityTone(task) {
 function KpiCard({ item, value, subtitle }) {
   const Icon = item.icon;
   return (
-    <div className={cn("cockpit-reference-kpi", `cockpit-kpi-${item.tone}`)}>
+    <div className={cn("cockpit-reference-kpi cockpit-electric-frame", `cockpit-kpi-${item.tone}`)}>
       <span className="cockpit-reference-kpi-icon"><Icon className="h-4 w-4" /></span>
       <div className="min-w-0">
         <p className="text-xl font-bold leading-none">{value}</p>
