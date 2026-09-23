@@ -129,7 +129,8 @@ function createWebAssistant({ app, getParentWindow }) {
         nodeIntegration: false,
         contextIsolation: true,
         sandbox: true,
-        partition: 'persist:elynea-web-ionos',
+        // Identifiant historique conservé pour réutiliser les cookies/session IONOS des installations existantes.
+        partition: 'persist:nova-web-ionos',
       },
     });
     activeWindow.removeMenu();
