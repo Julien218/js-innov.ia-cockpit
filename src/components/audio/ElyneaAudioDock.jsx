@@ -80,7 +80,9 @@ export default function ElyneaAudioDock() {
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(() => {
     const stored = Number(localStorage.getItem(VOLUME_KEY));
-    return Number.isFinite(stored) && stored >= 0 && stored <= 1 ? stored : 0.7;
+    // Répare automatiquement l'ancien état "1 %" qui pouvait rendre le Cockpit quasi muet.
+    if (Number.isFinite(stored) && stored > 0.02 && stored <= 1) return stored;
+    return 1;
   });
   const [audioOutputs, setAudioOutputs] = useState([]);
   const [outputId, setOutputId] = useState(() => localStorage.getItem(OUTPUT_KEY) || 'default');
@@ -134,6 +136,17 @@ export default function ElyneaAudioDock() {
     if (audioRef.current) audioRef.current.volume = volume;
   }, [volume]);
 
+  const resetVolume = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.muted = false;
+      audio.volume = 1;
+    }
+    setVolume(1);
+    localStorage.setItem(VOLUME_KEY, '1');
+    setNotice('Volume du lecteur Elynea rétabli à 100 %.');
+  }, []);
+
   const refreshAudioOutputs = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
     try {
@@ -184,6 +197,8 @@ export default function ElyneaAudioDock() {
     }
     try {
       await refreshAudioOutputs();
+      audio.muted = false;
+      audio.volume = volume;
       await audio.play();
       setPlaying(true);
       setNotice('');
@@ -191,7 +206,7 @@ export default function ElyneaAudioDock() {
       setPlaying(false);
       setNotice('Le navigateur bloque le démarrage automatique. Cliquez une première fois sur ▶ puis Elynea pourra piloter la musique.');
     }
-  }, [current, refreshAudioOutputs, tracks]);
+  }, [current, refreshAudioOutputs, tracks, volume]);
 
   const pause = useCallback(() => {
     audioRef.current?.pause();
@@ -361,6 +376,23 @@ export default function ElyneaAudioDock() {
             <p className="truncate text-xs font-semibold">{current?.name || 'Elynea Audio'}</p>
             <p className="truncate text-[10px] text-white/50">{current ? `${formatTime(time)} / ${formatTime(duration)}` : 'Bibliothèque Dropbox'}</p>
           </div>
+          <div className="hidden items-center gap-2 sm:flex">
+            <Volume2 className="h-4 w-4 text-white/55" />
+            <input
+              className="w-24 accent-amber-300"
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={volume}
+              onChange={event => setVolume(Number(event.target.value))}
+              aria-label="Volume Elynea"
+              title={`Volume Elynea ${Math.round(volume * 100)} %`}
+            />
+            <button type="button" onClick={resetVolume} className="rounded-md px-1.5 py-1 text-[10px] font-semibold text-amber-200 hover:bg-amber-300/10" title="Remettre le volume Elynea à 100 %">
+              {Math.round(volume * 100)}%
+            </button>
+          </div>
           <button type="button" onClick={() => step(-1)} className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white" title="Précédent"><ChevronLeft className="h-4 w-4" /></button>
           <button type="button" onClick={() => playing ? pause() : void play()} className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-300 text-black hover:bg-amber-200" title={playing ? 'Pause' : 'Lecture'}>
             {playing ? <Pause className="h-4 w-4 fill-current" /> : <Play className="h-4 w-4 fill-current" />}
@@ -436,6 +468,7 @@ export default function ElyneaAudioDock() {
                 <div className="flex items-center gap-2">
                   <Volume2 className="h-4 w-4 text-white/50" />
                   <input className="w-full accent-amber-300" type="range" min="0" max="1" step="0.01" value={volume} onChange={event => setVolume(Number(event.target.value))} aria-label="Volume musique" />
+                  <button type="button" onClick={resetVolume} className="rounded-lg border border-amber-300/25 px-2 py-1 text-[10px] font-semibold text-amber-200 hover:bg-amber-300/10">100 %</button>
                 </div>
                 <label className="grid gap-1 text-[10px] text-white/50">
                   Sortie audio
