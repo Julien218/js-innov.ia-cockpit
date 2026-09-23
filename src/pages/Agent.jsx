@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, Check, Send, ShieldCheck, Trash2, User, Loader2, Sparkles, X, Cpu, Cloud, Wifi, WifiOff, ChevronDown, Server } from "lucide-react";
+import { Bot, Check, Send, ShieldCheck, Trash2, User, Loader2, Sparkles, X, Cpu, Cloud, Wifi, WifiOff, ChevronDown, Server, Mic, Volume2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -62,11 +62,14 @@ export default function AgentPage() {
   const [activeEngine, setActiveEngine] = useState("cloud");
   const [showProviderMenu, setShowProviderMenu] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
 
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const providerRef = useRef(null);
   const modelRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -215,6 +218,47 @@ export default function AgentPage() {
     return sendToCloud(msg);
   };
 
+  const speakElynea = useCallback((text) => {
+    if (!("speechSynthesis" in window) || !text) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(String(text).replace(/[*#_]/g, ""));
+    utterance.lang = "fr-BE";
+    utterance.rate = 1;
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  const toggleVoice = async () => {
+    if (voiceListening) {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+    setVoiceError("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const chunks = [];
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => { if (event.data?.size) chunks.push(event.data); };
+      recorder.onstop = async () => {
+        setVoiceListening(false);
+        stream.getTracks().forEach((track) => track.stop());
+        try {
+          const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+          const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
+          if (!window.electronAPI?.localVoice?.transcribe) throw new Error("Transcription locale disponible uniquement dans l’application Cockpit desktop.");
+          const result = await window.electronAPI.localVoice.transcribe({ bytes, mimeType: blob.type });
+          if (!result?.transcript) throw new Error("Aucune parole détectée.");
+          await send(result.transcript);
+        } catch (error) { setVoiceError(error.message); }
+      };
+      recorder.start();
+      setVoiceListening(true);
+    } catch (error) {
+      setVoiceListening(false);
+      setVoiceError(error.message || "Microphone indisponible.");
+    }
+  };
+
   const send = async (text) => {
     const msg = (text || input).trim();
     if (!msg || loading) return;
@@ -224,6 +268,7 @@ export default function AgentPage() {
     try {
       const result = await runCompanion(msg);
       setMessages((prev) => [...prev, { role: "assistant", content: result.response, ts: new Date() }]);
+      speakElynea(result.response);
       setConfirmation(result.confirmation || null);
     } catch (error) {
       setMessages((prev) => [...prev, { role: "assistant", content: `❌ ${error.message}`, ts: new Date(), error: true }]);
