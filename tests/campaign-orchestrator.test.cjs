@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { brandPrompt, normalizeBrand, normalizeDraft } = require('../server-campaigns-core.cjs');
 const { allowedImageHost } = require('../server-campaigns.cjs');
+const { resolveRegistryBrand } = require('../server-brand-canonical.cjs');
 
 const context = {
   brand: {
@@ -47,4 +48,20 @@ test('normalizeBrand conserve la politique moteur par marque', () => {
 test('proxy image refuse les hôtes arbitraires', () => {
   assert.equal(allowedImageHost('media.base44.com'), true);
   assert.equal(allowedImageHost('evil.example'), false);
+});
+
+
+test('Miss & Mister Dour se résout via le registre ADN canonique', () => {
+  const resolved = resolveRegistryBrand({ slug: 'miss-mister-dour', name: 'Miss & Mister Dour', site_url: 'https://missetmisterdour.be' });
+  assert.equal(resolved.entry.brandId, 'miss-mister-dour');
+  assert.equal(resolved.source.repo, 'Julien218/miss2026');
+  assert.equal(resolved.source.ref, 'rescue/recovered-production-source');
+  assert.equal(resolved.source.manifest, 'brand/brand.manifest.json');
+});
+
+test('une marque inconnue est bloquée au lieu de reprendre JS-Innov.IA', () => {
+  assert.throws(
+    () => resolveRegistryBrand({ slug: 'marque-inconnue', name: 'Marque inconnue', site_url: 'https://unknown.invalid' }),
+    /BLOCK_BRAND_CONTEXT_REQUIRED/
+  );
 });
