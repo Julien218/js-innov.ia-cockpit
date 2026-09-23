@@ -292,8 +292,21 @@ def main() -> int:
     if not audio_path.is_file():
         print(json.dumps({"ok": False, "error_code": "audio_not_found"}))
         return 2
+
+    mode = sys.argv[2] if len(sys.argv) == 3 else ""
+    if mode == "--transcribe-only":
+        transcription = transcribe(audio_path)
+        digest = hashlib.sha256()
+        with audio_path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+        transcription["source_sha256"] = digest.hexdigest()
+        transcription["mode"] = "voice-transcription"
+        print(json.dumps(transcription, ensure_ascii=True, allow_nan=False))
+        return 0
+
     acoustic = acoustic_summary(audio_path)
-    skip = len(sys.argv) == 3 and sys.argv[2] == "--instrumental"
+    skip = mode == "--instrumental"
     transcription = ({"ok": False, "skipped": True, "reason": "instrumental-requested", "segments": [], "transcript": "", "warnings": []}
                      if skip else transcribe(audio_path))
     transcription["acoustic"] = acoustic
