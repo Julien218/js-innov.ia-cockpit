@@ -988,8 +988,8 @@ function checkForUpdates(silent = true) {
   });
 }
 
-// Compatibilité avec l'ancien bouton renderer : electron-updater télécharge
-// automatiquement la version détectée (autoDownload=true dans bootstrap.js).
+// Compatibilité avec l'ancien bouton renderer : la vérification déclenche ensuite
+// le téléchargement explicite géré par bootstrap.js quand une version est disponible.
 function downloadUpdate() {
   checkForUpdates(false);
 }
@@ -1197,7 +1197,24 @@ ipcMain.handle("elynea-jarvis-execute", async (event, payload = {}) => {
   return jarvisExecutor.execute(payload.task || {}, { confirmed: payload.confirmed === true });
 });
 
-// ── IPC — Check for updates (from renderer) ─────────────────────────────────
+// ── IPC — état/version de l'application desktop et mises à jour ──────────────
+ipcMain.handle("desktop-app-info", (event) => {
+  if (!trustedCockpitCaller(event)) throw new Error("Lecture version refusée hors du Cockpit JS-Innov.IA.");
+  return {
+    version: APP_VERSION,
+    packaged: app.isPackaged,
+    platform: process.platform,
+    arch: process.arch,
+    update: globalThis.__cockpitDesktopUpdateState || {
+      status: app.isPackaged ? "idle" : "development",
+      installedVersion: APP_VERSION,
+      targetVersion: null,
+      progress: null,
+      error: null,
+    },
+  };
+});
+
 ipcMain.on("check-for-updates", () => {
   checkForUpdates(false);
 });
