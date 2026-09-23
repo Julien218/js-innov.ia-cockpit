@@ -1079,7 +1079,16 @@ ipcMain.handle("elynea-local-voice-transcribe", async (event, payload = {}) => {
   return transcribeLocalVoiceBytes(payload.bytes, payload.mimeType);
 });
 
-// ── IPC — tâches web authentifiées, limitées aux recettes NOVA autorisées ──
+// ── IPC — tâches web authentifiées Elynea, limitées aux recettes autorisées ──
+ipcMain.handle("elynea-web-assistant-execute", async (event, task = {}) => {
+  const caller = String(event.senderFrame?.url || event.sender?.getURL?.() || "");
+  if (!caller.startsWith(`${REMOTE_COCKPIT_URL}/`) && !caller.startsWith(`${OFFLINE_COCKPIT_URL}/`)) {
+    throw new Error("Appel refusé hors du Cockpit JS-Innov.IA.");
+  }
+  return webAssistant.execute(task);
+});
+
+// Compatibilité transitoire : ancien renderer NOVA -> runtime Elynea.
 ipcMain.handle("nova-web-assistant-execute", async (event, task = {}) => {
   const caller = String(event.senderFrame?.url || event.sender?.getURL?.() || "");
   if (!caller.startsWith(`${REMOTE_COCKPIT_URL}/`) && !caller.startsWith(`${OFFLINE_COCKPIT_URL}/`)) {
