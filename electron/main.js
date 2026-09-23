@@ -58,7 +58,12 @@ const LOCAL_AGENT_TOKEN = String(process.env.LOCAL_AGENT_TOKEN || "").trim();
 
 function trustedCockpitCaller(event) {
   const caller = String(event.senderFrame?.url || event.sender?.getURL?.() || "");
-  return caller.startsWith(REMOTE_COCKPIT_URL) || caller.startsWith(OFFLINE_COCKPIT_URL);
+  try {
+    const origin = new URL(caller).origin;
+    return origin === new URL(REMOTE_COCKPIT_URL).origin || origin === new URL(OFFLINE_COCKPIT_URL).origin;
+  } catch {
+    return false;
+  }
 }
 
 function localAgentRequest(port, pathname, { method = "GET", json, body, contentType, timeoutMs = 15000 } = {}) {
