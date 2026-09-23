@@ -219,6 +219,7 @@ export default function AgentPage() {
   };
 
   const speakElynea = useCallback((text) => {
+    if (localStorage.getItem("agent_tts_enabled") !== "true") return;
     if (!("speechSynthesis" in window) || !text) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(String(text).replace(/[*#_]/g, ""));
