@@ -1099,10 +1099,37 @@ ipcMain.handle("nova-web-assistant-execute", async (event, task = {}) => {
 });
 
 // ── IPC — Elynea Jarvis Tool Router ─────────────────────────────────────────
+async function detectJarvisCapabilities() {
+  const state = {
+    localAgent: { online: false, port: null },
+    comfyui: { online: false, port: COMFYUI_PORT },
+    github: { online: Boolean(process.env.GITHUB_TOKEN || process.env.GH_TOKEN) },
+    railway: { online: Boolean(process.env.RAILWAY_TOKEN || process.env.RAILWAY_API_TOKEN) },
+    supabase: { online: Boolean(process.env.SUPABASE_URL && (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)) },
+  };
+  for (const port of LOCAL_AGENT_PORTS) {
+    try {
+      const health = await localAgentRequest(port, "/health", { timeoutMs: 1200 });
+      if (health?.ok) { state.localAgent = { online: true, port }; break; }
+    } catch (_) { /* capability offline */ }
+  }
+  try {
+    await comfyRequest("/system_stats", { timeoutMs: 1200 });
+    state.comfyui.online = true;
+  } catch (_) { /* capability offline */ }
+  return state;
+}
+
+ipcMain.handle("elynea-tool-capabilities", async (event) => {
+  if (!trustedCockpitCaller(event)) throw new Error("Lecture des capacités refusée hors du Cockpit JS-Innov.IA.");
+  return { ok: true, capabilities: await detectJarvisCapabilities() };
+});
+
 ipcMain.handle("elynea-tool-route", async (event, task = {}) => {
   if (!trustedCockpitCaller(event)) throw new Error("Appel Tool Router refusé hors du Cockpit JS-Innov.IA.");
-  const route = routeJarvis(task, { localAgent: true, comfyui: true });
-  return { ok: true, route, requiresConfirmation: route.confirmation === true };
+  const capabilities = await detectJarvisCapabilities();
+  const route = routeJarvis(task, capabilities);
+  return { ok: true, route, capabilities, requiresConfirmation: route.confirmation === true };
 });
 
 // ── IPC — Check for updates (from renderer) ─────────────────────────────────
