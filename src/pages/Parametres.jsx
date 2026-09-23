@@ -6,7 +6,7 @@ import { PLATFORM_SERVICES } from "@/config/platformServices";
 const TABS = [
   ["agents", "Agents IA", Bot], ["builder", "Sites & déploiements", Globe],
   ["api", "APIs & clés", Key], ["emails", "Boîtes e-mail", Mail], ["moteur", "Moteurs de données", Database],
-  ["notifs", "Notifications", Bell], ["securite", "Sécurité", Shield],
+  ["notifs", "Notifications", Bell], ["securite", "Sécurité", Shield], ["application", "Application", Smartphone],
 ];
 
 function StatusBadge({ ok, okLabel = "Actif", pendingLabel = "À configurer" }) {
@@ -64,6 +64,75 @@ function SecuritySettings({ status }) {
   const security = status?.security || {};
   const controls = [["Session authentifiée", security.authenticated], ["Permissions contrôlées côté serveur", security.permissions_server_side], ["Secrets conservés côté serveur", security.secrets_server_side], ["Confirmation avant modification DNS", security.dns_confirmation_required], ["Cloisonnement des organisations", security.tenant_isolation]];
   return <div className="space-y-6"><SectionHeader title="Sécurité" description={`Contrôles actifs pour la session courante${security.role ? ` · rôle ${security.role}` : ""}.`} /><div className="rounded-xl border border-slate-700 bg-slate-900/40">{controls.map(([label, ok]) => <div key={label} className="flex items-center justify-between gap-4 border-b border-slate-700 px-4 py-3 last:border-b-0"><span className="text-sm text-slate-300">{label}</span>{ok ? <CheckCircle2 className="h-5 w-5 text-emerald-400" /> : <XCircle className="h-5 w-5 text-red-400" />}</div>)}</div><div className="flex flex-wrap gap-3"><Button variant="outline" onClick={() => window.location.assign("/gouvernance")}><Shield className="mr-2 h-4 w-4" />Gouvernance et audit</Button><Button variant="outline" onClick={() => window.location.assign("/invitations")}><LockKeyhole className="mr-2 h-4 w-4" />Accès et invitations</Button></div></div>;
+}
+
+function ApplicationSettings() {
+  const [info, setInfo] = useState(null);
+  const [desktopError, setDesktopError] = useState("");
+
+  const refreshDesktop = useCallback(async () => {
+    const api = window.electronAPI?.desktop;
+    if (!api?.getInfo) {
+      setInfo({
+        version: null,
+        packaged: false,
+        platform: "web",
+        arch: null,
+        update: { status: "web", installedVersion: null, targetVersion: null, progress: null, error: null },
+      });
+      return;
+    }
+    try {
+      const next = await api.getInfo();
+      setInfo(next);
+      setDesktopError("");
+    } catch (error) {
+      setDesktopError(error?.message || "État desktop indisponible.");
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshDesktop();
+    const api = window.electronAPI?.desktop;
+    if (!api?.onUpdateStatus) return undefined;
+    const unsubscribe = api.onUpdateStatus((update) => {
+      setInfo((previous) => previous ? { ...previous, update, version: update?.installedVersion || previous.version } : previous);
+    });
+    return typeof unsubscribe === "function" ? unsubscribe : undefined;
+  }, [refreshDesktop]);
+
+  const update = info?.update || {};
+  const statusLabels = {
+    idle: "En attente",
+    checking: "Vérification…",
+    available: "Mise à jour disponible",
+    downloading: "Téléchargement…",
+    downloaded: "Téléchargée — installation imminente",
+    installing: "Installation…",
+    "up-to-date": "À jour",
+    error: "Erreur de mise à jour",
+    development: "Mode développement",
+    web: "Version web",
+  };
+  const percent = Number.isFinite(Number(update.progress)) ? Math.round(Number(update.progress)) : null;
+
+  return <div className="space-y-6">
+    <SectionHeader
+      title="Application JS-Innov.IA Cockpit"
+      description="Version réellement installée sur ce PC et état de l’auto-update Electron."
+      action={window.electronAPI?.desktop?.checkForUpdates ? <Button variant="outline" onClick={() => window.electronAPI.desktop.checkForUpdates()}><RefreshCw className="mr-2 h-4 w-4" />Vérifier les mises à jour</Button> : null}
+    />
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4"><p className="text-xs uppercase tracking-wide text-slate-500">Version installée</p><p className="mt-2 text-xl font-semibold text-white">{info?.version ? `v${info.version}` : "Version web"}</p></div>
+      <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4"><p className="text-xs uppercase tracking-wide text-slate-500">Runtime</p><p className="mt-2 text-sm font-medium text-white">{info?.packaged ? "Electron Windows installé" : "Navigateur / développement"}</p></div>
+      <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4"><p className="text-xs uppercase tracking-wide text-slate-500">Mise à jour</p><p className="mt-2 text-sm font-medium text-white">{statusLabels[update.status] || update.status || "Inconnu"}</p>{update.targetVersion && <p className="mt-1 text-xs text-cyan-300">Cible : v{update.targetVersion}</p>}</div>
+      <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4"><p className="text-xs uppercase tracking-wide text-slate-500">Plateforme</p><p className="mt-2 text-sm font-medium text-white">{info?.platform || "—"}{info?.arch ? ` · ${info.arch}` : ""}</p></div>
+    </div>
+    {update.status === "downloading" && percent !== null && <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4"><div className="flex items-center justify-between text-sm text-slate-300"><span>Téléchargement de v{update.targetVersion || "la mise à jour"}</span><span>{percent}%</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800"><div className="h-full bg-cyan-400 transition-[width]" style={{ width: `${percent}%` }} /></div></div>}
+    {(desktopError || update.error) && <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-300"><AlertTriangle className="mr-2 inline h-4 w-4" />{desktopError || update.error}</div>}
+    {info?.packaged && <div className="flex flex-wrap gap-3"><Button variant="outline" onClick={() => { window.electronAPI?.desktop?.retryUpdate?.(); void refreshDesktop(); }}><RotateCcw className="mr-2 h-4 w-4" />Relancer la mise à jour</Button><Button variant="ghost" onClick={() => void refreshDesktop()}><RefreshCw className="mr-2 h-4 w-4" />Actualiser l’état</Button></div>}
+    <p className="text-xs text-slate-500">La version affichée provient directement de <code>app.getVersion()</code> dans Electron : elle correspond au binaire réellement lancé, pas à la dernière release GitHub.</p>
+  </div>;
 }
 
 // ── Boîtes Google / Gmail ────────────────────────────────────────────────────
@@ -242,6 +311,6 @@ export default function Parametres() {
   const [loading, setLoading] = useState(true);
   const loadStatus = useCallback(async () => { setLoading(true); setError(""); try { const response = await fetch("/api/settings/status", { credentials: "same-origin" }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || `Configuration HTTP ${response.status}`); setStatus(data); } catch (loadError) { setError(loadError.message || "Configuration indisponible"); } finally { setLoading(false); } }, []);
   useEffect(() => { loadStatus(); }, [loadStatus]);
-  const content = useMemo(() => { if (loading) return <div className="flex min-h-56 items-center justify-center text-sm text-slate-400"><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Lecture de la configuration serveur…</div>; if (error) return <div className="flex min-h-56 flex-col items-center justify-center text-center"><AlertTriangle className="mb-3 h-8 w-8 text-amber-300" /><p className="text-sm text-slate-300">{error}</p><Button className="mt-4" variant="outline" onClick={loadStatus}>Réessayer</Button></div>; if (activeTab === "agents") return <AgentsSettings status={status} />; if (activeTab === "builder") return <BuilderSettings status={status} />; if (activeTab === "api") return <IntegrationsSettings status={status} />; if (activeTab === "emails") return <GoogleMailSettings />; if (activeTab === "moteur") return <DataSettings status={status} />; if (activeTab === "notifs") return <NotificationsSettings status={status} />; return <SecuritySettings status={status} />; }, [activeTab, error, loadStatus, loading, status]);
+  const content = useMemo(() => { if (activeTab === "application") return <ApplicationSettings />; if (loading) return <div className="flex min-h-56 items-center justify-center text-sm text-slate-400"><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Lecture de la configuration serveur…</div>; if (error) return <div className="flex min-h-56 flex-col items-center justify-center text-center"><AlertTriangle className="mb-3 h-8 w-8 text-amber-300" /><p className="text-sm text-slate-300">{error}</p><Button className="mt-4" variant="outline" onClick={loadStatus}>Réessayer</Button></div>; if (activeTab === "agents") return <AgentsSettings status={status} />; if (activeTab === "builder") return <BuilderSettings status={status} />; if (activeTab === "api") return <IntegrationsSettings status={status} />; if (activeTab === "emails") return <GoogleMailSettings />; if (activeTab === "moteur") return <DataSettings status={status} />; if (activeTab === "notifs") return <NotificationsSettings status={status} />; return <SecuritySettings status={status} />; }, [activeTab, error, loadStatus, loading, status]);
   return <div className="space-y-6"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h1 className="flex items-center gap-2 text-2xl font-bold text-white"><Settings className="h-6 w-6 text-yellow-400" />Paramètres</h1><p className="mt-1 text-sm text-slate-400">Configuration réelle de la plateforme JS-Innov.IA, contrôlée côté serveur.</p></div><Button variant="outline" onClick={loadStatus} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />Actualiser</Button></div><div className="flex gap-2 overflow-x-auto border-b border-slate-700">{TABS.map(([id, label, Icon]) => <button key={id} onClick={() => setActiveTab(id)} className={`flex shrink-0 items-center gap-2 rounded-t-lg border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === id ? "border-yellow-400 bg-slate-800 text-yellow-300" : "border-transparent text-slate-400 hover:text-white"}`}><Icon className="h-4 w-4" />{label}</button>)}</div><div className="rounded-xl border border-slate-700 bg-slate-900 p-4 sm:p-6">{content}</div>{status?.checked_at && <p className="text-right text-[11px] text-slate-600">État serveur vérifié le {new Date(status.checked_at).toLocaleString("fr-BE")}</p>}</div>;
 }
