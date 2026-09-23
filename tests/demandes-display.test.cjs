@@ -86,7 +86,7 @@ test('compact workspace keeps daily links, the active module and permissions whi
   assert.match(home, /data-cockpit-sidebar="true"/);
   assert.match(home, /href="\/taches"/);
   assert.match(home, /href="\/clients"/);
-  assert.doesNotMatch(home, /href="\/music-motion"/);
+  assert.match(home, /href="\/music-motion"/);
   assert.match(render(Sidebar, '/music-motion'), /aria-current="page"[^>]*href="\/music-motion"|href="\/music-motion"[^>]*aria-current="page"/);
   const Restricted = (await load('src/components/layout/Sidebar.jsx', {
     ...mocks([]), '@/lib/usePermissions': `export const usePermissions = () => ({ role: 'client', canAccess: path => path === '/' });`,
