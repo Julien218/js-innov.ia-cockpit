@@ -24,6 +24,7 @@ function routeJarvis(raw = {}, capabilities = {}) {
   const github = capabilityOnline(capabilities, "github");
   const railway = capabilityOnline(capabilities, "railway");
   const supabase = capabilityOnline(capabilities, "supabase");
+  const wavespeed = capabilityOnline(capabilities, "wavespeed");
 
   if (/delete|remove|destroy|drop|purge|payment|publish|deploy.production/.test(text)) {
     return { tool: "guarded_action", engine: "explicit", risk: RISK.DESTRUCTIVE, confirmation: true };
@@ -42,6 +43,9 @@ function routeJarvis(raw = {}, capabilities = {}) {
   }
   if (/supabase|database|postgres|rls|table/.test(text)) {
     return { tool: "supabase", engine: supabase ? "connector" : "server", risk: RISK.READ, confirmation: false };
+  }
+  if (/wavespeed|wave.speed/.test(text)) {
+    return { tool: "wavespeed", engine: wavespeed ? "api" : "unavailable", risk: RISK.WRITE, confirmation: false };
   }
   if (/ionos|domain|redirect|dns/.test(text)) {
     return { tool: "web_assistant", engine: "electron", risk: RISK.WRITE, confirmation: true };
