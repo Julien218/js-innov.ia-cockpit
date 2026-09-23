@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     execute: (task) => ipcRenderer.invoke("elynea-web-assistant-execute", task),
   },
   jarvis: {
+    capabilities: () => ipcRenderer.invoke("elynea-tool-capabilities"),
     route: (task) => ipcRenderer.invoke("elynea-tool-route", task),
   },
   localVoice: {
