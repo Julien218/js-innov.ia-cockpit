@@ -15,6 +15,7 @@ let localAgentRestartTimer = null;
 let localAgentWatchdogTimer = null;
 let offlineWebServer = null;
 let shuttingDown = false;
+let wakeListenerProcess = null;
 
 const OFFLINE_WEB_PORT = 8790;
 // 8788 est désormais prioritaire pour l'agent Elynea actuel. 8787 reste la
@@ -225,6 +226,43 @@ async function selectLocalAgentPort() {
   );
 }
 
+function wakeListenerCandidates() {
+  const roots = app.isPackaged
+    ? [path.join(process.resourcesPath, "local-agent")]
+    : [path.join(__dirname, "..", "local-agent")];
+  return roots.flatMap((root) => [
+    path.join(root, "elynea_listener_STABLE.py"),
+    path.join(root, "elynea_listener.py"),
+  ]);
+}
+
+function startWakeListener() {
+  if (process.platform !== "win32" || wakeListenerProcess) return false;
+  const script = wakeListenerCandidates().find((candidate) => fs.existsSync(candidate));
+  if (!script) {
+    console.log("[desktop] Elynea wake listener not bundled; manual microphone remains available");
+    return false;
+  }
+  const python = process.env.ELYNEA_PYTHON || "python";
+  const child = spawn(python, [script], {
+    windowsHide: true,
+    stdio: "ignore",
+    env: { ...process.env, ELYNEA_WAKE_WORD: process.env.ELYNEA_WAKE_WORD || "elynea" },
+  });
+  wakeListenerProcess = child;
+  child.once("error", (error) => {
+    if (wakeListenerProcess === child) wakeListenerProcess = null;
+    console.log("[desktop] Elynea wake listener error:", error.message);
+  });
+  child.once("exit", (code) => {
+    if (wakeListenerProcess === child) wakeListenerProcess = null;
+    if (!shuttingDown) console.log(`[desktop] Elynea wake listener exited (code=${code ?? "null"})`);
+  });
+  child.unref();
+  console.log(`[desktop] Elynea wake listener started: ${path.basename(script)}`);
+  return true;
+}
+
 function localAgentServerPath() {
   return app.isPackaged
     ? path.join(process.resourcesPath, "local-agent", "server.js")
@@ -344,6 +382,7 @@ app.on("before-quit", () => {
   if (localAgentRestartTimer) clearTimeout(localAgentRestartTimer);
   if (localAgentWatchdogTimer) clearInterval(localAgentWatchdogTimer);
   if (localAgentProcess && !localAgentProcess.killed) localAgentProcess.kill();
+  if (wakeListenerProcess && !wakeListenerProcess.killed) wakeListenerProcess.kill();
   if (offlineWebServer) offlineWebServer.close();
 });
 
@@ -470,6 +509,7 @@ app.whenReady().then(async () => {
     return false;
   });
   startLocalAgentWatchdog();
+  startWakeListener();
   await startBundledOfflineCockpit();
   await refreshWebRuntime();
 
