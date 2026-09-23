@@ -23,18 +23,17 @@ test('desktop navigation auto-expands on hover and is compact otherwise', () => 
   assert.match(sidebar, /const compact = !mobileOpen && !desktopHovered/);
 });
 
-test('dashboard follows the approved reference composition', () => {
+test('dashboard is Jarvis-first instead of duplicating the Elynea assistant panel', () => {
   const dashboard = read('src/pages/Dashboard.jsx');
-  assert.match(dashboard, /dashboard-email-overview/);
-  assert.match(dashboard, /Emails à traiter/);
-  assert.match(dashboard, /Actions rapides/);
+  assert.match(dashboard, /jarvis-home/);
+  assert.match(dashboard, /Mode Jarvis/);
+  assert.match(dashboard, /Appeler Elynea/);
   assert.match(dashboard, /Projets récents/);
-  assert.match(dashboard, /Tâches prioritaires/);
-  assert.match(dashboard, /Activité & Notifications/);
-  assert.match(dashboard, /Pipeline leads/);
-  assert.match(dashboard, /cockpit-reference-elynea/);
-  assert.match(dashboard, /OFFICIAL_ELYNEA_AVATAR/);
+  assert.match(dashboard, /Priorités/);
   assert.match(dashboard, /elynea:open/);
+  assert.doesNotMatch(dashboard, /cockpit-reference-elynea-portrait/);
+  assert.doesNotMatch(dashboard, /Actions rapides/);
+  assert.doesNotMatch(dashboard, /Pipeline leads/);
 });
 
 test('cockpit uses real Electron transparency while keeping the gold tracer', () => {
@@ -85,4 +84,21 @@ test('Elynea audio player can persist and apply an explicit Windows output devic
   assert.match(audio, /audio\.setSinkId\(sinkId\)/);
   assert.match(audio, /Sortie système Windows/);
   assert.match(audio, /Périphérique de sortie audio/);
+});
+
+
+test('Jarvis-first home uses darker transparent glass instead of milky panels', () => {
+  const css = read('src/premium-overrides.css');
+  assert.match(css, /\.jarvis-home \.cockpit-reference-kpi/);
+  assert.match(css, /rgba\(7, 15, 28, \.58\)/);
+  assert.match(css, /backdrop-filter:\s*blur\(16px\)/);
+});
+
+test('Elynea player recovers a legacy 1 percent volume and exposes a visible 100 percent reset', () => {
+  const audio = read('src/components/audio/ElyneaAudioDock.jsx');
+  assert.match(audio, /stored > 0\.02/);
+  assert.match(audio, /return 1;/);
+  assert.match(audio, /resetVolume/);
+  assert.match(audio, /Volume Elynea/);
+  assert.match(audio, />100 %</);
 });
