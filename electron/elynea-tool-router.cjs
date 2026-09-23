@@ -27,7 +27,7 @@ function routeJarvis(raw = {}, capabilities = {}) {
   const supabase = capabilityOnline(capabilities, "supabase");
   const wavespeed = capabilityOnline(capabilities, "wavespeed");
 
-  if (/delete|remove|destroy|drop|purge|payment|publish|deploy.production|supprim|effac|détrui|detru|purge|paiement|publier|publication|déploiement.production|deploiement.production/.test(text)) {
+  if (/delete|remove|destroy|drop|purge|payment|publish|deploy.production|supprim|effac|détrui|detru|purge|paiement|publier|publication|déploiement.production|deploiement.production|truncate|vider.la.table|vider.table|empty.table/.test(text)) {
     return { tool: "guarded_action", engine: "explicit", risk: RISK.DESTRUCTIVE, confirmation: true };
   }
   if (/wavespeed|wave.speed/.test(text)) {
