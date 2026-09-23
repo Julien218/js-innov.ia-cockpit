@@ -10,6 +10,7 @@ const crypto = require("crypto");
 const { createWebAssistant } = require("./web-assistant.cjs");
 const { formatComfyErrorBody } = require("./comfy-error.cjs");
 const { routeJarvis } = require("./elynea-tool-router.cjs");
+const { createJarvisExecutor } = require("./elynea-jarvis-executor.cjs");
 
 let mainWindow = null;
 let tray = null;
@@ -1120,6 +1121,25 @@ async function detectJarvisCapabilities() {
   return state;
 }
 
+function appendJarvisAudit(entry) {
+  try {
+    const folder = path.join(app.getPath("userData"), "elynea-audit");
+    fs.mkdirSync(folder, { recursive: true });
+    fs.appendFileSync(path.join(folder, "jarvis-actions.jsonl"), `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`, "utf8");
+  } catch (error) {
+    console.log(`Journal Elynea ignoré: ${error.message}`);
+  }
+}
+
+const jarvisExecutor = createJarvisExecutor({
+  routeJarvis,
+  detectCapabilities: detectJarvisCapabilities,
+  executeWeb: (task) => webAssistant.execute(task),
+  localAgentRequest,
+  comfyRequest,
+  audit: appendJarvisAudit,
+});
+
 ipcMain.handle("elynea-tool-capabilities", async (event) => {
   if (!trustedCockpitCaller(event)) throw new Error("Lecture des capacités refusée hors du Cockpit JS-Innov.IA.");
   return { ok: true, capabilities: await detectJarvisCapabilities() };
@@ -1130,6 +1150,11 @@ ipcMain.handle("elynea-tool-route", async (event, task = {}) => {
   const capabilities = await detectJarvisCapabilities();
   const route = routeJarvis(task, capabilities);
   return { ok: true, route, capabilities, requiresConfirmation: route.confirmation === true };
+});
+
+ipcMain.handle("elynea-jarvis-execute", async (event, payload = {}) => {
+  if (!trustedCockpitCaller(event)) throw new Error("Exécution Jarvis refusée hors du Cockpit JS-Innov.IA.");
+  return jarvisExecutor.execute(payload.task || {}, { confirmed: payload.confirmed === true });
 });
 
 // ── IPC — Check for updates (from renderer) ─────────────────────────────────
