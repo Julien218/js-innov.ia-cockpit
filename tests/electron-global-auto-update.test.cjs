@@ -13,6 +13,7 @@ test('desktop starts through the global bootstrap', () => {
   assert.equal(pkg.main, 'bootstrap.js');
   assert.ok(pkg.dependencies?.['electron-updater']);
   assert.ok(pkg.build?.files?.includes('bootstrap.js'));
+  assert.equal(pkg.build?.electronDist, 'node_modules/electron/dist');
 });
 
 test('desktop bundles and starts Elynea Local Tools with Music Motion v2', () => {
