@@ -5,7 +5,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   checkForUpdates: () => ipcRenderer.send("check-for-updates"),
   downloadUpdate: () => ipcRenderer.send("download-update"),
   webAssistant: {
-    execute: (task) => ipcRenderer.invoke("nova-web-assistant-execute", task),
+    execute: (task) => ipcRenderer.invoke("elynea-web-assistant-execute", task),
   },
   localVoice: {
     transcribe: ({ bytes, mimeType }) => ipcRenderer.invoke("elynea-local-voice-transcribe", { bytes, mimeType }),
