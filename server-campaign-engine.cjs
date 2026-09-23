@@ -217,6 +217,7 @@ async function startImageGeneration({ postId,org,userId,allowPaidApi=false }) {
     const job=await createJob({org,userId,postId:post.id,kind:'image',engine:'local',provider:'comfyui',payload:{
       prompt,format:formatForPost(post),checkpoint:local.checkpoint,worker_id:local.worker.id
     }});
+    if(job.reused)return {engine:job.engine,job,reused:true};
     await patch('campaign_posts','id=eq.'+encodeURIComponent(post.id),{
       image_provider:'local',image_job_id:job.id,image_status:'queued',image_error:null,image_prompt:prompt,status:'prepared'
     });
@@ -249,6 +250,7 @@ async function approveAndStartVideo({ postId,org,userId,allowPaidApi=false }) {
     const job=await createJob({org,userId,postId:post.id,kind:'video',engine:'local',provider:'comfyui',payload:{
       prompt,format:formatForPost(post),duration_seconds:8,workflow_id:local.workflow_id,worker_id:local.worker.id
     }});
+    if(job.reused)return {engine:job.engine,job,reused:true};
     await patch('campaign_posts','id=eq.'+encodeURIComponent(post.id),{
       video_provider:'local',video_job_id:job.id,video_status:'queued',video_error:null,video_prompt:prompt,status:'video_generating'
     });
