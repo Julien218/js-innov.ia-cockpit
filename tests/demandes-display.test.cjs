@@ -79,13 +79,14 @@ test('navigation badge counts new requests and disappears when they are processe
   assert.doesNotMatch(processedLink, /bg-red-500/);
 });
 
-test('compact workspace keeps daily links, opens the active module and respects permissions', async () => {
+test('compact workspace keeps daily links, the active module and permissions while hiding expanded controls', async () => {
   const Sidebar = (await load('src/components/layout/Sidebar.jsx', mocks([]))).default;
   const home = render(Sidebar);
-  assert.match(home, /aria-label="Trouver un module"/);
+  assert.doesNotMatch(home, /aria-label="Trouver un module"/);
+  assert.match(home, /data-cockpit-sidebar="true"/);
   assert.match(home, /href="\/taches"/);
   assert.match(home, /href="\/clients"/);
-  assert.doesNotMatch(home, /href="\/music-motion"/);
+  assert.match(home, /href="\/music-motion"/);
   assert.match(render(Sidebar, '/music-motion'), /aria-current="page"[^>]*href="\/music-motion"|href="\/music-motion"[^>]*aria-current="page"/);
   const Restricted = (await load('src/components/layout/Sidebar.jsx', {
     ...mocks([]), '@/lib/usePermissions': `export const usePermissions = () => ({ role: 'client', canAccess: path => path === '/' });`,

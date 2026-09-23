@@ -1,24 +1,311 @@
-.premium-shell .sidebar-item.bg-primary {
-  background: linear-gradient(90deg, rgba(212, 175, 55, 0.15), rgba(212, 175, 55, 0.035)) !important;
-  color: #efd878 !important;
-  border: 1px solid rgba(212, 175, 55, 0.18) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025), 0 10px 30px rgba(0, 0, 0, 0.12) !important;
+@property --cockpit-trace-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
 }
 
-.premium-shell .sidebar-item.bg-primary svg {
-  color: #e6c655;
-  filter: drop-shadow(0 0 8px rgba(212, 175, 55, 0.16));
+/*
+ * Cockpit visual layer only.
+ * No public site / brand microsite inherits these rules because every selector
+ * is scoped to .cockpit-shell.
+ */
+body:has(.cockpit-shell) {
+  background:
+    radial-gradient(circle at 18% 8%, rgba(191, 219, 254, 0.72), transparent 30%),
+    radial-gradient(circle at 82% 10%, rgba(253, 230, 138, 0.48), transparent 24%),
+    radial-gradient(circle at 68% 88%, rgba(186, 230, 253, 0.52), transparent 32%),
+    linear-gradient(135deg, #edf5ff 0%, #f9fbff 48%, #fff8e9 100%);
+  background-attachment: fixed;
 }
 
-.premium-shell aside nav > div > p {
-  color: rgba(190, 193, 204, 0.48) !important;
-  letter-spacing: 0.16em;
+.cockpit-shell {
+  --background: 214 52% 97%;
+  --foreground: 222 47% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 12%;
+  --primary: 214 88% 48%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 214 28% 94%;
+  --secondary-foreground: 222 47% 15%;
+  --muted: 214 28% 93%;
+  --muted-foreground: 217 16% 43%;
+  --accent: 191 90% 42%;
+  --accent-foreground: 222 47% 12%;
+  --border: 216 24% 84%;
+  --input: 216 24% 88%;
+  --ring: 42 80% 55%;
+  --success: 153 61% 42%;
+  --warning: 39 92% 50%;
+  color-scheme: light;
+  background: transparent !important;
 }
 
-.premium-shell aside .sidebar-item:not(.bg-primary):hover {
-  background: rgba(255, 255, 255, 0.04) !important;
+.cockpit-shell .cockpit-ambient {
+  opacity: 0.72;
 }
 
-.premium-shell aside > div:first-of-type img {
-  box-shadow: 0 8px 24px rgba(212, 175, 55, 0.08);
+.cockpit-shell .cockpit-main {
+  background: transparent !important;
+}
+
+/* Navigation sombre, fine et automatiquement compacte sur desktop. */
+.cockpit-shell.premium-shell > aside,
+.cockpit-shell.premium-shell aside[data-cockpit-sidebar] {
+  background:
+    radial-gradient(circle at 0% 8%, rgba(59, 130, 246, 0.12), transparent 28%),
+    linear-gradient(180deg, rgba(8, 18, 36, 0.94), rgba(5, 12, 25, 0.93)) !important;
+  border-color: rgba(226, 232, 240, 0.11) !important;
+  box-shadow: 18px 0 52px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(24px) saturate(130%);
+  -webkit-backdrop-filter: blur(24px) saturate(130%);
+}
+
+.cockpit-shell [data-cockpit-sidebar] {
+  color: #f8fafc;
+}
+
+.cockpit-shell [data-cockpit-sidebar] .text-foreground {
+  color: #f8fafc !important;
+}
+
+.cockpit-shell [data-cockpit-sidebar] .text-muted-foreground {
+  color: rgba(226, 232, 240, 0.66) !important;
+}
+
+.cockpit-shell [data-cockpit-sidebar] input {
+  color: #f8fafc !important;
+  background: rgba(255, 255, 255, 0.055) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.cockpit-shell [data-cockpit-sidebar] input::placeholder {
+  color: rgba(226, 232, 240, 0.52);
+}
+
+.cockpit-shell .sidebar-item {
+  border: 1px solid transparent;
+}
+
+.cockpit-shell .sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.07) !important;
+  color: #ffffff !important;
+}
+
+.cockpit-shell .sidebar-item.active {
+  color: #fff3bd !important;
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.22), rgba(212, 175, 55, 0.11)) !important;
+  border-color: rgba(250, 204, 21, 0.22) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 12px 28px rgba(0, 0, 0, 0.15) !important;
+}
+
+.cockpit-shell .sidebar-item.active svg {
+  color: #f4cf61;
+  filter: drop-shadow(0 0 7px rgba(244, 207, 97, 0.3));
+}
+
+/* Top bar flottante et lisible. */
+.cockpit-shell.premium-shell header,
+.cockpit-shell.premium-shell header.bg-white {
+  background: rgba(248, 251, 255, 0.68) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  box-shadow: 0 12px 38px rgba(30, 64, 175, 0.08);
+  backdrop-filter: blur(22px) saturate(145%);
+  -webkit-backdrop-filter: blur(22px) saturate(145%);
+}
+
+/* Surfaces flottantes du Cockpit. */
+.cockpit-shell .cockpit-float-panel,
+.cockpit-shell .cockpit-float-tile,
+.cockpit-shell main .bg-card,
+.cockpit-shell main .bg-white,
+.cockpit-shell .premium-panel,
+.cockpit-shell .data-surface,
+.cockpit-shell .workspace-toolbar,
+.cockpit-shell .workspace-card,
+.cockpit-shell .workspace-metric {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(247, 251, 255, 0.62)) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  box-shadow:
+    0 20px 45px rgba(37, 99, 235, 0.09),
+    0 7px 20px rgba(15, 23, 42, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82) !important;
+  backdrop-filter: blur(20px) saturate(145%);
+  -webkit-backdrop-filter: blur(20px) saturate(145%);
+}
+
+.cockpit-shell .cockpit-float-panel,
+.cockpit-shell .cockpit-float-tile {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.cockpit-shell .cockpit-float-panel {
+  overflow: hidden;
+  border-radius: 1.2rem;
+}
+
+.cockpit-shell .cockpit-float-tile {
+  transform: translateY(0);
+}
+
+.cockpit-shell .cockpit-float-tile:hover,
+.cockpit-shell .workspace-card:hover,
+.cockpit-shell main .card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 26px 58px rgba(37, 99, 235, 0.12),
+    0 9px 24px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86) !important;
+}
+
+/* Hero plus clair, toujours transparent : aucune grosse nappe sombre. */
+.cockpit-shell .workspace-hero {
+  background:
+    radial-gradient(circle at 88% 12%, rgba(59, 130, 246, 0.16), transparent 30%),
+    radial-gradient(circle at 6% 96%, rgba(245, 158, 11, 0.14), transparent 31%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.76), rgba(239, 246, 255, 0.58)) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  box-shadow:
+    0 24px 56px rgba(37, 99, 235, 0.10),
+    0 8px 24px rgba(15, 23, 42, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(22px) saturate(145%);
+  -webkit-backdrop-filter: blur(22px) saturate(145%);
+}
+
+.cockpit-shell .workspace-focus-card {
+  background: rgba(255, 255, 255, 0.52);
+  border-color: rgba(148, 163, 184, 0.20);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.055);
+}
+
+.cockpit-shell .workspace-focus-card:hover {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(212, 175, 55, 0.34);
+}
+
+.cockpit-shell .workspace-secondary-action {
+  background: rgba(255, 255, 255, 0.56);
+  border-color: rgba(148, 163, 184, 0.24);
+  color: hsl(var(--foreground));
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.055);
+}
+
+.cockpit-shell .workspace-secondary-action:hover {
+  color: #8a6410;
+  border-color: rgba(212, 175, 55, 0.38);
+  background: rgba(255, 248, 222, 0.78);
+}
+
+.cockpit-shell .premium-button {
+  background: linear-gradient(135deg, #f4cf61, #e8b92f);
+  color: #111827;
+  border: 1px solid rgba(161, 98, 7, 0.10);
+  box-shadow: 0 12px 28px rgba(202, 138, 4, 0.19);
+}
+
+.cockpit-shell .cockpit-icon-chip {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.10);
+  border: 1px solid rgba(37, 99, 235, 0.12);
+}
+
+/*
+ * Liseré d'or discret : un seul point lumineux voyage en permanence autour
+ * des grandes cases au lieu d'électrifier tout le contour.
+ */
+.cockpit-shell .cockpit-electric-frame,
+.cockpit-shell .premium-panel,
+.cockpit-shell .data-surface {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.cockpit-shell .cockpit-electric-frame::before,
+.cockpit-shell .premium-panel::before,
+.cockpit-shell .data-surface::before {
+  content: "";
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background:
+    conic-gradient(
+      from var(--cockpit-trace-angle),
+      rgba(212, 175, 55, 0.10) 0deg,
+      rgba(212, 175, 55, 0.10) 306deg,
+      rgba(247, 214, 111, 0.86) 330deg,
+      rgba(255, 248, 211, 1) 342deg,
+      rgba(232, 185, 47, 0.74) 352deg,
+      rgba(212, 175, 55, 0.10) 360deg
+    );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 3px rgba(245, 194, 66, 0.32));
+  animation: cockpit-gold-trace 8s linear infinite;
+}
+
+@keyframes cockpit-gold-trace {
+  to { --cockpit-trace-angle: 360deg; }
+}
+
+/* Le player reste au-dessus de toutes les routes web et Electron. */
+.cockpit-shell .cockpit-audio-dock {
+  box-shadow:
+    0 22px 58px rgba(15, 23, 42, 0.26),
+    0 0 0 1px rgba(244, 207, 97, 0.16),
+    0 0 30px rgba(212, 175, 55, 0.11) !important;
+}
+
+/* Mail conserve son workspace sombre interne tout en vivant dans la coque claire. */
+.cockpit-shell.premium-mail-route main > div {
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  box-shadow: 0 24px 66px rgba(15, 23, 42, 0.16) !important;
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .cockpit-shell .cockpit-electric-frame::before,
+  .cockpit-shell .premium-panel::before,
+  .cockpit-shell .data-surface::before {
+    animation: none;
+    background: rgba(212, 175, 55, 0.28);
+  }
+
+  .cockpit-shell .cockpit-float-tile:hover,
+  .cockpit-shell .workspace-card:hover,
+  .cockpit-shell main .card-hover:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .cockpit-shell .cockpit-ambient {
+    opacity: 0.48;
+  }
+
+  .cockpit-shell .cockpit-audio-dock {
+    bottom: max(0.75rem, env(safe-area-inset-bottom));
+    width: calc(100vw - 1.25rem);
+  }
+
+  .cockpit-shell .cockpit-float-panel {
+    border-radius: 1rem;
+  }
 }

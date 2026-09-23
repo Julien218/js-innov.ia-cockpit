@@ -14,7 +14,7 @@ export default function StatCard({ title, value, icon: Icon, trend, trendLabel, 
   const c = colorMap[color] || colorMap.primary;
 
   return (
-    <div className="bg-card rounded-2xl border border-border p-5 card-hover">
+    <div className="cockpit-float-tile bg-card rounded-2xl border border-border p-5 card-hover">
       <div className="flex items-start justify-between mb-3">
         <div className={cn("p-2.5 rounded-xl", c.bg)}>
           <Icon className={cn("w-4 h-4", c.text)} />
