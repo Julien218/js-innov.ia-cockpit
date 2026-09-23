@@ -27,7 +27,7 @@ const LOCAL_AGENT_STARTUP_GRACE_MS = 25_000;
 const LOCAL_AGENT_MAX_MISSES = 3;
 const MUSIC_MOTION_CONTRACT_VERSION = 2;
 
-const TRUSTED_MICROPHONE_ORIGINS = new Set([
+const TRUSTED_AUDIO_ORIGINS = new Set([
   'https://cockpit.jsinnovia.com',
   `http://127.0.0.1:${OFFLINE_WEB_PORT}`,
 ]);
@@ -40,7 +40,9 @@ function normalizeOrigin(value) {
 function configureMicrophonePermissions() {
   const ses = session.defaultSession;
   const trustedAudioRequest = (permission, origin, details = {}) => {
-    if (permission !== 'media' || !TRUSTED_MICROPHONE_ORIGINS.has(normalizeOrigin(origin))) return false;
+    if (!TRUSTED_AUDIO_ORIGINS.has(normalizeOrigin(origin))) return false;
+    if (permission === 'speaker-selection') return true;
+    if (permission !== 'media') return false;
     const mediaTypes = Array.isArray(details.mediaTypes)
       ? details.mediaTypes
       : details.mediaType
@@ -58,7 +60,7 @@ function configureMicrophonePermissions() {
     trustedAudioRequest(permission, requestingOrigin || webContents?.getURL?.() || '', details)
   ));
 
-  console.log('[desktop] microphone permission restricted to Elynea Cockpit audio origins');
+  console.log('[desktop] microphone and speaker-selection permissions restricted to Elynea Cockpit audio origins');
 }
 
 const MIME_TYPES = {
@@ -525,6 +527,8 @@ if (!singleInstanceLock) {
 
 app.whenReady().then(async () => {
   if (!singleInstanceLock) return;
+  app.setName('JS-Innov.IA Cockpit');
+  if (process.platform === 'win32') app.setAppUserModelId('com.jsinnovia.cockpit');
   configureMicrophonePermissions();
   enableWindowsStartup();
   await startBundledLocalAgent().catch((error) => {
