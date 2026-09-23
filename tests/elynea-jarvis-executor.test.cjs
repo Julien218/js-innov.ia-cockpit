@@ -52,3 +52,12 @@ test("unavailable routes are explicit and never verified", async () => {
   assert.equal(result.status, "unavailable");
   assert.equal(audit.at(-1).phase, "delegate");
 });
+
+
+test("ComfyUI readiness probe does not mark media generation completed", async () => {
+  const { executor, audit } = build({ tool: "media", engine: "comfyui", risk: "write", confirmation: false });
+  const result = await executor.execute({ intent: "render video" });
+  assert.equal(result.status, "ready_to_execute");
+  assert.equal(result.completedAt, null);
+  assert.equal(audit.at(-1).phase, "delegate");
+});
