@@ -35,3 +35,15 @@ test('cockpit visual overrides remain scoped and do not introduce feather brandi
   assert.match(css, /cockpit-gold-trace/);
   assert.doesNotMatch(css, /plume|feather/i);
 });
+
+
+test('Mobile Hub inherits the transparent cockpit shell instead of forcing a dark page', () => {
+  const mobile = read('src/pages/MobileHub.jsx');
+  const css = read('src/premium-overrides.css');
+  assert.match(mobile, /mobile-hub-page/);
+  assert.match(mobile, /cockpit-float-panel/);
+  assert.match(mobile, /<Link/);
+  assert.doesNotMatch(mobile, /#0a0a14|background:\s*COLORS\.bg/);
+  assert.match(css, /body:has\(\.cockpit-shell\)[\s\S]*background:\s*transparent/);
+  assert.match(css, /rgba\(255, 255, 255, 0\.46\)/);
+});
