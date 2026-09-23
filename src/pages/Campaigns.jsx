@@ -2,8 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Film, Image as ImageIcon, Loader2, Megaphone, Plus, RefreshCw, Settings2, Sparkles, XCircle } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
-import { base44Shim as base44 } from '@/lib/supabaseVideoClient';
-import { campaignApi, arrayToCsv, csvToArray, generateCampaignVideo, refreshCampaignVideo } from '@/lib/campaignOrchestrator';
+import {
+  campaignApi, arrayToCsv, csvToArray, pairCampaignLocalWorker, localCampaignWorkerStatus,
+  requestCampaignImage, approveCampaignImageAndGenerateVideo
+} from '@/lib/campaignOrchestrator';
 
 const input = 'w-full rounded-lg border border-border bg-background px-3 py-2 text-sm';
 const panel = 'rounded-2xl border border-border bg-card p-4 shadow-sm';
@@ -25,8 +27,9 @@ export default function Campaigns() {
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState(null);
   const [campaignForm, setCampaignForm] = useState({ name: '', objective: '', phase: 'recrutement', cta: '', landing_url: '', channels: ['facebook','instagram','tiktok'] });
-  const [postForm, setPostForm] = useState({ title: '', brief: '', platforms: ['facebook','instagram','tiktok'], video_engine: 'auto' });
+  const [postForm, setPostForm] = useState({ title: '', brief: '', platforms: ['facebook','instagram','tiktok'], image_engine: 'auto', video_engine: 'auto' });
   const [brandForm, setBrandForm] = useState({});
+  const [worker, setWorker] = useState({ paired: false, online: false, local_agent_reachable: false, cloud: null, local: null });
   const [brandContext, setBrandContext] = useState(null);
 
   const selectedBrand = useMemo(() => brands.find(b => b.id === brandId), [brands, brandId]);
@@ -48,8 +51,18 @@ export default function Campaigns() {
     const data = await campaignApi('/' + encodeURIComponent(id) + '/posts');
     setPosts(data.posts || []);
   };
+  const loadWorker = async () => {
+    const status = await localCampaignWorkerStatus();
+    setWorker(status);
+    return status;
+  };
 
-  useEffect(() => { loadBrands().catch(e => setNotice({ type: 'error', text: e.message })); }, []);
+  useEffect(() => {
+    loadBrands().catch(e => setNotice({ type: 'error', text: e.message }));
+    loadWorker().catch(() => {});
+    const timer = setInterval(() => loadWorker().catch(() => {}), 15000);
+    return () => clearInterval(timer);
+  }, []);
   useEffect(() => {
     if (!brandId) { setBrandContext(null); return; }
     loadCampaigns(brandId).catch(e => setNotice({ type: 'error', text: e.message }));
@@ -57,7 +70,12 @@ export default function Campaigns() {
       .then(setBrandContext)
       .catch(e => { setBrandContext(null); setNotice({ type: 'error', text: e.message }); });
   }, [brandId]);
-  useEffect(() => { if (campaignId) loadPosts(campaignId).catch(e => setNotice({ type: 'error', text: e.message })); else setPosts([]); }, [campaignId]);
+  useEffect(() => {
+    if (!campaignId) { setPosts([]); return; }
+    loadPosts(campaignId).catch(e => setNotice({ type: 'error', text: e.message }));
+    const timer = setInterval(() => loadPosts(campaignId).catch(() => {}), 8000);
+    return () => clearInterval(timer);
+  }, [campaignId]);
   useEffect(() => {
     if (!selectedBrand) return;
     const rules = parseJson(selectedBrand.visual_rules, {});
@@ -88,6 +106,7 @@ export default function Campaigns() {
       hashtags_forbidden: csvToArray(brandForm.hashtags_forbidden_text),
       visual_rules: { must: splitLines(brandForm.must_text), avoid: splitLines(brandForm.avoid_text) },
       palette: parseJson(brandForm.palette_text, {}),
+      fallback_image_to_api: Boolean(brandForm.fallback_image_to_api),
       fallback_to_api: Boolean(brandForm.fallback_to_api),
     };
     const data = await campaignApi('/brands/' + encodeURIComponent(brandId), { method: 'PATCH', body: JSON.stringify(payload) });
@@ -107,7 +126,7 @@ export default function Campaigns() {
     if (!campaignId || !postForm.brief.trim()) throw new Error('Ajoute un brief de contenu.');
     const data = await campaignApi('/' + encodeURIComponent(campaignId) + '/posts', { method: 'POST', body: JSON.stringify(postForm) });
     setPosts(current => [data.post, ...current]);
-    setPostForm({ title: '', brief: '', platforms: ['facebook','instagram','tiktok'], video_engine: 'auto' });
+    setPostForm({ title: '', brief: '', platforms: ['facebook','instagram','tiktok'], image_engine: 'auto', video_engine: 'auto' });
   });
 
   const draftPost = post => act('draft-' + post.id, async () => {
@@ -117,34 +136,44 @@ export default function Campaigns() {
   });
 
   const generateImage = post => act('image-' + post.id, async () => {
-    const compiled = await campaignApi('/posts/' + encodeURIComponent(post.id) + '/compile', { method: 'POST', body: '{}' });
-    await campaignApi('/posts/' + encodeURIComponent(post.id), { method: 'PATCH', body: JSON.stringify({ image_status: 'generating', image_prompt: compiled.image_prompt }) });
-    const result = await base44.integrations.Core.GenerateImage({ prompt: compiled.image_prompt });
-    if (!result?.url) throw new Error('Le générateur n’a retourné aucune image.');
-    const updated = await campaignApi('/posts/' + encodeURIComponent(post.id), {
-      method: 'PATCH',
-      body: JSON.stringify({ image_url: result.url, image_status: 'review', status: 'image_review', image_prompt: compiled.image_prompt, video_prompt: compiled.video_prompt })
-    });
-    setPosts(current => current.map(p => p.id === post.id ? updated.post : p));
+    try {
+      await requestCampaignImage(post.id, false);
+    } catch (error) {
+      if (error.code !== 'PAID_API_CONFIRMATION_REQUIRED') throw error;
+      const ok = window.confirm('Le moteur local n’est pas disponible pour cette image. Autoriser UNE génération xAI payante en respectant la Bible ADN ?');
+      if (!ok) {
+        setNotice({ type: 'info', text: 'Génération image API non autorisée.' });
+        return;
+      }
+      await requestCampaignImage(post.id, true);
+    }
+    await loadPosts();
+    setNotice({ type: 'success', text: 'Génération image lancée par le moteur Campagnes.' });
   });
 
   const approveAndAnimate = post => act('approve-' + post.id, async () => {
-    const approved = await campaignApi('/posts/' + encodeURIComponent(post.id) + '/approve-image', { method: 'POST', body: '{}' });
-    setPosts(current => current.map(p => p.id === post.id ? approved.post : p));
     try {
-      await generateCampaignVideo({ postId: post.id, orchestration: approved.orchestration, allowPaidApi: false });
+      await approveCampaignImageAndGenerateVideo(post.id, false);
     } catch (error) {
       if (error.code !== 'PAID_API_CONFIRMATION_REQUIRED') throw error;
-      const ok = window.confirm('Le moteur local n’est pas utilisé ou indisponible. Autoriser UNE génération vidéo xAI payante à partir de cette image validée ?');
+      const ok = window.confirm('Le moteur vidéo local n’est pas disponible. Autoriser UNE génération xAI payante à partir de cette image validée ?');
       if (!ok) {
-        setNotice({ type: 'info', text: 'Image validée. La génération vidéo API n’a pas été autorisée.' });
+        setNotice({ type: 'info', text: 'Image validée ; génération vidéo API non autorisée.' });
         await loadPosts();
         return;
       }
-      await generateCampaignVideo({ postId: post.id, orchestration: approved.orchestration, allowPaidApi: true });
+      await approveCampaignImageAndGenerateVideo(post.id, true);
     }
     await loadPosts();
-    setNotice({ type: 'success', text: 'Image validée : génération vidéo lancée.' });
+    setNotice({ type: 'success', text: 'Image validée : job vidéo lancé côté serveur.' });
+  });
+
+  const pairWorker = () => act('worker-pair', async () => {
+    await pairCampaignLocalWorker('Elynea Local — ' + (selectedBrand?.name || 'Cockpit'));
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    const status = await loadWorker();
+    if (!status.online) throw new Error('Appairage enregistré mais le worker local n’a pas encore envoyé son heartbeat.');
+    setNotice({ type: 'success', text: 'Moteur local appairé et en ligne.' });
   });
 
   const rejectImage = post => act('reject-' + post.id, async () => {
@@ -153,7 +182,6 @@ export default function Campaigns() {
   });
 
   const refreshVideo = post => act('video-' + post.id, async () => {
-    await refreshCampaignVideo(post);
     await loadPosts();
   });
 
