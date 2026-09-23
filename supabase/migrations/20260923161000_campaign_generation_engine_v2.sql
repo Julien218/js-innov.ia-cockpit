@@ -71,6 +71,9 @@ create index if not exists campaign_generation_jobs_provider_idx
   on public.campaign_generation_jobs(provider,provider_job_id) where provider_job_id is not null;
 create index if not exists campaign_generation_jobs_post_idx
   on public.campaign_generation_jobs(post_id,created_at desc);
+create unique index if not exists campaign_generation_jobs_one_active_per_kind
+  on public.campaign_generation_jobs(post_id,kind)
+  where status in ('queued','claimed','submitting','submitted','running');
 
 alter table public.campaign_local_workers enable row level security;
 alter table public.campaign_generation_jobs enable row level security;
