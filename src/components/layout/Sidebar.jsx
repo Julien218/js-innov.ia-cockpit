@@ -6,7 +6,7 @@ import {
   CheckSquare, MessageSquare, Shield,
   Network, Smartphone, LogOut, Crown, Briefcase, User,
   Settings, Mail, Clapperboard, Globe, FolderTree, Boxes,
-  PlayCircle, GalleryHorizontalEnd, Send, Gauge, Workflow, Factory, MonitorPlay, Building2, Database, Music2,
+  PlayCircle, GalleryHorizontalEnd, Send, Gauge, Workflow, Factory, MonitorPlay, Building2, Database, Music2, Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -128,6 +128,7 @@ export const allNavGroups = [
     label: "Communication",
     minRole: "admin",
     items: [
+      { label: "Campagnes", icon: Megaphone, path: "/campagnes", minRole: "admin" },
       { label: "Emails", icon: Mail, path: "/emails", badge: "emails", minRole: "admin" },
       { label: "Email Core", icon: Send, path: "/emails-core", minRole: "admin" },
       { label: "NOVA — Tri comptable", icon: Receipt, path: "/email-accounting", minRole: "admin" },
