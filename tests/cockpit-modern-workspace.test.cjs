@@ -6,12 +6,13 @@ const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('the dashboard starts with a focused daily work area', () => {
+test('the dashboard starts with the approved reference work area', () => {
   const source = read('src/pages/Dashboard.jsx');
-  assert.match(source, /À traiter maintenant/);
-  assert.match(source, /Ouvrir le travail du jour/);
-  assert.match(source, /Reprendre la production/);
-  assert.match(source, /tachesBloquees/);
+  assert.match(source, /Voici votre activité du jour/);
+  assert.match(source, /Emails à traiter/);
+  assert.match(source, /Actions rapides/);
+  assert.match(source, /Tâches prioritaires/);
+  assert.match(source, /cockpit-reference-elynea/);
 });
 
 test('the task workspace supports search, filters and progressive display', () => {

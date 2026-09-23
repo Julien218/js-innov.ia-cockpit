@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Bell, BellRing, CheckCircle2, CircleAlert, HelpCircle, Loader2, Menu, MessageSquare, Search, Wrench } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { usePermissions } from '@/lib/usePermissions';
+import { ROLE_LABELS } from '@/lib/roles';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -261,7 +262,18 @@ export default function TopBar({ onOpenMobileMenu }) {
           {unreadIds.length > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-4 h-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold flex items-center justify-center">{Math.min(99, unreadIds.length)}</span>}
         </Button>
         <Button variant="ghost" size="icon" aria-label="Aide à la navigation" title="Aide à la navigation" onClick={() => setHelpOpen(true)}><HelpCircle className="w-4 h-4" /></Button>
-        <span title={user?.email} className="hidden sm:flex w-8 h-8 rounded-xl bg-primary/10 items-center justify-center text-primary text-xs font-bold">{user?.full_name?.charAt(0) || user?.email?.charAt(0)?.toUpperCase() || 'J'}</span>
+        <div className="hidden lg:flex items-center gap-2 pl-1" title={user?.email}>
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-xs font-bold text-primary">
+            {user?.full_name?.charAt(0) || user?.email?.charAt(0)?.toUpperCase() || 'J'}
+          </span>
+          <span className="min-w-0 leading-tight">
+            <span className="block max-w-28 truncate text-xs font-semibold text-foreground">{user?.full_name || 'Julien'}</span>
+            <span className="block text-[10px] text-muted-foreground">{ROLE_LABELS[role] || role}</span>
+          </span>
+        </div>
+        <span title={user?.email} className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-xs font-bold text-primary lg:hidden">
+          {user?.full_name?.charAt(0) || user?.email?.charAt(0)?.toUpperCase() || 'J'}
+        </span>
       </div>
 
       {notificationsOpen && <section className="absolute right-3 sm:right-5 top-[calc(100%+.5rem)] z-50 w-[min(27rem,calc(100vw-1.5rem))] max-h-[min(38rem,calc(100dvh-5rem))] overflow-hidden rounded-2xl border bg-background shadow-2xl flex flex-col" aria-label="Centre de notifications">

@@ -91,6 +91,17 @@ const FloatingAgent = () => {
   }, [isOpen]);
 
   useEffect(() => {
+    const openFromCockpit = (event) => {
+      setIsOpen(true);
+      const prompt = String(event?.detail?.prompt || '').trim();
+      if (prompt) setInput(prompt);
+      window.setTimeout(() => inputRef.current?.focus(), 80);
+    };
+    window.addEventListener('elynea:open', openFromCockpit);
+    return () => window.removeEventListener('elynea:open', openFromCockpit);
+  }, []);
+
+  useEffect(() => {
     try { localStorage.setItem('agent_chat_messages', JSON.stringify(messages.slice(-50))); } catch {}
   }, [messages]);
 
@@ -877,7 +888,7 @@ const FloatingAgent = () => {
   return (
     <>
       {!isOpen && (
-        <div style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 99999, fontFamily: 'Inter, -apple-system, sans-serif' }}>
+        <div data-elynea-floating-trigger style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 99999, fontFamily: 'Inter, -apple-system, sans-serif' }}>
           <div
             onClick={() => setIsOpen(true)}
             onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.08)'; }}

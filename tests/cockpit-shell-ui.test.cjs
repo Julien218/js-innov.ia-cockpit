@@ -6,11 +6,13 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
-test('cockpit layout keeps the audio player mounted across route changes', () => {
+test('cockpit layout keeps exactly one persistent audio player across route changes', () => {
   const layout = read('src/components/layout/AppLayout.jsx');
+  const companion = read('src/components/RoleAwareFloatingAgent.jsx');
   assert.match(layout, /<ElyneaAudioDockSynced\s*\/>/);
   assert.match(layout, /<Outlet\s*\/>/);
   assert.match(layout, /cockpit-shell/);
+  assert.doesNotMatch(companion, /ElyneaAudioDockSynced/);
 });
 
 test('desktop navigation auto-expands on hover and is compact otherwise', () => {
@@ -21,29 +23,38 @@ test('desktop navigation auto-expands on hover and is compact otherwise', () => 
   assert.match(sidebar, /const compact = !mobileOpen && !desktopHovered/);
 });
 
-test('dashboard exposes an email recap and floating electric surfaces', () => {
+test('dashboard follows the approved reference composition', () => {
   const dashboard = read('src/pages/Dashboard.jsx');
   assert.match(dashboard, /dashboard-email-overview/);
   assert.match(dashboard, /Emails à traiter/);
-  assert.match(dashboard, /cockpit-float-panel/);
-  assert.match(dashboard, /cockpit-electric-frame/);
+  assert.match(dashboard, /Actions rapides/);
+  assert.match(dashboard, /Projets récents/);
+  assert.match(dashboard, /Tâches prioritaires/);
+  assert.match(dashboard, /Activité & Notifications/);
+  assert.match(dashboard, /Pipeline leads/);
+  assert.match(dashboard, /cockpit-reference-elynea/);
+  assert.match(dashboard, /OFFICIAL_ELYNEA_AVATAR/);
+  assert.match(dashboard, /elynea:open/);
 });
 
-test('cockpit visual overrides remain scoped and do not introduce feather branding', () => {
+test('cockpit reference background and gold tracer remain scoped without feather branding', () => {
   const css = read('src/premium-overrides.css');
+  const backdrop = read('public/cockpit-sunset.svg');
   assert.match(css, /\.cockpit-shell/);
+  assert.match(css, /url\("\/cockpit-sunset\.svg"\)/);
   assert.match(css, /cockpit-gold-trace/);
+  assert.match(css, /cockpit-reference-elynea/);
+  assert.match(backdrop, /panoramique JS-Innov\.IA/);
   assert.doesNotMatch(css, /plume|feather/i);
+  assert.doesNotMatch(backdrop, /plume|feather/i);
 });
 
-
-test('Mobile Hub inherits the transparent cockpit shell instead of forcing a dark page', () => {
+test('Mobile Hub inherits the same floating cockpit system', () => {
   const mobile = read('src/pages/MobileHub.jsx');
   const css = read('src/premium-overrides.css');
   assert.match(mobile, /mobile-hub-page/);
   assert.match(mobile, /cockpit-float-panel/);
   assert.match(mobile, /<Link/);
   assert.doesNotMatch(mobile, /#0a0a14|background:\s*COLORS\.bg/);
-  assert.match(css, /body:has\(\.cockpit-shell\)[\s\S]*background:\s*transparent/);
-  assert.match(css, /rgba\(255, 255, 255, 0\.46\)/);
+  assert.match(css, /body:has\(\.cockpit-shell\)[\s\S]*cockpit-sunset\.svg/);
 });

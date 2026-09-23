@@ -2,25 +2,99 @@ import React from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Users, Target, FolderKanban, FileText, Receipt,
-  Shield, TrendingUp, ArrowRight, CheckSquare, MessageSquare, Clock, AlertCircle,
-  PlayCircle, Plus, Sparkles, Mail
+  Activity,
+  ArrowRight,
+  CheckSquare,
+  FileText,
+  FolderKanban,
+  Mail,
+  MessageSquare,
+  Search,
+  Shield,
+  Target,
+  TrendingUp,
+  Users,
+  Zap,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import StatCard from "@/components/shared/StatCard";
-import StatusBadge from "@/components/shared/StatusBadge";
-import {
-  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip,
-  PieChart, Pie, Cell, CartesianGrid
-} from "recharts";
 import { cn } from "@/lib/utils";
 import { isTaskBlocked, isTaskCompleted } from "@/lib/taskStatus";
 import { useDemandes } from "@/lib/useDemandes";
 import { isNewDemande } from "@/lib/demandePresentation";
+import { OFFICIAL_ELYNEA_AVATAR } from "@/components/ElyneaBrandScope";
 
-const COLORS = ["hsl(217,91%,50%)", "hsl(258,90%,62%)", "hsl(142,71%,45%)", "hsl(38,92%,50%)", "hsl(0,84%,60%)"];
+const KPI_ITEMS = [
+  { key: "tasks", label: "Tâches à traiter", icon: CheckSquare, tone: "blue" },
+  { key: "emails", label: "Emails à traiter", icon: Mail, tone: "rose" },
+  { key: "clients", label: "Clients actifs", icon: Users, tone: "green" },
+  { key: "projects", label: "Projets en cours", icon: FolderKanban, tone: "violet" },
+  { key: "commissions", label: "Commissions", icon: Shield, tone: "amber" },
+  { key: "revenue", label: "CA encaissé", icon: TrendingUp, tone: "cyan" },
+  { key: "leads", label: "Leads actifs", icon: Target, tone: "orange" },
+  { key: "requests", label: "Demandes", icon: MessageSquare, tone: "slate" },
+];
+
+const PIPELINE = [
+  { key: "nouveau", label: "Nouveaux" },
+  { key: "contacte", label: "En contact" },
+  { key: "proposition", label: "Proposition" },
+  { key: "negociation", label: "Négociation" },
+  { key: "gagne", label: "Gagnés" },
+];
+
+function timeLabel(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "—";
+  return format(date, "dd/MM · HH:mm", { locale: fr });
+}
+
+function projectTitle(project) {
+  return project.nom || project.titre || project.name || project.title || "Projet sans titre";
+}
+
+function projectClient(project) {
+  return project.client_nom || project.clientName || project.client?.nom || "";
+}
+
+function priorityTone(task) {
+  if (isTaskBlocked(task)) return "bg-red-500/10 text-red-600 border-red-500/20";
+  if (task.priorite === "urgente" || task.priorite === "haute") return "bg-red-500/10 text-red-600 border-red-500/20";
+  if (task.priorite === "moyenne") return "bg-amber-500/10 text-amber-700 border-amber-500/20";
+  return "bg-blue-500/10 text-blue-600 border-blue-500/20";
+}
+
+function KpiCard({ item, value, subtitle }) {
+  const Icon = item.icon;
+  return (
+    <div className={cn("cockpit-reference-kpi", `cockpit-kpi-${item.tone}`)}>
+      <span className="cockpit-reference-kpi-icon"><Icon className="h-4 w-4" /></span>
+      <div className="min-w-0">
+        <p className="text-xl font-bold leading-none">{value}</p>
+        <p className="mt-1 truncate text-[11px] font-medium text-slate-600">{item.label}</p>
+        {subtitle && <p className="mt-1 truncate text-[10px] text-slate-500">{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
+
+function PanelHeader({ icon: Icon, title, action, to }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-slate-900/5 px-4 py-3">
+      <div className="flex items-center gap-2">
+        <span className="cockpit-reference-section-icon"><Icon className="h-4 w-4" /></span>
+        <h2 className="text-sm font-semibold">{title}</h2>
+      </div>
+      {to && (
+        <Link to={to} className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700">
+          {action || "Voir tout"} <ArrowRight className="h-3 w-3" />
+        </Link>
+      )}
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const { data: clients = [], isError: clientsErr } = useQuery({ queryKey: ["clients"], queryFn: () => base44.entities.Client.list() });
@@ -28,328 +102,295 @@ export default function Dashboard() {
   const { data: projets = [], isError: projetsErr } = useQuery({ queryKey: ["projets"], queryFn: () => base44.entities.Projet.list() });
   const { data: taches = [], isError: tachesErr } = useQuery({ queryKey: ["taches"], queryFn: () => base44.entities.Tache.list() });
   const { data: demandes = [], isError: demandesErr } = useDemandes();
-  const { data: devis = [], isError: devisErr } = useQuery({ queryKey: ["devis"], queryFn: () => base44.entities.Devis.list() });
   const { data: factures = [], isError: facturesErr } = useQuery({ queryKey: ["factures"], queryFn: () => base44.entities.Facture.list() });
   const { data: commissions = [], isError: commissionsErr } = useQuery({ queryKey: ["commissions"], queryFn: () => base44.entities.Commission.list() });
-  const { data: emailOverview = { emails: [] }, isError: emailsErr } = useQuery({
+
+  const { data: emailOverview = { emails: [], unread: 0 }, isError: emailsErr } = useQuery({
     queryKey: ["dashboard-email-overview"],
     queryFn: async () => {
-      const response = await fetch('/api/emails?limit=8', { credentials: 'same-origin' });
+      const response = await fetch("/api/emails?limit=8", { credentials: "same-origin" });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.success) throw new Error(data.error || `Emails indisponibles (HTTP ${response.status})`);
       const emails = Array.isArray(data.emails) ? data.emails : [];
-      const unreadFromApi = Number(data.unread);
+      const unread = Number(data.unread);
       return {
         emails,
-        unread: Number.isFinite(unreadFromApi) ? unreadFromApi : emails.filter(email => !email.seen).length,
+        unread: Number.isFinite(unread) ? unread : emails.filter((email) => !email.seen).length,
       };
     },
     staleTime: 60_000,
     refetchInterval: 120_000,
   });
 
+  const { data: notifications = [] } = useQuery({
+    queryKey: ["dashboard-notifications"],
+    queryFn: async () => {
+      const response = await fetch("/api/data/Notifications?limit=8", { credentials: "include" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) return [];
+      return Array.isArray(data.events) ? data.events : [];
+    },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
 
-  const hasAnyError = clientsErr || leadsErr || projetsErr || tachesErr || demandesErr || devisErr || facturesErr || commissionsErr;
-
-  const caTotal = factures.filter(f => f.statut === "payee").reduce((s, f) => s + (f.montant_ttc || 0), 0);
-  const caEnAttente = factures.filter(f => ["envoyee", "en_retard"].includes(f.statut)).reduce((s, f) => s + (f.montant_ttc || 0), 0);
-  const commTotal = commissions.filter(c => c.statut === "payee").reduce((s, c) => s + (c.montant || c.montant_commission || 0), 0);
-  const leadsActifs = leads.filter(l => !["gagne", "perdu"].includes(l.statut)).length;
-  const projetsEnCours = projets.filter(p => p.statut === "en_cours").length;
-  const tachesEnRetard = taches.filter(t => t.date_echeance && new Date(t.date_echeance) < new Date() && !isTaskCompleted(t)).length;
-  const tachesBloquees = taches.filter(isTaskBlocked).length;
-  const tachesActives = taches.filter(t => !isTaskCompleted(t)).length;
+  const caTotal = factures.filter((f) => f.statut === "payee").reduce((sum, f) => sum + Number(f.montant_ttc || 0), 0);
+  const commTotal = commissions.filter((c) => c.statut === "payee").reduce((sum, c) => sum + Number(c.montant || c.montant_commission || 0), 0);
+  const leadsActifs = leads.filter((lead) => !["gagne", "perdu"].includes(lead.statut)).length;
+  const projetsEnCours = projets.filter((project) => project.statut === "en_cours").length;
+  const tachesEnRetard = taches.filter((task) => task.date_echeance && new Date(task.date_echeance) < new Date() && !isTaskCompleted(task)).length;
+  const tachesActives = taches.filter((task) => !isTaskCompleted(task)).length;
   const demandesOuvertes = demandes.filter(isNewDemande).length;
-  const emailsATraiter = Number.isFinite(Number(emailOverview.unread))
-    ? Number(emailOverview.unread)
-    : emailOverview.emails.filter(email => !email.seen).length;
-  const emailsRecents = emailOverview.emails.filter(email => !email.seen).slice(0, 5);
+  const emailsATraiter = Number(emailOverview.unread || 0);
+  const emailsRecents = emailOverview.emails.filter((email) => !email.seen).slice(0, 5);
 
-  const leadsByStatus = [
-    { name: "Nouveau", value: leads.filter(l => l.statut === "nouveau").length },
-    { name: "Contacté", value: leads.filter(l => l.statut === "contacte").length },
-    { name: "Qualifié", value: leads.filter(l => l.statut === "qualifie").length },
-    { name: "Proposition", value: leads.filter(l => l.statut === "proposition").length },
-    { name: "Gagné", value: leads.filter(l => l.statut === "gagne").length },
-    { name: "Perdu", value: leads.filter(l => l.statut === "perdu").length },
-  ].filter(l => l.value > 0);
-
-  const monthlyRevenue = factures.filter(f => f.statut === "payee").reduce((acc, f) => {
-    const month = f.date_paiement ? format(new Date(f.date_paiement), "MMM yy", { locale: fr }) : "N/A";
-    const existing = acc.find(a => a.name === month);
-    if (existing) existing.value += f.montant_ttc || 0;
-    else acc.push({ name: month, value: f.montant_ttc || 0 });
-    return acc;
-  }, []);
-
-  const recentLeads = [...leads].sort((a, b) => new Date(b.created_at || b.created_date || 0).getTime() - new Date(a.created_at || a.created_date || 0).getTime()).slice(0, 5);
-  const tachesUrgentes = taches
-    .filter(t => (t.priorite === "urgente" || t.priorite === "haute" || isTaskBlocked(t)) && !isTaskCompleted(t))
-    .sort((a, b) => Number(isTaskBlocked(b)) - Number(isTaskBlocked(a)))
+  const recentProjects = [...projets]
+    .sort((a, b) => new Date(b.updated_at || b.created_at || b.created_date || 0) - new Date(a.updated_at || a.created_at || a.created_date || 0))
     .slice(0, 4);
-  const heure = new Date().getHours();
-  const salut = heure < 12 ? "Bonjour" : heure < 18 ? "Bon après-midi" : "Bonsoir";
+
+  const tachesUrgentes = [...taches]
+    .filter((task) => !isTaskCompleted(task))
+    .sort((a, b) => {
+      const blocked = Number(isTaskBlocked(b)) - Number(isTaskBlocked(a));
+      if (blocked) return blocked;
+      return new Date(a.date_echeance || "2999-12-31") - new Date(b.date_echeance || "2999-12-31");
+    })
+    .slice(0, 5);
+
+  const pipelineCounts = PIPELINE.map((stage) => ({
+    ...stage,
+    value: leads.filter((lead) => lead.statut === stage.key).length,
+  }));
+  const pipelineMax = Math.max(1, ...pipelineCounts.map((item) => item.value));
+
+  const hasAnyError = clientsErr || leadsErr || projetsErr || tachesErr || demandesErr || facturesErr || commissionsErr;
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Bonjour" : hour < 18 ? "Bon après-midi" : "Bonsoir";
+
+  const kpiValues = {
+    tasks: tachesActives,
+    emails: emailsATraiter,
+    clients: clients.length,
+    projects: projetsEnCours,
+    commissions: `${commTotal.toLocaleString("fr-BE")} €`,
+    revenue: `${caTotal.toLocaleString("fr-BE")} €`,
+    leads: leadsActifs,
+    requests: demandesOuvertes,
+  };
+
+  const openElynea = (prompt = "") => {
+    window.dispatchEvent(new CustomEvent("elynea:open", { detail: { prompt } }));
+  };
+
+  const quickActions = [
+    { label: "Nouveau client", to: "/clients", icon: Users },
+    { label: "Nouveau projet", to: "/projets", icon: FolderKanban },
+    { label: "Ajouter une tâche", to: "/taches", icon: CheckSquare },
+    { label: "Créer un devis", to: "/devis", icon: FileText },
+  ];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground" style={{fontFamily: "'Space Grotesk', sans-serif"}}>
-            {salut}, <span className="gradient-text">Julien</span> 👋
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1 capitalize">
-            {format(new Date(), "EEEE d MMMM yyyy", { locale: fr })}
-          </p>
-        </div>
-        {(tachesEnRetard > 0 || demandesOuvertes > 0) && (
-          <div className="flex gap-2">
-            {tachesEnRetard > 0 && (
-              <div className="flex items-center gap-1.5 bg-red-500/10 text-red-600 text-xs font-medium px-3 py-1.5 rounded-xl border border-red-500/20">
-                <AlertCircle className="w-3.5 h-3.5" />
-                {tachesEnRetard} tâche{tachesEnRetard > 1 ? "s" : ""} en retard
-              </div>
-            )}
-            {demandesOuvertes > 0 && (
-              <div className="flex items-center gap-1.5 bg-amber-500/10 text-amber-600 text-xs font-medium px-3 py-1.5 rounded-xl border border-amber-500/20">
-                <MessageSquare className="w-3.5 h-3.5" />
-                {demandesOuvertes} demande{demandesOuvertes > 1 ? "s" : ""} ouverte{demandesOuvertes > 1 ? "s" : ""}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {hasAnyError && (
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 text-sm text-amber-600 flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>Certaines données n'ont pas pu être chargées. Les compteurs peuvent être incomplets.</span>
-        </div>
-      )}
-
-      {/* Centre de travail quotidien */}
-      <section className="workspace-hero cockpit-electric-frame">
-        <div className="relative z-10 flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-          <div className="max-w-2xl">
-            <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-              <Sparkles className="h-3.5 w-3.5" /> Centre de pilotage
-            </div>
-            <h2 className="text-xl font-semibold sm:text-2xl">À traiter maintenant</h2>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              Commence par les blocages et retards, puis reprends la production. Les informations secondaires restent accessibles plus bas.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Link to="/taches" className="premium-button h-10 gap-2 px-4 text-sm">
-                <CheckSquare className="h-4 w-4" /> Ouvrir le travail du jour
-              </Link>
-              <Link to="/production" className="workspace-secondary-action">
-                <PlayCircle className="h-4 w-4" /> Reprendre la production
-              </Link>
-              <Link to="/clients" className="workspace-secondary-action">
-                <Plus className="h-4 w-4" /> Nouveau client
-              </Link>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 xl:min-w-[640px]">
-            <Link to="/taches" className="workspace-focus-card workspace-focus-danger">
-              <span className="workspace-focus-value">{tachesBloquees}</span>
-              <span className="workspace-focus-label">bloquées</span>
-            </Link>
-            <Link to="/taches" className="workspace-focus-card workspace-focus-warning">
-              <span className="workspace-focus-value">{tachesEnRetard}</span>
-              <span className="workspace-focus-label">en retard</span>
-            </Link>
-            <Link to="/taches" className="workspace-focus-card">
-              <span className="workspace-focus-value">{tachesActives}</span>
-              <span className="workspace-focus-label">à traiter</span>
-            </Link>
-            <Link to="/demandes" className="workspace-focus-card">
-              <span className="workspace-focus-value">{demandesOuvertes}</span>
-              <span className="workspace-focus-label">demandes</span>
-            </Link>
-            <Link to="/emails" className="workspace-focus-card">
-              <span className="workspace-focus-value">{emailsATraiter}</span>
-              <span className="workspace-focus-label">emails à traiter</span>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-10 gap-3">
-        <div className="col-span-2">
-          <StatCard title="CA encaissé" value={`${caTotal.toLocaleString("fr-FR")} €`} icon={TrendingUp} color="success" subtitle={caEnAttente > 0 ? `+ ${caEnAttente.toLocaleString("fr-FR")} € en attente` : undefined} />
-        </div>
-        <div className="col-span-2">
-          <StatCard title="Commissions" value={`${commTotal.toLocaleString("fr-FR")} €`} icon={Shield} color="accent" />
-        </div>
-        <StatCard title="Clients" value={clients.length} icon={Users} color="primary" />
-        <StatCard title="Leads actifs" value={leadsActifs} icon={Target} color="warning" />
-        <StatCard title="Projets" value={projetsEnCours} icon={FolderKanban} color="primary" subtitle="en cours" />
-        <StatCard title="Devis" value={devis.filter(d => d.statut === "envoye").length} icon={FileText} color="accent" subtitle="envoyés" />
-        <StatCard title="Emails" value={emailsATraiter} icon={Mail} color={emailsATraiter > 0 ? "warning" : "primary"} subtitle="à traiter" />
-        <StatCard title="Tâches" value={tachesActives} icon={CheckSquare} color={tachesEnRetard > 0 ? "destructive" : "primary"} subtitle={tachesEnRetard > 0 ? `${tachesEnRetard} en retard` : "actives"} />
-      </div>
-
-
-      {/* Recap emails a traiter */}
-      <section className="cockpit-float-panel cockpit-electric-frame">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-900/5 px-5 py-4">
-          <div className="flex items-center gap-2">
-            <span className="cockpit-icon-chip"><Mail className="h-4 w-4" /></span>
+    <div className="cockpit-reference-dashboard">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px]">
+        <div className="min-w-0 space-y-4">
+          <section className="cockpit-reference-greeting">
             <div>
-              <h3 className="text-sm font-semibold" style={{fontFamily: "'Space Grotesk', sans-serif"}}>Emails à traiter</h3>
-              <p className="text-[11px] text-muted-foreground">
-                {emailsErr ? "La boîte mail n’est pas disponible pour le moment." : emailsATraiter > 0 ? `${emailsATraiter} message${emailsATraiter > 1 ? "s" : ""} non lu${emailsATraiter > 1 ? "s" : ""}` : "Aucun email en attente."}
-              </p>
+              <h1 className="text-2xl font-bold text-white drop-shadow-sm sm:text-3xl">
+                {greeting}, <span className="text-amber-300">Julien</span> 👋
+              </h1>
+              <p className="mt-1 text-sm text-white/80">Voici votre activité du jour. Les priorités restent visibles en un coup d’œil.</p>
             </div>
-          </div>
-          <Link to="/emails" className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
-            Ouvrir la messagerie <ArrowRight className="w-3 h-3" />
-          </Link>
-        </div>
-        <div className="divide-y divide-slate-900/5">
-          {emailsErr ? (
-            <div className="px-5 py-4 text-sm text-muted-foreground">Impossible de charger le récapitulatif email.</div>
-          ) : emailsRecents.length === 0 ? (
-            <div className="px-5 py-4 text-sm text-muted-foreground">Tout est traité dans la boîte de réception.</div>
-          ) : emailsRecents.map((email) => (
-            <Link key={email.uid || `${email.from}-${email.date}-${email.subject}`} to="/emails" className="flex items-center gap-3 px-5 py-3 transition hover:bg-white/30">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,.35)]" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{email.subject || "(sans objet)"}</p>
-                <p className="truncate text-xs text-muted-foreground">{email.from || "Expéditeur inconnu"}</p>
-              </div>
-              <span className="text-[10px] text-muted-foreground">{email.date && Number.isFinite(new Date(email.date).getTime()) ? format(new Date(email.date), "dd/MM HH:mm") : ""}</span>
-            </Link>
-          ))}
-        </div>
-      </section>
+            <div className="hidden rounded-2xl border border-amber-300/40 bg-slate-950/35 px-5 py-3 text-right text-sm italic text-white/90 backdrop-blur-xl lg:block">
+              « Des idées d’aujourd’hui,<br />des solutions de demain. »
+              <span className="mt-1 block text-[10px] not-italic text-amber-200">JS-Innov.IA</span>
+            </div>
+          </section>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Revenue Chart */}
-        <div className="cockpit-float-panel cockpit-electric-frame lg:col-span-2 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold" style={{fontFamily: "'Space Grotesk', sans-serif"}}>Chiffre d'affaires</h3>
-            <Link to="/factures" className="text-xs text-primary hover:underline flex items-center gap-1">
-              Voir factures <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
-          <div className="h-52">
-            {monthlyRevenue.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={monthlyRevenue} barCategoryGap="35%">
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(220,13%,91%)" vertical={false} />
-                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: "hsl(220,9%,46%)" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: "hsl(220,9%,46%)" }} axisLine={false} tickLine={false} />
-                  <Tooltip formatter={(v) => [`${v.toLocaleString("fr-FR")} €`, "CA"]} contentStyle={{ borderRadius: "12px", border: "1px solid hsl(220,13%,88%)", fontSize: "12px" }} />
-                  <Bar dataKey="value" fill="hsl(217,91%,50%)" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-                <Receipt className="w-8 h-8 mb-2 opacity-30" />
-                <p className="text-sm">Aucune facture payée</p>
-              </div>
-            )}
-          </div>
-        </div>
+          {hasAnyError && (
+            <div className="rounded-xl border border-amber-300/35 bg-amber-50/85 px-4 py-3 text-sm text-amber-800 shadow-lg backdrop-blur-xl">
+              Certaines données métier n’ont pas pu être chargées. Les compteurs concernés peuvent être incomplets.
+            </div>
+          )}
 
-        {/* Leads Pipeline */}
-        <div className="cockpit-float-panel cockpit-electric-frame p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold" style={{fontFamily: "'Space Grotesk', sans-serif"}}>Pipeline leads</h3>
-            <Link to="/leads" className="text-xs text-primary hover:underline flex items-center gap-1">
-              Voir tout <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
-          <div className="h-52">
-            {leads.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={leadsByStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} innerRadius={40} strokeWidth={2} stroke="white">
-                    {leadsByStatus.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ borderRadius: "12px", fontSize: "12px" }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-                <Target className="w-8 h-8 mb-2 opacity-30" />
-                <p className="text-sm">Aucun lead</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Recent Leads */}
-        {recentLeads.length > 0 && <div className="cockpit-float-panel cockpit-electric-frame">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-            <h3 className="text-sm font-semibold" style={{fontFamily: "'Space Grotesk', sans-serif"}}>Derniers leads</h3>
-            <Link to="/leads" className="text-xs text-primary hover:underline flex items-center gap-1">Voir tout <ArrowRight className="w-3 h-3" /></Link>
-          </div>
-          <div className="divide-y divide-border">
-            {recentLeads.map((lead) => (
-              <div key={lead.id} className="flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold flex-shrink-0">
-                    {(lead.prenom || lead.nom || "?").charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">{lead.prenom} {lead.nom}</p>
-                    <p className="text-xs text-muted-foreground">{lead.entreprise || lead.email}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  {lead.valeur_estimee > 0 && <span className="text-sm font-semibold text-foreground">{lead.valeur_estimee?.toLocaleString("fr-FR")} €</span>}
-                  <StatusBadge status={lead.statut} />
-                </div>
-              </div>
+          <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+            {KPI_ITEMS.map((item) => (
+              <KpiCard
+                key={item.key}
+                item={item}
+                value={kpiValues[item.key]}
+                subtitle={
+                  item.key === "tasks" && tachesEnRetard > 0 ? `${tachesEnRetard} en retard`
+                    : item.key === "emails" && emailsErr ? "Messagerie indisponible"
+                    : item.key === "projects" ? "en cours"
+                    : undefined
+                }
+              />
             ))}
-          </div>
-        </div>}
+          </section>
 
-        {/* Tâches urgentes */}
-        <div className={cn("cockpit-float-panel cockpit-electric-frame", recentLeads.length === 0 && "lg:col-span-2")}>
-          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-            <h3 className="text-sm font-semibold" style={{fontFamily: "'Space Grotesk', sans-serif"}}>Tâches prioritaires</h3>
-            <Link to="/taches" className="text-xs text-primary hover:underline flex items-center gap-1">Voir tout <ArrowRight className="w-3 h-3" /></Link>
-          </div>
-          <div className="divide-y divide-border">
-            {tachesUrgentes.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
-                <CheckSquare className="w-7 h-7 mb-2 opacity-30" />
-                <p className="text-sm">Aucune tâche urgente</p>
+          <section className="grid gap-3 lg:grid-cols-[1.45fr_.9fr_1.2fr]">
+            <div className="cockpit-reference-panel cockpit-electric-frame">
+              <PanelHeader icon={Mail} title="Emails à traiter" action="Voir tous" to="/emails" />
+              <div className="divide-y divide-slate-900/5">
+                {emailsErr ? (
+                  <div className="px-4 py-6 text-sm text-slate-500">La messagerie n’est pas disponible pour le moment.</div>
+                ) : emailsRecents.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-slate-500">Aucun email non lu à traiter.</div>
+                ) : (
+                  emailsRecents.map((email) => (
+                    <Link key={email.uid || `${email.from}-${email.date}-${email.subject}`} to="/emails" className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-white/45">
+                      <span className="h-8 w-8 shrink-0 rounded-full bg-slate-200/80 text-center text-[11px] font-bold leading-8 text-slate-600">
+                        {String(email.from || "?").replace(/^["']|["']$/g, "").charAt(0).toUpperCase()}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-semibold">{email.from || "Expéditeur inconnu"}</span>
+                        <span className="block truncate text-[11px] text-slate-500">{email.subject || "(sans objet)"}</span>
+                      </span>
+                      <span className="text-[10px] text-slate-500">{timeLabel(email.date)}</span>
+                    </Link>
+                  ))
+                )}
               </div>
-            ) : tachesUrgentes.map((t) => {
-              const retard = t.date_echeance && new Date(t.date_echeance) < new Date();
-              return (
-                <div key={t.id} className="flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-colors">
-                  <div className="flex items-center gap-3">
-                    {retard ? <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" /> : <Clock className="w-4 h-4 text-amber-500 flex-shrink-0" />}
-                    <div>
-                      <p className="text-sm font-medium">{t.titre}</p>
-                      <p className="text-xs text-muted-foreground">{t.projet_nom || t.client_nom || "—"}</p>
+            </div>
+
+            <div className="cockpit-reference-panel cockpit-electric-frame">
+              <PanelHeader icon={Zap} title="Actions rapides" />
+              <div className="grid grid-cols-2 gap-2 p-3">
+                {quickActions.map((action) => {
+                  const Icon = action.icon;
+                  return (
+                    <Link key={action.label} to={action.to} className="cockpit-reference-quick-action">
+                      <Icon className="h-5 w-5 text-blue-600" />
+                      <span>{action.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="cockpit-reference-panel cockpit-electric-frame">
+              <PanelHeader icon={FolderKanban} title="Projets récents" action="Voir tous" to="/projets" />
+              <div className="divide-y divide-slate-900/5">
+                {recentProjects.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-slate-500">Aucun projet récent.</div>
+                ) : (
+                  recentProjects.map((project) => (
+                    <Link key={project.id} to="/projets" className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-white/45">
+                      <span className="cockpit-reference-project-mark">{projectTitle(project).charAt(0).toUpperCase()}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-semibold">{projectTitle(project)}</span>
+                        <span className="block truncate text-[10px] text-slate-500">{projectClient(project) || "Projet JS-Innov.IA"}</span>
+                      </span>
+                      <span className="rounded-full bg-blue-500/10 px-2 py-1 text-[9px] font-semibold text-blue-700">
+                        {project.statut || "actif"}
+                      </span>
+                    </Link>
+                  ))
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="grid gap-3 lg:grid-cols-[1.2fr_.95fr_.9fr]">
+            <div className="cockpit-reference-panel cockpit-electric-frame">
+              <PanelHeader icon={CheckSquare} title="Tâches prioritaires" action={`Voir toutes (${tachesActives})`} to="/taches" />
+              <div className="divide-y divide-slate-900/5">
+                {tachesUrgentes.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-slate-500">Aucune tâche prioritaire.</div>
+                ) : (
+                  tachesUrgentes.map((task) => (
+                    <Link key={task.id} to="/taches" className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-white/45">
+                      <span className="h-4 w-4 rounded border border-slate-400/60 bg-white/50" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-medium">{task.titre || task.title || "Tâche"}</span>
+                        <span className="block truncate text-[10px] text-slate-500">{task.projet_nom || task.client_nom || "Cockpit"}</span>
+                      </span>
+                      <span className={cn("rounded-full border px-2 py-1 text-[9px] font-semibold", priorityTone(task))}>
+                        {isTaskBlocked(task) ? "Bloquée" : task.priorite || "Normale"}
+                      </span>
+                      <span className="text-[10px] text-slate-500">{task.date_echeance ? format(new Date(task.date_echeance), "dd/MM") : ""}</span>
+                    </Link>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="cockpit-reference-panel cockpit-electric-frame">
+              <PanelHeader icon={Activity} title="Activité & Notifications" />
+              <div className="divide-y divide-slate-900/5">
+                {notifications.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-slate-500">Aucune nouvelle activité.</div>
+                ) : (
+                  notifications.slice(0, 5).map((event) => (
+                    <div key={event.id || `${event.title}-${event.created_at}`} className="flex items-start gap-3 px-4 py-2.5">
+                      <span className={cn("mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full", event.severity === "critical" ? "bg-red-500" : event.severity === "warning" ? "bg-amber-500" : "bg-emerald-500")} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold">{event.title || "Activité Cockpit"}</p>
+                        <p className="line-clamp-1 text-[10px] text-slate-500">{event.body || event.event_type || "Mise à jour"}</p>
+                      </div>
+                      <span className="text-[9px] text-slate-500">{timeLabel(event.created_at)}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="cockpit-reference-panel cockpit-electric-frame">
+              <PanelHeader icon={Target} title="Pipeline leads" action="Voir le pipeline" to="/leads" />
+              <div className="space-y-3 p-4">
+                {pipelineCounts.map((stage) => (
+                  <div key={stage.key}>
+                    <div className="mb-1 flex items-center justify-between text-[11px]">
+                      <span className="font-medium text-slate-600">{stage.label}</span>
+                      <span className="font-bold text-slate-800">{stage.value}</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-200/80">
+                      <div className="h-full rounded-full bg-gradient-to-r from-blue-500 via-violet-500 to-amber-400" style={{ width: `${Math.max(stage.value ? 12 : 0, Math.round((stage.value / pipelineMax) * 100))}%` }} />
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {t.date_echeance && (
-                      <span className={cn("text-xs", retard ? "text-red-500 font-medium" : "text-muted-foreground")}>
-                        {format(new Date(t.date_echeance), "dd/MM")}
-                      </span>
-                    )}
-                    <StatusBadge status={t.priorite} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                ))}
+              </div>
+            </div>
+          </section>
         </div>
+
+        <aside className="cockpit-reference-elynea cockpit-electric-frame xl:sticky xl:top-4 xl:self-start">
+          <div className="relative overflow-hidden rounded-[inherit]">
+            <div className="cockpit-reference-elynea-portrait">
+              <img src={OFFICIAL_ELYNEA_AVATAR} alt="Elynea" className="h-full w-full object-cover" />
+              <span className="absolute right-4 top-4 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-slate-950/60" />
+            </div>
+            <div className="p-4 text-white">
+              <h2 className="text-xl font-bold">Elynea</h2>
+              <p className="text-xs text-white/65">Votre assistante IA</p>
+
+              <div className="mt-4 rounded-xl bg-white/90 p-3 text-slate-900 shadow-lg">
+                <p className="text-sm font-semibold">Bonjour Julien ! 👋</p>
+                <p className="mt-1 text-xs text-slate-600">Comment puis-je vous aider aujourd’hui ?</p>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                <button type="button" onClick={() => openElynea("Analyse mon activité du jour et indique-moi les priorités.")} className="cockpit-reference-elynea-action">
+                  <CheckSquare className="h-4 w-4" /> Analyser mon activité
+                </button>
+                <button type="button" onClick={() => openElynea("Aide-moi à rédiger un email professionnel.")} className="cockpit-reference-elynea-action">
+                  <Mail className="h-4 w-4" /> Rédiger un email
+                </button>
+                <button type="button" onClick={() => openElynea("Aide-moi à préparer un devis à partir du contexte disponible.")} className="cockpit-reference-elynea-action">
+                  <FileText className="h-4 w-4" /> Préparer un devis
+                </button>
+                <button type="button" onClick={() => openElynea("Je veux rechercher une information dans mon environnement de travail.")} className="cockpit-reference-elynea-action">
+                  <Search className="h-4 w-4" /> Rechercher une information
+                </button>
+              </div>
+
+              <button type="button" onClick={() => openElynea("")} className="mt-3 flex w-full items-center justify-between rounded-xl bg-white px-3 py-2.5 text-left text-xs font-medium text-slate-500 shadow-lg">
+                Posez-moi une question…
+                <ArrowRight className="h-4 w-4 text-slate-900" />
+              </button>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
   );
