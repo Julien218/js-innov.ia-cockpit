@@ -27,7 +27,7 @@ export default function Campaigns() {
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState(null);
   const [campaignForm, setCampaignForm] = useState({ name: '', objective: '', phase: 'recrutement', cta: '', landing_url: '', channels: ['facebook','instagram','tiktok'] });
-  const [postForm, setPostForm] = useState({ title: '', brief: '', platforms: ['facebook','instagram','tiktok'], image_engine: 'auto', video_engine: 'auto' });
+  const [postForm, setPostForm] = useState({ title: '', brief: '', platforms: ['facebook','instagram','tiktok'], image_engine: '', video_engine: '' });
   const [brandForm, setBrandForm] = useState({});
   const [worker, setWorker] = useState({ paired: false, online: false, local_agent_reachable: false, cloud: null, local: null });
   const [brandContext, setBrandContext] = useState(null);
@@ -126,7 +126,7 @@ export default function Campaigns() {
     if (!campaignId || !postForm.brief.trim()) throw new Error('Ajoute un brief de contenu.');
     const data = await campaignApi('/' + encodeURIComponent(campaignId) + '/posts', { method: 'POST', body: JSON.stringify(postForm) });
     setPosts(current => [data.post, ...current]);
-    setPostForm({ title: '', brief: '', platforms: ['facebook','instagram','tiktok'], image_engine: 'auto', video_engine: 'auto' });
+    setPostForm({ title: '', brief: '', platforms: ['facebook','instagram','tiktok'], image_engine: '', video_engine: '' });
   });
 
   const draftPost = post => act('draft-' + post.id, async () => {
@@ -304,8 +304,8 @@ export default function Campaigns() {
               <textarea className={input + ' min-h-28'} placeholder="Ex. Prépare un post d’ouverture du recrutement 2027 avec suspense, CTA inscription et visuel vertical premium." value={postForm.brief} onChange={e => setPostForm(v => ({ ...v, brief: e.target.value }))} />
               <div className="flex flex-wrap items-center gap-4">
                 {['facebook','instagram','tiktok'].map(platform => <label key={platform} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={postForm.platforms.includes(platform)} onChange={e => setPostForm(v => ({ ...v, platforms: e.target.checked ? [...v.platforms, platform] : v.platforms.filter(p => p !== platform) }))} />{platform}</label>)}
-                <select className={input + ' max-w-44'} value={postForm.image_engine} onChange={e => setPostForm(v => ({ ...v, image_engine: e.target.value }))}><option value="auto">Image AUTO</option><option value="local">Image LOCAL</option><option value="api">Image API</option></select>
-                <select className={input + ' max-w-44'} value={postForm.video_engine} onChange={e => setPostForm(v => ({ ...v, video_engine: e.target.value }))}><option value="auto">Vidéo AUTO</option><option value="local">Vidéo LOCAL</option><option value="api">Vidéo API</option></select>
+                <select className={input + ' max-w-52'} value={postForm.image_engine} onChange={e => setPostForm(v => ({ ...v, image_engine: e.target.value }))}><option value="">Image : moteur de la marque</option><option value="auto">Image AUTO</option><option value="local">Image LOCAL</option><option value="api">Image API</option></select>
+                <select className={input + ' max-w-52'} value={postForm.video_engine} onChange={e => setPostForm(v => ({ ...v, video_engine: e.target.value }))}><option value="">Vidéo : moteur de la marque</option><option value="auto">Vidéo AUTO</option><option value="local">Vidéo LOCAL</option><option value="api">Vidéo API</option></select>
               </div>
               <Button onClick={createPost} disabled={busy === 'post-create'}><Plus className="w-4 h-4 mr-2" />Créer le contenu</Button>
             </section>
