@@ -13,6 +13,19 @@ async function brandForCampaign(campaign, org) {
 async function campaignForPost(post, org) {
   return post && post.campaign_id ? one('campaigns', post.campaign_id, org) : null;
 }
+function adnSnapshot(context, brand) {
+  const bible = context?.bible || {};
+  return {
+    source: bible.source || 'canonical-registry',
+    brand_id: bible.brand_id || context?.brand?.slug || brand?.slug || null,
+    registry_version: bible.registry_version || null,
+    repository: bible.repository || null,
+    path: bible.manifest_path || null,
+    ref: bible.ref || null,
+    sha: bible.manifest_sha || null,
+    brand_board_url: brand?.brand_board_url || null
+  };
+}
 
 router.get('/brands', async function(req, res) {
   try {
@@ -135,10 +148,7 @@ router.post('/:campaignId/posts', async function(req, res) {
       status: 'draft',
       platforms: arr(req.body.platforms || campaign.channels || ['facebook','instagram','tiktok'], 8),
       video_engine: ['auto','local','api'].includes(req.body.video_engine) ? req.body.video_engine : null,
-      adn_source: {
-        source: context.bible.source, repository: context.bible.repository, path: context.bible.path,
-        ref: context.bible.ref, sha: context.bible.sha, brand_board_url: brand.brand_board_url || null
-      },
+      adn_source: adnSnapshot(context, brand),
       created_by: (req.user && (req.user.id || req.user.email)) || null
     };
     const rows = await crm('campaign_posts', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(row) });
@@ -178,7 +188,7 @@ router.post('/posts/:id/draft', async function(req, res) {
       title: draft.title, copy: draft.copy, seo: draft.seo, hashtags: draft.hashtags,
       image_prompt: draft.image_prompt, video_prompt: draft.video_prompt, status: 'prepared',
       updated_at: new Date().toISOString(),
-      adn_source: { source: context.bible.source, repository: context.bible.repository, path: context.bible.path, ref: context.bible.ref, sha: context.bible.sha, brand_board_url: brand.brand_board_url || null }
+      adn_source: adnSnapshot(context, brand)
     };
     const rows = await crm('campaign_posts?id=eq.' + encodeURIComponent(post.id) + '&organisation_id=eq.' + encodeURIComponent(org), {
       method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify(patch)

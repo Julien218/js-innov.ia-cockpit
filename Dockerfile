@@ -83,6 +83,7 @@ COPY --from=builder /app/server-video-provenance.cjs ./server-video-provenance.c
 COPY --from=builder /app/server-video-studio.cjs ./server-video-studio.cjs
 COPY --from=builder /app/server-video-generation-core.cjs ./server-video-generation-core.cjs
 COPY --from=builder /app/server-video-generation.cjs ./server-video-generation.cjs
+COPY --from=builder /app/server-brand-canonical.cjs ./server-brand-canonical.cjs
 COPY --from=builder /app/server-campaigns-core.cjs ./server-campaigns-core.cjs
 COPY --from=builder /app/server-campaigns.cjs ./server-campaigns.cjs
 COPY --from=builder /app/server-music-motion.cjs ./server-music-motion.cjs
@@ -112,6 +113,7 @@ COPY --from=builder /app/server-nova-document-delete.cjs ./server-nova-document-
 COPY --from=builder /app/server-push.cjs ./server-push.cjs
 COPY assets ./assets
 COPY public ./public
+COPY brand ./brand
 
 RUN npm ci --omit=dev --legacy-peer-deps
 RUN test -f /app/server-ai-cost-attribution.cjs \
@@ -149,6 +151,8 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && test -f /app/server-video-studio.cjs \
  && test -f /app/server-video-generation-core.cjs \
  && test -f /app/server-video-generation.cjs \
+ && test -f /app/server-brand-canonical.cjs \
+ && test -f /app/brand/brand-registry.json \
  && test -f /app/server-campaigns-core.cjs \
  && test -f /app/server-campaigns.cjs \
  && test -f /app/server-audio-library.cjs \
@@ -197,6 +201,7 @@ RUN test -f /app/server-ai-cost-attribution.cjs \
  && node --check /app/server-video-studio.cjs \
  && node --check /app/server-video-generation-core.cjs \
  && node --check /app/server-video-generation.cjs \
+ && node --check /app/server-brand-canonical.cjs \
  && node --check /app/server-campaigns-core.cjs \
  && node --check /app/server-campaigns.cjs \
  && node --check /app/server-audio-library.cjs \
