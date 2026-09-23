@@ -6,12 +6,13 @@ import { fr } from "date-fns/locale";
 import { shouldUseLocalFirst } from "@/lib/nova-routing";
 import { executeNovaClientAction } from '@/lib/novaClientAction';
 
-const LOCAL_AGENT_URL = "http://127.0.0.1:8787";
+const LOCAL_AGENT_URLS = ["http://127.0.0.1:8788", "http://127.0.0.1:8787"];
+let activeLocalAgentUrl = LOCAL_AGENT_URLS[0];
 const STORAGE_KEY = "jsinnovia_ai_provider";
 const STORAGE_MODEL = "jsinnovia_ai_model";
 const CONVERSATION_ID = "main";
 
-const GREETING = "Bonjour Julien 👋 Je suis NOVA, l’assistante unique du Cockpit JS-Innov.IA. J’utilise le Cloud pour l’orchestration et les tâches complexes, et l’IA locale pour les outils Windows, les fichiers et le mode hors connexion.";
+const GREETING = "Bonjour Julien 👋 Je suis Elynea, l’assistante unique du Cockpit JS-Innov.IA. Je combine automatiquement le runtime local et les services connectés selon la tâche.";
 
 const SUGGESTIONS = [
   "Résume mes projets en cours",
@@ -20,9 +21,9 @@ const SUGGESTIONS = [
   "Crée une tâche urgente pour un projet",
 ];
 
-const SYSTEM_PROMPT = `Tu es NOVA, l’unique assistante et architecte du Cockpit JS-Innov.IA.
+const SYSTEM_PROMPT = `Tu es Elynea, l’unique assistante et architecte du Cockpit JS-Innov.IA.
 Tu travailles par défaut pour JS-Innov.IA et Julien Pagin. Assurances-Dour.be est un périmètre séparé dont tu utilises l’identité uniquement pour sa boîte email ou ses opérations explicites.
-Base44 n’est jamais un prérequis : utilise en priorité les capacités internes NOVA, le Cockpit, Windows local et les connexions GitHub/Railway disponibles.
+Base44 n’est jamais un prérequis : utilise en priorité les capacités internes Elynea, le Cockpit, Windows local et les connexions GitHub/Railway disponibles.
 Tu aides avec clients, projets, tâches, leads, devis, factures, automatisation, création web, branding et IA.
 Conserve le contexte des messages précédents, notamment les références courtes comme « lui », « ajoute-le », « sur le net BCE ».
 Avant de poser une question, exploite les données, outils et valeurs internes par défaut déjà disponibles. Ne transforme jamais une demande d’architecture en questionnaire générique.
@@ -86,10 +87,16 @@ export default function AgentPage() {
   const checkAgent = useCallback(async () => {
     setAgentStatus("checking");
     try {
-      const res = await fetch(`${LOCAL_AGENT_URL}/health`, { signal: AbortSignal.timeout(4000) });
-      if (!res.ok) throw new Error("offline");
+      let res = null;
+      for (const baseUrl of LOCAL_AGENT_URLS) {
+        try {
+          const candidate = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(2500) });
+          if (candidate.ok) { res = candidate; activeLocalAgentUrl = baseUrl; break; }
+        } catch { /* essayer le port de compatibilité */ }
+      }
+      if (!res?.ok) throw new Error("offline");
       try {
-        const modelsRes = await fetch(`${LOCAL_AGENT_URL}/api/agent/models`, { signal: AbortSignal.timeout(3000) });
+        const modelsRes = await fetch(`${activeLocalAgentUrl}/api/agent/models`, { signal: AbortSignal.timeout(3000) });
         if (modelsRes.ok) {
           const modelsData = await modelsRes.json();
           const rawModels = Array.isArray(modelsData) ? modelsData : (modelsData.models || modelsData.data || []);
@@ -149,7 +156,7 @@ export default function AgentPage() {
       role: item.role === "assistant" ? "assistant" : "user",
       content: item.content,
     }));
-    const res = await fetch(`${LOCAL_AGENT_URL}/api/agent/chat`, {
+    const res = await fetch(`${activeLocalAgentUrl}/api/agent/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -192,7 +199,7 @@ export default function AgentPage() {
       return result;
     }
 
-    // Mode NOVA automatique : le Cloud orchestre les demandes métier/complexes.
+    // Mode Elynea automatique : le Cloud orchestre les demandes métier/complexes.
     // Le local est prioritaire uniquement pour une opération locale explicite ou un échange très simple.
     if (shouldUseLocalFirst(msg, agentStatus === "online")) {
       try {
@@ -253,7 +260,7 @@ export default function AgentPage() {
     try {
       await fetch(`/api/assistant/history?conversation_id=${CONVERSATION_ID}`, { method: 'DELETE', credentials: 'same-origin' });
     } finally {
-      setMessages([{ role: "assistant", content: "Conversation réinitialisée. Je reste NOVA, ton assistante unique. Comment puis-je t’aider ?", ts: new Date() }]);
+      setMessages([{ role: "assistant", content: "Conversation réinitialisée. Je reste Elynea, ton assistante unique. Comment puis-je t’aider ?", ts: new Date() }]);
       setConfirmation(null);
     }
   };
