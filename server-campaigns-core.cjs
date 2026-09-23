@@ -174,4 +174,4 @@ function normalizeBrand(body, org) {
   };
 }
 
-module.exports = { clean, arr, jsonValue, crm, organisation, one, loadBrandContext, brandPrompt, draftWithElynea, normalizeBrand };
+module.exports = { clean, arr, jsonValue, crm, organisation, one, loadBrandContext, brandPrompt, draftWithElynea, normalizeBrand, normalizeDraft };
