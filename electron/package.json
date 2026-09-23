@@ -38,7 +38,9 @@
       "splash.html",
       "icon.png",
       "icon.ico",
-      "comfy-error.cjs"
+      "comfy-error.cjs",
+      "elynea-tool-router.cjs",
+      "elynea-jarvis-executor.cjs"
     ],
     "extraResources": [
       {
