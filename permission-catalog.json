@@ -1,38 +1,456 @@
 [
-  { "code": "dashboard", "label": "Accueil", "group": "Pilotage", "roles": ["client", "collaborateur", "admin"], "routes": ["/"] },
-  { "code": "hainoflow", "label": "HainoFlow", "description": "Gestion commerciale et administrative", "group": "Services souscrits", "roles": ["client", "collaborateur", "admin"], "routes": ["/hainoflow"] },
-  { "code": "insurance", "label": "Assurances-Dour", "group": "Pilotage", "roles": ["admin"], "routes": ["/assurances"] },
-  { "code": "clients", "label": "Clients", "group": "CRM", "roles": ["collaborateur", "admin"], "routes": ["/clients"] },
-  { "code": "leads", "label": "Leads", "group": "CRM", "roles": ["collaborateur", "admin"], "routes": ["/leads"] },
-  { "code": "documents", "label": "Documents", "group": "CRM", "roles": ["collaborateur", "admin"], "routes": ["/documents"] },
-  { "code": "requests", "label": "Demandes", "group": "CRM", "roles": ["collaborateur", "admin"], "routes": ["/demandes"] },
-  { "code": "projects", "label": "Projets", "group": "Projets", "roles": ["client", "collaborateur", "admin"], "routes": ["/projets", "/mes-projets"] },
-  { "code": "project_data", "label": "Données projets", "group": "Projets", "roles": ["client", "collaborateur", "admin"], "routes": ["/donnees-projets"] },
-  { "code": "tasks", "label": "Tâches", "group": "Projets", "roles": ["collaborateur", "admin"], "routes": ["/taches"] },
-  { "code": "villeconnect", "label": "VilleConnectOS", "group": "Projets", "roles": ["admin"], "routes": ["/villeconnect"] },
-  { "code": "quotes", "label": "Devis", "group": "Finance", "roles": ["client", "collaborateur", "admin"], "routes": ["/devis", "/mes-devis"] },
-  { "code": "invoices", "label": "Factures", "group": "Finance", "roles": ["client", "admin"], "routes": ["/factures", "/mes-factures"] },
-  { "code": "commissions", "label": "Commissions", "group": "Finance", "roles": ["admin"], "routes": ["/commissions"] },
-  { "code": "emails", "label": "E-mails", "group": "Communication", "roles": ["admin"], "routes": ["/emails", "/emails-core"] },
-  { "code": "email_accounting", "label": "NOVA — Assistant comptable e-mail", "group": "Communication", "roles": ["admin"], "routes": ["/email-accounting"] },
-  { "code": "twilio", "label": "Téléphonie Twilio", "group": "Communication", "roles": ["admin"], "routes": ["/twilio"] },
-  { "code": "production", "label": "Production vidéo", "group": "Studio", "roles": ["admin"], "routes": ["/production", "/video-studio", "/video-studio/*", "/ai-video", "/thumbnail", "/dour-campaign", "/exports", "/exported-videos", "/templates", "/calendar", "/video-factory-local", "/video-factory-api", "/music-motion", "/music-motion-studio"] },
-  { "code": "signage", "label": "Signelya", "description": "Affichage dynamique et gestion des écrans", "group": "Services souscrits", "roles": ["client", "collaborateur", "admin"], "routes": ["/ecran-geant"] },
-  { "code": "avatar_factory", "label": "Avatar Factory", "group": "Studio", "roles": ["admin"], "routes": ["/avatar-factory"] },
-  { "code": "portfolio", "label": "Portfolio", "group": "Studio", "roles": ["admin"], "routes": ["/portfolio"] },
-  { "code": "apps_agents", "label": "Apps et agents", "group": "Écosystème", "roles": ["admin"], "routes": ["/apps-agents"] },
-  { "code": "automations", "label": "Automatisations", "group": "Écosystème", "roles": ["admin"], "routes": ["/automations"] },
-  { "code": "domains", "label": "Domaines", "group": "Écosystème", "roles": ["admin"], "routes": ["/domaines"] },
-  { "code": "filing", "label": "Rangement", "group": "Écosystème", "roles": ["admin"], "routes": ["/rangement"] },
-  { "code": "nova", "label": "NOVA", "group": "IA et système", "roles": ["client", "collaborateur", "admin"], "routes": ["/agent"] },
-  { "code": "ai_agents", "label": "Agents IA", "group": "IA et système", "roles": ["collaborateur", "admin"], "routes": ["/agents-ia"] },
-  { "code": "mobile_hub", "label": "Mobile Hub", "group": "IA et système", "roles": ["admin"], "routes": ["/mobile-hub"] },
-  { "code": "ai_cost_control", "label": "AI Cost Control", "group": "IA et système", "roles": ["admin"], "routes": ["/ai-cost-control", "/ai-cost", "/cost-centers"] },
-  { "code": "validations", "label": "Validations", "group": "IA et système", "roles": ["collaborateur", "admin"], "routes": ["/validations"] },
-  { "code": "services", "label": "Services", "group": "IA et système", "roles": ["collaborateur", "admin"], "routes": ["/services"] },
-  { "code": "merchants", "label": "Commerçants", "group": "IA et système", "roles": ["collaborateur", "admin"], "routes": ["/commercants"] },
-  { "code": "governance", "label": "Gouvernance", "group": "IA et système", "roles": ["admin"], "routes": ["/gouvernance", "/confidentialite"] },
-  { "code": "logs", "label": "Journaux", "group": "IA et système", "roles": ["admin"], "routes": ["/logs"] },
-  { "code": "settings", "label": "Paramètres", "group": "IA et système", "roles": ["admin"], "routes": ["/parametres"] },
-  { "code": "user_access", "label": "Utilisateurs et accès", "group": "IA et système", "roles": ["superadmin"], "routes": ["/invitations"] }
+  {
+    "code": "dashboard",
+    "label": "Accueil",
+    "group": "Pilotage",
+    "roles": [
+      "client",
+      "collaborateur",
+      "admin"
+    ],
+    "routes": [
+      "/"
+    ]
+  },
+  {
+    "code": "hainoflow",
+    "label": "HainoFlow",
+    "description": "Gestion commerciale et administrative",
+    "group": "Services souscrits",
+    "roles": [
+      "client",
+      "collaborateur",
+      "admin"
+    ],
+    "routes": [
+      "/hainoflow"
+    ]
+  },
+  {
+    "code": "insurance",
+    "label": "Assurances-Dour",
+    "group": "Pilotage",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/assurances"
+    ]
+  },
+  {
+    "code": "clients",
+    "label": "Clients",
+    "group": "CRM",
+    "roles": [
+      "collaborateur",
+      "admin"
+    ],
+    "routes": [
+      "/clients"
+    ]
+  },
+  {
+    "code": "leads",
+    "label": "Leads",
+    "group": "CRM",
+    "roles": [
+      "collaborateur",
+      "admin"
+    ],
+    "routes": [
+      "/leads"
+    ]
+  },
+  {
+    "code": "documents",
+    "label": "Documents",
+    "group": "CRM",
+    "roles": [
+      "collaborateur",
+      "admin"
+    ],
+    "routes": [
+      "/documents"
+    ]
+  },
+  {
+    "code": "requests",
+    "label": "Demandes",
+    "group": "CRM",
+    "roles": [
+      "collaborateur",
+      "admin"
+    ],
+    "routes": [
+      "/demandes"
+    ]
+  },
+  {
+    "code": "projects",
+    "label": "Projets",
+    "group": "Projets",
+    "roles": [
+      "client",
+      "collaborateur",
+      "admin"
+    ],
+    "routes": [
+      "/projets",
+      "/mes-projets"
+    ]
+  },
+  {
+    "code": "project_data",
+    "label": "Données projets",
+    "group": "Projets",
+    "roles": [
+      "client",
+      "collaborateur",
+      "admin"
+    ],
+    "routes": [
+      "/donnees-projets"
+    ]
+  },
+  {
+    "code": "tasks",
+    "label": "Tâches",
+    "group": "Projets",
+    "roles": [
+      "collaborateur",
+      "admin"
+    ],
+    "routes": [
+      "/taches"
+    ]
+  },
+  {
+    "code": "villeconnect",
+    "label": "VilleConnectOS",
+    "group": "Projets",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/villeconnect"
+    ]
+  },
+  {
+    "code": "quotes",
+    "label": "Devis",
+    "group": "Finance",
+    "roles": [
+      "client",
+      "collaborateur",
+      "admin"
+    ],
+    "routes": [
+      "/devis",
+      "/mes-devis"
+    ]
+  },
+  {
+    "code": "invoices",
+    "label": "Factures",
+    "group": "Finance",
+    "roles": [
+      "client",
+      "admin"
+    ],
+    "routes": [
+      "/factures",
+      "/mes-factures"
+    ]
+  },
+  {
+    "code": "commissions",
+    "label": "Commissions",
+    "group": "Finance",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/commissions"
+    ]
+  },
+  {
+    "code": "campaigns",
+    "label": "Campagnes",
+    "description": "Campagnes multi-marques, ADN, SEO, image et vidéo",
+    "group": "Communication",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/campagnes"
+    ]
+  },
+  {
+    "code": "emails",
+    "label": "E-mails",
+    "group": "Communication",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/emails",
+      "/emails-core"
+    ]
+  },
+  {
+    "code": "email_accounting",
+    "label": "NOVA — Assistant comptable e-mail",
+    "group": "Communication",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/email-accounting"
+    ]
+  },
+  {
+    "code": "twilio",
+    "label": "Téléphonie Twilio",
+    "group": "Communication",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/twilio"
+    ]
+  },
+  {
+    "code": "production",
+    "label": "Production vidéo",
+    "group": "Studio",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/production",
+      "/video-studio",
+      "/video-studio/*",
+      "/ai-video",
+      "/thumbnail",
+      "/dour-campaign",
+      "/exports",
+      "/exported-videos",
+      "/templates",
+      "/calendar",
+      "/video-factory-local",
+      "/video-factory-api",
+      "/music-motion",
+      "/music-motion-studio"
+    ]
+  },
+  {
+    "code": "signage",
+    "label": "Signelya",
+    "description": "Affichage dynamique et gestion des écrans",
+    "group": "Services souscrits",
+    "roles": [
+      "client",
+      "collaborateur",
+      "admin"
+    ],
+    "routes": [
+      "/ecran-geant"
+    ]
+  },
+  {
+    "code": "avatar_factory",
+    "label": "Avatar Factory",
+    "group": "Studio",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/avatar-factory"
+    ]
+  },
+  {
+    "code": "portfolio",
+    "label": "Portfolio",
+    "group": "Studio",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/portfolio"
+    ]
+  },
+  {
+    "code": "apps_agents",
+    "label": "Apps et agents",
+    "group": "Écosystème",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/apps-agents"
+    ]
+  },
+  {
+    "code": "automations",
+    "label": "Automatisations",
+    "group": "Écosystème",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/automations"
+    ]
+  },
+  {
+    "code": "domains",
+    "label": "Domaines",
+    "group": "Écosystème",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/domaines"
+    ]
+  },
+  {
+    "code": "filing",
+    "label": "Rangement",
+    "group": "Écosystème",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/rangement"
+    ]
+  },
+  {
+    "code": "nova",
+    "label": "NOVA",
+    "group": "IA et système",
+    "roles": [
+      "client",
+      "collaborateur",
+      "admin"
+    ],
+    "routes": [
+      "/agent"
+    ]
+  },
+  {
+    "code": "ai_agents",
+    "label": "Agents IA",
+    "group": "IA et système",
+    "roles": [
+      "collaborateur",
+      "admin"
+    ],
+    "routes": [
+      "/agents-ia"
+    ]
+  },
+  {
+    "code": "mobile_hub",
+    "label": "Mobile Hub",
+    "group": "IA et système",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/mobile-hub"
+    ]
+  },
+  {
+    "code": "ai_cost_control",
+    "label": "AI Cost Control",
+    "group": "IA et système",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/ai-cost-control",
+      "/ai-cost",
+      "/cost-centers"
+    ]
+  },
+  {
+    "code": "validations",
+    "label": "Validations",
+    "group": "IA et système",
+    "roles": [
+      "collaborateur",
+      "admin"
+    ],
+    "routes": [
+      "/validations"
+    ]
+  },
+  {
+    "code": "services",
+    "label": "Services",
+    "group": "IA et système",
+    "roles": [
+      "collaborateur",
+      "admin"
+    ],
+    "routes": [
+      "/services"
+    ]
+  },
+  {
+    "code": "merchants",
+    "label": "Commerçants",
+    "group": "IA et système",
+    "roles": [
+      "collaborateur",
+      "admin"
+    ],
+    "routes": [
+      "/commercants"
+    ]
+  },
+  {
+    "code": "governance",
+    "label": "Gouvernance",
+    "group": "IA et système",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/gouvernance",
+      "/confidentialite"
+    ]
+  },
+  {
+    "code": "logs",
+    "label": "Journaux",
+    "group": "IA et système",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/logs"
+    ]
+  },
+  {
+    "code": "settings",
+    "label": "Paramètres",
+    "group": "IA et système",
+    "roles": [
+      "admin"
+    ],
+    "routes": [
+      "/parametres"
+    ]
+  },
+  {
+    "code": "user_access",
+    "label": "Utilisateurs et accès",
+    "group": "IA et système",
+    "roles": [
+      "superadmin"
+    ],
+    "routes": [
+      "/invitations"
+    ]
+  }
 ]
