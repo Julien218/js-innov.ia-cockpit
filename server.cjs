@@ -243,6 +243,15 @@ try {
   console.warn('⚠️ Route VilleConnectOS indisponible:', e.message);
 }
 
+// ── Campagnes multi-marques : ADN → contenu → image → validation → vidéo ─
+try {
+  const campaignsRouter = require('./server-campaigns.cjs');
+  app.use('/api/campaigns', requireSession('admin'), requirePermission('campaigns', 'admin'), campaignsRouter.router);
+  console.log('✅ Route /api/campaigns activée (multi-marques + ADN GitHub + orchestration média)');
+} catch (e) {
+  console.warn('⚠️ Route campagnes indisponible:', e.message);
+}
+
 // ── Finalisation vidéo : MP4 + métadonnées + JSON + Dropbox ─
 try {
   const videoProvenanceRouter = require('./server-video-provenance.cjs');
