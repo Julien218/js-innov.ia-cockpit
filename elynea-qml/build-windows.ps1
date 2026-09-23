@@ -15,6 +15,6 @@ $Python = Join-Path $Root ".venv\Scripts\python.exe"
 $Icon = Join-Path $Repo "electron\icon.ico"
 $LocalAgent = Join-Path $Repo "local-agent"
 
-& $Python -m PyInstaller --noconfirm --clean --windowed --name "ElyneaDesktop" --icon $Icon --add-data "qml;qml" --add-data "resources;resources" --add-data "$LocalAgent;local-agent" --hidden-import PySide6.QtTextToSpeech main.py
+& $Python -m PyInstaller --noconfirm --clean --windowed --name "ElyneaDesktop" --icon $Icon --add-data "qml;qml" --add-data "resources;resources" --add-data "$LocalAgent;local-agent" --hidden-import PySide6.QtTextToSpeech --hidden-import PySide6.QtQuick --hidden-import PySide6.QtQuickControls2 main.py
 
 Write-Host "Elynea Desktop QML générée dans $Root\dist\ElyneaDesktop" -ForegroundColor Green
