@@ -210,6 +210,22 @@ export default function Campaigns() {
             </select>
           </label>}
         </div>
+        <div className={"mt-4 rounded-xl border p-3 text-sm " + (worker.online ? "border-emerald-500/30 bg-emerald-500/5" : "border-amber-500/30 bg-amber-500/5")}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="font-semibold">Moteur local Elynea · {worker.online ? 'EN LIGNE' : worker.paired ? 'HORS LIGNE' : 'NON APPAIRÉ'}</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Agent PC {worker.local_agent_reachable ? 'détecté' : 'non détecté'} ·
+                {worker.cloud?.last_seen_at ? ' dernier heartbeat ' + new Date(worker.cloud.last_seen_at).toLocaleTimeString('fr-BE') : ' aucun heartbeat'}
+              </div>
+              {worker.cloud?.capabilities?.checkpoints?.length > 0 && <div className="mt-1 text-xs text-muted-foreground">{worker.cloud.capabilities.checkpoints.length} checkpoint(s) image · {(worker.cloud.capabilities.video_workflows || []).filter(w => w.available).length} workflow(s) vidéo</div>}
+            </div>
+            <Button size="sm" variant={worker.online ? "outline" : "default"} onClick={pairWorker} disabled={busy === 'worker-pair'}>
+              {busy === 'worker-pair' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+              {worker.paired ? 'Réappairer' : 'Appairer le PC'}
+            </Button>
+          </div>
+        </div>
       </section>
 
       {tab === 'brand' && selectedBrand && (
@@ -238,12 +254,31 @@ export default function Campaigns() {
             <label className="text-xs font-medium"># obligatoires<input className={input + ' mt-1'} value={brandForm.hashtags_required_text || ''} onChange={e => setBrandForm(v => ({ ...v, hashtags_required_text: e.target.value }))} /></label>
             <label className="text-xs font-medium"># recommandés<input className={input + ' mt-1'} value={brandForm.hashtags_recommended_text || ''} onChange={e => setBrandForm(v => ({ ...v, hashtags_recommended_text: e.target.value }))} /></label>
             <label className="text-xs font-medium"># interdits<input className={input + ' mt-1'} value={brandForm.hashtags_forbidden_text || ''} onChange={e => setBrandForm(v => ({ ...v, hashtags_forbidden_text: e.target.value }))} /></label>
+            <label className="text-xs font-medium">Moteur image
+              <select className={input + ' mt-1'} value={brandForm.image_engine || 'auto'} onChange={e => setBrandForm(v => ({ ...v, image_engine: e.target.value }))}>
+                <option value="auto">AUTO — local prioritaire</option><option value="local">LOCAL uniquement</option><option value="api">API xAI</option>
+              </select>
+            </label>
+            <label className="text-xs font-medium">Checkpoint image local
+              <select className={input + ' mt-1'} value={brandForm.local_image_checkpoint || ''} onChange={e => setBrandForm(v => ({ ...v, local_image_checkpoint: e.target.value }))}>
+                <option value="">Premier checkpoint compatible</option>
+                {(worker.cloud?.capabilities?.checkpoints || []).map(name => <option key={name} value={name}>{name}</option>)}
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(brandForm.fallback_image_to_api)} onChange={e => setBrandForm(v => ({ ...v, fallback_image_to_api: e.target.checked }))} /> Fallback image xAI après confirmation payante</label>
+            <div />
             <label className="text-xs font-medium">Moteur vidéo
               <select className={input + ' mt-1'} value={brandForm.video_engine || 'auto'} onChange={e => setBrandForm(v => ({ ...v, video_engine: e.target.value }))}>
                 <option value="auto">AUTO — local prioritaire</option><option value="local">LOCAL uniquement</option><option value="api">API xAI</option>
               </select>
             </label>
-            <label className="flex items-center gap-2 text-sm mt-6"><input type="checkbox" checked={Boolean(brandForm.fallback_to_api)} onChange={e => setBrandForm(v => ({ ...v, fallback_to_api: e.target.checked }))} /> Autoriser le fallback API après confirmation payante</label>
+            <label className="text-xs font-medium">Workflow vidéo local
+              <select className={input + ' mt-1'} value={brandForm.local_workflow_id || ''} onChange={e => setBrandForm(v => ({ ...v, local_workflow_id: e.target.value }))}>
+                <option value="">Premier workflow compatible</option>
+                {(worker.cloud?.capabilities?.video_workflows || []).filter(item => item.available).map(item => <option key={item.id} value={item.id}>{item.label || item.id}</option>)}
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(brandForm.fallback_to_api)} onChange={e => setBrandForm(v => ({ ...v, fallback_to_api: e.target.checked }))} /> Fallback vidéo xAI après confirmation payante</label>
           </div>
           <Button onClick={saveBrand} disabled={busy === 'brand-save'}>{busy === 'brand-save' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}Enregistrer l’ADN</Button>
         </section>
@@ -269,7 +304,8 @@ export default function Campaigns() {
               <textarea className={input + ' min-h-28'} placeholder="Ex. Prépare un post d’ouverture du recrutement 2027 avec suspense, CTA inscription et visuel vertical premium." value={postForm.brief} onChange={e => setPostForm(v => ({ ...v, brief: e.target.value }))} />
               <div className="flex flex-wrap items-center gap-4">
                 {['facebook','instagram','tiktok'].map(platform => <label key={platform} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={postForm.platforms.includes(platform)} onChange={e => setPostForm(v => ({ ...v, platforms: e.target.checked ? [...v.platforms, platform] : v.platforms.filter(p => p !== platform) }))} />{platform}</label>)}
-                <select className={input + ' max-w-52'} value={postForm.video_engine} onChange={e => setPostForm(v => ({ ...v, video_engine: e.target.value }))}><option value="auto">Vidéo AUTO</option><option value="local">Vidéo LOCAL</option><option value="api">Vidéo API</option></select>
+                <select className={input + ' max-w-44'} value={postForm.image_engine} onChange={e => setPostForm(v => ({ ...v, image_engine: e.target.value }))}><option value="auto">Image AUTO</option><option value="local">Image LOCAL</option><option value="api">Image API</option></select>
+                <select className={input + ' max-w-44'} value={postForm.video_engine} onChange={e => setPostForm(v => ({ ...v, video_engine: e.target.value }))}><option value="auto">Vidéo AUTO</option><option value="local">Vidéo LOCAL</option><option value="api">Vidéo API</option></select>
               </div>
               <Button onClick={createPost} disabled={busy === 'post-create'}><Plus className="w-4 h-4 mr-2" />Créer le contenu</Button>
             </section>
@@ -292,9 +328,14 @@ export default function Campaigns() {
 
                 {(post.copy?.facebook || post.copy?.instagram || post.copy?.tiktok?.caption) && <details className="rounded-xl border border-border p-3"><summary className="cursor-pointer text-sm font-medium">Textes & référencement</summary><div className="grid gap-3 lg:grid-cols-3 mt-3 text-xs"><div><strong>Facebook</strong><p className="whitespace-pre-wrap mt-1 text-muted-foreground">{post.copy?.facebook}</p><p className="mt-2 text-primary">{(post.hashtags?.facebook || []).join(' ')}</p></div><div><strong>Instagram</strong><p className="whitespace-pre-wrap mt-1 text-muted-foreground">{post.copy?.instagram}</p><p className="mt-2 text-primary">{(post.hashtags?.instagram || []).join(' ')}</p></div><div><strong>TikTok</strong><p className="mt-1">{post.copy?.tiktok?.hook}</p><p className="whitespace-pre-wrap mt-1 text-muted-foreground">{post.copy?.tiktok?.caption}</p><p className="mt-2 text-primary">{(post.hashtags?.tiktok || []).join(' ')}</p></div></div></details>}
 
-                {post.image_url && <div className="grid gap-4 lg:grid-cols-[minmax(0,460px)_1fr]"><img src={post.image_url} alt={post.seo?.alt_text || post.title} className="w-full max-h-[520px] object-contain rounded-xl border bg-black/5" /><div className="space-y-3"><div className="rounded-xl border p-3 text-xs"><strong>Image</strong><p className="mt-1 text-muted-foreground">{post.image_status}</p></div>{post.image_status === 'review' && <div className="flex flex-wrap gap-2"><Button onClick={() => approveAndAnimate(post)} disabled={busy === 'approve-' + post.id}><CheckCircle2 className="w-4 h-4 mr-2" />Valider + générer vidéo</Button><Button variant="outline" onClick={() => rejectImage(post)}><XCircle className="w-4 h-4 mr-2" />Refuser</Button></div>}<details className="rounded-xl border p-3"><summary className="cursor-pointer text-xs font-medium">Prompts ADN</summary><p className="mt-2 text-xs whitespace-pre-wrap text-muted-foreground">{post.image_prompt}</p><hr className="my-3 border-border" /><p className="text-xs whitespace-pre-wrap text-muted-foreground">{post.video_prompt}</p></details></div></div>}
+                {post.image_status !== 'none' && <div className="rounded-xl border border-border p-3 text-xs">
+                  <strong>Image · {post.image_provider || post.image_engine || 'auto'}</strong>
+                  <p className="mt-1 text-muted-foreground">{post.image_status}{post.image_job_id ? ' · ' + post.image_job_id : ''}</p>
+                  {post.image_error && <p className="mt-1 text-red-600">{post.image_error}</p>}
+                </div>}
+                {post.image_url && <div className="grid gap-4 lg:grid-cols-[minmax(0,460px)_1fr]"><img src={post.image_url} alt={post.seo?.alt_text || post.title} className="w-full max-h-[520px] object-contain rounded-xl border bg-black/5" /><div className="space-y-3">{post.image_status === 'review' && <div className="flex flex-wrap gap-2"><Button onClick={() => approveAndAnimate(post)} disabled={busy === 'approve-' + post.id}><CheckCircle2 className="w-4 h-4 mr-2" />Valider + générer vidéo</Button><Button variant="outline" onClick={() => rejectImage(post)}><XCircle className="w-4 h-4 mr-2" />Refuser</Button></div>}<details className="rounded-xl border p-3"><summary className="cursor-pointer text-xs font-medium">Prompts ADN</summary><p className="mt-2 text-xs whitespace-pre-wrap text-muted-foreground">{post.image_prompt}</p><hr className="my-3 border-border" /><p className="text-xs whitespace-pre-wrap text-muted-foreground">{post.video_prompt}</p></details></div></div>}
 
-                {post.video_job_id && <div className="rounded-xl border border-border p-3 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><Film className="w-4 h-4 text-primary" /><div><p className="text-sm font-medium">Vidéo · {post.video_provider}</p><p className="text-xs text-muted-foreground">{post.video_status} · {post.video_job_id}</p></div></div><Button size="sm" variant="outline" onClick={() => refreshVideo(post)} disabled={busy === 'video-' + post.id}><RefreshCw className={'w-3.5 h-3.5 mr-2 ' + (busy === 'video-' + post.id ? 'animate-spin' : '')} />Actualiser</Button>{post.video_url && <video controls src={post.video_url} className="w-full max-h-[420px] rounded-lg bg-black" />}</div>}
+                {post.video_job_id && <div className="rounded-xl border border-border p-3 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><Film className="w-4 h-4 text-primary" /><div><p className="text-sm font-medium">Vidéo · {post.video_provider}</p><p className="text-xs text-muted-foreground">{post.video_status} · {post.video_job_id}</p>{post.video_error && <p className="text-xs text-red-600">{post.video_error}</p>}</div></div><Button size="sm" variant="outline" onClick={() => refreshVideo(post)} disabled={busy === 'video-' + post.id}><RefreshCw className={'w-3.5 h-3.5 mr-2 ' + (busy === 'video-' + post.id ? 'animate-spin' : '')} />Actualiser</Button>{post.video_url && <video controls src={post.video_url} className="w-full max-h-[420px] rounded-lg bg-black" />}</div>}
               </article>
             ))}
             {campaignId && posts.length === 0 && <div className={panel + ' text-center text-sm text-muted-foreground py-10'}>Aucun contenu pour cette campagne.</div>}
