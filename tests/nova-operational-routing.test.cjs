@@ -49,9 +49,9 @@ test('le contexte de routage interdit le questionnaire générique', () => {
 
 test('la page assistant expose uniquement l identité Elynea', () => {
   const source = fs.readFileSync(path.join(root, 'src/pages/Agent.jsx'), 'utf8');
-  assert.match(source, /Je suis NOVA/);
+  assert.match(source, /Je suis Elynea/);
   assert.match(source, /shouldUseLocalFirst/);
-  assert.doesNotMatch(source, /Julien AI Companion/);
+  assert.doesNotMatch(source, /Je suis NOVA/);
 });
 
 test('le routage UI réserve le local aux demandes locales ou très simples', async () => {
