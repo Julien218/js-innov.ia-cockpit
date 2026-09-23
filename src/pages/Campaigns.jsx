@@ -27,6 +27,7 @@ export default function Campaigns() {
   const [campaignForm, setCampaignForm] = useState({ name: '', objective: '', phase: 'recrutement', cta: '', landing_url: '', channels: ['facebook','instagram','tiktok'] });
   const [postForm, setPostForm] = useState({ title: '', brief: '', platforms: ['facebook','instagram','tiktok'], video_engine: 'auto' });
   const [brandForm, setBrandForm] = useState({});
+  const [brandContext, setBrandContext] = useState(null);
 
   const selectedBrand = useMemo(() => brands.find(b => b.id === brandId), [brands, brandId]);
   const selectedCampaign = useMemo(() => campaigns.find(c => c.id === campaignId), [campaigns, campaignId]);
@@ -49,7 +50,13 @@ export default function Campaigns() {
   };
 
   useEffect(() => { loadBrands().catch(e => setNotice({ type: 'error', text: e.message })); }, []);
-  useEffect(() => { if (brandId) loadCampaigns(brandId).catch(e => setNotice({ type: 'error', text: e.message })); }, [brandId]);
+  useEffect(() => {
+    if (!brandId) { setBrandContext(null); return; }
+    loadCampaigns(brandId).catch(e => setNotice({ type: 'error', text: e.message }));
+    campaignApi('/brands/' + encodeURIComponent(brandId) + '/context')
+      .then(setBrandContext)
+      .catch(e => { setBrandContext(null); setNotice({ type: 'error', text: e.message }); });
+  }, [brandId]);
   useEffect(() => { if (campaignId) loadPosts(campaignId).catch(e => setNotice({ type: 'error', text: e.message })); else setPosts([]); }, [campaignId]);
   useEffect(() => {
     if (!selectedBrand) return;
@@ -179,14 +186,23 @@ export default function Campaigns() {
 
       {tab === 'brand' && selectedBrand && (
         <section className={panel + ' space-y-4'}>
-          <div><h2 className="font-semibold">Bible ADN — {selectedBrand.name}</h2><p className="text-xs text-muted-foreground">La source GitHub est relue avant chaque préparation Elynea et son SHA est enregistré avec le contenu.</p></div>
+          <div><h2 className="font-semibold">Bible ADN — {selectedBrand.name}</h2><p className="text-xs text-muted-foreground">La marque est résolue via brand/brand-registry.json. Le manifeste et la Bible du dépôt canonique sont relus avant chaque génération, et leur SHA est enregistré.</p></div>
           <div className="grid gap-3 md:grid-cols-2">
             <label className="text-xs font-medium">Site<input className={input + ' mt-1'} value={brandForm.site_url || ''} onChange={e => setBrandForm(v => ({ ...v, site_url: e.target.value }))} /></label>
             <label className="text-xs font-medium">Skill Elynea<input className={input + ' mt-1'} value={brandForm.skill_key || ''} onChange={e => setBrandForm(v => ({ ...v, skill_key: e.target.value }))} /></label>
-            <label className="text-xs font-medium">Dépôt GitHub Bible ADN<input className={input + ' mt-1'} placeholder="Julien218/mon-repo" value={brandForm.github_repository || ''} onChange={e => setBrandForm(v => ({ ...v, github_repository: e.target.value }))} /></label>
-            <label className="text-xs font-medium">Fichier Bible ADN<input className={input + ' mt-1'} placeholder="docs/BRAND_BIBLE.md" value={brandForm.github_path || ''} onChange={e => setBrandForm(v => ({ ...v, github_path: e.target.value }))} /></label>
-            <label className="text-xs font-medium">Branche / ref<input className={input + ' mt-1'} value={brandForm.github_ref || 'main'} onChange={e => setBrandForm(v => ({ ...v, github_ref: e.target.value }))} /></label>
-            <label className="text-xs font-medium">Planche ADN (URL)<input className={input + ' mt-1'} value={brandForm.brand_board_url || ''} onChange={e => setBrandForm(v => ({ ...v, brand_board_url: e.target.value }))} /></label>
+            <div className="md:col-span-2 rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3 text-xs">
+              <div className="font-semibold text-emerald-700">Registre ADN canonique · fail-closed</div>
+              {brandContext?.brand?.canonical_manifest ? (
+                <div className="mt-2 space-y-1 text-muted-foreground">
+                  <div>Brand ID : <span className="text-foreground">{brandContext.brand.slug}</span></div>
+                  <div>Dépôt : <span className="text-foreground">{brandContext.brand.canonical_manifest.repository}</span></div>
+                  <div>Branche : <span className="text-foreground">{brandContext.brand.canonical_manifest.ref}</span></div>
+                  <div>Manifeste : <span className="text-foreground">{brandContext.brand.canonical_manifest.path}</span></div>
+                  <div>SHA : <span className="font-mono text-foreground">{brandContext.brand.canonical_manifest.sha || 'non résolu'}</span></div>
+                </div>
+              ) : <div className="mt-2 text-amber-700">Contexte canonique non résolu : aucune génération de marque ne sera autorisée.</div>}
+            </div>
+            <label className="text-xs font-medium md:col-span-2">Planche ADN complémentaire (URL)<input className={input + ' mt-1'} value={brandForm.brand_board_url || ''} onChange={e => setBrandForm(v => ({ ...v, brand_board_url: e.target.value }))} /></label>
             <label className="text-xs font-medium md:col-span-2">Ton<textarea className={input + ' mt-1 min-h-20'} value={brandForm.tone || ''} onChange={e => setBrandForm(v => ({ ...v, tone: e.target.value }))} /></label>
             <label className="text-xs font-medium">Règles obligatoires<textarea className={input + ' mt-1 min-h-28'} value={brandForm.must_text || ''} onChange={e => setBrandForm(v => ({ ...v, must_text: e.target.value }))} /></label>
             <label className="text-xs font-medium">À éviter / interdits<textarea className={input + ' mt-1 min-h-28'} value={brandForm.avoid_text || ''} onChange={e => setBrandForm(v => ({ ...v, avoid_text: e.target.value }))} /></label>
