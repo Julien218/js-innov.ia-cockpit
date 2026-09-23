@@ -8,14 +8,27 @@
  * Référence visuelle Cockpit JS-Innov.IA.
  * Scope strict : aucune règle ne s'applique aux sites publics.
  */
+/* Web : fond de secours neutre. Electron ajoute la classe electron-cockpit
+ * et rend réellement la fenêtre transparente jusqu'au bureau Windows.
+ */
 html:has(.cockpit-shell) {
-  background: #0d1b2a !important;
+  background: linear-gradient(145deg, #091626 0%, #10263d 52%, #111a27 100%) !important;
 }
 
 body:has(.cockpit-shell) {
-  background:
-    linear-gradient(180deg, rgba(4, 12, 24, 0.10), rgba(4, 12, 24, 0.28)),
-    url("/cockpit-sunset.svg") center / cover fixed no-repeat !important;
+  background: transparent !important;
+  background-image: none !important;
+}
+
+html.electron-cockpit,
+html.electron-cockpit body,
+html.electron-cockpit body:has(.cockpit-shell),
+html.electron-cockpit #root,
+html.electron-cockpit .cockpit-shell,
+html.electron-cockpit .cockpit-main {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
 }
 
 .cockpit-shell {
@@ -108,6 +121,44 @@ body:has(.cockpit-shell) {
 .cockpit-shell .sidebar-item.active svg {
   color: #f4cf61;
   filter: drop-shadow(0 0 8px rgba(244, 207, 97, 0.38));
+}
+
+/* La TopBar devient aussi la zone de déplacement de la fenêtre frameless Electron. */
+html.electron-cockpit .cockpit-topbar {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+html.electron-cockpit .cockpit-topbar button,
+html.electron-cockpit .cockpit-topbar input,
+html.electron-cockpit .cockpit-topbar a,
+html.electron-cockpit .cockpit-topbar nav,
+html.electron-cockpit .cockpit-topbar [role="button"],
+html.electron-cockpit .cockpit-window-controls {
+  -webkit-app-region: no-drag;
+}
+
+.cockpit-window-control {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: .65rem;
+  border: 1px solid transparent;
+  color: hsl(var(--foreground));
+  background: rgba(255,255,255,.18);
+}
+
+.cockpit-window-control:hover {
+  background: rgba(255,255,255,.55) !important;
+  border-color: rgba(244,207,97,.48) !important;
+}
+
+.cockpit-window-control-close:hover {
+  color: #fff !important;
+  background: rgba(220,38,38,.88) !important;
+  border-color: rgba(248,113,113,.80) !important;
 }
 
 /* Top bar translucide claire. */
