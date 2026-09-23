@@ -28,21 +28,6 @@ const KPI_ITEMS = [
   { key: "requests", label: "Demandes", icon: MessageSquare, tone: "slate" },
 ];
 
-const PIPELINE = [
-  { key: "nouveau", label: "Nouveaux" },
-  { key: "contacte", label: "En contact" },
-  { key: "proposition", label: "Proposition" },
-  { key: "negociation", label: "Négociation" },
-  { key: "gagne", label: "Gagnés" },
-];
-
-function timeLabel(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "—";
-  return format(date, "dd/MM · HH:mm", { locale: fr });
-}
-
 function projectTitle(project) {
   return project.nom || project.titre || project.name || project.title || "Projet sans titre";
 }
@@ -114,17 +99,6 @@ export default function Dashboard() {
     refetchInterval: 120_000,
   });
 
-  const { data: notifications = [] } = useQuery({
-    queryKey: ["dashboard-notifications"],
-    queryFn: async () => {
-      const response = await fetch("/api/data/Notifications?limit=8", { credentials: "include" });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) return [];
-      return Array.isArray(data.events) ? data.events : [];
-    },
-    staleTime: 30_000,
-    refetchInterval: 60_000,
-  });
 
   const caTotal = factures.filter((f) => f.statut === "payee").reduce((sum, f) => sum + Number(f.montant_ttc || 0), 0);
   const commTotal = commissions.filter((c) => c.statut === "payee").reduce((sum, c) => sum + Number(c.montant || c.montant_commission || 0), 0);
@@ -134,7 +108,6 @@ export default function Dashboard() {
   const tachesActives = taches.filter((task) => !isTaskCompleted(task)).length;
   const demandesOuvertes = demandes.filter(isNewDemande).length;
   const emailsATraiter = Number(emailOverview.unread || 0);
-  const emailsRecents = emailOverview.emails.filter((email) => !email.seen).slice(0, 5);
 
   const recentProjects = [...projets]
     .sort((a, b) => new Date(b.updated_at || b.created_at || b.created_date || 0) - new Date(a.updated_at || a.created_at || a.created_date || 0))
@@ -149,11 +122,6 @@ export default function Dashboard() {
     })
     .slice(0, 5);
 
-  const pipelineCounts = PIPELINE.map((stage) => ({
-    ...stage,
-    value: leads.filter((lead) => lead.statut === stage.key).length,
-  }));
-  const pipelineMax = Math.max(1, ...pipelineCounts.map((item) => item.value));
 
   const hasAnyError = clientsErr || leadsErr || projetsErr || tachesErr || demandesErr || facturesErr || commissionsErr;
   const hour = new Date().getHours();
@@ -174,12 +142,6 @@ export default function Dashboard() {
     window.dispatchEvent(new CustomEvent("elynea:open", { detail: { prompt } }));
   };
 
-  const quickActions = [
-    { label: "Nouveau client", to: "/clients", icon: Users },
-    { label: "Nouveau projet", to: "/projets", icon: FolderKanban },
-    { label: "Ajouter une tâche", to: "/taches", icon: CheckSquare },
-    { label: "Créer un devis", to: "/devis", icon: FileText },
-  ];
 
   const jarvisKpis = KPI_ITEMS.filter((item) => ["tasks", "emails", "projects", "requests"].includes(item.key));
 
