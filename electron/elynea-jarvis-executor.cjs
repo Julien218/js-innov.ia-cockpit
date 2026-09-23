@@ -24,7 +24,16 @@ function createJarvisExecutor({ routeJarvis, detectCapabilities, executeWeb, loc
     } else if (route.tool === "diagnostic" && capabilities.localAgent?.online) {
       output = await localAgentRequest(capabilities.localAgent.port, "/health", { timeoutMs: 3000 });
     } else if (route.tool === "media" && route.engine === "comfyui") {
-      output = await comfyRequest("/system_stats", { timeoutMs: 3000 });
+      const probe = await comfyRequest("/system_stats", { timeoutMs: 3000 });
+      const result = {
+        ...base,
+        status: "ready_to_execute",
+        requiresConfirmation: false,
+        output: { delegated: true, tool: route.tool, engine: route.engine, runtimeReady: Boolean(probe) },
+        completedAt: null,
+      };
+      await audit?.({ ...result, phase: "delegate" });
+      return result;
     } else {
       const result = {
         ...base,
