@@ -1,0 +1,228 @@
+{
+  "schemaVersion": "1.0",
+  "registryVersion": "2026.09.23",
+  "status": "production",
+  "policy": {
+    "mode": "fail-closed",
+    "resolutionOrder": [
+      "domain",
+      "brandId",
+      "aliases"
+    ],
+    "unknownBrandAction": "BLOCK_BRAND_CONTEXT_REQUIRED",
+    "crossBrandFallback": false,
+    "rules": [
+      "Resolve a single active brand before generating image, video, social copy or campaign material.",
+      "Load the canonical manifest from the exact repository and production branch listed below.",
+      "Never reuse a visually similar brand when the requested brand is unresolved.",
+      "JS-Innov.IA credit is secondary unless the active brand itself is JS-Innov.IA or JS-Innov.IA Cockpit."
+    ]
+  },
+  "brands": [
+    {
+      "brandId": "jsinnovia",
+      "name": "JS-Innov.IA",
+      "domains": [
+        "jsinnovia.com",
+        "www.jsinnovia.com"
+      ],
+      "source": {
+        "repo": "Julien218/jsinnovia",
+        "branch": "main",
+        "manifest": "brand/brand.manifest.json"
+      }
+    },
+    {
+      "brandId": "jsinnovia-cockpit",
+      "name": "JS-Innov.IA Cockpit",
+      "domains": [
+        "cockpit.jsinnovia.com"
+      ],
+      "source": {
+        "repo": "Julien218/js-innov.ia-cockpit",
+        "branch": "main",
+        "manifest": "brand/cockpit.manifest.json"
+      }
+    },
+    {
+      "brandId": "synergie-dour",
+      "name": "Synergie Dour",
+      "domains": [
+        "synergiedour.be",
+        "www.synergiedour.be"
+      ],
+      "source": {
+        "repo": "Julien218/synergie-dour",
+        "branch": "main",
+        "manifest": "docs/brand-kit/2026/AGENT_INDEX.json"
+      }
+    },
+    {
+      "brandId": "assurances-dour",
+      "name": "Assurances-Dour.be",
+      "domains": [
+        "assurances-dour.be",
+        "www.assurances-dour.be"
+      ],
+      "source": {
+        "repo": "Julien218/PV_Agence_de_Dour",
+        "branch": "main",
+        "manifest": "brand-system/AGENT_INDEX.json"
+      }
+    },
+    {
+      "brandId": "miss-mister-dour",
+      "name": "Miss & Mister Dour",
+      "aliases": [
+        "Miss Mister Dour",
+        "MMD",
+        "Miss et Mister Dour"
+      ],
+      "domains": [
+        "missetmisterdour.be",
+        "www.missetmisterdour.be",
+        "sponsors.missetmisterdour.be",
+        "contrat.missetmisterdour.be"
+      ],
+      "source": {
+        "repo": "Julien218/miss2026",
+        "branch": "rescue/recovered-production-source",
+        "manifest": "brand/brand.manifest.json"
+      }
+    },
+    {
+      "brandId": "tour-de-dour",
+      "name": "Le Tour de Dour",
+      "aliases": [
+        "Tour de Dour"
+      ],
+      "domains": [
+        "letourdedour.com",
+        "www.letourdedour.com"
+      ],
+      "source": {
+        "repo": "Julien218/letourdedour-site-_s7N",
+        "branch": "main",
+        "manifest": "brand/brand.manifest.json"
+      }
+    },
+    {
+      "brandId": "fashionist-art",
+      "name": "Fashionist'ART",
+      "aliases": [
+        "Fashionist Art",
+        "FashionistART"
+      ],
+      "domains": [
+        "fashionistartdour.be",
+        "www.fashionistartdour.be"
+      ],
+      "source": {
+        "repo": "Julien218/fashionist-art",
+        "branch": "main",
+        "manifest": "brand/brand.manifest.json"
+      }
+    },
+    {
+      "brandId": "olivier-trevis",
+      "name": "Olivier Trevis",
+      "domains": [
+        "oliviertrevis.be",
+        "www.oliviertrevis.be"
+      ],
+      "source": {
+        "repo": "Julien218/oliviertrevis-site",
+        "branch": "main",
+        "manifest": "brand/brand.manifest.json"
+      }
+    },
+    {
+      "brandId": "hainoflow",
+      "name": "HainoFlow",
+      "domains": [
+        "hainoflow.jsinnovia.com"
+      ],
+      "source": {
+        "repo": "Julien218/hainoflow-landing",
+        "branch": "main",
+        "manifest": "brand/brand.manifest.json"
+      },
+      "warnings": [
+        "Official runtime image paths are declared missing from the Git repository; do not invent replacements."
+      ]
+    },
+    {
+      "brandId": "pilotyasign-pro",
+      "name": "PilotyaSign Pro",
+      "aliases": [
+        "PilotyaSign",
+        "Pilotya"
+      ],
+      "domains": [
+        "pilotyasign.jsinnovia.com"
+      ],
+      "source": {
+        "repo": "Julien218/jsinnovia",
+        "branch": "pilotyasign-pro",
+        "manifest": "brand/brand.manifest.json"
+      }
+    },
+    {
+      "brandId": "signelya",
+      "name": "SIGNELYA",
+      "aliases": [
+        "Signelya",
+        "SIGNELYA by JS-Innov.IA"
+      ],
+      "domains": [
+        "signelya.jsinnovia.com",
+        "app.signelya.jsinnovia.com"
+      ],
+      "surfaces": [
+        {
+          "domain": "signelya.jsinnovia.com",
+          "repo": "Julien218/js-innov.ia",
+          "branch": "feature/digital-signage-product-release",
+          "manifest": "brand/brand.manifest.json"
+        },
+        {
+          "domain": "app.signelya.jsinnovia.com",
+          "repo": "Julien218/js-innov.ia-cockpit",
+          "branch": "feature/olivier-signage-pilot-release",
+          "manifest": "brand/brand.manifest.json"
+        }
+      ]
+    },
+    {
+      "brandId": "eternity-melodies",
+      "name": "Eternity Melodies",
+      "aliases": [
+        "Eternity"
+      ],
+      "domains": [
+        "eternity-melodies-web-production.up.railway.app"
+      ],
+      "source": {
+        "repo": "Julien218/eternity-melodies",
+        "branch": "renovation-offre-complete",
+        "manifest": "brand/brand.manifest.json"
+      }
+    },
+    {
+      "brandId": "villeconnect-os",
+      "name": "VilleConnect OS",
+      "aliases": [
+        "VilleConnect",
+        "DourConnect"
+      ],
+      "domains": [
+        "villeconnect-production.up.railway.app"
+      ],
+      "source": {
+        "repo": "Julien218/villeconnect",
+        "branch": "main",
+        "manifest": "docs/brand/brand.manifest.json"
+      }
+    }
+  ]
+}

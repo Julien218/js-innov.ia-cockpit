@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "1.0",
+  "brand": "JS-Innov.IA Cockpit",
+  "status": "production",
+  "locale": "fr-BE",
+  "lastAligned": "2026-09-23",
+  "repository": {
+    "fullName": "Julien218/js-innov.ia-cockpit",
+    "productionBranch": "main"
+  },
+  "canonicalSources": {
+    "manifest": "brand/cockpit.manifest.json",
+    "runtimeStyles": "src/index.css",
+    "metadata": "index.html",
+    "registry": "brand/brand-registry.json"
+  },
+  "identity": {
+    "name": "JS-Innov.IA Cockpit",
+    "parentBrand": "JS-Innov.IA"
+  },
+  "palette": {
+    "gold": "#D4AF37",
+    "cyan": "#22D3EE",
+    "backgroundTop": "#090B10",
+    "backgroundMid": "#07090D",
+    "backgroundBottom": "#06070A",
+    "white": "#FFFFFF"
+  },
+  "typography": {
+    "body": "Inter",
+    "display": "Space Grotesk"
+  },
+  "agentPolicy": {
+    "mode": "fail-closed",
+    "note": "Cockpit UI identity is not a fallback identity for client brands.",
+    "forbidden": [
+      "apply-cockpit-adn-to-client-brand",
+      "mix-client-brand-assets",
+      "invent-brand-fallback"
+    ],
+    "qualityGate": [
+      "active-brand-resolved-before-generation",
+      "registry-entry-loaded",
+      "canonical-manifest-loaded",
+      "no-cross-brand-contamination"
+    ]
+  }
+}
