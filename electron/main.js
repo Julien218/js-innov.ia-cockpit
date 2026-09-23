@@ -9,6 +9,7 @@ const { execFile } = require("child_process");
 const crypto = require("crypto");
 const { createWebAssistant } = require("./web-assistant.cjs");
 const { formatComfyErrorBody } = require("./comfy-error.cjs");
+const { routeJarvis } = require("./elynea-tool-router.cjs");
 
 let mainWindow = null;
 let tray = null;
@@ -1095,6 +1096,13 @@ ipcMain.handle("nova-web-assistant-execute", async (event, task = {}) => {
     throw new Error("Appel refusé hors du Cockpit JS-Innov.IA.");
   }
   return webAssistant.execute(task);
+});
+
+// ── IPC — Elynea Jarvis Tool Router ─────────────────────────────────────────
+ipcMain.handle("elynea-tool-route", async (event, task = {}) => {
+  if (!trustedCockpitCaller(event)) throw new Error("Appel Tool Router refusé hors du Cockpit JS-Innov.IA.");
+  const route = routeJarvis(task, { localAgent: true, comfyui: true });
+  return { ok: true, route, requiresConfirmation: route.confirmation === true };
 });
 
 // ── IPC — Check for updates (from renderer) ─────────────────────────────────
