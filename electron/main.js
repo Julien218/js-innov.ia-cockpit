@@ -1022,17 +1022,18 @@ function createWindow() {
     minWidth: 1100,
     minHeight: 700,
     autoHideMenuBar: true,
-    frame: true,
+    frame: false,
+    transparent: true,
     title: "JS-Innov.IA Cockpit",
     icon: path.join(__dirname, "icon.png"),
-    titleBarStyle: os.platform() === "win32" ? "default" : "hiddenInset",
+    titleBarStyle: "hidden",
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, "preload.js"),
       webSecurity: true,
     },
-    backgroundColor: "#0B0B0F",
+    backgroundColor: "#00000000",
     show: false,
   });
 
@@ -1076,6 +1077,27 @@ ipcMain.on("notify", (event, { title, body }) => {
   if (Notification.isSupported()) {
     new Notification({ title: title || "JS-Innov.IA", body: body || "" }).show();
   }
+});
+
+// ── IPC — fenêtre transparente / frameless Windows ─────────────────────────
+function callerWindow(event) {
+  if (!trustedCockpitCaller(event)) return null;
+  return BrowserWindow.fromWebContents(event.sender);
+}
+
+ipcMain.on("window-minimize", (event) => {
+  callerWindow(event)?.minimize();
+});
+
+ipcMain.on("window-toggle-maximize", (event) => {
+  const win = callerWindow(event);
+  if (!win) return;
+  if (win.isMaximized()) win.unmaximize();
+  else win.maximize();
+});
+
+ipcMain.on("window-close", (event) => {
+  callerWindow(event)?.close();
 });
 
 // ── IPC — transcription micro Elynea via le processus Electron ──────────────
