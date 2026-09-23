@@ -22,7 +22,7 @@ const context = {
 
 test('brandPrompt injecte la Bible ADN et les interdits', () => {
   const prompt = brandPrompt(context, 'Créer un visuel recrutement', 'image');
-  assert.match(prompt, /BIBLE ADN CANONIQUE/);
+  assert.match(prompt, /BIBLE \/ RÈGLES ADN CANONIQUES/);
   assert.match(prompt, /plume discrète/);
   assert.match(prompt, /kitsch/);
   assert.match(prompt, /Recrutement 2027/);
