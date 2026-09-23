@@ -10,8 +10,6 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { format } from "date-fns";
-import { fr } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { isTaskBlocked, isTaskCompleted } from "@/lib/taskStatus";
 import { useDemandes } from "@/lib/useDemandes";
@@ -20,11 +18,7 @@ import { isNewDemande } from "@/lib/demandePresentation";
 const KPI_ITEMS = [
   { key: "tasks", label: "Tâches à traiter", icon: CheckSquare, tone: "blue" },
   { key: "emails", label: "Emails à traiter", icon: Mail, tone: "rose" },
-  { key: "clients", label: "Clients actifs", icon: Users, tone: "green" },
   { key: "projects", label: "Projets en cours", icon: FolderKanban, tone: "violet" },
-  { key: "commissions", label: "Commissions", icon: Shield, tone: "amber" },
-  { key: "revenue", label: "CA encaissé", icon: TrendingUp, tone: "cyan" },
-  { key: "leads", label: "Leads actifs", icon: Target, tone: "orange" },
   { key: "requests", label: "Demandes", icon: MessageSquare, tone: "slate" },
 ];
 
@@ -74,13 +68,9 @@ function PanelHeader({ icon: Icon, title, action, to }) {
 }
 
 export default function Dashboard() {
-  const { data: clients = [], isError: clientsErr } = useQuery({ queryKey: ["clients"], queryFn: () => base44.entities.Client.list() });
-  const { data: leads = [], isError: leadsErr } = useQuery({ queryKey: ["leads"], queryFn: () => base44.entities.Lead.list() });
   const { data: projets = [], isError: projetsErr } = useQuery({ queryKey: ["projets"], queryFn: () => base44.entities.Projet.list() });
   const { data: taches = [], isError: tachesErr } = useQuery({ queryKey: ["taches"], queryFn: () => base44.entities.Tache.list() });
   const { data: demandes = [], isError: demandesErr } = useDemandes();
-  const { data: factures = [], isError: facturesErr } = useQuery({ queryKey: ["factures"], queryFn: () => base44.entities.Facture.list() });
-  const { data: commissions = [], isError: commissionsErr } = useQuery({ queryKey: ["commissions"], queryFn: () => base44.entities.Commission.list() });
 
   const { data: emailOverview = { emails: [], unread: 0 }, isError: emailsErr } = useQuery({
     queryKey: ["dashboard-email-overview"],
@@ -100,9 +90,6 @@ export default function Dashboard() {
   });
 
 
-  const caTotal = factures.filter((f) => f.statut === "payee").reduce((sum, f) => sum + Number(f.montant_ttc || 0), 0);
-  const commTotal = commissions.filter((c) => c.statut === "payee").reduce((sum, c) => sum + Number(c.montant || c.montant_commission || 0), 0);
-  const leadsActifs = leads.filter((lead) => !["gagne", "perdu"].includes(lead.statut)).length;
   const projetsEnCours = projets.filter((project) => project.statut === "en_cours").length;
   const tachesEnRetard = taches.filter((task) => task.date_echeance && new Date(task.date_echeance) < new Date() && !isTaskCompleted(task)).length;
   const tachesActives = taches.filter((task) => !isTaskCompleted(task)).length;
@@ -123,18 +110,14 @@ export default function Dashboard() {
     .slice(0, 5);
 
 
-  const hasAnyError = clientsErr || leadsErr || projetsErr || tachesErr || demandesErr || facturesErr || commissionsErr;
+  const hasAnyError = projetsErr || tachesErr || demandesErr || emailsErr;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bonjour" : hour < 18 ? "Bon après-midi" : "Bonsoir";
 
   const kpiValues = {
     tasks: tachesActives,
     emails: emailsATraiter,
-    clients: clients.length,
     projects: projetsEnCours,
-    commissions: `${commTotal.toLocaleString("fr-BE")} €`,
-    revenue: `${caTotal.toLocaleString("fr-BE")} €`,
-    leads: leadsActifs,
     requests: demandesOuvertes,
   };
 
@@ -143,7 +126,7 @@ export default function Dashboard() {
   };
 
 
-  const jarvisKpis = KPI_ITEMS.filter((item) => ["tasks", "emails", "projects", "requests"].includes(item.key));
+  const jarvisKpis = KPI_ITEMS;
 
   return (
     <div className="cockpit-reference-dashboard jarvis-home">
