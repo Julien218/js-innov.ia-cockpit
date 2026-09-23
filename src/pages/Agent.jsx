@@ -59,6 +59,7 @@ export default function AgentPage() {
   const [agentModels, setAgentModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem(STORAGE_MODEL) || "");
   const [agentStatus, setAgentStatus] = useState("checking");
+  const [activeLocalPort, setActiveLocalPort] = useState(8788);
   const [activeEngine, setActiveEngine] = useState("cloud");
   const [showProviderMenu, setShowProviderMenu] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
@@ -94,7 +95,7 @@ export default function AgentPage() {
       for (const baseUrl of LOCAL_AGENT_URLS) {
         try {
           const candidate = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(2500) });
-          if (candidate.ok) { res = candidate; activeLocalAgentUrl = baseUrl; break; }
+          if (candidate.ok) { res = candidate; activeLocalAgentUrl = baseUrl; setActiveLocalPort(Number(new URL(baseUrl).port)); break; }
         } catch { /* essayer le port de compatibilité */ }
       }
       if (!res?.ok) throw new Error("offline");
@@ -195,7 +196,7 @@ export default function AgentPage() {
       return sendToCloud(msg);
     }
     if (provider === "local") {
-      if (agentStatus !== "online") throw new Error("Agent Local (8787) non accessible en mode Local uniquement");
+      if (agentStatus !== "online") throw new Error(`Agent Local (${activeLocalPort || 8788}) non accessible en mode Local uniquement`);
       const result = await sendToLocal(msg);
       await persistMessages([{ role: 'user', content: msg }, { role: 'assistant', content: result.response }]);
       setActiveEngine("local");
@@ -314,13 +315,13 @@ export default function AgentPage() {
   const providerBadge = provider === "auto"
     ? {
         icon: agentStatus === "online" ? <Wifi className="w-3 h-3 text-emerald-500" /> : <Cloud className="w-3 h-3 text-primary" />,
-        label: agentStatus === "checking" ? "Companion · vérification…" : agentStatus === "online" ? `Companion · ${activeEngine === "local" ? "Local" : "Cloud"} · 8787 disponible` : "Companion · Cloud actif · Local indisponible",
+        label: agentStatus === "checking" ? "Companion · vérification…" : agentStatus === "online" ? `Companion · ${activeEngine === "local" ? "Local" : "Cloud"} · ${activeLocalPort} disponible` : "Companion · Cloud actif · Local indisponible",
         color: agentStatus === "online" ? "text-emerald-500" : "text-primary",
       }
     : provider === "local"
       ? {
           icon: agentStatus === "online" ? <Wifi className="w-3 h-3 text-emerald-500" /> : <WifiOff className="w-3 h-3 text-red-500" />,
-          label: agentStatus === "checking" ? "Connexion…" : agentStatus === "online" ? `Local 8787${selectedModel ? " · " + selectedModel : ""}` : "Local 8787 offline",
+          label: agentStatus === "checking" ? "Connexion…" : agentStatus === "online" ? `Local ${activeLocalPort}${selectedModel ? " · " + selectedModel : ""}` : "Local indisponible",
           color: agentStatus === "online" ? "text-emerald-500" : "text-red-500",
         }
       : { icon: <Cloud className="w-3 h-3 text-primary" />, label: "Cloud · JS-Innov.IA", color: "text-primary" };
@@ -352,7 +353,7 @@ export default function AgentPage() {
                 </button>
                 <button onClick={() => switchProvider("local")} className={cn("w-full flex items-start gap-3 px-3 py-2.5 hover:bg-accent transition-colors text-left border-t border-border", provider === "local" && "bg-accent/50")}>
                   <Server className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
-                  <div><div className="text-sm font-medium">Local uniquement (8787)</div><div className="text-[10px] text-muted-foreground">Ollama + fichiers + outils du PC</div><div className={cn("text-[10px] mt-0.5", agentStatus === "online" ? "text-emerald-500" : "text-red-500")}>{agentStatus === "online" ? "✓ Connecté" : "✗ Hors ligne"}</div></div>
+                  <div><div className="text-sm font-medium">Local uniquement (auto 8788 → 8787)</div><div className="text-[10px] text-muted-foreground">Ollama + fichiers + outils du PC</div><div className={cn("text-[10px] mt-0.5", agentStatus === "online" ? "text-emerald-500" : "text-red-500")}>{agentStatus === "online" ? "✓ Connecté" : "✗ Hors ligne"}</div></div>
                 </button>
                 <button onClick={() => switchProvider("cloud")} className={cn("w-full flex items-start gap-3 px-3 py-2.5 hover:bg-accent transition-colors text-left border-t border-border", provider === "cloud" && "bg-accent/50")}>
                   <Cloud className="w-4 h-4 text-primary mt-0.5 shrink-0" />
@@ -432,10 +433,10 @@ export default function AgentPage() {
 
       <div className="px-3 sm:px-6 py-3 border-t border-border bg-card shrink-0 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
         <form onSubmit={(event) => { event.preventDefault(); send(); }} className="flex gap-2 items-end">
-          <input ref={inputRef} type="text" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Écrire à NOVA…" disabled={loading} className="flex-1 bg-background border border-border rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 disabled:opacity-50" />
+          <input ref={inputRef} type="text" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Écrire à Elynea…" disabled={loading} className="flex-1 bg-background border border-border rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 disabled:opacity-50" />
           <button type="submit" disabled={loading || !input.trim()} className="rounded-2xl gradient-primary p-2.5 text-white disabled:opacity-40 hover:opacity-90 transition-opacity shrink-0">{loading ? <Loader2 className="w-4 h-4 text-white animate-spin" /> : <Send className="w-4 h-4 text-white" />}</button>
         </form>
-        <p className="text-center text-[10px] text-muted-foreground mt-2 hidden sm:block">Mémoire persistante · Cloud JS-Innov.IA · Agent Local 8787 optionnel · actions sensibles confirmées</p>
+        <p className="text-center text-[10px] text-muted-foreground mt-2 hidden sm:block">Mémoire persistante · Cloud JS-Innov.IA · Agent Local auto 8788 → 8787 · actions sensibles confirmées</p>
       </div>
     </div>
   );
