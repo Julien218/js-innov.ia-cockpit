@@ -117,7 +117,7 @@ class ElyneaBridge(QObject):
         self._endpoint = ""
         self._history: list[dict[str, str]] = []
         self._busy = False
-        self._wake_enabled = False
+        self._wake_enabled = os.environ.get("ELYNEA_WAKE_DEFAULT", "1").strip() != "0"
         self._voice_output_enabled = True
         self._agent_spawn_attempted = False
         self._capture_kind = ""
@@ -151,6 +151,8 @@ class ElyneaBridge(QObject):
                 self._tts = None
 
         QTimer.singleShot(120, self.refreshHealth)
+        if self._wake_enabled:
+            QTimer.singleShot(1500, self._begin_wake_if_possible)
 
     @Property(str, notify=stateChanged)
     def state(self) -> str:

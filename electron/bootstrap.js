@@ -14,6 +14,7 @@ let localAgentSpawnedAt = 0;
 let localAgentRestartTimer = null;
 let localAgentWatchdogTimer = null;
 let offlineWebServer = null;
+let elyneaDesktopProcess = null;
 let shuttingDown = false;
 
 const OFFLINE_WEB_PORT = 8790;
@@ -339,6 +340,68 @@ function startLocalAgentWatchdog() {
   }, 5_000).unref?.();
 }
 
+function bundledElyneaDesktopDir() {
+  if (!app.isPackaged) return null;
+  return path.join(process.resourcesPath, "elynea-desktop");
+}
+
+function installedElyneaDesktopDir() {
+  return path.join(app.getPath("userData"), "ElyneaDesktop", app.getVersion());
+}
+
+function terminateExistingElyneaDesktop() {
+  if (process.platform !== "win32") return Promise.resolve();
+  return new Promise((resolve) => {
+    execFile(
+      "taskkill",
+      ["/IM", "ElyneaDesktop.exe", "/T", "/F"],
+      { windowsHide: true, timeout: 5_000 },
+      () => resolve(),
+    );
+  });
+}
+
+async function startBundledElyneaDesktop() {
+  if (process.platform !== "win32" || !app.isPackaged || shuttingDown) return false;
+
+  const source = bundledElyneaDesktopDir();
+  const sourceExe = source && path.join(source, "ElyneaDesktop.exe");
+  if (!source || !fs.existsSync(sourceExe)) {
+    console.log("[desktop] Elynea QML companion not bundled; Cockpit fallback remains available");
+    return false;
+  }
+
+  const target = installedElyneaDesktopDir();
+  const targetExe = path.join(target, "ElyneaDesktop.exe");
+
+  try {
+    if (!fs.existsSync(targetExe)) {
+      fs.mkdirSync(target, { recursive: true });
+      fs.cpSync(source, target, { recursive: true, force: true });
+    }
+
+    await terminateExistingElyneaDesktop();
+
+    const child = spawn(targetExe, ["--minimized"], {
+      cwd: target,
+      detached: true,
+      windowsHide: true,
+      stdio: "ignore",
+      env: { ...process.env },
+    });
+    elyneaDesktopProcess = child;
+    child.once("exit", () => {
+      if (elyneaDesktopProcess === child) elyneaDesktopProcess = null;
+    });
+    child.unref();
+    console.log(`[desktop] Elynea QML companion started from ${targetExe}`);
+    return true;
+  } catch (error) {
+    console.log("[desktop] Elynea QML companion start failed:", error.message);
+    return false;
+  }
+}
+
 app.on("before-quit", () => {
   shuttingDown = true;
   if (localAgentRestartTimer) clearTimeout(localAgentRestartTimer);
@@ -470,6 +533,10 @@ app.whenReady().then(async () => {
     return false;
   });
   startLocalAgentWatchdog();
+  await startBundledElyneaDesktop().catch((error) => {
+    console.log("[desktop] Elynea QML companion bootstrap failed:", error.message);
+    return false;
+  });
   await startBundledOfflineCockpit();
   await refreshWebRuntime();
 

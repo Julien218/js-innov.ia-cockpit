@@ -28,6 +28,7 @@ class ElyneaQmlContractTest(unittest.TestCase):
         backend = self.read("backend.py")
         self.assertIn("WAKE_WORDS", backend)
         self.assertIn("setWakeEnabled", backend)
+        self.assertIn('ELYNEA_WAKE_DEFAULT", "1"', backend)
         self.assertIn("ElyneaDesktop", backend)
         self.assertIn("CurrentVersion", backend)
         self.assertIn("Run", backend)
