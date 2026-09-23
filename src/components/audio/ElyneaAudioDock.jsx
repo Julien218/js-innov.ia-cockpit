@@ -20,6 +20,7 @@ import {
 const API = '/api/music-motion/audio';
 const CURRENT_KEY = 'elynea_audio_current_path';
 const VOLUME_KEY = 'elynea_audio_volume';
+const OUTPUT_KEY = 'elynea_audio_output_device';
 const HANDOFF_KEY = 'elynea_audio_motion_handoff';
 
 function formatBytes(value) {
@@ -81,6 +82,8 @@ export default function ElyneaAudioDock() {
     const stored = Number(localStorage.getItem(VOLUME_KEY));
     return Number.isFinite(stored) && stored >= 0 && stored <= 1 ? stored : 0.7;
   });
+  const [audioOutputs, setAudioOutputs] = useState([]);
+  const [outputId, setOutputId] = useState(() => localStorage.getItem(OUTPUT_KEY) || 'default');
   const [selected, setSelected] = useState(() => new Set());
   const [playlistName, setPlaylistName] = useState('');
 
@@ -131,6 +134,46 @@ export default function ElyneaAudioDock() {
     if (audioRef.current) audioRef.current.volume = volume;
   }, [volume]);
 
+  const refreshAudioOutputs = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outputs = devices.filter(device => device.kind === 'audiooutput');
+      setAudioOutputs(outputs);
+      setOutputId(previous => {
+        if (previous === 'default' || outputs.some(device => device.deviceId === previous)) return previous;
+        localStorage.removeItem(OUTPUT_KEY);
+        return 'default';
+      });
+    } catch {
+      // Le lecteur reste utilisable avec la sortie Windows par défaut.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshAudioOutputs();
+    const mediaDevices = navigator.mediaDevices;
+    if (!mediaDevices?.addEventListener) return undefined;
+    const onDeviceChange = () => { void refreshAudioOutputs(); };
+    mediaDevices.addEventListener('devicechange', onDeviceChange);
+    return () => mediaDevices.removeEventListener('devicechange', onDeviceChange);
+  }, [refreshAudioOutputs]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || typeof audio.setSinkId !== 'function') return;
+    const sinkId = outputId === 'default' ? '' : outputId;
+    void audio.setSinkId(sinkId)
+      .then(() => {
+        if (outputId === 'default') localStorage.removeItem(OUTPUT_KEY);
+        else localStorage.setItem(OUTPUT_KEY, outputId);
+      })
+      .catch((error) => {
+        setNotice(`Sortie audio indisponible (${error?.name || 'erreur'}). Retour à la sortie Windows par défaut.`);
+        if (outputId !== 'default') setOutputId('default');
+      });
+  }, [outputId]);
+
   const play = useCallback(async () => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -140,6 +183,7 @@ export default function ElyneaAudioDock() {
       return;
     }
     try {
+      await refreshAudioOutputs();
       await audio.play();
       setPlaying(true);
       setNotice('');
@@ -147,7 +191,7 @@ export default function ElyneaAudioDock() {
       setPlaying(false);
       setNotice('Le navigateur bloque le démarrage automatique. Cliquez une première fois sur ▶ puis Elynea pourra piloter la musique.');
     }
-  }, [current, tracks]);
+  }, [current, refreshAudioOutputs, tracks]);
 
   const pause = useCallback(() => {
     audioRef.current?.pause();
@@ -388,9 +432,30 @@ export default function ElyneaAudioDock() {
             </div>
 
             <footer className="border-t border-white/10 p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <Volume2 className="h-4 w-4 text-white/50" />
-                <input className="w-full accent-amber-300" type="range" min="0" max="1" step="0.01" value={volume} onChange={event => setVolume(Number(event.target.value))} aria-label="Volume musique" />
+              <div className="mb-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)] sm:items-end">
+                <div className="flex items-center gap-2">
+                  <Volume2 className="h-4 w-4 text-white/50" />
+                  <input className="w-full accent-amber-300" type="range" min="0" max="1" step="0.01" value={volume} onChange={event => setVolume(Number(event.target.value))} aria-label="Volume musique" />
+                </div>
+                <label className="grid gap-1 text-[10px] text-white/50">
+                  Sortie audio
+                  <select
+                    value={outputId}
+                    onFocus={() => { void refreshAudioOutputs(); }}
+                    onChange={event => setOutputId(event.target.value)}
+                    className="min-w-0 rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs text-white outline-none focus:border-amber-300/50"
+                    aria-label="Périphérique de sortie audio"
+                  >
+                    <option value="default">Sortie système Windows</option>
+                    {audioOutputs
+                      .filter(device => device.deviceId && device.deviceId !== 'default')
+                      .map((device, index) => (
+                        <option key={device.deviceId} value={device.deviceId}>
+                          {device.label || `Sortie audio ${index + 1}`}
+                        </option>
+                      ))}
+                  </select>
+                </label>
               </div>
               <div className="flex items-center gap-2">
                 <ListMusic className="h-4 w-4 shrink-0 text-white/50" />
