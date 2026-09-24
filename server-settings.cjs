@@ -31,7 +31,8 @@ function settingsStatus(user = {}) {
     integration('TWILIO_AUTH_TOKEN', 'Twilio', has('TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'), 'Téléphonie et coûts'),
     integration('EMAIL_PASSWORD', 'IONOS Mail', has('EMAIL_JSINNOVIA_ADDRESS', 'EMAIL_PASSWORD'), 'Messagerie JS-Innov.IA'),
     integration('VAPID_PRIVATE_KEY', 'Notifications Push', has('VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY'), 'Notifications de l’application'),
-    integration('GITHUB_TOKEN', 'GitHub', oneOf('GITHUB_TOKEN', 'GH_TOKEN'), 'Écriture directe depuis le Cockpit'),
+    integration('GITHUB_TOKEN', 'GitHub · lecture', oneOf('GITHUB_TOKEN', 'GH_TOKEN'), 'Lecture des dépôts, Bibles ADN, manifestes et configuration. La date d’expiration du token n’est jamais déduite de son nom.'),
+    integration('GITHUB_WRITE_TOKEN', 'GitHub · écriture', has('GITHUB_WRITE_TOKEN'), 'Écriture GitHub contrôlée côté serveur. Secret jamais transmis à Elynea ni aux prompts.'),
     integration('RAILWAY_API_TOKEN', 'Railway', oneOf('RAILWAY_API_TOKEN', 'RAILWAY_TOKEN'), 'Déploiement direct depuis le Cockpit'),
   ];
 
@@ -48,7 +49,8 @@ function settingsStatus(user = {}) {
     builder: {
       inline_editor: false,
       nova_site_ops: true,
-      github_write: oneOf('GITHUB_TOKEN', 'GH_TOKEN'),
+      github_read: oneOf('GITHUB_TOKEN', 'GH_TOKEN'),
+      github_write: has('GITHUB_WRITE_TOKEN'),
       railway_write: oneOf('RAILWAY_API_TOKEN', 'RAILWAY_TOKEN'),
       sites: Object.entries(MANAGED_DOMAINS).map(([domain, meta]) => ({
         domain,
