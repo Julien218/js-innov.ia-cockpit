@@ -133,3 +133,11 @@ test('une synchronisation locale échouée reste relançable', () => {
   assert.ok(successMarker > localFetch);
   assert.match(floatingAgent, /if \(!syncResponse\.ok\) throw new Error/);
 });
+
+
+test('Music Motion workspace initialization is lazy and cannot outlive a no-listen test import', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'local-agent', 'music-motion-service.mjs'), 'utf8');
+  assert.match(source, /const ensureReady=/);
+  assert.match(source, /await ensureReady\(\)/);
+  assert.doesNotMatch(source, /const ready=workspace\.init\(\)\.then/);
+});
