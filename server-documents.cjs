@@ -380,6 +380,7 @@ async function getDocumentForUser(user, id) {
   if (!['superadmin', 'admin', 'collaborateur'].includes(user?.role) || !hasPermission(user, 'documents')) throw new Error('Accès documents non autorisé');
   if (!/^[a-zA-Z0-9_-]{1,120}$/.test(String(id))) throw new Error('Identifiant document invalide');
   const record = await getDocumentRecord(id);
+  if (record?.deleted_at) throw new Error('Document introuvable');
   assertDocumentAccess(user, record);
   return { id: record.id, filename: record.filename };
 }
