@@ -5,6 +5,8 @@ import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { shouldUseLocalFirst } from "@/lib/nova-routing";
 import { executeNovaClientAction } from '@/lib/novaClientAction';
+import { interactionContext, finishElyneaResponse } from '@/lib/elyneaRuntime';
+import { speechDecoration } from '@/lib/speechDecoration';
 
 const LOCAL_AGENT_URLS = ["http://127.0.0.1:8788", "http://127.0.0.1:8787"];
 let activeLocalAgentUrl = LOCAL_AGENT_URLS[0];
@@ -183,9 +185,10 @@ export default function AgentPage() {
       method: "POST",
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ message: msg, conversation_id: CONVERSATION_ID }),
+      body: JSON.stringify({ message: msg, conversation_id: CONVERSATION_ID, interaction: interactionContext() }),
     });
-    const data = await res.json().catch(() => ({}));
+    const raw = await res.json().catch(() => ({}));
+    const data = res.ok ? await finishElyneaResponse(raw) : raw;
     if (!res.ok) throw new Error(data.error || "Réponse invalide du Companion");
     return { response: data.response || data.reply || data.message || "⚠️ Réponse vide", confirmation: data.confirmation || null };
   };
@@ -223,7 +226,7 @@ export default function AgentPage() {
     if (localStorage.getItem("agent_tts_enabled") !== "true") return;
     if (!("speechSynthesis" in window) || !text) return;
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(String(text).replace(/[*#_]/g, ""));
+    const utterance = new SpeechSynthesisUtterance(speechDecoration(text));
     utterance.lang = "fr-BE";
     utterance.rate = 1;
     window.speechSynthesis.speak(utterance);
