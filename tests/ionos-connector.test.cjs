@@ -35,6 +35,9 @@ test('NOVA routes infrastructure and blocks administration without swallowing em
   assert.equal(core.chatIntent('Affiche les VPS IONOS'), 'corevps_list_contracts');
   assert.equal(core.chatIntent('Supprime le serveur IONOS'), 'write_unsupported');
   assert.equal(core.chatIntent('Trie mes emails IONOS'), null);
+  assert.equal(core.chatIntent('Vérifie le DNS de assurances-dour.be'), 'dns_domain');
+  assert.equal(core.chatIntent('Modifie le DNS de assurances-dour.be'), null);
+  assert.equal(core.domainFromMessage('Vérifie https://www.assurances-dour.be/ maintenant'), 'assurances-dour.be');
   assert.equal(core.chatIntent('Bonjour NOVA'), null);
 });
 
@@ -126,4 +129,35 @@ test('HTTP routes deny non-owners and unauthenticated users; owner reads and NOV
     await fetch(url + '/api/assistant/chat', { method: 'POST', headers, body: JSON.stringify({ message: 'Supprime IONOS' }) });
     assert.equal(calls, 1);
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+});
+
+
+test('DNS domain lookup tries configured IONOS accounts and reports the matching account', async () => {
+  const previousPrimary = process.env.IONOS_DNS_API_KEY;
+  const previousSecondary = process.env.IONOS_DNS_API_KEY_SECONDARY;
+  process.env.IONOS_DNS_API_KEY = 'primary-test-value';
+  process.env.IONOS_DNS_API_KEY_SECONDARY = 'secondary-test-value';
+  try {
+    const fetchImpl = async (url, init) => {
+      const key = init.headers['X-API-Key'];
+      if (String(url).endsWith('/zones')) {
+        if (key === 'primary-test-value') {
+          return new Response(JSON.stringify([{ id: 'z-primary', zoneName: 'other.test' }]));
+        }
+        return new Response(JSON.stringify([{ id: 'z-secondary', zoneName: 'assurances-dour.be' }]));
+      }
+      assert.match(String(url), /z-secondary$/);
+      assert.equal(key, 'secondary-test-value');
+      return new Response(JSON.stringify({
+        records: [{ id: 'r1', name: 'www.assurances-dour.be', type: 'CNAME', content: 'target.example', ttl: 300 }],
+      }));
+    };
+    const result = await core.readDomainDns('assurances-dour.be', { fetchImpl });
+    assert.equal(result.account_id, 'secondary');
+    assert.equal(result.domain, 'assurances-dour.be');
+    assert.equal(core.rows(result.data)[0].type, 'CNAME');
+  } finally {
+    if (previousPrimary === undefined) delete process.env.IONOS_DNS_API_KEY; else process.env.IONOS_DNS_API_KEY = previousPrimary;
+    if (previousSecondary === undefined) delete process.env.IONOS_DNS_API_KEY_SECONDARY; else process.env.IONOS_DNS_API_KEY_SECONDARY = previousSecondary;
+  }
 });
