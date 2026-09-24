@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const express = require('express');
 const { cleanTenant } = require('./server-tenant.cjs');
+const { stripInjectedContext } = require('./server-immediate-execution-policy.cjs');
 
 const turns = new Map();
 const confirmationCache = new Map();
@@ -73,7 +74,7 @@ function ambiguousMessageSignal(message) {
 }
 
 function dispatchVerificationSignal(message) {
-  const raw = String(message || '').trim();
+  const raw = stripInjectedContext(message);
   const text = normalize(raw);
   const mentionsTasks = /\btaches?\b/.test(text);
   const mentionsRouting = /\b(?:dispatch\w*|delegu\w*|assign\w*|rout\w*)\b/.test(text);

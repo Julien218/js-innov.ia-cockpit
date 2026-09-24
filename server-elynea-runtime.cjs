@@ -1,5 +1,6 @@
 // Runtime facts and bounded read tools. Model text is never execution evidence.
 const { hasPermission } = require('./server-permission-policy.cjs');
+const { stripInjectedContext } = require('./server-immediate-execution-policy.cjs');
 const normal = v => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[’']/g, ' ').replace(/\s+/g, ' ').trim();
 const label = v => String(v || '').replace(/[\r\n<>\[\]`]/g, ' ').slice(0, 180);
 const staff = user => ['superadmin', 'admin', 'collaborateur'].includes(user?.role);
@@ -90,7 +91,7 @@ function createRuntime({ listDocuments, getDocument, github, loadPreferences, sa
   }
   const result = (message, extra = {}) => ({ message, confirmation: null, model_used: 'elynea-runtime', ...extra });
   async function handle(req) {
-    const message = String(req.body?.message || '').trim(), text = normal(message);
+    const message = stripInjectedContext(req.body?.message), text = normal(message);
     const facts = capabilityFacts({ user: req.user, env, interaction: req.body?.interaction });
     const change = preferenceChange(message);
     if (change) {
