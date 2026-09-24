@@ -37,7 +37,8 @@ export function buildImageWorkflow(input,checkpoint,sourceName) {
   return {workflow,output_node:'7'};
 }
 export function createMusicMotionService({root,send,headersFor,readJson,isAllowedOrigin,ollama}) {
-  const workspace=new Workspace(path.join(root,'MusicMotion-v2'));const ready=workspace.init().then(()=>workspace.recover());
+  const workspace=new Workspace(path.join(root,'MusicMotion-v2'));let ready=null;
+  const ensureReady=()=>{if(!ready)ready=workspace.init().then(()=>workspace.recover());return ready;};
   const pending=[];const active=new Map();let working=false;let cached=null;let cachedAt=0;
   const workflowDir=process.env.MUSIC_MOTION_WORKFLOW_DIR||path.join(root,'MusicMotion-workflows');
   async function capabilities(){
@@ -139,7 +140,7 @@ export function createMusicMotionService({root,send,headersFor,readJson,isAllowe
     // CORS alone is not authorization: explicitly reject hostile origins and Host headers.
     if(req.headers.origin&&!isAllowedOrigin(req.headers.origin))throw fail('Origine non autorisée.',403);
     if(!/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(String(req.headers.host||'')))throw fail('Hôte local non autorisé.',403);
-    await ready;const suffix=url.pathname.slice(PREFIX.length);
+    await ensureReady();const suffix=url.pathname.slice(PREFIX.length);
     if(req.method==='GET'&&suffix==='/capabilities'){send(req,res,200,await capabilities());return true;}
     if(req.method==='POST'&&suffix==='/assets'){const asset=await workspace.putAsset(await limitedBody(req),url.searchParams.get('name')||'media');send(req,res,201,asset);return true;}
     if(req.method==='GET'&&/^\/assets\/[^/]+$/.test(suffix)){const asset=await workspace.asset(suffix.split('/')[2]);res.writeHead(200,{...headersFor(req),'Content-Type':asset.mime,'Content-Length':asset.bytes,'X-Content-Type-Options':'nosniff','Cache-Control':'no-store'});createReadStream(asset.path).pipe(res);return true;}
