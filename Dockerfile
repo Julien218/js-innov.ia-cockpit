@@ -55,6 +55,7 @@ COPY --from=builder /app/server-miss-dour-data.cjs ./server-miss-dour-data.cjs
 COPY --from=builder /app/server-bce.cjs ./server-bce.cjs
 COPY --from=builder /app/server-hainoflow.cjs ./server-hainoflow.cjs
 COPY --from=builder /app/server-assistant.cjs ./server-assistant.cjs
+COPY --from=builder /app/server-elynea-runtime.cjs ./server-elynea-runtime.cjs
 COPY --from=builder /app/server-public-elynea.cjs ./server-public-elynea.cjs
 COPY --from=builder /app/server-assistant-batch.cjs ./server-assistant-batch.cjs
 COPY --from=builder /app/server-task-batch.cjs ./server-task-batch.cjs
@@ -121,6 +122,8 @@ COPY brand ./brand
 
 RUN npm ci --omit=dev --legacy-peer-deps
 RUN test -f /app/server-ai-cost-attribution.cjs \
+ && test -f /app/server-elynea-runtime.cjs \
+ && node --check /app/server-elynea-runtime.cjs \
  && test -f /app/server-email-action-recovery.cjs \
  && test -f /app/server-email-trash-core.cjs \
  && test -f /app/server-role-policy.cjs \

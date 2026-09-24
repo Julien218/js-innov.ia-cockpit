@@ -5,6 +5,11 @@ on:
   pull_request:
     paths:
       - 'server-assistant.cjs'
+      - 'server-elynea-runtime.cjs'
+      - 'src/lib/elyneaRuntime.js'
+      - 'src/lib/speechDecoration.js'
+      - 'tests/elynea-*.test.cjs'
+      - 'tests/speech-decoration.test.cjs'
       - 'server-assistant-intent.cjs'
       - 'server-nova-email-triage.cjs'
       - 'src/lib/novaMailboxContext.js'
@@ -108,6 +113,7 @@ jobs:
         run: |
           node --check server.cjs
           node --check server-assistant.cjs
+          node --check server-elynea-runtime.cjs
           node --check server-assistant-intent.cjs
           node --check server-nova-email-triage.cjs
           node --check server-assistant-batch.cjs
