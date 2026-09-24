@@ -1,4 +1,5 @@
 import React from "react";
+import ElyneaHomePresence from "@/components/ElyneaHomePresence";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -172,7 +173,8 @@ export default function Dashboard() {
           ))}
         </section>
 
-        <section className="jarvis-home-command cockpit-electric-frame">
+        <section className="jarvis-home-command cockpit-electric-frame jarvis-home-with-presence">
+          <ElyneaHomePresence />
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-200/80">Mode Jarvis</p>
             <h2 className="mt-1 text-lg font-semibold text-white">Dites simplement ce que vous voulez faire.</h2>
