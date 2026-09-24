@@ -26,6 +26,11 @@ on:
       - 'server-task-batch.cjs'
       - 'server-nova-executors.cjs'
       - 'server-domain-ops.cjs'
+      - 'server-ionos.cjs'
+      - 'server-ionos-connector.cjs'
+      - 'server-ionos-dns.cjs'
+      - 'tests/ionos-connector.test.cjs'
+      - 'tests/ionos-dns.test.cjs'
       - 'server-task-autopilot.cjs'
       - 'server-companion-audience.cjs'
       - 'server-companion-memory.cjs'
@@ -114,6 +119,9 @@ jobs:
           node --check server-nova-document-delete.cjs
           node --check server-task-batch.cjs
           node --check server-nova-executors.cjs
+          node --check server-ionos.cjs
+          node --check server-ionos-connector.cjs
+          node --check server-ionos-dns.cjs
           node --check server-task-autopilot.cjs
           node --check server-companion-audience.cjs
           node --check server-companion-memory.cjs
