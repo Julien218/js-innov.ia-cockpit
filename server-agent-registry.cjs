@@ -18,7 +18,7 @@ const ELYNEA_AGENT = Object.freeze({
   aliases: ['elynea', 'nova', 'cockpit', 'jsinnov-agent'],
   capabilities: [
     'chat', 'orchestration', 'execute', 'supervise', 'verify', 'retry', 'crm', 'portfolio',
-    'automation', 'web', 'frontend', 'seo', 'dns', 'tls', 'github', 'railway', 'deploy',
+    'automation', 'web', 'frontend', 'seo', 'dns', 'tls', 'github', 'github-read', 'github-write', 'railway', 'deploy',
     'testing', 'mobile', 'desktop', 'electron', 'video', 'comfyui', 'ffmpeg', 'creative',
     'branding', 'billing', 'finops', 'email', 'documents', 'local-tools', 'signage', 'civic',
   ],
@@ -27,7 +27,7 @@ const ELYNEA_AGENT = Object.freeze({
 });
 
 const SKILL_REGISTRY = Object.freeze([
-  { key: 'jsinnov-agent', name: 'Sites JS-Innov.IA', kind: 'skill', role: 'architecture_devops', label: 'Architecture, GitHub, Railway et sites JS-Innov.IA', domains: ['cockpit.jsinnovia.com', 'jsinnovia.com', 'jsinnovia.store'], aliases: ['js-innov.ia', 'jsinnovia', 'agent principal'], capabilities: ['chat', 'diagnostic', 'orchestration', 'support', 'dns', 'tls', 'https', 'seo', 'domaine', 'domain', 'hebergement', 'hébergement', 'railway', 'github', 'web', 'frontend', 'responsive', 'live-preview', 'deploy', 'testing'], legacy_base44_agent_id: '6a1845e17cc526d1e44965bc', status: 'active' },
+  { key: 'jsinnov-agent', name: 'Sites JS-Innov.IA', kind: 'skill', role: 'architecture_devops', label: 'Architecture, GitHub, Railway et sites JS-Innov.IA', domains: ['cockpit.jsinnovia.com', 'jsinnovia.com', 'jsinnovia.store'], aliases: ['js-innov.ia', 'jsinnovia', 'agent principal'], capabilities: ['chat', 'diagnostic', 'orchestration', 'support', 'dns', 'tls', 'https', 'seo', 'domaine', 'domain', 'hebergement', 'hébergement', 'railway', 'github', 'github-read', 'github-write', 'web', 'frontend', 'responsive', 'live-preview', 'deploy', 'testing'], legacy_base44_agent_id: '6a1845e17cc526d1e44965bc', status: 'active' },
   { key: 'assurances-dour', name: 'Assurances-Dour.be', kind: 'skill', role: 'site_assurances_dour', label: 'Site et opérations Assurances-Dour.be', domains: ['assurances-dour.be'], aliases: ['assurances dour', 'assurances-dour'], capabilities: ['diagnostic', 'support', 'dns', 'tls', 'https', 'seo', 'site', 'github', 'railway'], legacy_base44_agent_id: '6a008b3e1571ea9f6ac3839d', status: 'active' },
   { key: 'synergie-dour', name: 'Synergie Dour', kind: 'skill', role: 'site_synergie_dour', label: 'Synergie Dour : information, adhésions et événements', domains: ['synergiedour.be'], aliases: ['synergie dour', 'synergiedour', 'synergie asbl'], capabilities: ['information', 'adhesion', 'adhésion', 'event', 'événement', 'membres', 'annuaire', 'github', 'railway'], legacy_base44_agent_id: '6a0208edd1e235b62b4bda38', status: 'active' },
   { key: 'site-olivier', name: 'Olivier Trévis / Tour de Dour', kind: 'skill', role: 'site_olivier_trevis', label: 'Sites Olivier Trévis et Le Tour de Dour', domains: ['oliviertrevis.be', 'letourdedour.com'], aliases: ['olivier trevis', 'tour de dour', 'le tour de dour'], capabilities: ['information', 'landing', 'site', 'seo', 'dns', 'tls', 'https', 'github', 'railway'], legacy_base44_agent_id: '6a0371a87c9257126b051d5a', status: 'active' },
