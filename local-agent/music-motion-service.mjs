@@ -37,7 +37,8 @@ export function buildImageWorkflow(input,checkpoint,sourceName) {
   return {workflow,output_node:'7'};
 }
 export function createMusicMotionService({root,send,headersFor,readJson,isAllowedOrigin,ollama}) {
-  const workspace=new Workspace(path.join(root,'MusicMotion-v2'));const ready=workspace.init().then(()=>workspace.recover());
+  const workspace=new Workspace(path.join(root,'MusicMotion-v2'));let ready=null;
+  const ensureReady=()=>{if(!ready)ready=workspace.init().then(()=>workspace.recover());return ready;};
   const pending=[];const active=new Map();let working=false;let cached=null;let cachedAt=0;
   const workflowDir=process.env.MUSIC_MOTION_WORKFLOW_DIR||path.join(root,'MusicMotion-workflows');
   async function capabilities(){
@@ -50,7 +51,7 @@ export function createMusicMotionService({root,send,headersFor,readJson,isAllowe
     const deps=modules.status==='fulfilled'?safeJson(modules.value.stdout):{};const info=objects.status==='fulfilled'?objects.value:null;
     const workflows=await trustedWorkflows(workflowDir,info);
     const checkpoints=info?.CheckpointLoaderSimple?.input?.required?.ckpt_name?.[0]||[];
-    cached={version:2,analysis:Boolean(ffmpeg.status==='fulfilled'&&ffprobe.status==='fulfilled'&&deps?.numpy),transcription:Boolean(deps?.faster_whisper),pdf:Boolean(deps?.pypdf),render:ffmpeg.status==='fulfilled'&&ffprobe.status==='fulfilled',
+    cached={version:3,analysis:Boolean(ffmpeg.status==='fulfilled'&&ffprobe.status==='fulfilled'&&deps?.numpy),transcription:Boolean(deps?.faster_whisper),voice_transcription:Boolean(deps?.faster_whisper),pdf:Boolean(deps?.pypdf),render:ffmpeg.status==='fulfilled'&&ffprobe.status==='fulfilled',
       ollama:models.status==='fulfilled',comfy:Boolean(info),checkpoints:Array.isArray(checkpoints)?checkpoints:[],video_workflows:workflows.map(({descriptor,...d})=>d),
       warnings:['Les modèles locaux ne sont ni installés ni téléchargés automatiquement. La disponibilité des outils ne garantit pas la qualité du rendu.']};cachedAt=Date.now();return cached;
   }
@@ -139,7 +140,7 @@ export function createMusicMotionService({root,send,headersFor,readJson,isAllowe
     // CORS alone is not authorization: explicitly reject hostile origins and Host headers.
     if(req.headers.origin&&!isAllowedOrigin(req.headers.origin))throw fail('Origine non autorisée.',403);
     if(!/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(String(req.headers.host||'')))throw fail('Hôte local non autorisé.',403);
-    await ready;const suffix=url.pathname.slice(PREFIX.length);
+    await ensureReady();const suffix=url.pathname.slice(PREFIX.length);
     if(req.method==='GET'&&suffix==='/capabilities'){send(req,res,200,await capabilities());return true;}
     if(req.method==='POST'&&suffix==='/assets'){const asset=await workspace.putAsset(await limitedBody(req),url.searchParams.get('name')||'media');send(req,res,201,asset);return true;}
     if(req.method==='GET'&&/^\/assets\/[^/]+$/.test(suffix)){const asset=await workspace.asset(suffix.split('/')[2]);res.writeHead(200,{...headersFor(req),'Content-Type':asset.mime,'Content-Length':asset.bytes,'X-Content-Type-Options':'nosniff','Cache-Control':'no-store'});createReadStream(asset.path).pipe(res);return true;}
@@ -148,6 +149,33 @@ export function createMusicMotionService({root,send,headersFor,readJson,isAllowe
       const body=await readJson(req);const asset=await workspace.asset(body.asset_id);if(asset.mime!=='application/pdf'||asset.bytes>20*1024*1024)throw fail('PDF trop volumineux ou invalide.');
       const result=await run(process.env.MUSIC_MOTION_PYTHON||process.env.PYTHON||'python',[path.join(scriptDir,'music_motion_document.py'),asset.path],{timeout:60000,maxBytes:2*1024*1024});
       send(req,res,200,safeJson(result.stdout)||{text:'',warning:'Extraction du PDF non disponible.'});return true;
+    }
+    if(req.method==='POST'&&suffix==='/transcribe'){
+      const body=await readJson(req,100000);
+      const asset=await workspace.asset(body.asset_id);
+      if(!asset.mime.startsWith('audio/')&&!asset.mime.startsWith('video/'))throw fail('Source audio requise.',415);
+      const python=process.env.MUSIC_MOTION_PYTHON||process.env.PYTHON||'python';
+      const result=await run(python,[path.join(scriptDir,'music_motion_analyzer.py'),asset.path,'--transcribe-only'],{timeout:3*60*1000,maxBytes:8*1024*1024});
+      const transcription=safeJson(result.stdout);
+      if(!transcription?.ok)throw fail(
+        transcription?.warnings?.[0]||transcription?.error_code||'Transcription locale indisponible.',
+        transcription?.error_code==='faster_whisper_not_installed'?503:422
+      );
+      const transcript=String(transcription.transcript||'').trim();
+      if(!transcript)throw fail('Whisper n’a détecté aucune parole exploitable.',422);
+      send(req,res,200,{
+        ok:true,
+        transcript,
+        segments:Array.isArray(transcription.segments)?transcription.segments:[],
+        engine:transcription.engine||'faster-whisper',
+        model:transcription.model||null,
+        language:transcription.language||null,
+        device:transcription.device||null,
+        compute_type:transcription.compute_type||null,
+        fallback_used:Boolean(transcription.fallback_used),
+        runtime_seconds:transcription.runtime_seconds||null,
+      });
+      return true;
     }
     if(req.method==='POST'&&suffix==='/jobs'){
       if(pending.length>=20)throw fail('File locale pleine. Attendez les traitements en cours.',429);

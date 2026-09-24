@@ -1,6 +1,6 @@
 {
   "name": "js-innovia-ai-factory-local",
-  "version": "1.5.0",
+  "version": "1.8.0",
   "private": true,
   "type": "module",
   "description": "Agent local Elynea / AI Factory JS-Innov.IA — Music Motion v2, orchestration et outils local-first.",

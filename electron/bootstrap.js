@@ -64,7 +64,7 @@ const LOCAL_AGENT_FALLBACK_PORT = 8787;
 const LOCAL_AGENT_WATCHDOG_MS = 15_000;
 const LOCAL_AGENT_STARTUP_GRACE_MS = 25_000;
 const LOCAL_AGENT_MAX_MISSES = 3;
-const MUSIC_MOTION_CONTRACT_VERSION = 2;
+const MUSIC_MOTION_CONTRACT_VERSION = 3;
 
 const TRUSTED_AUDIO_ORIGINS = new Set([
   'https://cockpit.jsinnovia.com',
@@ -262,7 +262,7 @@ async function selectLocalAgentPort() {
   }
 
   throw new Error(
-    "Les ports 8787 et 8788 sont occupés par des agents non compatibles avec Music Motion v2. " +
+    "Les ports 8787 et 8788 sont occupés par des agents non compatibles avec Music Motion v3. " +
     "Lancer repair-music-motion-windows.ps1 pour inventorier et corriger les anciennes versions."
   );
 }
@@ -300,7 +300,7 @@ async function startBundledLocalAgent({ force = false } = {}) {
   }
 
   if (await portListening(port)) {
-    throw new Error(`Port local ${port} occupé par un service incompatible avec Music Motion v2.`);
+    throw new Error(`Port local ${port} occupé par un service incompatible avec Music Motion v3.`);
   }
 
   if (processAlive()) {

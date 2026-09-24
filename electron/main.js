@@ -118,11 +118,14 @@ async function transcribeLocalVoiceBytes(bytes, mimeType = "audio/webm") {
 
   const failures = [];
   for (const port of LOCAL_AGENT_PORTS) {
+    let reachable = false;
     try {
       const health = await localAgentRequest(port, "/health", { timeoutMs: 3000 });
-      if (!health?.ok) throw new Error("agent non prêt");
+      reachable = Boolean(health?.ok);
+      if (!reachable) throw new Error("agent non prêt");
+
       const capabilities = await localAgentRequest(port, "/api/music-motion/production/capabilities", { timeoutMs: 25000 });
-      if (capabilities?.transcription !== true) {
+      if (capabilities?.voice_transcription !== true && capabilities?.transcription !== true) {
         throw new Error("Whisper local n’est pas installé ou n’est pas détecté");
       }
 
@@ -134,6 +137,28 @@ async function transcribeLocalVoiceBytes(bytes, mimeType = "audio/webm") {
       );
       if (!asset?.id) throw new Error("identifiant audio absent");
 
+      try {
+        const direct = await localAgentRequest(port, "/api/music-motion/production/transcribe", {
+          method: "POST",
+          json: { asset_id: asset.id },
+          timeoutMs: 180000,
+        });
+        const transcript = String(direct?.transcript || "").trim();
+        if (!transcript) throw new Error("Whisper n’a détecté aucune parole exploitable");
+        return {
+          transcript,
+          endpoint: `http://127.0.0.1:${port}`,
+          device: direct?.device || null,
+          fallbackUsed: Boolean(direct?.fallback_used),
+          engine: direct?.engine || "faster-whisper",
+          model: direct?.model || null,
+        };
+      } catch (directError) {
+        // Compatibilité temporaire avec un agent v2 déjà lancé : récupérer le transcript
+        // partiel même si l'ancienne analyse storyboard échoue sur la couverture acoustique.
+        if (!/Route Music Motion inconnue/i.test(String(directError?.message || ""))) throw directError;
+      }
+
       let job = await localAgentRequest(port, "/api/music-motion/production/jobs", {
         method: "POST",
         json: { type: "analyze", audio_id: asset.id, instrumental: false },
@@ -143,18 +168,27 @@ async function transcribeLocalVoiceBytes(bytes, mimeType = "audio/webm") {
 
       const deadline = Date.now() + 120000;
       while (Date.now() < deadline) {
-        if (job.status === "completed") {
-          const transcript = String(job.result?.transcription?.transcript || "").trim();
-          if (!transcript) throw new Error("Whisper n’a détecté aucune parole exploitable");
+        const legacyTranscript = String(
+          job.result?.transcription?.transcript
+          || job.partial_result?.transcription?.transcript
+          || "",
+        ).trim();
+        if (legacyTranscript) {
+          const source = job.result?.transcription || job.partial_result?.transcription || {};
           return {
-            transcript,
+            transcript: legacyTranscript,
             endpoint: `http://127.0.0.1:${port}`,
-            device: job.result?.transcription?.device || null,
-            fallbackUsed: Boolean(job.result?.transcription?.fallback_used),
+            device: source.device || null,
+            fallbackUsed: Boolean(source.fallback_used),
+            engine: source.engine || "faster-whisper",
+            model: source.model || null,
           };
         }
         if (job.status === "failed" || job.status === "cancelled") {
           throw new Error(job.error || `transcription ${job.status}`);
+        }
+        if (job.status === "completed") {
+          throw new Error("Whisper n’a détecté aucune parole exploitable");
         }
         await new Promise((resolve) => setTimeout(resolve, 500));
         job = await localAgentRequest(
@@ -165,10 +199,10 @@ async function transcribeLocalVoiceBytes(bytes, mimeType = "audio/webm") {
       }
       throw new Error("délai de transcription dépassé");
     } catch (error) {
-      failures.push(`${port}: ${String(error?.message || error)}`);
+      failures.push(`${port}: ${reachable ? "agent joignable, transcription en échec — " : ""}${String(error?.message || error)}`);
     }
   }
-  throw new Error(`Elynea locale injoignable. ${failures.join(" | ")}`);
+  throw new Error(`Transcription locale Elynea impossible. ${failures.join(" | ")}`);
 }
 
 // ── Local Video Bridge — loopback uniquement ────────────────────────────────

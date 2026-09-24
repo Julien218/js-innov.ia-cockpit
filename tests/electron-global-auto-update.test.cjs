@@ -16,7 +16,7 @@ test('desktop starts through the global bootstrap', () => {
   assert.equal(pkg.build?.electronDist, 'node_modules/electron/dist');
 });
 
-test('desktop bundles and starts Elynea Local Tools with Music Motion v2', () => {
+test('desktop bundles and starts Elynea Local Tools with Music Motion v3', () => {
   const localAgentResource = pkg.build?.extraResources?.find((item) => item.to === 'local-agent');
   assert.ok(localAgentResource);
   assert.ok(localAgentResource.filter.includes('server.js'));
@@ -26,7 +26,7 @@ test('desktop bundles and starts Elynea Local Tools with Music Motion v2', () =>
   assert.match(bootstrap, /ELECTRON_RUN_AS_NODE:\s*"1"/);
   assert.match(bootstrap, /LOCAL_AGENT_PRIMARY_PORT\s*=\s*8788/);
   assert.match(bootstrap, /LOCAL_AGENT_FALLBACK_PORT\s*=\s*8787/);
-  assert.match(bootstrap, /MUSIC_MOTION_CONTRACT_VERSION\s*=\s*2/);
+  assert.match(bootstrap, /MUSIC_MOTION_CONTRACT_VERSION\s*=\s*3/);
   assert.match(bootstrap, /\/api\/music-motion\/production\/capabilities/);
   assert.match(bootstrap, /localAgentCompatibility/);
   assert.match(bootstrap, /selectLocalAgentPort/);
@@ -162,4 +162,17 @@ test('settings can read the exact running desktop version and updater progress',
   assert.match(settings, /app\.getVersion\(\)/);
   assert.match(settings, /Vérifier les mises à jour/);
   assert.match(settings, /Relancer la mise à jour/);
+});
+
+
+test('local voice transcription uses the dedicated Whisper endpoint instead of requiring storyboard analysis', () => {
+  const service = fs.readFileSync(path.join(root, 'local-agent', 'music-motion-service.mjs'), 'utf8');
+  const analyzer = fs.readFileSync(path.join(root, 'local-agent', 'music_motion_analyzer.py'), 'utf8');
+  assert.match(main, /\/api\/music-motion\/production\/transcribe/);
+  assert.match(main, /partial_result\?\.transcription/);
+  assert.match(service, /suffix==='\/transcribe'/);
+  assert.match(service, /--transcribe-only/);
+  assert.match(service, /voice_transcription/);
+  assert.match(analyzer, /mode == "--transcribe-only"/);
+  assert.doesNotMatch(main, /Elynea locale injoignable/);
 });
