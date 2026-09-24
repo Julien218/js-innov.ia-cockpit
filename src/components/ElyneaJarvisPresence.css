@@ -7,3 +7,9 @@
 .elynea-jarvis-presence p{position:absolute;bottom:7px;margin:0;color:var(--presence-color);font-size:12px;letter-spacing:1px;transition:color .35s}
 @media(max-height:650px){.elynea-jarvis-presence{flex-basis:150px}.elynea-jarvis-stage{width:150px}}
 @media(prefers-reduced-motion:reduce){.elynea-jarvis-stage img,.elynea-jarvis-presence p{transition:none}}
+.jarvis-home-command.jarvis-home-with-presence{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);gap:20px;align-items:center}
+.elynea-home-presence{grid-row:span 2;display:flex;flex-direction:column;align-items:center;min-width:0}
+.elynea-home-presence .elynea-jarvis-presence{width:100%;min-height:260px;flex:none;border:0;background:transparent;overflow:visible}
+.elynea-home-presence .elynea-jarvis-stage{width:min(100%,280px)}
+.elynea-home-presence>button{margin-top:12px}
+@media(max-width:700px){.jarvis-home-command.jarvis-home-with-presence{grid-template-columns:minmax(0,1fr)}.elynea-home-presence{grid-row:auto}.elynea-home-presence .elynea-jarvis-presence{min-height:240px}.elynea-home-presence .elynea-jarvis-stage{width:240px}}

@@ -7,7 +7,7 @@ const labels = { idle: 'En veille', listening: 'Je vous écoute', thinking: 'Je 
 export default function ElyneaJarvisPresence(props) {
   const canvas = useRef(null);
   const logo = useRef(null);
-  const mode = getJarvisPresenceState(props);
+  const mode = props.mode || getJarvisPresenceState(props);
 
 
   useEffect(() => createJarvisPresence(canvas.current, logo.current, () => mode), [mode]);

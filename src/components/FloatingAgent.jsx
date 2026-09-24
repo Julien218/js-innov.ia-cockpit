@@ -1,4 +1,6 @@
 import ElyneaJarvisPresence from './ElyneaJarvisPresence';
+import { getJarvisPresenceState } from '@/lib/jarvisPresenceState';
+import { publishJarvisMode } from '@/lib/jarvisPresenceStore';
 /**
  * FloatingAgent.jsx — Widget flottant NOVA pour le cockpit
  * 
@@ -866,6 +868,9 @@ const FloatingAgent = () => {
     else setTtsEnabled(true);
   }, [ttsEnabled, stopSpeaking]);
 
+  const jarvisMode = getJarvisPresenceState({ speaking, loading, voicePhase, isListening, wakeStatus });
+  useEffect(() => { publishJarvisMode(jarvisMode); }, [jarvisMode]);
+  useEffect(() => () => publishJarvisMode('idle'), []);
   const wakeActive = wakeEnabled && ['starting', 'armed', 'woken', 'command', 'working', 'reconnecting'].includes(wakeStatus);
   const statusColor = speaking ? '#D4AF37' : voicePhase === 'transcribing' ? '#8B5CF6' : isListening || wakeStatus === 'command' ? '#06B6D4' : wakeActive ? '#22D3EE' : loading ? '#f59e0b' : '#22c55e';
   const statusText = speaking
