@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 const REGISTRY_PATH = path.join(__dirname, 'brand', 'brand-registry.json');
@@ -46,21 +47,53 @@ function resolveRegistryBrand(brand) {
   }
   return { registry, entry: match, source: { repo: source.repo, ref: source.branch || 'main', manifest: source.manifest } };
 }
+async function rawPublicFile(repo, ref, filePath) {
+  const [owner, name] = String(repo).split('/');
+  const rawUrl = 'https://raw.githubusercontent.com/'
+    + encodeURIComponent(owner) + '/' + encodeURIComponent(name)
+    + '/refs/heads/' + String(ref || 'main').split('/').map(encodeURIComponent).join('/')
+    + '/' + String(filePath || '').split('/').map(encodeURIComponent).join('/');
+  const response = await fetch(rawUrl, {
+    headers: { 'User-Agent': 'jsinnovia-brand-registry' },
+    signal: AbortSignal.timeout(15000),
+    redirect: 'follow'
+  });
+  if (!response.ok) throw new Error('GitHub raw HTTP ' + response.status + ' pour ' + repo + ':' + filePath + '.');
+  const text = await response.text();
+  if (!text) throw new Error('Source canonique publique vide: ' + filePath + '.');
+  return {
+    path: filePath,
+    sha: 'sha256:' + crypto.createHash('sha256').update(text).digest('hex'),
+    html_url: 'https://github.com/' + repo + '/blob/' + encodeURIComponent(ref || 'main') + '/' + filePath,
+    text,
+    transport: 'raw-public'
+  };
+}
 async function githubFile(repo, ref, filePath) {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(String(repo || ''))) throw new Error('Dépôt GitHub canonique invalide.');
   const endpoint = 'https://api.github.com/repos/' + repo + '/contents/' + String(filePath || '').split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(ref || 'main');
   const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'jsinnovia-brand-registry' };
   if (GITHUB_TOKEN) headers.Authorization = 'Bearer ' + GITHUB_TOKEN;
   const response = await fetch(endpoint, { headers, signal: AbortSignal.timeout(15000) });
-  if (!response.ok) throw new Error('GitHub canonique HTTP ' + response.status + ' pour ' + repo + ':' + filePath + '.');
-  const data = await response.json();
-  if (data.type !== 'file' || data.encoding !== 'base64' || !data.content) throw new Error('Source canonique non textuelle: ' + filePath + '.');
-  return {
-    path: filePath,
-    sha: data.sha || null,
-    html_url: data.html_url || null,
-    text: Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString('utf8')
-  };
+  if (response.ok) {
+    const data = await response.json();
+    if (data.type !== 'file' || data.encoding !== 'base64' || !data.content) throw new Error('Source canonique non textuelle: ' + filePath + '.');
+    return {
+      path: filePath,
+      sha: data.sha || null,
+      html_url: data.html_url || null,
+      text: Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString('utf8'),
+      transport: GITHUB_TOKEN ? 'github-api-token' : 'github-api-anonymous'
+    };
+  }
+
+  // Les bibles publiques ne doivent jamais devenir indisponibles uniquement
+  // parce qu'un token Railway est absent/mal nommé ou que la limite API anonyme est atteinte.
+  if ([403, 429].includes(response.status) || !GITHUB_TOKEN) {
+    return rawPublicFile(repo, ref, filePath);
+  }
+
+  throw new Error('GitHub canonique HTTP ' + response.status + ' pour ' + repo + ':' + filePath + '.');
 }
 function uniquePaths(manifest, manifestPath) {
   const paths = [];
