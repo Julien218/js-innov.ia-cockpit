@@ -85,3 +85,22 @@ test('ordinary requests still use the model and cloud media requires persistent 
   assert.equal(facts.cloud_media_configured, false);
   assert.match(runtimeContext(facts), /Une tâche créée ne signifie pas/);
 });
+
+test('automatic diagnostic text cannot redirect GitHub or pollute document searches', async () => {
+  const { formatDiagnosticContext } = await import('../src/lib/assistantDiagnosticBridge.js');
+  const { dispatchVerificationSignal } = require('../server-assistant-intent.cjs');
+  const { batchSignals } = require('../server-assistant-batch.cjs');
+  const context = formatDiagnosticContext({ current_route: '/', local_agent: {}, video: {} });
+  const f = fixture();
+  const githubMessage = `Vérifie le dépôt GitHub Julien218/js-innov.ia-cockpit\n\n${context}`;
+  assert.equal(dispatchVerificationSignal(githubMessage), false);
+  assert.equal(batchSignals(githubMessage), false);
+  assert.equal((await f.run(githubMessage)).source, 'github-api');
+  assert.deepEqual(f.calls, [['github', '/repos/Julien218/js-innov.ia-cockpit']]);
+  const docs = await f.run(`Liste les factures dans Dropbox\n\n${context}`);
+  assert.match(docs.message, /2\. FAC-0009/);
+  const preference = await f.run(`retiens que je préfère des réponses courtes\n\n${context}`);
+  assert.equal(preference.preference_saved, true);
+  assert.equal(dispatchVerificationSignal(`Vérifie si les tâches ont été déléguées\n\n${context}`), true);
+  assert.equal(batchSignals(`Crée les 6 tâches et délègue-les aux agents spécialisés\n\n${context}`), true);
+});

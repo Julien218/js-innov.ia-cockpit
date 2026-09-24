@@ -42,7 +42,7 @@ function canBatch(user) {
 }
 
 function batchSignals(text) {
-  const source = String(text || '').toLowerCase();
+  const source = require('./server-immediate-execution-policy.cjs').stripInjectedContext(text).toLowerCase();
   const hasWorkItem = /t[aâ]ches?|tasks?|actions?|diagnostics?|audits?/.test(source);
   const hasAgent = /agents?|d[eé]l[eé]gu|sp[eé]cialistes?|qa|devops|backend|support|produit|vid[eé]o/.test(source);
   const hasPlural = /plusieurs|toutes?|chacun|chaque|liste|six|6|diff[eé]rentes?/.test(source);
