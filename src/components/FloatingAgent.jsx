@@ -1,3 +1,4 @@
+import ElyneaJarvisPresence from './ElyneaJarvisPresence';
 /**
  * FloatingAgent.jsx — Widget flottant NOVA pour le cockpit
  * 
@@ -907,7 +908,7 @@ const FloatingAgent = () => {
 
       {isOpen && (
         <div style={{
-          position: 'fixed', bottom: '20px', right: '20px', width: '380px', height: '540px', maxHeight: 'calc(100vh - 40px)',
+          position: 'fixed', bottom: '20px', right: '20px', width: 'min(440px, calc(100vw - 24px))', height: '740px', maxHeight: 'calc(100vh - 40px)',
           background: '#0B0B0F', borderRadius: '16px', border: '1px solid rgba(212,175,55,0.4)', boxShadow: '0 8px 40px rgba(0,0,0,0.7)',
           display: 'flex', flexDirection: 'column', zIndex: 99999, overflow: 'hidden', fontFamily: 'Inter, -apple-system, sans-serif',
         }}>
@@ -954,7 +955,8 @@ const FloatingAgent = () => {
             </div>
           </div>
 
-          <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <ElyneaJarvisPresence speaking={speaking} loading={loading} voicePhase={voicePhase} isListening={isListening} wakeStatus={wakeStatus} />
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {messages.length === 0 && !loading && (
               <div style={{ textAlign: 'center', color: '#475569', fontSize: '13px', padding: '30px 20px' }}>
                 <img src={OFFICIAL_ELYNEA_AVATAR} alt="Elynea" style={{ width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 12px', display: 'block', opacity: 0.8 }} />
