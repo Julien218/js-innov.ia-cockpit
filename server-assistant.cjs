@@ -37,6 +37,30 @@ const AGENT_KEY = process.env.JSINNOVIA_AGENT_KEY || process.env.AGENT_API_KEY |
 const pending = new Map();
 const pendingCompletions = new Map();
 const requestWindows = new Map();
+const elyneaRuntime = require('./server-elynea-runtime.cjs').createRuntime({
+  listDocuments: user => require('./server-documents.cjs').listDocumentsForUser(user),
+  getDocument: (user, id) => require('./server-documents.cjs').getDocumentForUser(user, id),
+  github: async route => {
+    const response = await fetch(`https://api.github.com${route}`, {
+      headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN || process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json', 'User-Agent': 'JS-InnovIA-Elynea' },
+      signal: AbortSignal.timeout(10000),
+      redirect: 'error',
+    });
+    if (!response.ok) throw new Error(`GitHub HTTP ${response.status}`);
+    return response.json();
+  },
+  loadPreferences: async id => {
+    const response = await agentFetch(`/chat/session/${encodeURIComponent(id)}?limit=80`, { signal: AbortSignal.timeout(4000) });
+    if (!response.ok) throw new Error('Mémoire des préférences indisponible');
+    return (await response.json()).messages || [];
+  },
+  savePreference: async (id, value) => {
+    const response = await agentFetch(`/chat/session/${encodeURIComponent(id)}/messages`, {
+      method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: JSON.stringify(value) }] }), signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) throw new Error('Préférence non enregistrée');
+  },
+});
 let integrityCache = { expiresAt: 0, context: '' };
 const MAX_NOVA_MEDIA_BYTES = 100 * 1024 * 1024;
 
@@ -538,6 +562,10 @@ function recoverProposedAction(raw, assistantData = {}, recentMedia = null) {
   return recovered;
 }
 
+router.get('/capabilities', (req, res) => {
+  res.json({ checked_at: new Date().toISOString(), ...require('./server-elynea-runtime.cjs').capabilityFacts({ user: req.user }) });
+});
+
 router.get('/profile', async (req, res) => {
   try {
     const audience = await buildAdaptiveAudienceContext(req.user);
@@ -612,6 +640,19 @@ router.post('/chat', async (req, res) => {
   if (!rateAllowed(req.user.id)) return res.status(429).json({ error: 'Trop de requêtes. Réessayez dans une minute.' });
 
   const turn = beginRequest(req);
+  try {
+    const direct = await elyneaRuntime.handle(req);
+    if (direct) {
+      if (!isCurrentTurn(turn)) return res.status(409).json({ error: 'Demande remplacée par un message plus récent.' });
+      await appendSessionMessages(req, [{ role: 'user', content: message }, { role: 'assistant', content: direct.message }])
+        .catch(() => console.warn('[elynea-runtime] historique non enregistré'));
+      return res.json({ ...direct, conversation_id: conversationIdFrom(req) });
+    }
+  } catch (error) {
+    // Never substitute a model's guess for a failed real tool.
+    console.warn('[elynea-runtime]', error.name);
+    return res.status(502).json({ error: 'L’outil demandé n’a pas pu vérifier le résultat. Aucun succès confirmé. Réessaie ou vérifie sa connexion.' });
+  }
   if (isEmailTriage(message)) {
     const outcome = await triageEmails({ message, user: req.user, mailbox: req.body?.mailbox });
     await logAction(req.user, 'préclassement emails', outcome.success ? 'succes' : 'erreur', `Lecture seule; boîte=${outcome.result?.mailbox || 'non sélectionnée'}; messages=${outcome.result?.inspected || 0}`);
@@ -710,6 +751,7 @@ router.post('/chat', async (req, res) => {
     let dropboxMemoryConnected = false;
     const contextBlocks = [
       audience.context,
+      await elyneaRuntime.context(req),
       pagePath ? [
         '[CONTEXTE INTERFACE COCKPIT]',
         `Page courante: ${pagePath}`,

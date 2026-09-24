@@ -25,6 +25,8 @@ import { OFFICIAL_ELYNEA_AVATAR } from '@/components/ElyneaBrandScope';
 import { executeNovaClientAction } from '@/lib/novaClientAction';
 import { isDropboxDeletionRequest, sendNovaChat } from '@/lib/novaChatTransport';
 import { getNovaMailboxContext } from '@/lib/novaMailboxContext';
+import { interactionContext, finishElyneaResponse } from '@/lib/elyneaRuntime';
+import { speechDecoration } from '@/lib/speechDecoration';
 import { extractElyneaWakeCommand } from '@/lib/elyneaWakeWord';
 import { createLocalVoiceRecorder, localMicroSupported } from '@/lib/localVoiceTranscriber';
 
@@ -199,7 +201,7 @@ const FloatingAgent = () => {
 
   const speak = useCallback((text) => {
     if (!ttsSupported || !ttsEnabled || !text) return;
-    const cleanText = text
+    const cleanText = speechDecoration(text)
       .replace(/\[Contexte Dropbox[^\]]*\]/gi, '')
       .replace(/[#*_~`]/g, '')
       .replace(/⚠️/g, '')
@@ -663,6 +665,7 @@ const FloatingAgent = () => {
           body: JSON.stringify({
             message: msg,
             conversation_id: conversationId,
+            interaction: interactionContext(),
             recent_media: recentMedia,
             mailbox: getNovaMailboxContext()?.id,
             page_context: {
@@ -678,7 +681,7 @@ const FloatingAgent = () => {
           error.cockpitResponse = true;
           throw error;
         }
-        return resp.json();
+        return finishElyneaResponse(await resp.json());
       };
 
       const sendLocal = async () => {

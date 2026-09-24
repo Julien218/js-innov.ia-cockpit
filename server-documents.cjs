@@ -365,6 +365,26 @@ async function getDocumentBufferForUser(user, id) {
   return { record, buffer };
 }
 
+async function listDocumentsForUser(user) {
+  const { hasPermission } = require('./server-permission-policy.cjs');
+  if (!['superadmin', 'admin', 'collaborateur'].includes(user?.role) || !hasPermission(user, 'documents')) throw new Error('Accès documents non autorisé');
+  const organisation = resolveOrganisation(user);
+  const rows = await supabaseRequest(`DocumentIndex?select=id,organisation,filename,category,created_at&organisation=eq.${encodeURIComponent(organisation)}&deleted_at=is.null&order=created_at.desc&limit=200`);
+  // The agent proxy may return more columns or omit a filter. Never trust it for isolation.
+  return (Array.isArray(rows) ? rows : []).filter(row => !row.deleted_at && row.organisation === organisation).slice(0, 200)
+    .map(({ id, filename, category }) => ({ id, filename, category }));
+}
+
+async function getDocumentForUser(user, id) {
+  const { hasPermission } = require('./server-permission-policy.cjs');
+  if (!['superadmin', 'admin', 'collaborateur'].includes(user?.role) || !hasPermission(user, 'documents')) throw new Error('Accès documents non autorisé');
+  if (!/^[a-zA-Z0-9_-]{1,120}$/.test(String(id))) throw new Error('Identifiant document invalide');
+  const record = await getDocumentRecord(id);
+  if (record?.deleted_at) throw new Error('Document introuvable');
+  assertDocumentAccess(user, record);
+  return { id: record.id, filename: record.filename };
+}
+
 router.get('/status', (req, res) => {
   res.json({
     success: true,
@@ -539,6 +559,8 @@ router.get('/:id/download', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.listDocumentsForUser = listDocumentsForUser;
+module.exports.getDocumentForUser = getDocumentForUser;
 module.exports.storeBuffer = storeBuffer;
 module.exports.getDocumentBufferForUser = getDocumentBufferForUser;
 module.exports.isDropboxConfigured = isDropboxConfigured;

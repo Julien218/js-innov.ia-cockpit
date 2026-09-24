@@ -142,6 +142,7 @@ test('la mémoire historique Dropbox utilise un snapshot indexé en lecture seul
 test('les nouveaux modules serveur sont présents dans l’image Docker', () => {
   assert.match(dockerfile, /server-companion-audience\.cjs/);
   assert.match(dockerfile, /server-companion-memory\.cjs/);
+  assert.match(dockerfile, /COPY --from=builder \/app\/server-elynea-runtime\.cjs \.\/server-elynea-runtime\.cjs/);
 });
 
 test('Elynea publie un média au portfolio uniquement après confirmation et déduplique par empreinte', () => {

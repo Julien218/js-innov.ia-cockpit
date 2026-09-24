@@ -957,7 +957,7 @@ const server = http.createServer(async (req, res) => {
     const publicReadOnlyPath = url.pathname === '/health' || url.pathname === '/api/telemetry/current' || url.pathname === '/api/telemetry/summary' || url.pathname === '/api/campaign-worker/status';
     const campaignConfigure = req.method === 'POST' && url.pathname === '/api/campaign-worker/configure';
     if (campaignConfigure) {
-      if (!isAllowedOrigin(req.headers.origin) || !/^(localhost|127\\.0\\.0\\.1|\\[::1\\])(?::\\d+)?$/.test(String(req.headers.host || ''))) return send(req,res,403,{ok:false,error:'origin_not_allowed'});
+      if (!isAllowedOrigin(req.headers.origin) || !/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(String(req.headers.host || ''))) return send(req,res,403,{ok:false,error:'origin_not_allowed'});
       const body=await readJson(req,100000);
       return send(req,res,200,{ok:true,worker:await campaignWorker.configure(body)});
     }
