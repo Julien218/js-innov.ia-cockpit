@@ -21,21 +21,33 @@ function secret(name) {
   if (/[\r\n]/.test(value)) throw failure('Identifiant IONOS invalide.', 503);
   return value;
 }
+function dnsAccountDefinitions() {
+  return [
+    { id: 'primary', label: 'Compte IONOS 1', env: 'IONOS_DNS_API_KEY' },
+    { id: 'secondary', label: 'Compte IONOS 2', env: 'IONOS_DNS_API_KEY_SECONDARY' },
+  ];
+}
+function configuredDnsAccounts() {
+  return dnsAccountDefinitions().filter(account => String(process.env[account.env] || '').trim());
+}
 function redact(value) {
   if (Array.isArray(value)) return value.map(redact);
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) =>
     [key, /password|secret|token|authcode|authinfo|privatekey/i.test(key.replace(/[^a-z]/gi, '')) ? '[masqué]' : redact(item)]));
   if (typeof value === 'string') {
-    for (const name of ['IONOS_PAT', 'IONOS_CLOUD_TOKEN', 'IONOS_DNS_API_KEY']) {
+    for (const name of ['IONOS_PAT', 'IONOS_CLOUD_TOKEN', 'IONOS_DNS_API_KEY', 'IONOS_PAT_SECONDARY', 'IONOS_CLOUD_TOKEN_SECONDARY', 'IONOS_DNS_API_KEY_SECONDARY']) {
       if (process.env[name]) value = value.split(process.env[name]).join('[masqué]');
     }
   }
   return value;
 }
 function configuration() {
-  return { version: 'ionos-read-v2', read_only: true,
+  const accounts = configuredDnsAccounts();
+  return { version: 'ionos-read-v3', read_only: true,
     hosting_configured: Boolean(String(process.env.IONOS_PAT || '').trim()),
-    dns_configured: Boolean(String(process.env.IONOS_DNS_API_KEY || '').trim()),
+    dns_configured: accounts.length > 0,
+    dns_account_count: accounts.length,
+    dns_accounts: accounts.map(({ id, label }) => ({ id, label, configured: true })),
     cloud_configured: Boolean(String(process.env.IONOS_CLOUD_TOKEN || '').trim()),
     // Configuration presence is not proof that credentials work.
     connection_verified: false };
@@ -94,7 +106,7 @@ async function read(name, args = {}, options = {}) {
   return { provider: 'IONOS', read_only: true, tool: name, checked_at: new Date().toISOString(), data, scope,
     notice: scope ? 'Domaines présents dans les zones DNS ; cet accès ne fournit pas l’inventaire des contrats de domaines.' : undefined };
 }
-async function dnsRead(name, args, fetchImpl = global.fetch) {
+async function dnsRead(name, args, fetchImpl = global.fetch, accountId = 'primary') {
   let url = DNS;
   if (name === 'dns_get_zone') {
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(args.zone_id)) throw failure('Identifiant de zone invalide.', 400);
@@ -104,7 +116,9 @@ async function dnsRead(name, args, fetchImpl = global.fetch) {
     if (args.record_type) query.set('recordType', args.record_type);
     if (query.size) url += `?${query}`;
   }
-  const key = secret('IONOS_DNS_API_KEY');
+  const account = dnsAccountDefinitions().find(item => item.id === accountId);
+  if (!account) throw failure('Compte IONOS inconnu.', 400);
+  const key = secret(account.env);
   try {
     const response = await fetchImpl(url, { method: 'GET', redirect: 'error',
       headers: { 'X-API-Key': key }, signal: AbortSignal.timeout(25_000) });
@@ -121,6 +135,54 @@ async function dnsRead(name, args, fetchImpl = global.fetch) {
     throw failure('Lecture DNS impossible. Vérifier la clé API Hosting et ses droits.');
   }
 }
+function normalizeDomain(value) {
+  return String(value || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\.$/, '').split('/')[0];
+}
+function domainFromMessage(message) {
+  const source = String(message || '').toLowerCase();
+  const match = source.match(/\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\b/i);
+  return match ? normalizeDomain(match[0]) : null;
+}
+async function findDnsZone(domainValue, fetchImpl = global.fetch) {
+  const domain = normalizeDomain(domainValue);
+  if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(domain)) {
+    throw failure('Domaine DNS invalide.', 400);
+  }
+  const accounts = configuredDnsAccounts();
+  if (!accounts.length) throw failure('Connexion IONOS DNS à configurer dans Railway.', 503);
+  let reachable = 0;
+  for (const account of accounts) {
+    try {
+      const zones = await dnsRead('dns_get_zones', {}, fetchImpl, account.id);
+      reachable += 1;
+      const zone = rows(zones).find(item => normalizeDomain(item?.zoneName || item?.name || item?.properties?.zoneName) === domain);
+      if (zone?.id) return { account_id: account.id, account_label: account.label, zone };
+    } catch (_) {
+      // Un compte indisponible ne doit pas empêcher la recherche dans l'autre compte.
+    }
+  }
+  if (!reachable) throw failure('Lecture DNS IONOS impossible sur les comptes configurés.', 502);
+  const error = failure(`Zone IONOS introuvable pour ${domain}.`, 404);
+  error.code = 'IONOS_ZONE_NOT_FOUND';
+  throw error;
+}
+async function readDomainDns(domainValue, options = {}) {
+  const domain = normalizeDomain(domainValue);
+  const found = await findDnsZone(domain, options.fetchImpl);
+  const data = await dnsRead('dns_get_zone', { zone_id: String(found.zone.id) }, options.fetchImpl, found.account_id);
+  return {
+    provider: 'IONOS',
+    read_only: true,
+    tool: 'dns_get_zone',
+    checked_at: new Date().toISOString(),
+    domain,
+    account_id: found.account_id,
+    account_label: found.account_label,
+    zone_id: found.zone.id,
+    zone_name: found.zone.zoneName || found.zone.name || domain,
+    data: redact(data),
+  };
+}
 function rows(value) {
   if (Array.isArray(value)) {
     if (value.length === 1 && (Array.isArray(value[0]) || (value[0] && typeof value[0] === 'object' && !value[0].id))) return rows(value[0]);
@@ -136,15 +198,28 @@ function rows(value) {
 }
 function chatIntent(message) {
   const text = String(message || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  if (!/\bionos\b/.test(text)) return null;
+  const explicitIonos = /\bionos\b/.test(text);
+  const domain = domainFromMessage(message);
+  const dnsTopic = /\bdns\b|zone|enregistrement/.test(text);
+  const mutation = /supprim|effac|modifi|chang|cre[ez]|creer|redemarr|arret|stop|reinstall|transfer|achete|deploy|deploi|ajout/.test(text);
+
+  // Une simple consultation DNS avec un domaine doit utiliser IONOS même si
+  // l'utilisateur ne prononce pas le nom du fournisseur.
+  if (!explicitIonos && dnsTopic && domain && !mutation) return 'dns_domain';
+  if (!explicitIonos) return null;
+
   // Existing mailbox routing owns IONOS email requests.
-  if (/\b(emails?|mails?|courriels?|boite)\b/.test(text) && !/\bdns\b|\bvps\b|serveur|domaine/.test(text)) return null;
-  if (/supprim|effac|modifi|chang|cre[ez]|creer|redemarr|arret|stop|reinstall|transfer|achete|deploy|deploi|ajout/.test(text)) return 'write_unsupported';
+  if (/\b(emails?|mails?|courriels?|boite)\b/.test(text) && !dnsTopic && !/\bvps\b|serveur|domaine/.test(text)) return null;
+  if (mutation) return 'write_unsupported';
   if (/public cloud|datacenter|centre de donnees|\bdcd\b/.test(text)) return 'cloud_read';
   if (/\bvps\b/.test(text)) return 'corevps_list_contracts';
   if (/dedie|serveur/.test(text)) return 'dedicatedserver_list_contracts';
-  if (/\bdns\b|zone|enregistrement/.test(text)) return 'dns_get_zones';
+  if (dnsTopic && domain) return 'dns_domain';
+  if (dnsTopic) return 'dns_get_zones';
   if (/domaine/.test(text)) return 'domains_list_domains';
   return 'status';
 }
-module.exports = { read, validate, redact, configuration, rows, chatIntent, catalog, tools, cloudRead };
+module.exports = {
+  read, validate, redact, configuration, rows, chatIntent, catalog, tools, cloudRead,
+  domainFromMessage, findDnsZone, readDomainDns, configuredDnsAccounts,
+};
