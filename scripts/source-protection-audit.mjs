@@ -9,7 +9,6 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const CONTROL_FILES = Object.freeze([
-  'IP-NOTICE.md',
   '.github/CODEOWNERS',
   '.github/workflows/source-protection.yml',
   'scripts/source-protection-audit.mjs',
