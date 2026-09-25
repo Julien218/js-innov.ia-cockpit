@@ -1,4 +1,5 @@
 import React from "react";
+import "./DashboardQuiet.css";
 import ElyneaHomePresence from "@/components/ElyneaHomePresence";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
@@ -8,7 +9,6 @@ import {
   FolderKanban,
   Mail,
   MessageSquare,
-  Sparkles,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -40,16 +40,12 @@ function priorityTone(task) {
 
 function KpiCard({ item, value, subtitle }) {
   const Icon = item.icon;
-  return (
-    <div className={cn("cockpit-reference-kpi cockpit-electric-frame", `cockpit-kpi-${item.tone}`)}>
-      <span className="cockpit-reference-kpi-icon"><Icon className="h-4 w-4" /></span>
-      <div className="min-w-0">
-        <p className="text-xl font-bold leading-none">{value}</p>
-        <p className="mt-1 truncate text-[11px] font-medium text-slate-600">{item.label}</p>
-        {subtitle && <p className="mt-1 truncate text-[10px] text-slate-500">{subtitle}</p>}
-      </div>
-    </div>
-  );
+  const routes = { tasks: '/taches', emails: '/emails', projects: '/projets', requests: '/demandes' };
+  return <Link to={routes[item.key]} className="quiet-home-metric">
+    <Icon size={16} aria-hidden="true" />
+    <span>{item.label}</span><strong>{value}</strong>
+    {subtitle && <small>{subtitle}</small>}
+  </Link>;
 }
 
 function PanelHeader({ icon: Icon, title, action, to }) {
@@ -130,69 +126,36 @@ export default function Dashboard() {
   const jarvisKpis = KPI_ITEMS;
 
   return (
-    <div className="cockpit-reference-dashboard jarvis-home">
-      <div className="mx-auto w-full max-w-[1480px] space-y-4">
-        <section className="cockpit-reference-greeting jarvis-home-greeting">
-          <div>
-            <h1 className="text-2xl font-bold text-white drop-shadow-sm sm:text-3xl">
-              {greeting}, <span className="text-amber-300">Julien</span> 👋
-            </h1>
-            <p className="mt-1 max-w-2xl text-sm text-white/70">
-              L’accueil reste volontairement léger : Elynea orchestre et ouvre les outils dont vous avez besoin.
-            </p>
+    <div className="cockpit-reference-dashboard jarvis-home quiet-home">
+      <div className="mx-auto w-full max-w-[1080px] space-y-4">
+        <header className="quiet-home-heading">
+          <div><p className="quiet-home-eyebrow">VOTRE ESPACE PERSONNEL</p><h1>{greeting}, <span>Julien</span></h1></div>
+          <span className="quiet-home-brand">JS-INNOV.IA</span>
+        </header>
+
+        <section className="quiet-home-hero" aria-label="Mode Jarvis">
+          <p className="quiet-home-eyebrow">MODE JARVIS</p>
+          <h2>Que faisons-nous aujourd’hui ?</h2>
+          <p className="quiet-home-intro">Une idée, une question, une action. Elynea vous accompagne.</p>
+          <ElyneaHomePresence callLabel="Appeler Elynea" />
+          <div className="quiet-home-suggestions" aria-label="Suggestions pour Elynea">
+            <button type="button" onClick={() => openElynea("Analyse mes priorités du jour et ouvre ce qui demande mon attention.")}>Mes priorités <ArrowRight size={13} /></button>
+            <button type="button" onClick={() => openElynea("Ouvre et analyse mes emails à traiter.")}>Mes emails <ArrowRight size={13} /></button>
+            <button type="button" onClick={() => openElynea("Montre-moi les projets qui nécessitent une action.")}>Mes projets <ArrowRight size={13} /></button>
           </div>
-          <button
-            type="button"
-            onClick={() => openElynea("")}
-            className="jarvis-home-call inline-flex items-center gap-2 rounded-xl border border-amber-300/40 bg-slate-950/35 px-4 py-2.5 text-sm font-semibold text-white shadow-lg backdrop-blur-xl"
-          >
-            <Sparkles className="h-4 w-4 text-amber-300" />
-            Appeler Elynea
-          </button>
         </section>
 
-        {hasAnyError && (
-          <div className="rounded-xl border border-amber-300/25 bg-slate-950/45 px-4 py-3 text-sm text-amber-100 shadow-lg backdrop-blur-xl">
-            Certaines données métier n’ont pas pu être chargées. Les compteurs concernés peuvent être incomplets.
-          </div>
-        )}
-
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <nav className="quiet-home-metrics" aria-label="Accès à votre activité">
           {jarvisKpis.map((item) => (
-            <KpiCard
-              key={item.key}
-              item={item}
-              value={kpiValues[item.key]}
-              subtitle={
-                item.key === "tasks" && tachesEnRetard > 0 ? `${tachesEnRetard} en retard`
-                  : item.key === "emails" && emailsErr ? "Messagerie indisponible"
-                  : item.key === "projects" ? "en cours"
-                  : undefined
-              }
-            />
+            <KpiCard key={item.key} item={item} value={
+              ({tasks: tachesErr, emails: emailsErr, projects: projetsErr, requests: demandesErr})[item.key] ? '—' : kpiValues[item.key]
+            } subtitle={item.key === 'tasks' && !tachesErr && tachesEnRetard > 0 ? tachesEnRetard + ' en retard' : undefined} />
           ))}
-        </section>
+        </nav>
+        {hasAnyError && <p className="quiet-home-notice" role="status">Certaines données sont indisponibles. Les compteurs concernés affichent « — ».</p>}
 
-        <section className="jarvis-home-command cockpit-electric-frame jarvis-home-with-presence">
-          <ElyneaHomePresence />
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-200/80">Mode Jarvis</p>
-            <h2 className="mt-1 text-lg font-semibold text-white">Dites simplement ce que vous voulez faire.</h2>
-            <p className="mt-1 text-sm text-white/55">Elynea recherche, ouvre le bon module et exécute le flux autorisé sans transformer l’accueil en tableau de bord surchargé.</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => openElynea("Analyse mes priorités du jour et ouvre ce qui demande mon attention.")} className="jarvis-home-chip">
-              Mes priorités
-            </button>
-            <button type="button" onClick={() => openElynea("Ouvre et analyse mes emails à traiter.")} className="jarvis-home-chip">
-              Mes emails
-            </button>
-            <button type="button" onClick={() => openElynea("Montre-moi les projets qui nécessitent une action.")} className="jarvis-home-chip">
-              Mes projets
-            </button>
-          </div>
-        </section>
-
+        <details className="quiet-home-details">
+          <summary>Voir mes priorités et projets récents</summary>
         <section className="grid gap-3 lg:grid-cols-2">
           <div className="cockpit-reference-panel cockpit-electric-frame">
             <PanelHeader icon={CheckSquare} title="Priorités" action={`Voir toutes (${tachesActives})`} to="/taches" />
@@ -237,16 +200,7 @@ export default function Dashboard() {
           </div>
         </section>
 
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Link to="/emails" className="jarvis-home-secondary">
-            <Mail className="h-4 w-4" />
-            <span>{emailsATraiter} email{emailsATraiter > 1 ? "s" : ""} à traiter</span>
-          </Link>
-          <Link to="/demandes" className="jarvis-home-secondary">
-            <MessageSquare className="h-4 w-4" />
-            <span>{demandesOuvertes} demande{demandesOuvertes > 1 ? "s" : ""} ouverte{demandesOuvertes > 1 ? "s" : ""}</span>
-          </Link>
-        </div>
+        </details>
       </div>
     </div>
   );
