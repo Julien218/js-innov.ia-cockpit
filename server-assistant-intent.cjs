@@ -56,12 +56,20 @@ function confirmationText(message) {
 }
 function bareConfirmationSignal(message) {
   const text = confirmationText(message);
-  return /^(?:oui|ok|oki|okay|je confirme|confirme|confirmer|go|vas[- ]y|execute|executer)(?:\s+(?:immediatement|maintenant|tout de suite))?[.!\s]*$/.test(text);
+  // A compound acknowledgement still confirms the same pending proposal, not a new request.
+  return /^(?:(?:oui|ok|oki|okay)(?:[,\s]+(?:je confirme|confirme|confirmer))?|je confirme|confirme|confirmer|go|vas[- ]y|execute|executer)(?:\s+(?:immediatement|maintenant|tout de suite))?[.!\s]*$/.test(text);
 }
 function confirmationActionSignal(message) {
   const text = confirmationText(message);
   if (!text || /\b(?:pas|non|annule|annuler|mais|plutot|sauf|sans)\b/.test(text)) return false;
-  return /^(?:oui|ok|oki|okay|je confirme|confirme|confirmer)\b.{0,180}\b(?:envoie|envoyer|envoi|execute|executer|execution|lance|lancer|lancement|creation|realisation|generation)\b/.test(text);
+  if (!/^(?:oui|ok|oki|okay|je confirme|confirme|confirmer)\b/.test(text)) return false;
+  // Preserve explicit send/execute recovery. Creation words alone are not an authorization.
+  if (/^(?:oui|ok|oki|okay|je confirme|confirme|confirmer)\b.{0,180}\b(?:envoie|envoyer|envoi|execute|executer|execution)\b/.test(text)) return true;
+  // Named media confirmations use the cached proposal and its existing target/project guards.
+  // New quote/invoice/task/project requests must stay with their own intent handlers.
+  return /\b(?:videos?|images?|visuels?|tiktok|montage|animation)\b/.test(text)
+    && !/\b(?:devis|factures?|taches?|projets?)\b/.test(text)
+    && /^(?:oui|ok|oki|okay|je confirme|confirme|confirmer)\b.{0,180}\b(?:lance|lancer|lancement|creation|realisation|generation)\b/.test(text);
 }
 function confirmationTargetMatches(message, confirmation) {
   if (bareConfirmationSignal(message)) return true;
@@ -120,7 +128,8 @@ function dispatchState(run, now = Date.now()) {
   const age = changedAt ? now - changedAt : Number.POSITIVE_INFINITY;
   if (status === 'running' && age > STALE_RUNNING_MS) return 'execution_obsolete';
   if (['pending', 'queued', 'dispatching', 'dispatched'].includes(status) && age > STALE_PENDING_MS) return 'en_attente_prolongee';
-  if (status === 'awaiting_approval' || status === 'awaiting_review') return 'en_attente_validation';
+  // A legacy approval is not evidence that a worker started or produced an artifact.
+  if (['awaiting_approval', 'awaiting_review', 'approval_granted'].includes(status)) return 'en_attente_validation';
   if (status === 'running') return 'en_execution';
   if (['pending', 'queued', 'dispatching', 'dispatched'].includes(status)) return 'dispatch_en_attente';
   if (status === 'completed') return 'resultat_non_synchronise';
