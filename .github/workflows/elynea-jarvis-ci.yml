@@ -4,26 +4,44 @@ on:
   pull_request:
     paths:
       - "electron/**"
+      - "server-assistant-intent.cjs"
+      - "server-elynea-runtime.cjs"
+      - "src/lib/novaChatTransport.js"
       - "src/pages/Agent.jsx"
       - "tests/elynea-*.test.cjs"
       - "package.json"
+      - ".github/workflows/elynea-jarvis-ci.yml"
   push:
     branches: [main]
     paths:
       - "electron/**"
+      - "server-assistant-intent.cjs"
+      - "server-elynea-runtime.cjs"
+      - "src/lib/novaChatTransport.js"
       - "src/pages/Agent.jsx"
       - "tests/elynea-*.test.cjs"
       - "package.json"
+      - ".github/workflows/elynea-jarvis-ci.yml"
+
+permissions:
+  contents: read
 
 jobs:
   jarvis:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run test:elynea
+      - name: Execution, confirmation and connected-read regressions
+        run: node --test tests/elynea-execution-safety.test.cjs tests/elynea-confirmation-lifecycle.test.cjs tests/elynea-connected-tools.test.cjs
+      - name: Existing runtime and transport regression suite
+        run: npm test
       - run: npm run build
